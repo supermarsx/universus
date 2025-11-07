@@ -82,6 +82,9 @@ function initializeSocket(token) {
     });
 
     GameState.socket.on('notification:new', (event) => {
+        if (window.notificationCenter) {
+            window.notificationCenter.handleRealtime(event);
+        }
         const title = event?.title || 'Notification';
         const message = event?.message || '';
         if (window.toast) {
