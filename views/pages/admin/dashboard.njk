@@ -1,0 +1,406 @@
+{% extends "base.njk" %}
+
+{% block title %}Admin Dashboard - Universus{% endblock %}
+
+{% block styles %}
+<style>
+  .admin-layout {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+  }
+
+  .admin-sidebar {
+    background: rgba(26, 26, 46, 0.8);
+    border-right: 1px solid rgba(99, 102, 241, 0.2);
+    padding: 2rem 0;
+  }
+
+  .admin-sidebar-logo {
+    padding: 0 1.5rem 2rem;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+    margin-bottom: 2rem;
+  }
+
+  .admin-sidebar-logo h2 {
+    color: #6366f1;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .admin-nav {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .admin-nav-item {
+    margin: 0;
+  }
+
+  .admin-nav-link {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    color: #94a3b8;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+
+  .admin-nav-link:hover {
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+  }
+
+  .admin-nav-link.active {
+    background: rgba(99, 102, 241, 0.2);
+    color: #6366f1;
+    border-left: 3px solid #6366f1;
+  }
+
+  .admin-nav-icon {
+    width: 20px;
+    height: 20px;
+    margin-right: 0.75rem;
+  }
+
+  .admin-content {
+    padding: 2rem;
+    overflow-y: auto;
+  }
+
+  .admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+
+  .admin-header h1 {
+    color: #e2e8f0;
+    font-size: 2rem;
+    font-weight: 700;
+  }
+
+  .admin-user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .admin-badge {
+    padding: 0.5rem 1rem;
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid #6366f1;
+    border-radius: 0.5rem;
+    color: #6366f1;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .dashboard-card {
+    background: rgba(26, 26, 46, 0.8);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }
+
+  .dashboard-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .dashboard-card-title {
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .dashboard-card-value {
+    color: #6366f1;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0.5rem 0;
+  }
+
+  .dashboard-card-subtitle {
+    color: #64748b;
+    font-size: 0.875rem;
+  }
+
+  .status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .status-healthy { background: #10b981; }
+  .status-warning { background: #f59e0b; }
+  .status-critical { background: #ef4444; }
+
+  .chart-container {
+    background: rgba(26, 26, 46, 0.8);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .recent-activity {
+    background: rgba(26, 26, 46, 0.8);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }
+
+  .activity-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+  }
+
+  .activity-item:last-child {
+    border-bottom: none;
+  }
+
+  .activity-text {
+    color: #cbd5e1;
+  }
+
+  .activity-time {
+    color: #64748b;
+    font-size: 0.875rem;
+  }
+
+  .notification-badge {
+    position: relative;
+    display: inline-block;
+  }
+
+  .notification-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-layout">
+  <!-- Admin Sidebar -->
+  <aside class="admin-sidebar">
+    <div class="admin-sidebar-logo">
+      <h2>⚡ Admin Panel</h2>
+    </div>
+    <nav>
+      <ul class="admin-nav">
+        <li class="admin-nav-item">
+          <a href="/admin/dashboard" class="admin-nav-link active">
+            <div class="css-icon icon-overview admin-nav-icon"></div>
+            Dashboard
+          </a>
+        </li>
+        <li class="admin-nav-item">
+          <a href="/admin/users" class="admin-nav-link">
+            <div class="css-icon icon-user admin-nav-icon"></div>
+            Users
+          </a>
+        </li>
+        <li class="admin-nav-item">
+          <a href="/admin/monitoring" class="admin-nav-link">
+            <div class="css-icon icon-monitoring admin-nav-icon"></div>
+            Monitoring
+          </a>
+        </li>
+        <li class="admin-nav-item">
+          <a href="/admin/settings" class="admin-nav-link">
+            <div class="css-icon icon-settings admin-nav-icon"></div>
+            Settings
+          </a>
+        </li>
+        <li class="admin-nav-item">
+          <a href="/admin/events" class="admin-nav-link">
+            <div class="css-icon icon-event admin-nav-icon"></div>
+            Events
+          </a>
+        </li>
+        <li class="admin-nav-item">
+          <a href="/admin/analytics" class="admin-nav-link">
+            <div class="css-icon icon-chart admin-nav-icon"></div>
+            Analytics
+          </a>
+        </li>
+        <li class="admin-nav-item">
+          <a href="/admin/audit" class="admin-nav-link">
+            <div class="css-icon icon-audit admin-nav-icon"></div>
+            Audit Logs
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="admin-content">
+    <header class="admin-header">
+      <h1>Admin Dashboard</h1>
+      <div class="admin-user-info">
+        <div class="notification-badge">
+          <div class="css-icon icon-notification"></div>
+          <span class="notification-count" id="notificationCount">3</span>
+        </div>
+        <span class="admin-badge">Super Admin</span>
+        <span class="admin-badge" id="adminUsername">Loading...</span>
+      </div>
+    </header>
+
+    <!-- Dashboard Stats Grid -->
+    <div class="dashboard-grid">
+      <div class="dashboard-card">
+        <div class="dashboard-card-header">
+          <span class="dashboard-card-title">Server Health</span>
+          <span class="status-indicator status-healthy" id="serverHealthStatus"></span>
+        </div>
+        <div class="dashboard-card-value" id="serverHealthValue">Healthy</div>
+        <div class="dashboard-card-subtitle">
+          CPU: <span id="cpuUsage">0</span>% | Memory: <span id="memoryUsage">0</span>%
+        </div>
+      </div>
+
+      <div class="dashboard-card">
+        <div class="dashboard-card-header">
+          <span class="dashboard-card-title">Active Players</span>
+        </div>
+        <div class="dashboard-card-value" id="activePlayers">0</div>
+        <div class="dashboard-card-subtitle">Online right now</div>
+      </div>
+
+      <div class="dashboard-card">
+        <div class="dashboard-card-header">
+          <span class="dashboard-card-title">Total Users</span>
+        </div>
+        <div class="dashboard-card-value" id="totalUsers">0</div>
+        <div class="dashboard-card-subtitle">
+          <span id="newUsersToday">0</span> new today
+        </div>
+      </div>
+
+      <div class="dashboard-card">
+        <div class="dashboard-card-header">
+          <span class="dashboard-card-title">Active Events</span>
+        </div>
+        <div class="dashboard-card-value" id="activeEvents">0</div>
+        <div class="dashboard-card-subtitle">Currently running</div>
+      </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="recent-activity">
+      <h3 style="color: #e2e8f0; margin-bottom: 1.5rem;">Recent Admin Activity</h3>
+      <div id="recentActivityList">
+        <div class="activity-item">
+          <span class="activity-text">Loading activity...</span>
+          <span class="activity-time">--</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Load dashboard data
+  async function loadDashboard() {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        window.location.href = '/';
+        return;
+      }
+
+      const response = await fetch('/api/admin/dashboard', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          alert('Admin access required');
+          window.location.href = '/overview';
+          return;
+        }
+        throw new Error('Failed to load dashboard');
+      }
+
+      const data = await response.json();
+
+      // Update server health
+      const health = data.server_health;
+      document.getElementById('serverHealthValue').textContent = health.status.charAt(0).toUpperCase() + health.status.slice(1);
+      document.getElementById('serverHealthStatus').className = `status-indicator status-${health.status}`;
+      document.getElementById('cpuUsage').textContent = health.cpu_usage.toFixed(1);
+      document.getElementById('memoryUsage').textContent = health.memory_usage.toFixed(1);
+
+      // Update stats
+      document.getElementById('activePlayers').textContent = health.active_players;
+      document.getElementById('totalUsers').textContent = data.user_analytics.total_users;
+      document.getElementById('newUsersToday').textContent = data.user_analytics.new_users_today;
+      document.getElementById('activeEvents').textContent = data.active_events.length;
+
+      // Update notifications
+      document.getElementById('notificationCount').textContent = data.critical_alerts.length;
+
+      // Update recent activity
+      const activityList = document.getElementById('recentActivityList');
+      if (data.recent_audit_logs.length > 0) {
+        activityList.innerHTML = data.recent_audit_logs.slice(0, 10).map(log => `
+          <div class="activity-item">
+            <span class="activity-text">${log.admin_username}: ${log.action_type}</span>
+            <span class="activity-time">${new Date(log.timestamp).toLocaleTimeString()}</span>
+          </div>
+        `).join('');
+      }
+
+      // Get current user info
+      const userResponse = await fetch('/api/users/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const user = await userResponse.json();
+      document.getElementById('adminUsername').textContent = user.username;
+
+    } catch (error) {
+      console.error('Dashboard error:', error);
+      alert('Failed to load dashboard');
+    }
+  }
+
+  // Auto-refresh every 30 seconds
+  loadDashboard();
+  setInterval(loadDashboard, 30000);
+</script>
+{% endblock %}

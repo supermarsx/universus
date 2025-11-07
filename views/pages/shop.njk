@@ -1,0 +1,69 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Premium Shop" %}
+{% set currentPage = "shop" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Premium Shop</h2>
+
+<div class="shop-layout">
+    <!-- Shop Categories -->
+    <div class="shop-sidebar">
+        <nav class="shop-nav">
+            <a href="#" class="shop-nav-item active" data-category="all">All Items</a>
+            <a href="#" class="shop-nav-item" data-category="resources">Resources</a>
+            <a href="#" class="shop-nav-item" data-category="officers">Officers</a>
+            <a href="#" class="shop-nav-item" data-category="boosts">Boosts</a>
+            <a href="#" class="shop-nav-item" data-category="premium">Premium</a>
+        </nav>
+
+        <!-- Active Perks -->
+        <div class="active-perks">
+            <h4>Active Perks</h4>
+            <div id="activePerks">
+                <p class="text-muted">No active perks</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shop Items -->
+    <div class="shop-content">
+        <div class="user-dm-display">
+            <span>Dark Matter:</span>
+            <strong id="userDM">0</strong>
+        </div>
+
+        <div id="shopGrid" class="shop-grid">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading shop items...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purchase Modal -->
+<div id="purchaseModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Purchase Item</h3>
+        <div id="purchaseDetails"></div>
+    </div>
+</div>
+
+<!-- Payment Modal -->
+<div id="paymentModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Purchase Dark Matter</h3>
+        <div id="paymentForm"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://js.stripe.com/v3/"></script>
+<script src="/js/shop.js"></script>
+{% endblock %}

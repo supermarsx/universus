@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Shop - Universus Space Empire</title>
+    <link rel="stylesheet" href="/css/matrix-shop.css">
+</head>
+<body class="matrix-theme">
+    <!-- Matrix Digital Rain Background -->
+    <canvas id="matrixCanvas" class="matrix-background"></canvas>
+
+    <!-- Shop Container -->
+    <div class="shop-container">
+        <!-- Header -->
+        <header class="shop-header">
+            <div class="header-content">
+                <h1 class="matrix-title glitch" data-text="MATRIX SHOP">MATRIX SHOP</h1>
+                <div class="user-info">
+                    <div class="matrix-points">
+                        <span class="icon">⬢</span>
+                        <span id="matrixPoints">0</span> Points
+                    </div>
+                    <div class="matrix-level">
+                        <span class="icon">▲</span>
+                        Level <span id="matrixLevel">1</span>
+                    </div>
+                    <div class="dark-matter">
+                        <span class="icon">◆</span>
+                        <span id="darkMatter">0</span> DM
+                    </div>
+                </div>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+                <div class="progress-text" id="progressText">0 / 1000 XP</div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="shop-nav">
+            <button class="nav-btn active" data-category="all">
+                <span class="btn-icon">▣</span> All Items
+            </button>
+            <button class="nav-btn" data-category="ship_skin">
+                <span class="btn-icon">▷</span> Ship Skins
+            </button>
+            <button class="nav-btn" data-category="theme">
+                <span class="btn-icon">◘</span> Themes
+            </button>
+            <button class="nav-btn" data-category="decoration">
+                <span class="btn-icon">◉</span> Decorations
+            </button>
+            <button class="nav-btn" data-category="badge">
+                <span class="btn-icon">◊</span> Badges
+            </button>
+            <button class="nav-btn matrix-exclusive" data-filter="matrix">
+                <span class="btn-icon pulse">█</span> Matrix Exclusive
+            </button>
+        </nav>
+
+        <!-- Promotions Banner -->
+        <div class="promotions-section" id="promotions">
+            <!-- Promotions loaded dynamically -->
+        </div>
+
+        <!-- Flash Sales -->
+        <div class="flash-sales-section" id="flashSales">
+            <!-- Flash sales loaded dynamically -->
+        </div>
+
+        <!-- Shop Grid -->
+        <main class="shop-main">
+            <!-- Filters -->
+            <aside class="filters-sidebar">
+                <h3 class="filter-title">Filters</h3>
+                
+                <div class="filter-group">
+                    <h4>Rarity</h4>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" value="legendary" data-filter="rarity">
+                        <span class="legendary">◆ Legendary</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" value="epic" data-filter="rarity">
+                        <span class="epic">◆ Epic</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" value="rare" data-filter="rarity">
+                        <span class="rare">◆ Rare</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" value="common" data-filter="rarity">
+                        <span class="common">◆ Common</span>
+                    </label>
+                </div>
+
+                <div class="filter-group">
+                    <h4>Price Range</h4>
+                    <select id="priceFilter" class="filter-select">
+                        <option value="">All Prices</option>
+                        <option value="0-999">Under $10</option>
+                        <option value="1000-1999">$10 - $20</option>
+                        <option value="2000-4999">$20 - $50</option>
+                        <option value="5000-">$50+</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <h4>Payment Method</h4>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" value="usd" data-filter="payment">
+                        <span>💳 USD</span>
+                    </label>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" value="dark_matter" data-filter="payment">
+                        <span>◆ Dark Matter</span>
+                    </label>
+                </div>
+
+                <button class="btn-reset-filters" id="resetFilters">Reset All</button>
+            </aside>
+
+            <!-- Items Grid -->
+            <div class="items-container">
+                <div class="items-header">
+                    <h2 id="sectionTitle">All Items</h2>
+                    <div class="view-toggle">
+                        <button class="view-btn active" data-view="grid">▦</button>
+                        <button class="view-btn" data-view="list">☰</button>
+                    </div>
+                </div>
+                <div class="items-grid" id="itemsGrid">
+                    <!-- Items loaded dynamically -->
+                    <div class="loading-matrix">
+                        <div class="spinner"></div>
+                        <p>Loading Matrix...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- User Inventory Section -->
+        <section class="inventory-section" id="inventorySection" style="display: none;">
+            <h2>Your Inventory</h2>
+            <div class="inventory-grid" id="inventoryGrid">
+                <!-- User's items loaded here -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Item Detail Modal -->
+    <div class="modal" id="itemModal">
+        <div class="modal-content matrix-modal">
+            <span class="modal-close">&times;</span>
+            <div class="modal-body">
+                <div class="item-preview">
+                    <img id="modalImage" src="" alt="">
+                    <div class="rarity-badge" id="modalRarity"></div>
+                </div>
+                <div class="item-details">
+                    <h2 id="modalTitle"></h2>
+                    <p id="modalDescription"></p>
+                    <div class="item-stats" id="modalStats"></div>
+                    <div class="price-section">
+                        <div class="price-option">
+                            <span class="price-label">USD</span>
+                            <span class="price-value" id="modalPriceUSD"></span>
+                        </div>
+                        <div class="price-option" id="dmPriceOption" style="display:none;">
+                            <span class="price-label">Dark Matter</span>
+                            <span class="price-value" id="modalPriceDM"></span>
+                        </div>
+                    </div>
+                    <div class="stock-info" id="stockInfo" style="display:none;">
+                        <span id="stockText"></span>
+                    </div>
+                    <div class="promo-section">
+                        <input type="text" id="promoCode" placeholder="Promo Code" class="promo-input">
+                        <button id="applyPromo" class="btn-apply-promo">Apply</button>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn-purchase btn-purchase-usd" id="purchaseUSD">
+                            Purchase with USD
+                        </button>
+                        <button class="btn-purchase btn-purchase-dm" id="purchaseDM" style="display:none;">
+                            Purchase with DM
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gift Modal -->
+    <div class="modal" id="giftModal">
+        <div class="modal-content matrix-modal">
+            <span class="modal-close">&times;</span>
+            <h2>Send Gift</h2>
+            <form id="giftForm">
+                <div class="form-group">
+                    <label>Recipient Email</label>
+                    <input type="email" id="giftRecipient" required class="matrix-input">
+                </div>
+                <div class="form-group">
+                    <label>Personal Message (Optional)</label>
+                    <textarea id="giftMessage" class="matrix-input" rows="3"></textarea>
+                </div>
+                <button type="submit" class="btn-purchase">Send Gift</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notifications" class="notifications-container"></div>
+
+    <script src="/js/matrix-shop.js"></script>
+    <script src="/js/matrix-rain.js"></script>
+</body>
+</html>

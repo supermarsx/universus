@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universus - Shipyard</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/game.css">
+</head>
+<body class="game-body">
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h1 class="nav-title">Universus</h1>
+            <span id="username" class="nav-username"></span>
+        </div>
+        <div class="nav-center">
+            <div class="resource-display">
+                <div class="resource-item">
+                    <span class="resource-icon metal">M</span>
+                    <span id="metalDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon crystal">C</span>
+                    <span id="crystalDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon deuterium">D</span>
+                    <span id="deuteriumDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon energy">E</span>
+                    <span id="energyDisplay">0</span>
+                </div>
+            </div>
+        </div>
+        <div class="nav-right">
+            <button id="logoutBtn" class="btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="game-container">
+        <aside class="sidebar">
+            <div class="planet-selector">
+                <h3>Your Planets</h3>
+                <select id="planetSelect" class="planet-dropdown">
+                    <option>Loading...</option>
+                </select>
+            </div>
+
+            <nav class="main-menu">
+                <a href="overview.html" class="menu-item">Overview</a>
+                <a href="buildings.html" class="menu-item">Buildings</a>
+                <a href="research.html" class="menu-item">Research</a>
+                <a href="shipyard.html" class="menu-item active">Shipyard</a>
+                <a href="fleet.html" class="menu-item">Fleet</a>
+                <a href="galaxy.html" class="menu-item">Galaxy</a>
+                <a href="alliance.html" class="menu-item">Alliance</a>
+                <a href="messages.html" class="menu-item">Messages</a>
+                <a href="shop.html" class="menu-item">Shop</a>
+            </nav>
+        </aside>
+
+        <main class="content-area">
+            <h2>Shipyard</h2>
+
+            <div id="productionQueueDisplay" class="construction-queue-display" style="display:none;">
+                <h3>Production in Progress</h3>
+                <div id="activeProduction"></div>
+            </div>
+
+            <div class="tab-container">
+                <button class="tab-button active" data-tab="ships">Ships</button>
+                <button class="tab-button" data-tab="defense">Defense</button>
+            </div>
+
+            <div id="shipsTab" class="tab-content active">
+                <div id="shipsGrid" class="buildings-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading ships...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="defenseTab" class="tab-content">
+                <div id="defenseGrid" class="buildings-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading defense...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/game.js"></script>
+    <script src="/js/shipyard.js"></script>
+</body>
+</html>

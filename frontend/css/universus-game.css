@@ -1,0 +1,859 @@
+/**
+ * UNIVERSUS GAME INTERFACE - Enhanced Styles
+ * Integrates with universus-design-system.css
+ * Uses design tokens and visual assets
+ */
+
+@import url('universus-design-system.css');
+
+/* === GAME BODY === */
+
+.game-body {
+    background: var(--color-bg-primary);
+    background-image: 
+        url('/assets/backgrounds/stars.png'),
+        radial-gradient(circle at 20% 50%, rgba(107, 43, 132, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(0, 217, 255, 0.1) 0%, transparent 50%);
+    background-size: cover, auto, auto;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* === TOP NAVIGATION === */
+
+.top-nav {
+    background: linear-gradient(135deg, rgba(15, 20, 25, 0.95) 0%, rgba(26, 31, 46, 0.95) 100%);
+    border-bottom: 2px solid var(--color-border-accent);
+    padding: var(--spacing-4) var(--spacing-8);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 80px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 217, 255, 0.1);
+}
+
+.nav-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-6);
+}
+
+.nav-title {
+    font-family: var(--font-heading);
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+    background: linear-gradient(135deg, var(--color-cosmic-cyan) 0%, var(--color-stellar-gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+    letter-spacing: 2px;
+}
+
+.nav-username {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-primary);
+}
+
+.nav-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+}
+
+/* === RESOURCE DISPLAY === */
+
+.resource-display {
+    display: flex;
+    gap: var(--spacing-8);
+    align-items: center;
+}
+
+.resource-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-primary);
+    transition: all var(--transition-base);
+}
+
+.resource-item:hover {
+    border-color: var(--color-border-accent);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-2px);
+}
+
+.resource-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-sm);
+    box-shadow: var(--shadow-md);
+    background-size: cover;
+}
+
+.resource-icon.metal {
+    background: linear-gradient(135deg, #C0C0C0 0%, #8A8A8A 100%);
+    color: #1f2937;
+    box-shadow: 0 0 10px rgba(192, 192, 192, 0.4);
+}
+
+.resource-icon.crystal {
+    background: linear-gradient(135deg, #9B59B6 0%, #6B2B84 100%);
+    color: var(--color-star-white);
+    box-shadow: 0 0 10px rgba(155, 89, 182, 0.4);
+}
+
+.resource-icon.deuterium {
+    background: linear-gradient(135deg, #3498DB 0%, #2471A3 100%);
+    color: var(--color-star-white);
+    box-shadow: 0 0 10px rgba(52, 152, 219, 0.4);
+}
+
+.resource-icon.energy {
+    background: linear-gradient(135deg, #F1C40F 0%, #F39C12 100%);
+    color: #1f2937;
+    box-shadow: 0 0 10px rgba(241, 196, 15, 0.4);
+}
+
+.resource-item span:not(.resource-icon) {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+}
+
+.nav-right {
+    display: flex;
+    gap: var(--spacing-4);
+    align-items: center;
+}
+
+.btn-admin {
+    background: linear-gradient(135deg, var(--color-supernova-red) 0%, #C72C5A 100%);
+    color: var(--color-star-white);
+    padding: var(--spacing-2) var(--spacing-5);
+    border-radius: var(--radius-md);
+    font-weight: var(--font-weight-semibold);
+    transition: all var(--transition-base);
+}
+
+.btn-admin:hover {
+    box-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
+    transform: translateY(-2px);
+}
+
+/* === GAME CONTAINER === */
+
+.game-container {
+    display: flex;
+    height: calc(100vh - 80px);
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+}
+
+/* === SIDEBAR === */
+
+.sidebar {
+    width: 280px;
+    background: linear-gradient(180deg, rgba(26, 31, 46, 0.95) 0%, rgba(15, 20, 25, 0.95) 100%);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-6);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+}
+
+/* Planet Selector */
+
+.planet-selector {
+    margin-bottom: var(--spacing-6);
+    padding-bottom: var(--spacing-6);
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+.planet-selector h3 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--spacing-3);
+    color: var(--color-cosmic-cyan);
+}
+
+.planet-dropdown {
+    width: 100%;
+    padding: var(--spacing-3);
+    background: var(--color-bg-tertiary);
+    border: 2px solid var(--color-border-primary);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-base);
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.planet-dropdown:hover,
+.planet-dropdown:focus {
+    border-color: var(--color-cosmic-cyan);
+    box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.1);
+}
+
+/* Main Menu */
+
+.main-menu {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.menu-item {
+    padding: var(--spacing-3) var(--spacing-4);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 3px;
+    background: var(--color-cosmic-cyan);
+    transform: scaleY(0);
+    transition: transform var(--transition-base);
+}
+
+.menu-item:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+    transform: translateX(4px);
+}
+
+.menu-item:hover::before {
+    transform: scaleY(1);
+}
+
+.menu-item.active {
+    background: linear-gradient(90deg, rgba(0, 217, 255, 0.15) 0%, transparent 100%);
+    color: var(--color-cosmic-cyan);
+    border-left: 3px solid var(--color-cosmic-cyan);
+    padding-left: calc(var(--spacing-4) - 3px);
+}
+
+/* === CONTENT AREA === */
+
+.content-area {
+    flex: 1;
+    background: linear-gradient(180deg, rgba(26, 31, 46, 0.85) 0%, rgba(15, 20, 25, 0.85) 100%);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-8);
+    backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+}
+
+.content-area h2 {
+    color: var(--color-cosmic-cyan);
+    margin-bottom: var(--spacing-6);
+    padding-bottom: var(--spacing-4);
+    border-bottom: 2px solid var(--color-border-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+}
+
+.content-area h2::before {
+    content: '';
+    width: 4px;
+    height: 30px;
+    background: linear-gradient(180deg, var(--color-cosmic-cyan) 0%, var(--color-nebula-purple) 100%);
+    border-radius: var(--radius-full);
+}
+
+/* === GRID LAYOUTS === */
+
+.overview-grid,
+.buildings-grid,
+.research-grid,
+.shipyard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-6);
+    margin-top: var(--spacing-6);
+}
+
+/* === CARDS === */
+
+.overview-card,
+.building-card,
+.tech-card,
+.ship-card {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.overview-card::before,
+.building-card::before,
+.tech-card::before,
+.ship-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--color-cosmic-cyan) 0%, var(--color-nebula-purple) 100%);
+    transform: scaleX(0);
+    transition: transform var(--transition-base);
+}
+
+.overview-card:hover,
+.building-card:hover,
+.tech-card:hover,
+.ship-card:hover {
+    border-color: var(--color-cosmic-cyan);
+    box-shadow: var(--shadow-glow);
+    transform: translateY(-4px);
+}
+
+.overview-card:hover::before,
+.building-card:hover::before,
+.tech-card:hover::before,
+.ship-card:hover::before {
+    transform: scaleX(1);
+}
+
+.overview-card h3,
+.building-card h3,
+.tech-card h3,
+.ship-card h3 {
+    color: var(--color-text-primary);
+    margin-bottom: var(--spacing-4);
+    font-size: var(--font-size-xl);
+}
+
+.overview-card p,
+.building-card p,
+.tech-card p,
+.ship-card p {
+    margin-bottom: var(--spacing-2);
+    display: flex;
+    justify-content: space-between;
+}
+
+.overview-card strong,
+.building-card strong,
+.tech-card strong,
+.ship-card strong {
+    color: var(--color-text-secondary);
+}
+
+/* === BUILDING/TECH SPECIFIC STYLES === */
+
+.building-icon,
+.tech-icon,
+.ship-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--spacing-4);
+    display: block;
+    border-radius: var(--radius-lg);
+    border: 2px solid var(--color-border-primary);
+    transition: all var(--transition-base);
+}
+
+.building-card:hover .building-icon,
+.tech-card:hover .tech-icon,
+.ship-card:hover .ship-icon {
+    border-color: var(--color-cosmic-cyan);
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.4);
+    transform: scale(1.05);
+}
+
+.building-level,
+.tech-level,
+.ship-count {
+    display: inline-block;
+    padding: var(--spacing-1) var(--spacing-3);
+    background: var(--color-nebula-purple);
+    color: var(--color-star-white);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-3);
+}
+
+.building-description,
+.tech-description {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-4);
+}
+
+.building-costs,
+.tech-costs,
+.ship-costs {
+    display: flex;
+    gap: var(--spacing-4);
+    margin: var(--spacing-4) 0;
+    padding: var(--spacing-3);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+}
+
+.cost-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.building-actions,
+.tech-actions,
+.ship-actions {
+    margin-top: var(--spacing-4);
+}
+
+.btn-build,
+.btn-research,
+.btn-construct {
+    width: 100%;
+}
+
+/* === QUEUE DISPLAYS === */
+
+.construction-queue-display,
+.research-queue-display,
+.production-queue {
+    background: var(--color-bg-tertiary);
+    border: 2px solid var(--color-border-accent);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-6);
+    margin-bottom: var(--spacing-6);
+}
+
+.queue-item {
+    padding: var(--spacing-4);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-3);
+}
+
+.queue-timer {
+    font-family: var(--font-mono);
+    color: var(--color-stellar-gold);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* === TABS === */
+
+.shipyard-tabs,
+.fleet-tabs,
+.leaderboard-tabs {
+    display: flex;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-6);
+    border-bottom: 2px solid var(--color-border-primary);
+}
+
+.tab-button {
+    padding: var(--spacing-3) var(--spacing-6);
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    position: relative;
+}
+
+.tab-button::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--color-cosmic-cyan);
+    transform: scaleX(0);
+    transition: transform var(--transition-base);
+}
+
+.tab-button:hover {
+    color: var(--color-text-primary);
+}
+
+.tab-button.active {
+    color: var(--color-cosmic-cyan);
+}
+
+.tab-button.active::after {
+    transform: scaleX(1);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+    animation: fadeIn var(--transition-base);
+}
+
+/* === RESPONSIVE === */
+
+@media (max-width: 1024px) {
+    .game-container {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: auto;
+    }
+    
+    .overview-grid,
+    .buildings-grid,
+    .research-grid,
+    .shipyard-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .resource-display {
+        gap: var(--spacing-4);
+    }
+    
+    .resource-item span:not(.resource-icon) {
+        font-size: var(--font-size-base);
+    }
+    
+    .nav-title {
+        font-size: var(--font-size-2xl);
+    }
+}
+
+
+/* === PAGE-SPECIFIC BACKGROUNDS === */
+
+.page-overview {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-buildings {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-shipyard {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-fleet {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-galaxy {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-research {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-leaderboard {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-messages {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-shop {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+.page-admin {
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+
+/* === RESOURCE ICON IMAGE STYLING === */
+
+.resource-display .resource-icon {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 6px rgba(0, 217, 255, 0.4));
+    transition: transform var(--transition-base);
+}
+
+.resource-display .resource-item:hover .resource-icon {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.6));
+}
+
+/* === NAVIGATION ICON STYLING === */
+
+.nav-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    margin-right: var(--spacing-2);
+    filter: drop-shadow(0 0 4px rgba(0, 217, 255, 0.3));
+}
+
+.sidebar-menu .menu-item img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    margin-right: var(--spacing-3);
+    filter: drop-shadow(0 0 3px rgba(0, 217, 255, 0.3));
+}
+
+/* === SHIP AND BUILDING CARDS WITH IMAGES === */
+
+.ship-card,
+.building-card {
+    position: relative;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all var(--transition-base);
+    border: 1px solid var(--color-border-primary);
+}
+
+.ship-card:hover,
+.building-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-glow);
+    border-color: var(--color-border-accent);
+}
+
+.ship-image,
+.building-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    border-bottom: 2px solid var(--color-border-accent);
+    transition: transform var(--transition-slow);
+}
+
+.ship-card:hover .ship-image,
+.building-card:hover .building-image {
+    transform: scale(1.05);
+}
+
+.ship-card-body,
+.building-card-body {
+    padding: var(--spacing-4);
+}
+
+.ship-name,
+.building-name {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-primary);
+    margin-bottom: var(--spacing-2);
+}
+
+.ship-description,
+.building-description {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-4);
+}
+
+/* === LOADING SPINNER === */
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(10, 25, 41, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.spinner {
+    width: 64px;
+    height: 64px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* === EFFECT ANIMATIONS === */
+
+.construction-complete-effect,
+.warp-effect,
+.explosion-effect {
+    position: absolute;
+    pointer-events: none;
+    animation: effectFade 2s ease-out forwards;
+}
+
+@keyframes effectFade {
+    0% {
+        opacity: 1;
+        transform: scale(0.5);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.5);
+    }
+}
+
+/* === RESPONSIVE BACKGROUND ADJUSTMENTS === */
+
+@media (max-width: 1024px) {
+    .page-overview,
+    .page-buildings,
+    .page-shipyard,
+    .page-fleet,
+    .page-galaxy,
+    .page-research,
+    .page-leaderboard,
+    .page-messages,
+    .page-shop,
+    .page-admin {
+        background-attachment: scroll;
+        background-size: cover;
+    }
+}
+
+@media (max-width: 768px) {
+    .resource-display .resource-icon {
+        width: 24px;
+        height: 24px;
+    }
+    
+    .ship-image,
+    .building-image {
+        height: 150px;
+    }
+}
+
+
+/* === SIDEBAR MENU ICON STYLING === */
+
+.sidebar-menu .menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+}
+
+.menu-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 3px rgba(0, 217, 255, 0.3));
+    transition: all var(--transition-base);
+}
+
+.menu-item:hover .menu-icon {
+    filter: drop-shadow(0 0 6px rgba(0, 217, 255, 0.5));
+    transform: scale(1.1);
+}
+
+.menu-item.active .menu-icon {
+    filter: drop-shadow(0 0 8px rgba(0, 217, 255, 0.8));
+}
+
+
+/* === SHIP AND BUILDING CARD COST ICONS === */
+
+.building-cost .cost-icon,
+.ship-card .cost-icon {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+    margin-right: var(--spacing-2);
+    filter: drop-shadow(0 0 3px rgba(0, 217, 255, 0.3));
+}
+
+.building-cost .cost-item,
+.ship-card .cost-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+/* === SHIPYARD GRID === */
+
+.shipyard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-6);
+    margin-top: var(--spacing-6);
+}
+
+@media (max-width: 768px) {
+    .shipyard-grid {
+        grid-template-columns: 1fr;
+    }
+}

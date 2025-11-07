@@ -1,0 +1,64 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Buildings" %}
+{% set currentPage = "buildings" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Buildings</h2>
+
+<!-- Construction Queue Display -->
+<div id="constructionQueueDisplay" class="construction-queue-display card-enhanced" style="display:none;">
+    <h3>Construction in Progress</h3>
+    <div id="activeConstruction" class="progress">
+        <div class="progress-bar"></div>
+    </div>
+</div>
+
+<!-- Buildings Grid -->
+<div id="buildingsGrid" class="buildings-grid">
+    {% if buildings and buildings.length > 0 %}
+        {% for building in buildings %}
+        <div class="building-card card-enhanced" data-building-id="{{ building.id }}">
+            <div class="building-icon">
+                <div class="css-icon icon-build"></div>
+            </div>
+            <div class="building-info">
+                <h3>{{ building.name }}</h3>
+                <p class="building-level">Level {{ building.level }}</p>
+                <p class="building-description">{{ building.description }}</p>
+            </div>
+            <div class="building-costs">
+                <div class="cost-item">
+                    <div class="css-icon icon-metal"></div>
+                    <span>{{ building.costs.metal }}</span>
+                </div>
+                <div class="cost-item">
+                    <div class="css-icon icon-crystal"></div>
+                    <span>{{ building.costs.crystal }}</span>
+                </div>
+                <div class="cost-item">
+                    <div class="css-icon icon-deuterium"></div>
+                    <span>{{ building.costs.deuterium }}</span>
+                </div>
+            </div>
+            <div class="building-actions">
+                <button class="btn btn-primary btn-build" data-building-type="{{ building.type }}">
+                    Upgrade to Level {{ building.level + 1 }}
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="loading card-compact">
+            <div class="spinner"></div>
+            <p>Loading buildings...</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/buildings.js"></script>
+{% endblock %}

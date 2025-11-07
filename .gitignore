@@ -1,0 +1,23 @@
+# Development files
+node_modules/
+dist/
+*.log
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite
+
+# Docker
+.dockerignore

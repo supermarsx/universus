@@ -1,0 +1,74 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Fleet Management" %}
+{% set currentPage = "fleet" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Fleet Management</h2>
+
+<div class="fleet-tabs">
+    <button class="tab-button active" data-tab="dispatch">Dispatch Fleet</button>
+    <button class="tab-button" data-tab="overview">Fleet Overview</button>
+    <button class="tab-button" data-tab="missions">Active Missions</button>
+</div>
+
+<!-- Dispatch Fleet Tab -->
+<div id="dispatchTab" class="tab-content active">
+    <div class="fleet-dispatch-container">
+        <div class="fleet-step" id="step1">
+            <h3>Step 1: Select Fleet</h3>
+            <div id="fleetSelection" class="fleet-selection-grid">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading available ships...</p>
+                </div>
+            </div>
+            <button class="btn-primary" id="nextToStep2">Next: Select Target</button>
+        </div>
+
+        <div class="fleet-step hidden" id="step2">
+            <h3>Step 2: Select Target</h3>
+            <div class="target-inputs">
+                <input type="number" id="targetGalaxy" placeholder="Galaxy" min="1" max="9">
+                <input type="number" id="targetSystem" placeholder="System" min="1" max="499">
+                <input type="number" id="targetPosition" placeholder="Position" min="1" max="15">
+            </div>
+            <button class="btn-secondary" id="backToStep1">Back</button>
+            <button class="btn-primary" id="nextToStep3">Next: Select Mission</button>
+        </div>
+
+        <div class="fleet-step hidden" id="step3">
+            <h3>Step 3: Select Mission</h3>
+            <div id="missionSelection" class="mission-buttons">
+                <button class="mission-button" data-mission="attack">Attack</button>
+                <button class="mission-button" data-mission="transport">Transport</button>
+                <button class="mission-button" data-mission="deploy">Deploy</button>
+                <button class="mission-button" data-mission="espionage">Espionage</button>
+                <button class="mission-button" data-mission="colonize">Colonize</button>
+            </div>
+            <button class="btn-secondary" id="backToStep2">Back</button>
+            <button class="btn-primary" id="launchFleet">Launch Fleet</button>
+        </div>
+    </div>
+</div>
+
+<!-- Fleet Overview Tab -->
+<div id="overviewTab" class="tab-content">
+    <div id="fleetInventory" class="fleet-inventory">
+        <p class="text-muted">Loading fleet inventory...</p>
+    </div>
+</div>
+
+<!-- Active Missions Tab -->
+<div id="missionsTab" class="tab-content">
+    <div id="activeMissions" class="missions-list">
+        <p class="text-muted">Loading active missions...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/fleet.js"></script>
+{% endblock %}

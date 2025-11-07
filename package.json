@@ -1,0 +1,5 @@
+{
+	"dependencies": {
+		"pnpm-store": "link:/tmp/pnpm-store"
+	}
+}

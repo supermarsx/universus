@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universus - Overview</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/game.css">
+</head>
+<body class="game-body">
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h1 class="nav-title">Universus</h1>
+            <span id="username" class="nav-username"></span>
+        </div>
+        <div class="nav-center">
+            <div class="resource-display">
+                <div class="resource-item">
+                    <span class="resource-icon metal">M</span>
+                    <span id="metalDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon crystal">C</span>
+                    <span id="crystalDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon deuterium">D</span>
+                    <span id="deuteriumDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon energy">E</span>
+                    <span id="energyDisplay">0</span>
+                </div>
+            </div>
+        </div>
+        <div class="nav-right">
+            <button id="logoutBtn" class="btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="game-container">
+        <aside class="sidebar">
+            <div class="planet-selector">
+                <h3>Your Planets</h3>
+                <select id="planetSelect" class="planet-dropdown">
+                    <option>Loading...</option>
+                </select>
+            </div>
+
+            <nav class="main-menu">
+                <a href="overview.html" class="menu-item active">Overview</a>
+                <a href="buildings.html" class="menu-item">Buildings</a>
+                <a href="research.html" class="menu-item">Research</a>
+                <a href="shipyard.html" class="menu-item">Shipyard</a>
+                <a href="fleet.html" class="menu-item">Fleet</a>
+                <a href="galaxy.html" class="menu-item">Galaxy</a>
+                <a href="alliance.html" class="menu-item">Alliance</a>
+                <a href="messages.html" class="menu-item">Messages</a>
+            </nav>
+        </aside>
+
+        <main class="content-area">
+            <h2>Empire Overview</h2>
+
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <h3>Planet Information</h3>
+                    <div id="planetInfo">
+                        <p><strong>Name:</strong> <span id="planetName">-</span></p>
+                        <p><strong>Coordinates:</strong> <span id="planetCoords">-</span></p>
+                        <p><strong>Temperature:</strong> <span id="planetTemp">-</span></p>
+                        <p><strong>Diameter:</strong> <span id="planetDiameter">-</span></p>
+                    </div>
+                </div>
+
+                <div class="overview-card">
+                    <h3>Resource Production</h3>
+                    <div id="productionInfo">
+                        <p><strong>Metal:</strong> <span id="metalProd">0</span> /hour</p>
+                        <p><strong>Crystal:</strong> <span id="crystalProd">0</span> /hour</p>
+                        <p><strong>Deuterium:</strong> <span id="deuteriumProd">0</span> /hour</p>
+                        <p><strong>Energy:</strong> <span id="energyProd">0</span></p>
+                    </div>
+                </div>
+
+                <div class="overview-card">
+                    <h3>Construction Queue</h3>
+                    <div id="constructionQueue">
+                        <p class="text-muted">No construction in progress</p>
+                    </div>
+                </div>
+
+                <div class="overview-card">
+                    <h3>Quick Stats</h3>
+                    <div id="quickStats">
+                        <p><strong>Total Planets:</strong> <span id="totalPlanets">1</span></p>
+                        <p><strong>Total Score:</strong> <span id="totalScore">0</span></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/game.js"></script>
+    <script src="/js/planetImageGenerator.js"></script>
+    <script src="/js/overview.js"></script>
+</body>
+</html>

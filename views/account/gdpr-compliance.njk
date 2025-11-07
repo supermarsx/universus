@@ -1,0 +1,285 @@
+{% extends "base.njk" %}
+
+{% block title %}Privacy & Data Management - Universus{% endblock %}
+
+{% block content %}
+<div class="account-management-container">
+    <div class="account-header">
+        <h1>Privacy & Data Management</h1>
+        <p>Manage your personal data and privacy settings in accordance with GDPR</p>
+    </div>
+
+    <!-- Privacy Overview -->
+    <div class="account-card">
+        <div class="card-header">
+            <h3>Your Privacy Rights</h3>
+        </div>
+        <div class="card-body">
+            <div class="privacy-rights">
+                <div class="right-item">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <div>
+                        <strong>Right to Access</strong>
+                        <p>You can request a copy of all your personal data</p>
+                    </div>
+                </div>
+                <div class="right-item">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                    <div>
+                        <strong>Right to Rectification</strong>
+                        <p>You can update or correct your personal information</p>
+                    </div>
+                </div>
+                <div class="right-item">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    <div>
+                        <strong>Right to Erasure</strong>
+                        <p>You can request deletion of your personal data</p>
+                    </div>
+                </div>
+                <div class="right-item">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    <div>
+                        <strong>Right to Data Portability</strong>
+                        <p>You can export your data in a machine-readable format</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Export -->
+    <div class="account-card">
+        <div class="card-header">
+            <h3>Export Your Data</h3>
+        </div>
+        <div class="card-body">
+            <p class="card-description">
+                Download a complete copy of your personal data including account information, 
+                game progress, messages, and activity history. The data will be provided in JSON format.
+            </p>
+
+            <div class="export-options">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="exportAccount" checked disabled>
+                    <span>Account Information (required)</span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="exportGameData" checked>
+                    <span>Game Data (planets, resources, buildings)</span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="exportMessages" checked>
+                    <span>Messages and Communications</span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="exportActivity" checked>
+                    <span>Activity Logs</span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="exportSecurity" checked>
+                    <span>Security and Session Information</span>
+                </label>
+            </div>
+
+            <button id="requestExportBtn" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Request Data Export
+            </button>
+
+            <p class="help-text">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                Processing may take up to 30 days. You'll receive an email when your data is ready for download.
+            </p>
+        </div>
+    </div>
+
+    <!-- Active Data Requests -->
+    <div class="account-card" id="activeRequestsCard" style="display: none;">
+        <div class="card-header">
+            <h3>Your Data Requests</h3>
+        </div>
+        <div class="card-body">
+            <div id="requestsList" class="requests-list"></div>
+        </div>
+    </div>
+
+    <!-- Data Deletion -->
+    <div class="account-card danger-card">
+        <div class="card-header">
+            <h3>Delete Your Data</h3>
+        </div>
+        <div class="card-body">
+            <div class="warning-message">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <div>
+                    <strong>Warning: This action cannot be undone</strong>
+                    <p>Requesting data deletion will permanently remove all your personal data and account information.</p>
+                </div>
+            </div>
+
+            <div class="deletion-info">
+                <h4>What will be deleted:</h4>
+                <ul>
+                    <li>Your account and login credentials</li>
+                    <li>All game progress and achievements</li>
+                    <li>Messages and communication history</li>
+                    <li>Activity logs and session data</li>
+                    <li>Payment history (transaction records may be retained for legal compliance)</li>
+                </ul>
+
+                <h4>Retention period:</h4>
+                <p>Some data may be retained for up to 90 days for backup and legal purposes, after which it will be permanently deleted.</p>
+            </div>
+
+            <button id="requestDeletionBtn" class="btn btn-danger">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+                Request Data Deletion
+            </button>
+        </div>
+    </div>
+
+    <!-- Privacy Settings -->
+    <div class="account-card">
+        <div class="card-header">
+            <h3>Privacy Settings</h3>
+        </div>
+        <div class="card-body">
+            <form id="privacySettingsForm">
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <strong>Profile Visibility</strong>
+                        <p>Control who can view your profile and statistics</p>
+                    </div>
+                    <select id="profileVisibility" class="form-control">
+                        <option value="public">Public</option>
+                        <option value="alliance">Alliance Only</option>
+                        <option value="private">Private</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <strong>Activity Status</strong>
+                        <p>Show your online/offline status to other players</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="showActivity" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <strong>Allow Messages</strong>
+                        <p>Receive messages from other players</p>
+                    </div>
+                    <select id="messagePermissions" class="form-control">
+                        <option value="all">Everyone</option>
+                        <option value="alliance">Alliance Only</option>
+                        <option value="none">No One</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <strong>Analytics & Telemetry</strong>
+                        <p>Help us improve the game by sharing anonymous usage data</p>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="allowAnalytics" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                        <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                        <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    Save Privacy Settings
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Data Processing Information -->
+    <div class="account-card info-card">
+        <div class="card-header">
+            <h3>How We Process Your Data</h3>
+        </div>
+        <div class="card-body">
+            <p>We collect and process your personal data to:</p>
+            <ul class="info-list">
+                <li>Provide and maintain game services</li>
+                <li>Authenticate your account and prevent fraud</li>
+                <li>Communicate important updates and notifications</li>
+                <li>Improve game performance and user experience</li>
+                <li>Comply with legal obligations</li>
+            </ul>
+            <p>
+                For more information, please review our 
+                <a href="/privacy-policy" target="_blank">Privacy Policy</a> and 
+                <a href="/terms-of-service" target="_blank">Terms of Service</a>.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div id="confirmationModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header danger">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h2 id="confirmTitle">Confirm Action</h2>
+        </div>
+        <div class="modal-body">
+            <p id="confirmMessage">Are you sure you want to proceed?</p>
+            <div class="form-group">
+                <label for="confirmPassword">Enter your password to confirm:</label>
+                <input type="password" id="confirmPassword" class="form-control" required>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="cancelConfirmBtn" class="btn btn-secondary">Cancel</button>
+            <button id="proceedConfirmBtn" class="btn btn-danger">Proceed</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/account/gdpr-compliance.js"></script>
+{% endblock %}

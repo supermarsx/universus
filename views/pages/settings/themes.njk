@@ -1,0 +1,349 @@
+{% extends "../layouts/game.njk" %}
+
+{% block title %}Theme Settings{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="/css/theme-effects.css">
+<style>
+    .settings-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .settings-section {
+        background: #fff;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    .settings-section h3 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+    }
+    
+    .setting-item {
+        margin: 20px 0;
+    }
+    
+    .setting-label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 8px;
+        color: #555;
+    }
+    
+    .slider-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+    
+    .slider {
+        flex: 1;
+        height: 6px;
+        border-radius: 3px;
+        background: #ddd;
+        outline: none;
+        -webkit-appearance: none;
+    }
+    
+    .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #007bff;
+        cursor: pointer;
+    }
+    
+    .slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #007bff;
+        cursor: pointer;
+        border: none;
+    }
+    
+    .slider-value {
+        min-width: 50px;
+        text-align: right;
+        font-weight: bold;
+        color: #007bff;
+    }
+    
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 26px;
+    }
+    
+    .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    
+    .switch-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 26px;
+    }
+    
+    .switch-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+    
+    input:checked + .switch-slider {
+        background-color: #28a745;
+    }
+    
+    input:checked + .switch-slider:before {
+        transform: translateX(24px);
+    }
+    
+    .btn-reset {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+    }
+    
+    .btn-reset:hover {
+        background: #c82333;
+    }
+    
+    .current-theme-display {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .current-theme-display h4 {
+        margin: 0 0 10px 0;
+    }
+    
+    .theme-info {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .theme-color-box {
+        width: 40px;
+        height: 40px;
+        border-radius: 5px;
+        border: 2px solid white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container" id="theme-preferences-section">
+    <h2>Theme Settings</h2>
+    <p class="text-muted">Customize your seasonal theme experience</p>
+
+    <!-- Current Theme Display -->
+    <div class="current-theme-display" id="current-theme-info">
+        <h4>Current Theme</h4>
+        <p id="current-theme-name">Loading...</p>
+        <div class="theme-info" id="current-theme-colors"></div>
+    </div>
+
+    <!-- Master Enable/Disable -->
+    <div class="settings-section">
+        <h3>Theme Control</h3>
+        <div class="setting-item">
+            <label class="setting-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Enable Seasonal Themes</span>
+                <label class="switch">
+                    <input type="checkbox" id="theme-enabled" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </label>
+            <small class="text-muted">Turn off to disable all seasonal theme effects</small>
+        </div>
+    </div>
+
+    <!-- Visual Effects -->
+    <div class="settings-section">
+        <h3>Visual Effects</h3>
+        
+        <div class="setting-item">
+            <label class="setting-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Enable Visual Effects</span>
+                <label class="switch">
+                    <input type="checkbox" id="visual-effects-enabled" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </label>
+            <small class="text-muted">Snow, fireworks, particles, and other visual effects</small>
+        </div>
+
+        <div class="setting-item">
+            <label class="setting-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Enable Animations</span>
+                <label class="switch">
+                    <input type="checkbox" id="animations-enabled" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </label>
+            <small class="text-muted">Animated elements and transitions</small>
+        </div>
+
+        <div class="setting-item">
+            <label class="setting-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Enable Decorations</span>
+                <label class="switch">
+                    <input type="checkbox" id="decorations-enabled" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </label>
+            <small class="text-muted">Themed decorations and overlays</small>
+        </div>
+
+        <div class="setting-item">
+            <label class="setting-label">Effect Intensity</label>
+            <div class="slider-container">
+                <input type="range" min="0" max="100" value="100" class="slider" id="effect-intensity">
+                <span class="slider-value" id="effect-intensity-value">100%</span>
+            </div>
+            <small class="text-muted">Control the intensity of visual effects</small>
+        </div>
+
+        <div class="setting-item">
+            <label class="setting-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Reduce Motion</span>
+                <label class="switch">
+                    <input type="checkbox" id="reduce-motion">
+                    <span class="switch-slider"></span>
+                </label>
+            </label>
+            <small class="text-muted">Minimize animations for accessibility or performance</small>
+        </div>
+    </div>
+
+    <!-- Sound Effects -->
+    <div class="settings-section">
+        <h3>Sound Effects</h3>
+        
+        <div class="setting-item">
+            <label class="setting-label" style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Enable Sound Effects</span>
+                <label class="switch">
+                    <input type="checkbox" id="sound-effects-enabled" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </label>
+            <small class="text-muted">Theme music and sound effects</small>
+        </div>
+
+        <div class="setting-item">
+            <label class="setting-label">Sound Volume</label>
+            <div class="slider-container">
+                <input type="range" min="0" max="100" value="50" class="slider" id="sound-volume">
+                <span class="slider-value" id="sound-volume-value">50%</span>
+            </div>
+            <small class="text-muted">Adjust volume of theme sounds</small>
+        </div>
+    </div>
+
+    <!-- Animation Speed -->
+    <div class="settings-section">
+        <h3>Animation Settings</h3>
+        
+        <div class="setting-item">
+            <label class="setting-label">Animation Speed</label>
+            <div class="slider-container">
+                <input type="range" min="50" max="200" value="100" class="slider" id="animation-speed">
+                <span class="slider-value" id="animation-speed-value">100%</span>
+            </div>
+            <small class="text-muted">Adjust speed of animations (50% slower - 200% faster)</small>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="settings-section">
+        <button id="save-theme-preferences" class="btn btn-primary btn-lg">
+            <i class="fas fa-save"></i> Save Preferences
+        </button>
+        <button onclick="window.themePreferences.resetToDefaults()" class="btn btn-reset">
+            <i class="fas fa-undo"></i> Reset to Defaults
+        </button>
+    </div>
+
+    <!-- Information -->
+    <div class="settings-section">
+        <h3>About Seasonal Themes</h3>
+        <p>Universus features seasonal themes that automatically activate during holidays and special events:</p>
+        <ul>
+            <li><strong>Christmas</strong> (December 1-31): Snow effects, twinkling lights, and festive decorations</li>
+            <li><strong>Halloween</strong> (October 20-November 2): Spooky fog, bats, and eerie atmosphere</li>
+            <li><strong>Easter</strong> (April 1-21): Spring flowers, butterflies, and cheerful colors</li>
+            <li><strong>New Year</strong> (December 31-January 2): Fireworks, confetti, and celebrations</li>
+        </ul>
+        <p class="text-muted">Themes activate automatically based on the date. You can customize your experience using the settings above.</p>
+    </div>
+</div>
+
+<script src="/js/themePreferences.js"></script>
+<script>
+// Load current theme info
+async function loadCurrentThemeInfo() {
+    try {
+        const response = await fetch('/api/themes/current');
+        const data = await response.json();
+        
+        const nameEl = document.getElementById('current-theme-name');
+        const colorsEl = document.getElementById('current-theme-colors');
+        
+        if (data.success && data.theme) {
+            nameEl.textContent = data.theme.name + ' - ' + (data.theme.description || '');
+            
+            colorsEl.innerHTML = `
+                <div class="theme-color-box" style="background: ${data.theme.primary_color}" title="Primary Color"></div>
+                <div class="theme-color-box" style="background: ${data.theme.secondary_color}" title="Secondary Color"></div>
+                <div class="theme-color-box" style="background: ${data.theme.accent_color}" title="Accent Color"></div>
+            `;
+        } else {
+            nameEl.textContent = 'No active theme';
+            colorsEl.innerHTML = '<p class="text-muted">No theme is currently active</p>';
+        }
+    } catch (error) {
+        console.error('Error loading current theme:', error);
+    }
+}
+
+// Load on page load
+document.addEventListener('DOMContentLoaded', loadCurrentThemeInfo);
+
+// Reload when theme changes
+window.addEventListener('themeChanged', loadCurrentThemeInfo);
+</script>
+{% endblock %}

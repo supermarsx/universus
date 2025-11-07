@@ -1,0 +1,58 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Galaxy View" %}
+{% set currentPage = "galaxy" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Galaxy Exploration</h2>
+
+<div class="galaxy-navigation">
+    <div class="coords-input">
+        <label>Galaxy:</label>
+        <input type="number" id="galaxyInput" value="{{ currentGalaxy or '1' }}" min="1" max="9">
+        
+        <label>System:</label>
+        <input type="number" id="systemInput" value="{{ currentSystem or '1' }}" min="1" max="499">
+        
+        <button id="scanBtn" class="btn-primary">Scan System</button>
+    </div>
+    
+    <div class="galaxy-controls">
+        <button class="btn-secondary" id="prevSystem">Previous System</button>
+        <button class="btn-secondary" id="nextSystem">Next System</button>
+    </div>
+</div>
+
+<div id="galaxyView" class="galaxy-view">
+    <div class="galaxy-header">
+        <span class="col-position">Position</span>
+        <span class="col-planet">Planet</span>
+        <span class="col-player">Commander</span>
+        <span class="col-alliance">Alliance</span>
+        <span class="col-actions">Actions</span>
+    </div>
+    
+    <div id="galaxySystemDisplay" class="galaxy-system">
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Scanning system...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Planet Details Modal -->
+<div id="planetDetailsModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Planet Details</h3>
+        <div id="planetDetailsContent"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/galaxy.js"></script>
+<script src="/js/planetImageGenerator.js"></script>
+{% endblock %}

@@ -1,0 +1,193 @@
+{% extends "base.njk" %}
+
+{% block title %}Email Verification - Universus{% endblock %}
+
+{% block content %}
+<div class="account-management-container">
+    <div class="account-header">
+        <h1>Email Verification</h1>
+        <p>Verify your email address to secure your account</p>
+    </div>
+
+    <!-- Verification Status -->
+    <div class="verification-status-card" id="verificationStatus">
+        <div class="status-icon" id="statusIcon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+            </svg>
+        </div>
+        <div class="status-content">
+            <h2 id="statusTitle">Email Not Verified</h2>
+            <p id="statusMessage">Please verify your email address to unlock full account features.</p>
+        </div>
+    </div>
+
+    <!-- Current Email -->
+    <div class="account-card">
+        <div class="card-header">
+            <h3>Current Email Address</h3>
+        </div>
+        <div class="card-body">
+            <div class="email-display">
+                <div class="email-info">
+                    <label>Email:</label>
+                    <span id="currentEmail" class="email-value">Loading...</span>
+                </div>
+                <div class="verification-badge" id="verificationBadge">
+                    <span class="badge badge-warning">Unverified</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verification Actions -->
+    <div class="account-card" id="verificationActions">
+        <div class="card-header">
+            <h3>Verification Actions</h3>
+        </div>
+        <div class="card-body">
+            <div class="verification-form">
+                <p class="form-description">
+                    We'll send a verification link to your email address. Click the link to verify your account.
+                </p>
+
+                <div class="action-buttons">
+                    <button id="sendVerificationBtn" class="btn btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                        Send Verification Email
+                    </button>
+                    <button id="resendVerificationBtn" class="btn btn-secondary" style="display: none;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        Resend Email
+                    </button>
+                </div>
+
+                <div id="cooldownMessage" class="cooldown-message" style="display: none;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span id="cooldownText">Please wait before resending...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Verification -->
+    <div class="account-card">
+        <div class="card-header">
+            <h3>Enter Verification Code</h3>
+        </div>
+        <div class="card-body">
+            <form id="manualVerificationForm">
+                <div class="form-group">
+                    <label for="verificationToken">Verification Code</label>
+                    <input 
+                        type="text" 
+                        id="verificationToken" 
+                        class="form-control" 
+                        placeholder="Enter the code from your email"
+                        maxlength="64"
+                    >
+                    <small class="form-text">If you have the verification code, enter it here.</small>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Verify Email
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Change Email Address -->
+    <div class="account-card">
+        <div class="card-header">
+            <h3>Change Email Address</h3>
+        </div>
+        <div class="card-body">
+            <form id="changeEmailForm">
+                <div class="form-group">
+                    <label for="newEmail">New Email Address</label>
+                    <input 
+                        type="email" 
+                        id="newEmail" 
+                        class="form-control" 
+                        placeholder="new.email@example.com"
+                        required
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        class="form-control" 
+                        placeholder="Enter your password to confirm"
+                        required
+                    >
+                </div>
+                <button type="submit" class="btn btn-warning">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                    Update Email Address
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div class="account-card help-card">
+        <div class="card-header">
+            <h3>Need Help?</h3>
+        </div>
+        <div class="card-body">
+            <ul class="help-list">
+                <li>
+                    <strong>Didn't receive the email?</strong> Check your spam folder or click "Resend Email"
+                </li>
+                <li>
+                    <strong>Email expired?</strong> Verification links expire after 24 hours. Request a new one.
+                </li>
+                <li>
+                    <strong>Wrong email address?</strong> Use the "Change Email Address" form above.
+                </li>
+                <li>
+                    <strong>Still having issues?</strong> Contact support for assistance.
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div id="successModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header success">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            <h2 id="modalTitle">Success!</h2>
+        </div>
+        <div class="modal-body">
+            <p id="modalMessage">Your action was completed successfully.</p>
+        </div>
+        <div class="modal-footer">
+            <button id="closeModalBtn" class="btn btn-primary">Close</button>
+        </div>
+    </div>
+</div>
+
+<script src="/js/account/email-verification.js"></script>
+{% endblock %}

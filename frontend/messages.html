@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universus - Messages</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/game.css">
+    <style>
+        .messages-layout {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: calc(100vh - 180px);
+        }
+
+        .messages-sidebar {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .messages-main {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .message-tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .tab-item {
+            padding: 12px 15px;
+            background: transparent;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tab-item:hover {
+            background: rgba(79, 195, 247, 0.1);
+        }
+
+        .tab-item.active {
+            background: #4fc3f7;
+            color: #0a0a1a;
+        }
+
+        .unread-badge {
+            background: #f44336;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .messages-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #2a2a3e;
+        }
+
+        .messages-header h3 {
+            color: #fff;
+            margin: 0;
+        }
+
+        .btn-compose {
+            padding: 10px 20px;
+            background: #4fc3f7;
+            color: #0a0a1a;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-compose:hover {
+            background: #6fd8ff;
+        }
+
+        .message-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message-item {
+            background: #2a2a3e;
+            padding: 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+        }
+
+        .message-item:hover {
+            background: #3a3a4e;
+        }
+
+        .message-item.unread {
+            border-left-color: #4fc3f7;
+            background: rgba(79, 195, 247, 0.1);
+        }
+
+        .message-item.selected {
+            border-left-color: #4fc3f7;
+            background: #3a3a4e;
+        }
+
+        .message-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .message-sender {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .message-date {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .message-subject {
+            color: #fff;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .message-preview {
+            font-size: 13px;
+            color: #888;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .message-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .type-combat {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .type-espionage {
+            background: #9c27b0;
+            color: #fff;
+        }
+
+        .type-alliance {
+            background: #4caf50;
+            color: #fff;
+        }
+
+        .type-system {
+            background: #ff9800;
+            color: #000;
+        }
+
+        .type-player {
+            background: #2196f3;
+            color: #fff;
+        }
+
+        .message-viewer {
+            background: #2a2a3e;
+            border-radius: 6px;
+            padding: 20px;
+        }
+
+        .message-viewer-header {
+            border-bottom: 2px solid #3a3a4e;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .message-viewer-title {
+            font-size: 20px;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .message-viewer-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .message-viewer-body {
+            color: #fff;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .message-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 2px solid #3a3a4e;
+        }
+
+        .message-actions button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-reply {
+            background: #4fc3f7;
+            color: #0a0a1a;
+        }
+
+        .btn-delete {
+            background: #f44336;
+            color: #fff;
+        }
+
+        .btn-mark-read {
+            background: #4caf50;
+            color: #fff;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #888;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 30px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            color: #fff;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #fff;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            background: #2a2a3e;
+            border: 1px solid #3a3a4e;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .form-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .combat-report-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+
+        .combat-report-table th,
+        .combat-report-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #3a3a4e;
+        }
+
+        .combat-report-table th {
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+
+        .loading-spinner {
+            text-align: center;
+            padding: 40px;
+            color: #4fc3f7;
+        }
+    </style>
+</head>
+<body class="game-body">
+    <nav class="top-nav">
+        <div class="nav-left">
+            <h1 class="nav-title">Universus</h1>
+            <span id="username" class="nav-username"></span>
+        </div>
+        <div class="nav-center">
+            <div class="resource-display">
+                <div class="resource-item">
+                    <span class="resource-icon metal">M</span>
+                    <span id="metalDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon crystal">C</span>
+                    <span id="crystalDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon deuterium">D</span>
+                    <span id="deuteriumDisplay">0</span>
+                </div>
+                <div class="resource-item">
+                    <span class="resource-icon energy">E</span>
+                    <span id="energyDisplay">0</span>
+                </div>
+            </div>
+        </div>
+        <div class="nav-right">
+            <button id="logoutBtn" class="btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="game-container">
+        <aside class="sidebar">
+            <div class="planet-selector">
+                <h3>Your Planets</h3>
+                <select id="planetSelect" class="planet-dropdown">
+                    <option>Loading...</option>
+                </select>
+            </div>
+
+            <nav class="main-menu">
+                <a href="/overview.html" class="menu-item">Overview</a>
+                <a href="/buildings.html" class="menu-item">Buildings</a>
+                <a href="/research.html" class="menu-item">Research</a>
+                <a href="/shipyard.html" class="menu-item">Shipyard</a>
+                <a href="/fleet.html" class="menu-item">Fleet</a>
+                <a href="/galaxy.html" class="menu-item">Galaxy</a>
+                <a href="/leaderboard.html" class="menu-item">Leaderboard</a>
+                <a href="/messages.html" class="menu-item active">Messages</a>
+                <a href="/shop.html" class="menu-item">Shop</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div class="messages-layout">
+                <!-- Sidebar with tabs -->
+                <div class="messages-sidebar">
+                    <h3 style="color: #fff; margin-bottom: 15px;">Folders</h3>
+                    <div class="message-tabs">
+                        <button class="tab-item active" data-tab="inbox">
+                            <span>Inbox</span>
+                            <span class="unread-badge" id="inboxUnread" style="display: none;">0</span>
+                        </button>
+                        <button class="tab-item" data-tab="sent">
+                            <span>Sent</span>
+                        </button>
+                        <button class="tab-item" data-tab="combat">
+                            <span>Combat Reports</span>
+                            <span class="unread-badge" id="combatUnread" style="display: none;">0</span>
+                        </button>
+                        <button class="tab-item" data-tab="espionage">
+                            <span>Espionage</span>
+                            <span class="unread-badge" id="espionageUnread" style="display: none;">0</span>
+                        </button>
+                        <button class="tab-item" data-tab="alliance">
+                            <span>Alliance</span>
+                            <span class="unread-badge" id="allianceUnread" style="display: none;">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Main messages area -->
+                <div class="messages-main">
+                    <div class="messages-header">
+                        <h3 id="currentFolderTitle">Inbox</h3>
+                        <button class="btn-compose" id="composeBtn">Compose Message</button>
+                    </div>
+
+                    <div id="messagesLoading" class="loading-spinner" style="display: none;">
+                        Loading messages...
+                    </div>
+
+                    <div id="messagesList" class="message-list">
+                    </div>
+
+                    <div id="emptyState" class="empty-state" style="display: none;">
+                        No messages in this folder
+                    </div>
+
+                    <div id="messageViewer" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Compose Message Modal -->
+    <div id="composeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Compose Message</h3>
+                <button class="modal-close" id="composeModalClose">&times;</button>
+            </div>
+            <form id="composeForm">
+                <div class="form-group">
+                    <label for="recipientUsername">To (Username or ID):</label>
+                    <input type="text" id="recipientUsername" required>
+                </div>
+                <div class="form-group">
+                    <label for="messageSubject">Subject:</label>
+                    <input type="text" id="messageSubject" required>
+                </div>
+                <div class="form-group">
+                    <label for="messageContent">Message:</label>
+                    <textarea id="messageContent" required></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="composeCancelBtn">Cancel</button>
+                    <button type="submit" class="btn-compose">Send Message</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/messages.js"></script>
+</body>
+</html>

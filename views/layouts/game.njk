@@ -1,0 +1,26 @@
+{% extends "layouts/base.njk" %}
+
+{% block stylesheets %}
+<link rel="stylesheet" href="/css/universus-game.css">
+<link rel="stylesheet" href="/css/game.css">
+{% endblock %}
+
+{% block body %}
+<!-- Top Navigation -->
+{% include "partials/nav.njk" %}
+
+<div class="game-container">
+    <!-- Sidebar Navigation -->
+    {% include "partials/sidebar.njk" %}
+    
+    <!-- Main Content Area -->
+    <main class="content-area">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/js/game.js"></script>
+{{ super() }}
+{% endblock %}

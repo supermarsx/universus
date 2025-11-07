@@ -1,0 +1,294 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Alliance Management" %}
+{% set currentPage = "alliance" %}
+{% set bodyClass = "game-body" %}
+
+{% block stylesheets %}
+{{ super() }}
+<link rel="stylesheet" href="/css/alliance-management.css">
+{% endblock %}
+
+{% block content %}
+<div class="alliance-management-container">
+    <!-- Page Header -->
+    <div class="management-header card-enhanced">
+        <div class="header-content">
+            <h1 class="page-title">
+                <span class="css-icon icon-settings"></span>
+                Alliance Management
+            </h1>
+            <p class="page-description">
+                Manage your alliance settings, ranks, permissions, treasury, and member administration.
+            </p>
+        </div>
+        <div class="header-badge">
+            <span class="role-badge">{{ userRole || 'MEMBER' }}</span>
+        </div>
+    </div>
+
+    <!-- Management Tabs -->
+    <div class="management-tabs">
+        <button class="tab-btn active" data-tab="settings" onclick="switchTab('settings')">
+            <span class="css-icon icon-settings"></span> Alliance Settings
+        </button>
+        <button class="tab-btn" data-tab="ranks" onclick="switchTab('ranks')">
+            <span class="css-icon icon-users"></span> Ranks & Permissions
+        </button>
+        <button class="tab-btn" data-tab="treasury" onclick="switchTab('treasury')">
+            <span class="css-icon icon-crystal"></span> Treasury
+        </button>
+        <button class="tab-btn" data-tab="members" onclick="switchTab('members')">
+            <span class="css-icon icon-user"></span> Member Administration
+        </button>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-content active" id="settings-tab">
+        <div class="management-section card-enhanced">
+            <div class="section-header">
+                <h2 class="section-title">Alliance Settings</h2>
+            </div>
+            <div class="section-body">
+                <form id="allianceSettingsForm" onsubmit="handleUpdateSettings(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="allianceNameInput">Alliance Name *</label>
+                            <input type="text" id="allianceNameInput" name="name" required minlength="4" maxlength="50"
+                                   placeholder="Alliance Name" value="{{ alliance.name }}">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="allianceTagInput">Alliance Tag *</label>
+                            <input type="text" id="allianceTagInput" name="tag" required minlength="3" maxlength="6"
+                                   pattern="[A-Z0-9]+" placeholder="TAG" value="{{ alliance.tag }}" readonly>
+                            <small>Tag cannot be changed after creation</small>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="allianceDescInput">Description</label>
+                            <textarea id="allianceDescInput" name="description" rows="4" maxlength="500"
+                                      placeholder="Describe your alliance...">{{ alliance.description }}</textarea>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="allianceImageInput">Alliance Image URL</label>
+                            <input type="url" id="allianceImageInput" name="image_url"
+                                   placeholder="https://example.com/alliance-logo.png" value="{{ alliance.image_url }}">
+                            <small>Optional: URL to alliance logo or emblem</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="joinTypeInput">Join Type *</label>
+                            <select id="joinTypeInput" name="join_type" required>
+                                <option value="OPEN" {{ 'selected' if alliance.join_type == 'OPEN' }}>Open - Anyone can join</option>
+                                <option value="APPROVAL" {{ 'selected' if alliance.join_type == 'APPROVAL' }}>Approval Required</option>
+                                <option value="INVITE_ONLY" {{ 'selected' if alliance.join_type == 'INVITE_ONLY' }}>Invite Only</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="minRankInput">Minimum Rank to Join</label>
+                            <input type="number" id="minRankInput" name="min_rank" min="0"
+                                   placeholder="0 (no minimum)" value="{{ alliance.min_rank_requirement }}">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="publicVisibleInput" name="public_visible" 
+                                       {{ 'checked' if alliance.is_public }}>
+                                Make alliance visible in public listings
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <span class="css-icon icon-check"></span> Save Settings
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="resetSettingsForm()">
+                            Reset
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ranks & Permissions Tab -->
+    <div class="tab-content" id="ranks-tab">
+        <div class="management-section card-enhanced">
+            <div class="section-header">
+                <h2 class="section-title">Ranks & Permissions</h2>
+                <button class="btn btn-sm btn-primary" onclick="showCreateRankModal()">
+                    <span class="css-icon icon-add"></span> Create Custom Rank
+                </button>
+            </div>
+            <div class="section-body">
+                <div class="ranks-list" id="ranksList">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Treasury Tab -->
+    <div class="tab-content" id="treasury-tab">
+        <div class="management-section card-enhanced">
+            <div class="section-header">
+                <h2 class="section-title">Alliance Treasury</h2>
+            </div>
+            <div class="section-body">
+                <!-- Treasury Stats -->
+                <div class="treasury-stats">
+                    <div class="treasury-card">
+                        <div class="resource-icon icon-metal"></div>
+                        <div class="resource-info">
+                            <div class="resource-label">Metal</div>
+                            <div class="resource-value" id="treasuryMetal">{{ alliance.treasury_metal|number }}</div>
+                        </div>
+                    </div>
+                    <div class="treasury-card">
+                        <div class="resource-icon icon-crystal"></div>
+                        <div class="resource-info">
+                            <div class="resource-label">Crystal</div>
+                            <div class="resource-value" id="treasuryCrystal">{{ alliance.treasury_crystal|number }}</div>
+                        </div>
+                    </div>
+                    <div class="treasury-card">
+                        <div class="resource-icon icon-deuterium"></div>
+                        <div class="resource-info">
+                            <div class="resource-label">Deuterium</div>
+                            <div class="resource-value" id="treasuryDeuterium">{{ alliance.treasury_deuterium|number }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Contributions -->
+                <div class="contributions-section">
+                    <h3>Recent Contributions</h3>
+                    <div class="contributions-list" id="contributionsList">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Top Contributors -->
+                <div class="contributors-section">
+                    <h3>Top Contributors (All Time)</h3>
+                    <div class="contributors-list" id="contributorsList">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Member Administration Tab -->
+    <div class="tab-content" id="members-tab">
+        <div class="management-section card-enhanced">
+            <div class="section-header">
+                <h2 class="section-title">Member Administration</h2>
+                <div class="member-filters">
+                    <input type="text" id="adminMemberSearch" placeholder="Search members..." class="search-input">
+                    <select id="adminRoleFilter" class="filter-select">
+                        <option value="">All Ranks</option>
+                        <option value="FOUNDER">Founder</option>
+                        <option value="LEADER">Leader</option>
+                        <option value="OFFICER">Officer</option>
+                        <option value="MEMBER">Member</option>
+                        <option value="RECRUIT">Recruit</option>
+                    </select>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="members-admin-list" id="membersAdminList">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Rank Modal -->
+<div id="rankModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="rankModalTitle">Create Custom Rank</h2>
+            <button class="modal-close" onclick="closeModal('rankModal')">&times;</button>
+        </div>
+        <form id="rankForm" onsubmit="handleRankSubmit(event)">
+            <div class="form-group">
+                <label for="rankNameInput">Rank Name *</label>
+                <input type="text" id="rankNameInput" name="rankName" required maxlength="30"
+                       placeholder="e.g., Elite Officer">
+            </div>
+
+            <div class="form-group">
+                <label>Permissions</label>
+                <div class="permissions-grid">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="INVITE_MEMBERS">
+                        Invite Members
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="KICK_MEMBERS">
+                        Kick Members
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="PROMOTE_MEMBERS">
+                        Promote Members
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="MANAGE_DIPLOMACY">
+                        Manage Diplomacy
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="DECLARE_WAR">
+                        Declare Wars
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="MANAGE_TREASURY">
+                        Manage Treasury
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="SEND_ANNOUNCEMENTS">
+                        Send Announcements
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="permission" value="EDIT_SETTINGS">
+                        Edit Alliance Settings
+                    </label>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('rankModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Rank</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Member Action Modal -->
+<div id="memberActionModal" class="modal">
+    <div class="modal-content modal-small">
+        <div class="modal-header">
+            <h2>Member Actions</h2>
+            <button class="modal-close" onclick="closeModal('memberActionModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="member-action-info" id="memberActionInfo">
+                <!-- Populated by JavaScript -->
+            </div>
+            <div class="action-buttons" id="memberActionButtons">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/alliance-management.js"></script>
+{% endblock %}

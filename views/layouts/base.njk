@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{{ description or 'Universus - Build your space empire across the galaxy' }}">
+    <title>{{ title or 'Universus' }}</title>
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="/css/universus-design-system.css">
+    <link rel="stylesheet" href="/css/style.css">
+    {% block stylesheets %}{% endblock %}
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="{{ bodyClass or '' }}" {% if pageBackground %}style="background-image: url('{{ pageBackground }}');"{% endif %}>
+    {% block body %}{% endblock %}
+    
+    <!-- Socket.io -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Toast Notification System -->
+    <script src="/js/account/toast-notification.js"></script>
+    
+    <!-- Core Scripts -->
+    <script src="/js/api.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

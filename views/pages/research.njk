@@ -1,0 +1,62 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Research" %}
+{% set currentPage = "research" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Research Laboratory</h2>
+
+<div id="researchQueueDisplay" class="research-queue-display card-enhanced" style="display:none;">
+    <h3>Research in Progress</h3>
+    <div id="activeResearch" class="progress">
+        <div class="progress-bar"></div>
+    </div>
+</div>
+
+<div id="researchGrid" class="research-grid">
+    {% if technologies and technologies.length > 0 %}
+        {% for tech in technologies %}
+        <div class="tech-card card-enhanced" data-tech-id="{{ tech.id }}">
+            <div class="tech-icon">
+                <div class="css-icon icon-research"></div>
+            </div>
+            <div class="tech-info">
+                <h3>{{ tech.name }}</h3>
+                <p class="tech-level">Level {{ tech.level }}</p>
+                <p class="tech-description">{{ tech.description }}</p>
+            </div>
+            <div class="tech-costs">
+                <div class="cost-item">
+                    <div class="css-icon icon-metal"></div>
+                    <span>{{ tech.costs.metal }}</span>
+                </div>
+                <div class="cost-item">
+                    <div class="css-icon icon-crystal"></div>
+                    <span>{{ tech.costs.crystal }}</span>
+                </div>
+                <div class="cost-item">
+                    <div class="css-icon icon-deuterium"></div>
+                    <span>{{ tech.costs.deuterium }}</span>
+                </div>
+            </div>
+            <div class="tech-actions">
+                <button class="btn btn-primary btn-research" data-tech-type="{{ tech.type }}">
+                    Research to Level {{ tech.level + 1 }}
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="loading card-compact">
+            <div class="spinner"></div>
+            <p>Loading technologies...</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/research.js"></script>
+{% endblock %}

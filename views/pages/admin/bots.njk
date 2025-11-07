@@ -1,0 +1,122 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Bot Management" %}
+{% set currentPage = "admin" %}
+{% set bodyClass = "game-body admin-body" %}
+
+{% block content %}
+<h2>Bot Management System</h2>
+
+<div class="bot-management-toolbar">
+    <button id="createBotBtn" class="btn-primary">Create New Bot</button>
+    <button id="bulkCreateBtn" class="btn-secondary">Bulk Create Bots</button>
+    <button id="processAllBotsBtn" class="btn-success">Process All Bots</button>
+    <button id="refreshBotsBtn" class="btn-secondary">Refresh</button>
+</div>
+
+<div class="bot-filters">
+    <select id="personalityFilter" class="filter-select">
+        <option value="">All Personalities</option>
+        <option value="aggressive">Aggressive Conqueror</option>
+        <option value="builder">Strategic Builder</option>
+        <option value="diplomat">Diplomatic Negotiator</option>
+        <option value="hoarder">Resource Hoarder</option>
+        <option value="rusher">Speed Rusher</option>
+        <option value="tech">Tech Enthusiast</option>
+        <option value="alliance">Alliance-Focused</option>
+        <option value="solo">Solo Survivor</option>
+    </select>
+    
+    <select id="statusFilter" class="filter-select">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+    </select>
+</div>
+
+<div id="botsGrid" class="bots-grid">
+    <div class="loading">
+        <div class="spinner"></div>
+        <p>Loading bots...</p>
+    </div>
+</div>
+
+<!-- Bot Details Modal -->
+<div id="botDetailsModal" class="modal" style="display: none;">
+    <div class="modal-content modal-large">
+        <span class="close">&times;</span>
+        <h3>Bot Details</h3>
+        <div id="botDetailsContent"></div>
+    </div>
+</div>
+
+<!-- Create/Edit Bot Modal -->
+<div id="botFormModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3 id="botFormTitle">Create New Bot</h3>
+        <form id="botForm">
+            <div class="form-group">
+                <label for="botUsername">Username:</label>
+                <input type="text" id="botUsername" required>
+            </div>
+            <div class="form-group">
+                <label for="botEmail">Email:</label>
+                <input type="email" id="botEmail" required>
+            </div>
+            <div class="form-group">
+                <label for="botPersonality">Personality:</label>
+                <select id="botPersonality" required>
+                    <option value="aggressive">Aggressive Conqueror</option>
+                    <option value="builder">Strategic Builder</option>
+                    <option value="diplomat">Diplomatic Negotiator</option>
+                    <option value="hoarder">Resource Hoarder</option>
+                    <option value="rusher">Speed Rusher</option>
+                    <option value="tech">Tech Enthusiast</option>
+                    <option value="alliance">Alliance-Focused</option>
+                    <option value="solo">Solo Survivor</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="botIsActive" checked>
+                    Active
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">Save Bot</button>
+                <button type="button" class="btn-secondary" id="cancelBotForm">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Bulk Create Modal -->
+<div id="bulkCreateModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Bulk Create Bots</h3>
+        <form id="bulkCreateForm">
+            <div class="form-group">
+                <label for="bulkCount">Number of Bots:</label>
+                <input type="number" id="bulkCount" min="1" max="100" value="10" required>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="bulkRandomPersonalities" checked>
+                    Random Personalities
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">Create Bots</button>
+                <button type="button" class="btn-secondary" id="cancelBulkCreate">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/bots.js"></script>
+{% endblock %}

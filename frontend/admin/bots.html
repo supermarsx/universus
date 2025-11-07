@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Management - Universus RPG Admin</title>
+    <link rel="stylesheet" href="../css/main.css">
+    <link rel="stylesheet" href="../css/admin.css">
+    <style>
+        .bot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .bot-card {
+            background: linear-gradient(135deg, rgba(20, 30, 48, 0.95), rgba(36, 59, 85, 0.95));
+            border: 1px solid #2c5f7c;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .bot-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(44, 95, 124, 0.4);
+            border-color: #4a9eff;
+        }
+
+        .bot-card.inactive {
+            opacity: 0.6;
+            background: linear-gradient(135deg, rgba(40, 40, 40, 0.95), rgba(60, 60, 60, 0.95));
+        }
+
+        .bot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(74, 158, 255, 0.3);
+        }
+
+        .bot-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #4a9eff;
+        }
+
+        .bot-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .bot-status.active {
+            background: rgba(76, 175, 80, 0.2);
+            color: #76ff03;
+            border: 1px solid #76ff03;
+        }
+
+        .bot-status.inactive {
+            background: rgba(244, 67, 54, 0.2);
+            color: #ff5252;
+            border: 1px solid #ff5252;
+        }
+
+        .personality-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            background: rgba(74, 158, 255, 0.2);
+            border: 1px solid #4a9eff;
+            border-radius: 16px;
+            font-size: 0.9em;
+            margin: 10px 0;
+            color: #4a9eff;
+        }
+
+        .bot-stats {
+            margin: 15px 0;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.95em;
+        }
+
+        .stat-label {
+            color: #aaa;
+        }
+
+        .stat-value {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .bot-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4a9eff, #2c5f7c);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #6ab4ff, #3d7a9f);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #ff5252, #e53935);
+            box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #4caf50, #388e3c);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #66bb6a, #43a047);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a2332, #243b55);
+            margin: 5% auto;
+            padding: 30px;
+            border: 2px solid #4a9eff;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 50px rgba(74, 158, 255, 0.3);
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .close:hover {
+            color: #4a9eff;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4a9eff;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid #2c5f7c;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 1em;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #4a9eff;
+            box-shadow: 0 0 10px rgba(74, 158, 255, 0.3);
+        }
+
+        .slider-container {
+            margin: 10px 0;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(74, 158, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #4a9eff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            background: #6ab4ff;
+            transform: scale(1.2);
+        }
+
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .summary-card {
+            background: linear-gradient(135deg, rgba(74, 158, 255, 0.1), rgba(44, 95, 124, 0.1));
+            border: 1px solid #2c5f7c;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .summary-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #4a9eff;
+            margin-bottom: 5px;
+        }
+
+        .summary-label {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar select,
+        .filter-bar input {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid #2c5f7c;
+            border-radius: 4px;
+            color: #fff;
+        }
+
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #4a9eff;
+            font-size: 1.2em;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .personality-description {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 3px solid #4a9eff;
+            font-size: 0.9em;
+            color: #ccc;
+        }
+
+        .progress-bar {
+            height: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a9eff, #76ff03);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="space-background">
+    <div class="admin-container">
+        <!-- Header -->
+        <div class="header-actions">
+            <h1>Bot Management System</h1>
+            <div>
+                <button class="btn btn-success" onclick="showCreateBotModal()">+ Create Bot</button>
+                <button class="btn btn-primary" onclick="location.href='admin.html'">Back to Admin</button>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="summary-cards">
+            <div class="summary-card">
+                <div class="summary-value" id="totalBots">0</div>
+                <div class="summary-label">Total Bots</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value" id="activeBots">0</div>
+                <div class="summary-label">Active Bots</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value" id="totalAttacks">0</div>
+                <div class="summary-label">Total Attacks</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-value" id="totalPlunder">0</div>
+                <div class="summary-label">Resources Plundered</div>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <select id="filterPersonality" onchange="filterBots()">
+                <option value="">All Personalities</option>
+                <option value="aggressive_conqueror">Aggressive Conqueror</option>
+                <option value="strategic_builder">Strategic Builder</option>
+                <option value="diplomatic_negotiator">Diplomatic Negotiator</option>
+                <option value="resource_hoarder">Resource Hoarder</option>
+                <option value="speed_rusher">Speed Rusher</option>
+                <option value="tech_enthusiast">Tech Enthusiast</option>
+                <option value="alliance_focused">Alliance-Focused</option>
+                <option value="solo_survivor">Solo Survivor</option>
+            </select>
+            <select id="filterStatus" onchange="filterBots()">
+                <option value="">All Status</option>
+                <option value="active">Active Only</option>
+                <option value="inactive">Inactive Only</option>
+            </select>
+            <input type="text" id="searchUsername" placeholder="Search by username..." onkeyup="filterBots()">
+        </div>
+
+        <!-- Bulk Actions -->
+        <div class="bulk-actions">
+            <button class="btn btn-primary" onclick="processAllBots()">Process All Bots</button>
+            <button class="btn btn-success" onclick="activateAllBots()">Activate All</button>
+            <button class="btn btn-danger" onclick="deactivateAllBots()">Deactivate All</button>
+        </div>
+
+        <!-- Bot Grid -->
+        <div id="botContainer" class="bot-grid">
+            <div class="loading">Loading bots</div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Bot Modal -->
+    <div id="botModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeBotModal()">&times;</span>
+            <h2 id="modalTitle">Create New Bot</h2>
+            <form id="botForm" onsubmit="saveBotsubmit(event)">
+                <input type="hidden" id="botId">
+                
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required placeholder="Enter bot username">
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" required placeholder="Enter bot email">
+                </div>
+
+                <div class="form-group">
+                    <label for="personality">Personality Type</label>
+                    <select id="personality" required onchange="updatePersonalityDescription()">
+                        <option value="">Select Personality</option>
+                        <option value="aggressive_conqueror">Aggressive Conqueror</option>
+                        <option value="strategic_builder">Strategic Builder</option>
+                        <option value="diplomatic_negotiator">Diplomatic Negotiator</option>
+                        <option value="resource_hoarder">Resource Hoarder</option>
+                        <option value="speed_rusher">Speed Rusher</option>
+                        <option value="tech_enthusiast">Tech Enthusiast</option>
+                        <option value="alliance_focused">Alliance-Focused</option>
+                        <option value="solo_survivor">Solo Survivor</option>
+                    </select>
+                    <div id="personalityDescription" class="personality-description" style="display: none;"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="difficulty">Difficulty Level: <span id="difficultyValue">5</span></label>
+                    <input type="range" id="difficulty" class="slider" min="1" max="10" value="5" 
+                           oninput="document.getElementById('difficultyValue').textContent = this.value">
+                </div>
+
+                <div class="form-group">
+                    <label>Behavior Parameters (0-100)</label>
+                    
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>Aggression Level</span>
+                            <span id="aggressionValue">50</span>
+                        </div>
+                        <input type="range" id="aggression" class="slider" min="0" max="100" value="50"
+                               oninput="document.getElementById('aggressionValue').textContent = this.value">
+                    </div>
+
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>Economy Focus</span>
+                            <span id="economyValue">50</span>
+                        </div>
+                        <input type="range" id="economy" class="slider" min="0" max="100" value="50"
+                               oninput="document.getElementById('economyValue').textContent = this.value">
+                    </div>
+
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>Military Focus</span>
+                            <span id="militaryValue">50</span>
+                        </div>
+                        <input type="range" id="military" class="slider" min="0" max="100" value="50"
+                               oninput="document.getElementById('militaryValue').textContent = this.value">
+                    </div>
+
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>Research Focus</span>
+                            <span id="researchValue">50</span>
+                        </div>
+                        <input type="range" id="research" class="slider" min="0" max="100" value="50"
+                               oninput="document.getElementById('researchValue').textContent = this.value">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="thinkInterval">Think Interval (minutes)</label>
+                    <input type="number" id="thinkInterval" value="15" min="1" max="1440">
+                </div>
+
+                <div class="form-group">
+                    <button type="submit" class="btn btn-success" style="width: 100%;">Save Bot</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/config.js"></script>
+    <script src="../js/bots.js"></script>
+</body>
+</html>

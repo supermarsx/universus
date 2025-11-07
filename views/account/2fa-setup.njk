@@ -1,0 +1,246 @@
+{% extends "layout.njk" %}
+
+{% block title %}Two-Factor Authentication Setup - Universus{% endblock %}
+
+{% block content %}
+<div class="twofa-setup-container">
+    <div class="setup-wizard">
+        <!-- Progress Steps -->
+        <div class="wizard-steps">
+            <div class="step active" data-step="1">
+                <div class="step-number">1</div>
+                <div class="step-label">Introduction</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-number">2</div>
+                <div class="step-label">Scan QR Code</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-number">3</div>
+                <div class="step-label">Verify</div>
+            </div>
+            <div class="step" data-step="4">
+                <div class="step-number">4</div>
+                <div class="step-label">Backup Codes</div>
+            </div>
+        </div>
+
+        <!-- Step 1: Introduction -->
+        <div class="wizard-content" id="step-1">
+            <div class="step-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <path d="M9 12l2 2 4-4"></path>
+                </svg>
+            </div>
+            <h2>Enable Two-Factor Authentication</h2>
+            <p class="description">
+                Add an extra layer of security to your account. Two-factor authentication (2FA) requires both your password 
+                and a verification code from your phone to sign in.
+            </p>
+            
+            <div class="benefits-list">
+                <h3>Benefits of 2FA:</h3>
+                <ul>
+                    <li>Protects your account from unauthorized access</li>
+                    <li>Secures your game progress and purchases</li>
+                    <li>Prevents account hijacking</li>
+                    <li>Works offline with authenticator apps</li>
+                </ul>
+            </div>
+
+            <div class="requirements">
+                <h3>What You Need:</h3>
+                <ul>
+                    <li>A smartphone or tablet</li>
+                    <li>An authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.)</li>
+                </ul>
+            </div>
+
+            <div class="wizard-actions">
+                <button class="btn btn-secondary" onclick="window.location.href='/account/security-dashboard'">Cancel</button>
+                <button class="btn btn-primary" onclick="window.twoFASetup.nextStep()">Get Started</button>
+            </div>
+        </div>
+
+        <!-- Step 2: QR Code -->
+        <div class="wizard-content hidden" id="step-2">
+            <h2>Scan QR Code</h2>
+            <p class="description">
+                Open your authenticator app and scan this QR code:
+            </p>
+
+            <div class="qr-code-container" id="qr-code-container">
+                <div class="loading-spinner">Generating QR code...</div>
+            </div>
+
+            <div class="manual-entry">
+                <button class="btn btn-link" id="show-manual-key">Can't scan? Enter key manually</button>
+                <div class="manual-key-section hidden" id="manual-key-section">
+                    <p>Enter this key in your authenticator app:</p>
+                    <div class="secret-key-display">
+                        <code id="secret-key-text"></code>
+                        <button class="btn btn-sm" id="copy-secret-btn">Copy</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wizard-actions">
+                <button class="btn btn-secondary" onclick="window.twoFASetup.prevStep()">Back</button>
+                <button class="btn btn-primary" onclick="window.twoFASetup.nextStep()">Continue</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Verify -->
+        <div class="wizard-content hidden" id="step-3">
+            <h2>Verify Your Setup</h2>
+            <p class="description">
+                Enter the 6-digit code from your authenticator app to confirm the setup:
+            </p>
+
+            <form id="verify-form" class="verification-form">
+                <div class="code-input-container">
+                    <input type="text" class="code-input" maxlength="1" data-index="0" />
+                    <input type="text" class="code-input" maxlength="1" data-index="1" />
+                    <input type="text" class="code-input" maxlength="1" data-index="2" />
+                    <input type="text" class="code-input" maxlength="1" data-index="3" />
+                    <input type="text" class="code-input" maxlength="1" data-index="4" />
+                    <input type="text" class="code-input" maxlength="1" data-index="5" />
+                </div>
+                <div class="error-message hidden" id="verify-error"></div>
+            </form>
+
+            <div class="wizard-actions">
+                <button class="btn btn-secondary" onclick="window.twoFASetup.prevStep()">Back</button>
+                <button class="btn btn-primary" id="verify-btn">Verify</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Backup Codes -->
+        <div class="wizard-content hidden" id="step-4">
+            <div class="success-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="16 8 10 14 8 12"></polyline>
+                </svg>
+            </div>
+            <h2>2FA Enabled Successfully!</h2>
+            <p class="description">
+                Save these backup codes in a safe place. You can use them to access your account if you lose your phone.
+            </p>
+
+            <div class="backup-codes-container">
+                <div class="backup-codes-list" id="backup-codes-list">
+                    <!-- Populated by JavaScript -->
+                </div>
+                <div class="backup-codes-actions">
+                    <button class="btn btn-secondary" id="download-codes-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Download Codes
+                    </button>
+                    <button class="btn btn-secondary" id="print-codes-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                            <rect x="6" y="14" width="12" height="8"></rect>
+                        </svg>
+                        Print Codes
+                    </button>
+                    <button class="btn btn-secondary" id="copy-codes-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy All
+                    </button>
+                </div>
+            </div>
+
+            <div class="warning-box">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12" y2="17"></line>
+                </svg>
+                <div>
+                    <strong>Important:</strong> Each backup code can only be used once. Store them securely and don't share them with anyone.
+                </div>
+            </div>
+
+            <div class="wizard-actions">
+                <button class="btn btn-primary btn-lg" onclick="window.location.href='/account/security-dashboard'">
+                    Complete Setup
+                </button>
+            </div>
+        </div>
+
+        <!-- Current 2FA Status (if already enabled) -->
+        <div class="wizard-content hidden" id="step-already-enabled">
+            <div class="success-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    <path d="M9 12l2 2 4-4"></path>
+                </svg>
+            </div>
+            <h2>Two-Factor Authentication is Active</h2>
+            <p class="description">
+                Your account is currently protected with two-factor authentication.
+            </p>
+
+            <div class="twofa-info">
+                <div class="info-item">
+                    <strong>Status:</strong>
+                    <span class="status-badge status-enabled">Enabled</span>
+                </div>
+                <div class="info-item">
+                    <strong>Method:</strong>
+                    <span>Authenticator App (TOTP)</span>
+                </div>
+                <div class="info-item">
+                    <strong>Backup Codes Remaining:</strong>
+                    <span id="backup-codes-remaining">Loading...</span>
+                </div>
+            </div>
+
+            <div class="twofa-actions">
+                <button class="btn btn-secondary" id="regenerate-codes-btn">
+                    Regenerate Backup Codes
+                </button>
+                <button class="btn btn-danger" id="disable-2fa-btn">
+                    Disable 2FA
+                </button>
+            </div>
+
+            <div class="wizard-actions">
+                <button class="btn btn-primary" onclick="window.location.href='/account/security-dashboard'">
+                    Back to Security
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Disable 2FA Modal -->
+<div class="modal hidden" id="disable-2fa-modal">
+    <div class="modal-content">
+        <h3>Disable Two-Factor Authentication</h3>
+        <p>Enter your current 2FA code or a backup code to disable two-factor authentication:</p>
+        <form id="disable-2fa-form">
+            <input type="text" id="disable-code" placeholder="Enter code" maxlength="8" class="form-input" required />
+            <div class="error-message hidden" id="disable-error"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="window.twoFASetup.closeDisableModal()">Cancel</button>
+                <button type="submit" class="btn btn-danger">Disable 2FA</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/js/account/2fa-setup.js"></script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Leaderboard" %}
+{% set currentPage = "leaderboard" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Galactic Leaderboard</h2>
+
+<div class="leaderboard-tabs">
+    <button class="tab-button active" data-tab="players">Top Commanders</button>
+    <button class="tab-button" data-tab="alliances">Top Alliances</button>
+</div>
+
+<!-- Players Leaderboard -->
+<div id="playersTab" class="tab-content active">
+    <div class="leaderboard-container">
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Commander</th>
+                    <th>Alliance</th>
+                    <th>Total Score</th>
+                    <th>Economy</th>
+                    <th>Military</th>
+                    <th>Research</th>
+                </tr>
+            </thead>
+            <tbody id="playersLeaderboard">
+                <tr>
+                    <td colspan="7" class="text-center">
+                        <div class="spinner"></div>
+                        <p>Loading leaderboard...</p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div class="pagination">
+            <button id="prevPage" class="btn-secondary">Previous</button>
+            <span id="pageInfo">Page 1</span>
+            <button id="nextPage" class="btn-secondary">Next</button>
+        </div>
+    </div>
+</div>
+
+<!-- Alliances Leaderboard -->
+<div id="alliancesTab" class="tab-content">
+    <div class="leaderboard-container">
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Alliance</th>
+                    <th>Tag</th>
+                    <th>Members</th>
+                    <th>Total Score</th>
+                    <th>Average Score</th>
+                </tr>
+            </thead>
+            <tbody id="alliancesLeaderboard">
+                <tr>
+                    <td colspan="6" class="text-center">
+                        <div class="spinner"></div>
+                        <p>Loading alliances...</p>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/leaderboard.js"></script>
+{% endblock %}

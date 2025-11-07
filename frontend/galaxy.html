@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galaxy - Space Empire</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/game.css">
+</head>
+<body class="game-page">
+    <nav class="main-nav">
+        <div class="nav-brand">Space Empire</div>
+        <div class="nav-links">
+            <a href="overview.html">Overview</a>
+            <a href="buildings.html">Buildings</a>
+            <a href="shipyard.html">Shipyard</a>
+            <a href="research.html">Research</a>
+            <a href="fleet.html">Fleet</a>
+            <a href="galaxy.html" class="active">Galaxy</a>
+            <a href="#" id="logout">Logout</a>
+        </div>
+    </nav>
+
+    <main class="game-container">
+        <div class="page-header">
+            <h1>Galaxy View</h1>
+            <div class="planet-selector">
+                <select id="planet-select">
+                    <option value="">Loading planets...</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="resource-bar">
+            <div class="resource-item">
+                <span class="resource-icon">🔩</span>
+                <span class="resource-label">Metal:</span>
+                <span id="metal" class="resource-value">0</span>
+            </div>
+            <div class="resource-item">
+                <span class="resource-icon">💎</span>
+                <span class="resource-label">Crystal:</span>
+                <span id="crystal" class="resource-value">0</span>
+            </div>
+            <div class="resource-item">
+                <span class="resource-icon">⚡</span>
+                <span class="resource-label">Deuterium:</span>
+                <span id="deuterium" class="resource-value">0</span>
+            </div>
+            <div class="resource-item">
+                <span class="resource-icon">🔋</span>
+                <span class="resource-label">Energy:</span>
+                <span id="energy" class="resource-value">0</span>
+            </div>
+        </div>
+
+        <div class="galaxy-controls">
+            <div class="control-group">
+                <label for="galaxy-select">Galaxy:</label>
+                <select id="galaxy-select">
+                    <option value="1">Galaxy 1</option>
+                    <option value="2">Galaxy 2</option>
+                    <option value="3">Galaxy 3</option>
+                    <option value="4">Galaxy 4</option>
+                    <option value="5">Galaxy 5</option>
+                    <option value="6">Galaxy 6</option>
+                    <option value="7">Galaxy 7</option>
+                    <option value="8">Galaxy 8</option>
+                    <option value="9">Galaxy 9</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="system-input">System:</label>
+                <input type="number" id="system-input" min="1" max="499" value="1">
+            </div>
+            <button id="view-system-btn" class="btn btn-primary">View System</button>
+        </div>
+
+        <div class="card full-width">
+            <div class="galaxy-header">
+                <h2>🌌 <span id="system-title">Galaxy 1, System 1</span></h2>
+            </div>
+            <div id="galaxy-view" class="galaxy-grid"></div>
+        </div>
+
+        <div id="planet-details" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close-modal">&times;</span>
+                <div id="planet-details-content"></div>
+            </div>
+        </div>
+
+        <div id="notification" class="notification"></div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/planetImageGenerator.js"></script>
+    <script src="js/galaxy.js"></script>
+</body>
+</html>
