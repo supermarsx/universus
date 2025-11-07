@@ -46,16 +46,16 @@
 
 ### 3. Template Updates ✅
 
-**Resource Display** (`views/partials/resource-display.njk`):
+**Resource Display** (`frontend/views/partials/resource-display.njk`):
 - Replaced text icons with actual resource icon images
 - Uses `getResourceIcon()` helper function
 - Icons for: Metal, Crystal, Deuterium, Energy
 
-**Sidebar Navigation** (`views/partials/sidebar.njk`):
+**Sidebar Navigation** (`frontend/views/partials/sidebar.njk`):
 - Added menu icons for all navigation items
 - Icons integrated: planet, construction, research, fleet, trade, leaderboard, message
 
-**Base Layout** (`views/layouts/base.njk`):
+**Base Layout** (`frontend/views/layouts/base.njk`):
 - Added dynamic page background injection via inline styles
 - Background images applied to body tag
 
@@ -84,7 +84,7 @@
 ### 5. Asset Organization ✅
 
 **Assets Moved:**
-- All 130+ generated assets copied to `ogame-rpg/frontend/assets/`
+- All 130+ generated assets copied to `universus-rpg/frontend/assets/`
 - Proper directory structure maintained:
   - `/assets/ships/` - 32 spacecraft assets
   - `/assets/buildings/` - 44 building assets

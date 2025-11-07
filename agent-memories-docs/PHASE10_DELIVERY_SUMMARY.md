@@ -83,7 +83,7 @@
 4. `backend/src/routes/enhancedShopRoutes.ts` (299 lines)
 
 ### Frontend
-5. `views/pages/matrix-shop.njk` (220 lines)
+5. `frontend/views/pages/matrix-shop.njk` (220 lines)
 6. `frontend/css/matrix-shop.css` (1,067 lines)
 7. `frontend/js/matrix-shop.js` (747 lines)
 8. `frontend/js/matrix-rain.js` (342 lines)
@@ -158,7 +158,7 @@
 
 ### 1. Database Setup
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 psql -U postgres -d universus -f backend/src/database/phase10_enhanced_shop_schema.sql
 ```
 

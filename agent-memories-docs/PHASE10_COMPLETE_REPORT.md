@@ -168,7 +168,7 @@ Phase 10 delivers a comprehensive premium shop system with Matrix-themed UI, fea
 ### Frontend Implementation (2,156 lines)
 
 #### 1. Matrix Shop Template (220 lines)
-**File:** `views/pages/matrix-shop.njk`
+**File:** `frontend/views/pages/matrix-shop.njk`
 
 **UI Components:**
 - Matrix canvas background for digital rain
@@ -532,7 +532,7 @@ frontend/
     ├── matrix-shop.js
     └── matrix-rain.js
 
-views/pages/
+frontend/views/pages/
 └── matrix-shop.njk
 ```
 
@@ -590,7 +590,7 @@ views/pages/
 4. `backend/src/routes/enhancedShopRoutes.ts` (299 lines)
 
 ### Frontend Files (4)
-5. `views/pages/matrix-shop.njk` (220 lines)
+5. `frontend/views/pages/matrix-shop.njk` (220 lines)
 6. `frontend/css/matrix-shop.css` (1,067 lines)
 7. `frontend/js/matrix-shop.js` (747 lines)
 8. `frontend/js/matrix-rain.js` (342 lines)

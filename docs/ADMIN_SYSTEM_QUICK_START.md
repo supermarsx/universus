@@ -7,8 +7,8 @@
 Run the admin schema to create all necessary tables:
 
 ```bash
-cd /workspace/ogame-rpg/backend
-psql -U postgres -d ogame_rpg -f src/database/admin_schema.sql
+cd /workspace/universus-rpg/backend
+psql -U postgres -d universus_rpg -f src/database/admin_schema.sql
 ```
 
 ### 2. Create First Admin User
@@ -17,7 +17,7 @@ After running the migration, create your first super admin:
 
 ```sql
 -- Connect to database
-psql -U postgres -d ogame_rpg
+psql -U postgres -d universus_rpg
 
 -- Create super admin (replace user_id with your user's ID)
 INSERT INTO admin_users (user_id, admin_level, permissions, is_active)
@@ -27,7 +27,7 @@ VALUES (1, 'super_admin', ARRAY['*'], TRUE);
 ### 3. Compile and Start Server
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm run build
 npm start
 ```

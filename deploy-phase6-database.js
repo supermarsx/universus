@@ -9,7 +9,7 @@ const { Pool } = require('pg');
 const pool = new Pool({
     host: process.env.DB_HOST || '127.0.0.1',
     port: process.env.DB_PORT || 5432,
-    database: process.env.DB_NAME || 'ogame_rpg',
+    database: process.env.DB_NAME || 'universus_rpg',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres'
 });
@@ -285,7 +285,7 @@ async function runDiagnostics() {
 
 async function main() {
     printHeader('Phase 6 Real-time Database Deployment & Verification');
-    log(`Target database: ${process.env.DB_NAME || 'ogame_rpg'}`, 'blue');
+    log(`Target database: ${process.env.DB_NAME || 'universus_rpg'}`, 'blue');
     log(`Host: ${process.env.DB_HOST || '127.0.0.1'}:${process.env.DB_PORT || 5432}`, 'blue');
     log(`Started: ${new Date().toISOString()}\n`, 'blue');
     

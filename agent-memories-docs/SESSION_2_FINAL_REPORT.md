@@ -52,7 +52,7 @@ This session delivered critical production-grade features that were completely m
 - Service: `src/services/shopService.ts` (602 lines)
 - Routes: `src/routes/shop.ts` (179 lines)
 - Migration: `src/database/migrations/002_add_shop_tables.sql` (37 lines)
-- UI: `frontend/shop.html` (111 lines)
+- UI: `frontend/views/pages/shop.njk` (111 lines)
 - JS: `frontend/js/shop.js` (385 lines)
 
 **Total:** 1,314 lines of production-ready payment code

@@ -74,7 +74,7 @@
 ### Frontend Code
 
 #### Templates
-- **`views/pages/chat.njk`** (373 lines)
+- **`frontend/views/pages/chat.njk`** (373 lines)
   - Complete chat interface
   - Multi-channel tabs (Global, Alliance, Private)
   - Online users sidebar
@@ -314,7 +314,7 @@
 For immediate deployment in a proper environment:
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./quickstart-phase6.sh
 ```
 
@@ -331,7 +331,7 @@ This single command will:
 ## File Locations Summary
 
 ```
-/workspace/ogame-rpg/
+/workspace/universus-rpg/
 ├── backend/src/
 │   ├── database/phase6_realtime_schema.sql
 │   ├── types/realtime.ts
@@ -347,7 +347,7 @@ This single command will:
 │   │   ├── realtimeRoutes.ts
 │   │   └── templates.ts (updated)
 │   └── index.ts (updated)
-├── views/pages/chat.njk
+├── frontend/views/pages/chat.njk
 ├── frontend/js/chat.js
 ├── deploy-phase6-schema.sh
 ├── deploy-phase6-database.js

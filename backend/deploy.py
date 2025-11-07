@@ -50,7 +50,7 @@ def main():
     print(f" Started: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*70)
     
-    os.chdir('/workspace/ogame-rpg/backend')
+    os.chdir('/workspace/universus-rpg/backend')
     
     # Check current user
     run_cmd('whoami', '[0] Checking current user')

@@ -613,7 +613,7 @@ Reload configuration cache and broadcast to all clients.
 **Location:** `/admin/config`
 
 **Files:**
-- Template: `views/pages/admin/config.njk` (687 lines)
+- Template: `frontend/views/pages/admin/config.njk` (687 lines)
 - JavaScript: `frontend/js/admin/config.js` (651 lines)
 
 ### Features

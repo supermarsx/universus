@@ -115,10 +115,10 @@ log_step "Setting up database..."
 sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" 2>/dev/null || true
 
 # Drop existing database (if exists) and create fresh
-sudo -u postgres psql -c "DROP DATABASE IF EXISTS ogame_rpg;" 2>/dev/null || true
-sudo -u postgres psql -c "CREATE DATABASE ogame_rpg;" 2>/dev/null || true
+sudo -u postgres psql -c "DROP DATABASE IF EXISTS universus_rpg;" 2>/dev/null || true
+sudo -u postgres psql -c "CREATE DATABASE universus_rpg;" 2>/dev/null || true
 
-log_success "Database 'ogame_rpg' created"
+log_success "Database 'universus_rpg' created"
 
 ###############################################################################
 # STEP 4: Apply Base Schema
@@ -126,10 +126,10 @@ log_success "Database 'ogame_rpg' created"
 
 log_step "Applying base schema..."
 
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 
 if [ -f "src/database/schema.sql" ]; then
-    sudo -u postgres psql -d ogame_rpg -f src/database/schema.sql > /dev/null 2>&1
+    sudo -u postgres psql -d universus_rpg -f src/database/schema.sql > /dev/null 2>&1
     log_success "Base schema applied"
 else
     log_warning "Base schema file not found, skipping"
@@ -152,7 +152,7 @@ MIGRATIONS=(
 for migration in "${MIGRATIONS[@]}"; do
     if [ -f "$migration" ]; then
         log_info "Applying $(basename $migration)..."
-        sudo -u postgres psql -d ogame_rpg -f "$migration" > /dev/null 2>&1
+        sudo -u postgres psql -d universus_rpg -f "$migration" > /dev/null 2>&1
         log_success "  Applied: $(basename $migration)"
     else
         log_warning "  Migration not found: $migration"
@@ -166,7 +166,7 @@ done
 log_step "Applying Phase 2: Admin System schema..."
 
 if [ -f "src/database/admin_schema.sql" ]; then
-    sudo -u postgres psql -d ogame_rpg -f src/database/admin_schema.sql > /dev/null 2>&1
+    sudo -u postgres psql -d universus_rpg -f src/database/admin_schema.sql > /dev/null 2>&1
     log_success "Admin schema applied"
 else
     log_warning "Admin schema file not found"
@@ -179,7 +179,7 @@ fi
 log_step "Applying Phase 3: Debris System schema..."
 
 if [ -f "src/database/debris_schema.sql" ]; then
-    sudo -u postgres psql -d ogame_rpg -f src/database/debris_schema.sql > /dev/null 2>&1
+    sudo -u postgres psql -d universus_rpg -f src/database/debris_schema.sql > /dev/null 2>&1
     log_success "Debris schema applied"
 else
     log_warning "Debris schema file not found"
@@ -192,7 +192,7 @@ fi
 log_step "Applying Phase 4: Universe Seeding schema..."
 
 if [ -f "src/database/universe_seeding_schema.sql" ]; then
-    sudo -u postgres psql -d ogame_rpg -f src/database/universe_seeding_schema.sql > /dev/null 2>&1
+    sudo -u postgres psql -d universus_rpg -f src/database/universe_seeding_schema.sql > /dev/null 2>&1
     log_success "Universe seeding schema applied"
 else
     log_warning "Universe seeding schema file not found"
@@ -204,7 +204,7 @@ fi
 
 log_step "Verifying database tables..."
 
-TABLE_COUNT=$(sudo -u postgres psql -d ogame_rpg -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+TABLE_COUNT=$(sudo -u postgres psql -d universus_rpg -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
 log_info "Total tables created: $TABLE_COUNT"
 
 if [ "$TABLE_COUNT" -gt 30 ]; then
@@ -223,7 +223,7 @@ log_step "Creating test admin user..."
 # This is a pre-computed hash for 'admin123'
 ADMIN_PASSWORD_HASH='$2b$10$rOZhW9K4qVXZ9KqH.xZxVu3kB8pQw3qJ5YTl5Z8vZ9QZxQZxQZxQZ'
 
-sudo -u postgres psql -d ogame_rpg <<EOF > /dev/null 2>&1
+sudo -u postgres psql -d universus_rpg <<EOF > /dev/null 2>&1
 INSERT INTO users (username, email, password, created_at, is_admin)
 VALUES ('admin', 'admin@universus.com', '$ADMIN_PASSWORD_HASH', NOW(), true)
 ON CONFLICT (email) DO NOTHING;
@@ -328,7 +328,7 @@ fi
 
 # Test 2: Database connection
 log_info "Test 2: Database connectivity..."
-USER_COUNT=$(sudo -u postgres psql -d ogame_rpg -t -c "SELECT COUNT(*) FROM users;")
+USER_COUNT=$(sudo -u postgres psql -d universus_rpg -t -c "SELECT COUNT(*) FROM users;")
 log_success "  Database connected (Users: $USER_COUNT)"
 
 # Test 3: Redis connection
@@ -399,7 +399,7 @@ echo "  Logs: /tmp/universus.log"
 echo ""
 echo "Database:"
 echo "  Host: 127.0.0.1:5432"
-echo "  Name: ogame_rpg"
+echo "  Name: universus_rpg"
 echo "  Tables: $TABLE_COUNT"
 echo ""
 echo "Test Admin Account:"
@@ -440,7 +440,7 @@ echo "=========================================="
 cat > /tmp/universus_deployment.txt <<EOF
 Deployment Date: $(date)
 Application PID: $APP_PID
-Database: ogame_rpg ($TABLE_COUNT tables)
+Database: universus_rpg ($TABLE_COUNT tables)
 Admin Email: admin@universus.com
 Admin Password: admin123
 Status: Running

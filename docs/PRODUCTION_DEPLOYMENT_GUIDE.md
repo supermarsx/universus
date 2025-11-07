@@ -38,8 +38,8 @@ This guide provides step-by-step instructions for deploying SpaceEmpire RPG to a
 
 ### 1.1 Clone Repository
 ```bash
-git clone https://github.com/your-repo/ogame-rpg.git
-cd ogame-rpg
+git clone https://github.com/your-repo/universus-rpg.git
+cd universus-rpg
 ```
 
 ### 1.2 Environment Configuration
@@ -52,10 +52,10 @@ NODE_ENV=production
 PORT=3000
 
 # Database Configuration
-DATABASE_URL=postgresql://postgres:your_strong_password@postgres:5432/ogame_rpg
+DATABASE_URL=postgresql://postgres:your_strong_password@postgres:5432/universus_rpg
 DB_HOST=postgres
 DB_PORT=5432
-DB_NAME=ogame_rpg
+DB_NAME=universus_rpg
 DB_USER=postgres
 DB_PASSWORD=your_strong_password
 
@@ -110,7 +110,7 @@ services:
   postgres:
     image: postgres:14-alpine
     environment:
-      POSTGRES_DB: ogame_rpg
+      POSTGRES_DB: universus_rpg
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
@@ -179,27 +179,27 @@ docker-compose up -d postgres redis
 sleep 10
 
 # Apply migrations in order
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/001_initial_schema.sql
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/002_add_shop_tables.sql
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/004_admin_features.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/001_initial_schema.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/002_add_shop_tables.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/004_admin_features.sql
 
 # Verify migrations
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "\dt"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "\dt"
 ```
 
 ### 2.3 Create Admin User
 
 ```bash
 # Option 1: Via SQL
-docker-compose exec postgres psql -U postgres -d ogame_rpg << EOF
+docker-compose exec postgres psql -U postgres -d universus_rpg << EOF
 UPDATE users SET is_admin = true WHERE email = 'admin@yourdomain.com';
 EOF
 
 # Option 2: Register admin via API, then promote
 # 1. Register account via website
 # 2. Run SQL to promote
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;"
 ```
 
 ---
@@ -441,7 +441,7 @@ DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p $BACKUP_DIR
 
 # Backup PostgreSQL
-docker-compose exec -T postgres pg_dump -U postgres ogame_rpg | gzip > $BACKUP_DIR/db_$DATE.sql.gz
+docker-compose exec -T postgres pg_dump -U postgres universus_rpg | gzip > $BACKUP_DIR/db_$DATE.sql.gz
 
 # Backup Redis
 docker-compose exec -T redis redis-cli --rdb - > $BACKUP_DIR/redis_$DATE.rdb
@@ -707,7 +707,7 @@ docker-compose exec postgres psql -U postgres -c "SELECT count(*) FROM pg_stat_a
 ## Support & Documentation
 
 - **Application Logs**: `docker-compose logs backend`
-- **Database Access**: `docker-compose exec postgres psql -U postgres -d ogame_rpg`
+- **Database Access**: `docker-compose exec postgres psql -U postgres -d universus_rpg`
 - **Redis CLI**: `docker-compose exec redis redis-cli`
 
 For additional help, consult the project documentation or contact the development team.

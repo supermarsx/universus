@@ -470,7 +470,7 @@ Added columns to `users` table:
 
 1. **Install Dependencies**
    ```bash
-   cd /workspace/ogame-rpg
+   cd /workspace/universus-rpg
    npm install speakeasy qrcode
    npm install --save-dev @types/speakeasy @types/qrcode
    ```
@@ -498,7 +498,7 @@ Added columns to `users` table:
 ## File Locations
 
 ```
-/workspace/ogame-rpg/backend/src/
+/workspace/universus-rpg/backend/src/
 ├── database/
 │   └── phase9_account_management_schema.sql (504 lines)
 ├── types/

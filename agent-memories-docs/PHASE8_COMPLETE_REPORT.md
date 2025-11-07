@@ -195,7 +195,7 @@ Built for performance:
 ### Step 1: Database Setup (2 minutes)
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 psql -U your_user -d universus_db -f backend/src/database/phase8_seasonal_themes_schema.sql
 ```
 
@@ -211,12 +211,12 @@ Frontend files are already in place:
 - `frontend/js/themeLoader.js`
 - `frontend/js/themePreferences.js`
 - `frontend/css/theme-effects.css`
-- `views/pages/admin/themes.njk`
-- `views/pages/settings/themes.njk`
+- `frontend/views/pages/admin/themes.njk`
+- `frontend/views/pages/settings/themes.njk`
 
 ### Step 3: Update Base Template (2 minutes)
 
-Add to `views/layouts/base.njk` or `views/layouts/game.njk`:
+Add to `frontend/views/layouts/base.njk` or `frontend/views/layouts/game.njk`:
 
 ```html
 <head>
@@ -335,7 +335,7 @@ ALL 14 SUCCESS CRITERIA COMPLETE:
 
 ### Backend Files
 ```
-/workspace/ogame-rpg/backend/src/
+/workspace/universus-rpg/backend/src/
 ├── database/
 │   └── phase8_seasonal_themes_schema.sql (615 lines)
 ├── types/
@@ -349,14 +349,14 @@ ALL 14 SUCCESS CRITERIA COMPLETE:
 
 ### Frontend Files
 ```
-/workspace/ogame-rpg/
+/workspace/universus-rpg/
 ├── frontend/
 │   ├── js/
 │   │   ├── themeLoader.js (594 lines)
 │   │   └── themePreferences.js (308 lines)
 │   └── css/
 │       └── theme-effects.css (624 lines)
-└── views/pages/
+└── frontend/views/pages/
     ├── admin/
     │   └── themes.njk (670 lines)
     └── settings/

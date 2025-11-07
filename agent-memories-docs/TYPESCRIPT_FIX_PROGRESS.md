@@ -90,7 +90,7 @@ Need to add null checks:
 
 ### Fix Property Naming in salvageService.ts:
 ```bash
-cd /workspace/ogame-rpg/backend/src/services
+cd /workspace/universus-rpg/backend/src/services
 # Line 371: baseEfficiency → base_efficiency
 # Line 550: userId → user_id
 # Line 634: userId → user_id
@@ -139,7 +139,7 @@ cd /workspace/ogame-rpg/backend/src/services
 
 ## Testing After Fixes
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm run build
 ```
 

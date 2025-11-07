@@ -104,7 +104,7 @@ test_database_tables() {
     
     MISSING=0
     for table in "${TABLES[@]}"; do
-        COUNT=$(PGPASSWORD=${DB_PASSWORD:-postgres} psql -h ${DB_HOST:-127.0.0.1} -U ${DB_USER:-postgres} -d ${DB_NAME:-ogame_rpg} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='$table';" 2>/dev/null | tr -d ' ')
+        COUNT=$(PGPASSWORD=${DB_PASSWORD:-postgres} psql -h ${DB_HOST:-127.0.0.1} -U ${DB_USER:-postgres} -d ${DB_NAME:-universus_rpg} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='$table';" 2>/dev/null | tr -d ' ')
         
         if [ "$COUNT" != "1" ]; then
             print_failure "Table missing: $table"
@@ -391,7 +391,7 @@ test_combat_notifications() {
     
     print_step "Verifying combat alert table..."
     
-    ALERT_COUNT=$(PGPASSWORD=${DB_PASSWORD:-postgres} psql -h ${DB_HOST:-127.0.0.1} -U ${DB_USER:-postgres} -d ${DB_NAME:-ogame_rpg} -t -c "SELECT COUNT(*) FROM combat_alerts;" 2>/dev/null | tr -d ' ')
+    ALERT_COUNT=$(PGPASSWORD=${DB_PASSWORD:-postgres} psql -h ${DB_HOST:-127.0.0.1} -U ${DB_USER:-postgres} -d ${DB_NAME:-universus_rpg} -t -c "SELECT COUNT(*) FROM combat_alerts;" 2>/dev/null | tr -d ' ')
     
     if [ -n "$ALERT_COUNT" ]; then
         print_success "Combat alerts table is accessible"
@@ -407,7 +407,7 @@ test_fleet_movement_events() {
     
     print_step "Verifying fleet movement events table..."
     
-    EVENT_COUNT=$(PGPASSWORD=${DB_PASSWORD:-postgres} psql -h ${DB_HOST:-127.0.0.1} -U ${DB_USER:-postgres} -d ${DB_NAME:-ogame_rpg} -t -c "SELECT COUNT(*) FROM fleet_movement_events;" 2>/dev/null | tr -d ' ')
+    EVENT_COUNT=$(PGPASSWORD=${DB_PASSWORD:-postgres} psql -h ${DB_HOST:-127.0.0.1} -U ${DB_USER:-postgres} -d ${DB_NAME:-universus_rpg} -t -c "SELECT COUNT(*) FROM fleet_movement_events;" 2>/dev/null | tr -d ' ')
     
     if [ -n "$EVENT_COUNT" ]; then
         print_success "Fleet movement events table is accessible"

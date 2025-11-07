@@ -23,7 +23,7 @@ All three critical tasks have been prepared with detailed execution scripts and 
 
 - PostgreSQL 13+ installed
 - Redis 7+ installed
-- Database: `ogame_rpg`
+- Database: `universus_rpg`
 - User: `postgres` with password `postgres`
 
 ### Migration Files Available
@@ -78,50 +78,50 @@ All three critical tasks have been prepared with detailed execution scripts and 
 #!/bin/bash
 
 # Navigate to project directory
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 
 # 1. Ensure PostgreSQL is running
 sudo service postgresql start
 
 # 2. Create fresh database
 sudo -u postgres psql <<EOF
-DROP DATABASE IF EXISTS ogame_rpg;
-CREATE DATABASE ogame_rpg;
-\c ogame_rpg
+DROP DATABASE IF EXISTS universus_rpg;
+CREATE DATABASE universus_rpg;
+\c universus_rpg
 EOF
 
 # 3. Apply base schema
 echo "Applying base schema..."
-sudo -u postgres psql -d ogame_rpg -f src/database/schema.sql
+sudo -u postgres psql -d universus_rpg -f src/database/schema.sql
 
 # 4. Apply migrations in order
 echo "Applying migrations..."
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/001_update_messages_table.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/002_add_shop_tables.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/003_millisecond_precision_combat.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/004_admin_features.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/005_bot_system.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/001_update_messages_table.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/002_add_shop_tables.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/003_millisecond_precision_combat.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/004_admin_features.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/005_bot_system.sql
 
 # 5. Apply Phase 2 schema (Admin System)
 echo "Applying Phase 2 schema..."
-sudo -u postgres psql -d ogame_rpg -f src/database/admin_schema.sql
+sudo -u postgres psql -d universus_rpg -f src/database/admin_schema.sql
 
 # 6. Apply Phase 3 schema (Debris System)
 echo "Applying Phase 3 schema..."
-sudo -u postgres psql -d ogame_rpg -f src/database/debris_schema.sql
+sudo -u postgres psql -d universus_rpg -f src/database/debris_schema.sql
 
 # 7. Apply Phase 4 schema (Universe Seeding)
 echo "Applying Phase 4 schema..."
-sudo -u postgres psql -d ogame_rpg -f src/database/universe_seeding_schema.sql
+sudo -u postgres psql -d universus_rpg -f src/database/universe_seeding_schema.sql
 
 # 8. Verify table count
 echo "Verifying database..."
-TABLE_COUNT=$(sudo -u postgres psql -d ogame_rpg -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+TABLE_COUNT=$(sudo -u postgres psql -d universus_rpg -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
 echo "Total tables created: $TABLE_COUNT"
 
 # 9. Create test admin user
 echo "Creating admin user..."
-sudo -u postgres psql -d ogame_rpg <<EOF
+sudo -u postgres psql -d universus_rpg <<EOF
 INSERT INTO users (username, email, password_hash, dark_matter, is_admin, created_at)
 VALUES (
   'admin',
@@ -141,7 +141,7 @@ echo "Admin credentials: admin@universus.com / admin123"
 
 ```sql
 -- Connect to database
-\c ogame_rpg
+\c universus_rpg
 
 -- 1. Verify core tables exist
 SELECT table_name 
@@ -233,7 +233,7 @@ WHERE table_schema = 'public';
 
 #### 2. Update Backend Configuration
 
-Edit `/workspace/ogame-rpg/backend/.env`:
+Edit `/workspace/universus-rpg/backend/.env`:
 
 ```bash
 # Replace these lines:
@@ -243,7 +243,7 @@ STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_ACTUAL_PUBLISHABLE_KEY_HERE
 
 #### 3. Update Frontend Configuration
 
-Edit `/workspace/ogame-rpg/frontend/js/shop.js`:
+Edit `/workspace/universus-rpg/frontend/js/shop.js`:
 
 Find line with Stripe initialization (around line 10):
 
@@ -326,7 +326,7 @@ sudo service redis-server start
 redis-cli ping  # Should return PONG
 
 # 3. Start application
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm install
 npm run build
 npm start
@@ -343,7 +343,7 @@ curl http://localhost:3000/api/health
 #### Test 1.2: Database Connection
 ```bash
 # Connect to PostgreSQL
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "SELECT COUNT(*) FROM users;"
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "SELECT COUNT(*) FROM users;"
 # Expected: Count >= 1
 ```
 
@@ -802,7 +802,7 @@ redis-cli ping  # Verify with PONG response
 
 **Solution:**
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 rm -rf node_modules dist
 npm install
 npm run build

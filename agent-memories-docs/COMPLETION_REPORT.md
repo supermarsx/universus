@@ -2,7 +2,7 @@
 
 ## Project Completion Summary
 
-I have successfully built a complete **browser-based multiplayer RPG** inspired by OGame with real-time gameplay, comprehensive game mechanics, and production-ready deployment configuration.
+I have successfully built a complete **browser-based multiplayer RPG** inspired by Universus with real-time gameplay, comprehensive game mechanics, and production-ready deployment configuration.
 
 ## What Has Been Built
 
@@ -192,7 +192,7 @@ Documentation:
 ### Option 1: Docker (Recommended)
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d
 ```
 
@@ -201,8 +201,8 @@ Access at: `http://localhost:3000`
 ### Option 2: Manual Setup
 
 1. Install PostgreSQL and Redis
-2. Create database: `createdb ogame_rpg`
-3. Initialize schema: `psql -U postgres -d ogame_rpg -f backend/src/database/schema.sql`
+2. Create database: `createdb universus_rpg`
+3. Initialize schema: `psql -U postgres -d universus_rpg -f backend/src/database/schema.sql`
 4. Configure `.env` file
 5. Install dependencies: `cd backend && pnpm install`
 6. Build: `pnpm run build`
@@ -300,7 +300,7 @@ From your original requirements:
 ## Project Location
 
 ```
-/workspace/ogame-rpg/
+/workspace/universus-rpg/
 ```
 
 ## Next Steps (Optional Enhancements)

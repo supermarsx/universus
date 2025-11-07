@@ -32,10 +32,10 @@ Successfully transformed SpaceEmpire RPG into "Universus" - a professionally bra
 - Integrated with Express.js backend
 
 **Files Created:**
-- `views/layouts/base.njk` - Base HTML layout
-- `views/layouts/game.njk` - Game-specific layout
-- `views/partials/` - 4 reusable components
-- `views/pages/` - 12 page templates
+- `frontend/views/layouts/base.njk` - Base HTML layout
+- `frontend/views/layouts/game.njk` - Game-specific layout
+- `frontend/views/partials/` - 4 reusable components
+- `frontend/views/pages/` - 12 page templates
 - `backend/src/config/templateConfig.ts` - Nunjucks configuration
 - `backend/src/services/templateService.ts` - Template rendering service
 - `backend/src/routes/templates.ts` - Template routes
@@ -463,7 +463,7 @@ Successfully transformed SpaceEmpire RPG into "Universus" - a professionally bra
 
 ```bash
 # 1. Navigate to project
-cd ogame-rpg
+cd universus-rpg
 
 # 2. Install dependencies
 cd backend && npm install

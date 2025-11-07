@@ -18,7 +18,7 @@
       "29": {
         "id": "29",
         "content": "Specification Compliance Review",
-        "details": "Conduct comprehensive review of entire codebase against original specification document. Identify missing features, incomplete implementations, UI/UX gaps, and ensure all original OGame features are properly implemented according to spec requirements.",
+        "details": "Conduct comprehensive review of entire codebase against original specification document. Identify missing features, incomplete implementations, UI/UX gaps, and ensure all original Universus features are properly implemented according to spec requirements.",
         "status": "pending",
         "priority": "high"
       },
@@ -46,7 +46,7 @@
       "33": {
         "id": "33",
         "content": "Visual Style Overhaul and UI Redesign",
-        "details": "Apply new visual identity throughout the game interface. Redesign all pages with new assets, update color schemes, typography, layouts, animations, and user experience. Ensure distinct but recognizable style inspired by original OGame aesthetic.",
+        "details": "Apply new visual identity throughout the game interface. Redesign all pages with new assets, update color schemes, typography, layouts, animations, and user experience. Ensure distinct but recognizable style inspired by original Universus aesthetic.",
         "status": "completed",
         "priority": "high"
       },

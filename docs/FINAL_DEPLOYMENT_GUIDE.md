@@ -70,7 +70,7 @@ Universus is a fully-featured space empire browser RPG with comprehensive visual
 ## 📁 Project Structure
 
 ```
-/workspace/ogame-rpg/
+/workspace/universus-rpg/
 ├── backend/
 │   ├── src/
 │   │   ├── config/              # Configuration files
@@ -109,7 +109,7 @@ Universus is a fully-featured space empire browser RPG with comprehensive visual
 │   │   ├── fleet.js            # Fleet management
 │   │   └── [other pages]       # Additional page scripts
 │   └── html/                   # Static HTML (legacy)
-├── views/                      # Nunjucks templates
+├── frontend/views/                      # Nunjucks templates
 │   ├── layouts/
 │   │   ├── base.njk            # Base layout with dynamic backgrounds
 │   │   └── game.njk            # Game interface layout
@@ -198,25 +198,25 @@ redis-cli ping
 sudo -u postgres psql
 
 # In PostgreSQL shell, run:
-CREATE DATABASE ogame_rpg;
-CREATE USER ogame_user WITH ENCRYPTED PASSWORD 'your_secure_password_here';
-GRANT ALL PRIVILEGES ON DATABASE ogame_rpg TO ogame_user;
+CREATE DATABASE universus_rpg;
+CREATE USER universus_user WITH ENCRYPTED PASSWORD 'your_secure_password_here';
+GRANT ALL PRIVILEGES ON DATABASE universus_rpg TO universus_user;
 \q
 ```
 
 #### Run Database Migrations
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 
 # Run all migrations in order
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/001_initial_schema.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/002_planets.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/003_buildings_ships.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/004_game_mechanics.sql
-sudo -u postgres psql -d ogame_rpg -f src/database/migrations/005_bot_system.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/001_initial_schema.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/002_planets.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/003_buildings_ships.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/004_game_mechanics.sql
+sudo -u postgres psql -d universus_rpg -f src/database/migrations/005_bot_system.sql
 
 # Verify tables were created
-sudo -u postgres psql -d ogame_rpg -c "\dt"
+sudo -u postgres psql -d universus_rpg -c "\dt"
 ```
 
 ### Step 3: Environment Configuration
@@ -224,7 +224,7 @@ sudo -u postgres psql -d ogame_rpg -c "\dt"
 Create `.env` file in the backend directory:
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 nano .env
 ```
 
@@ -239,8 +239,8 @@ HOST=0.0.0.0
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=ogame_rpg
-DB_USER=ogame_user
+DB_NAME=universus_rpg
+DB_USER=universus_user
 DB_PASSWORD=your_secure_password_here
 
 # Redis Configuration (Optional)
@@ -270,7 +270,7 @@ ADMIN_PASSWORD=change_this_password_immediately
 ### Step 4: Install Dependencies
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 pnpm install
 
 # Verify installation
@@ -281,7 +281,7 @@ pnpm list
 
 #### Build TypeScript
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 pnpm run build
 
 # Verify build succeeded
@@ -496,7 +496,7 @@ pm2 logs universus-backend
 sudo systemctl status postgresql
 
 # Test connection
-sudo -u postgres psql -d ogame_rpg -c "SELECT 1;"
+sudo -u postgres psql -d universus_rpg -c "SELECT 1;"
 
 # Check credentials in .env file
 ```
@@ -504,7 +504,7 @@ sudo -u postgres psql -d ogame_rpg -c "SELECT 1;"
 #### Issue 3: Assets not loading
 ```bash
 # Verify asset directory permissions
-ls -la /workspace/ogame-rpg/frontend/assets/
+ls -la /workspace/universus-rpg/frontend/assets/
 
 # Check file paths in browser DevTools Network tab
 # Ensure Express static middleware configured correctly

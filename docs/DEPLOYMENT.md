@@ -10,7 +10,7 @@
 
 2. **Start the application**:
    ```bash
-   cd /workspace/ogame-rpg
+   cd /workspace/universus-rpg
    docker-compose up --build -d
    ```
 
@@ -33,10 +33,10 @@
 2. **Database Setup**:
    ```bash
    # Create PostgreSQL database
-   createdb ogame_rpg
+   createdb universus_rpg
    
    # Initialize schema
-   psql -U postgres -d ogame_rpg -f backend/src/database/schema.sql
+   psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
    ```
 
 3. **Start Redis**:
@@ -84,7 +84,7 @@ PORT=3000
 # Database
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=ogame_rpg
+DB_NAME=universus_rpg
 DB_USER=postgres
 DB_PASSWORD=your_secure_password
 
@@ -110,7 +110,7 @@ RESOURCE_PRODUCTION_MULTIPLIER=1  # Production rate multiplier
 2. **Clone repository**:
    ```bash
    git clone <repository>
-   cd ogame-rpg
+   cd universus-rpg
    ```
 
 3. **Configure production environment**:
@@ -150,10 +150,10 @@ RESOURCE_PRODUCTION_MULTIPLIER=1  # Production rate multiplier
 
 ```bash
 # Create backup
-docker exec ogame_postgres pg_dump -U postgres ogame_rpg > backup.sql
+docker exec universus_postgres pg_dump -U postgres universus_rpg > backup.sql
 
 # Restore backup
-docker exec -i ogame_postgres psql -U postgres ogame_rpg < backup.sql
+docker exec -i universus_postgres psql -U postgres universus_rpg < backup.sql
 ```
 
 ## Monitoring
@@ -196,7 +196,7 @@ docker-compose ps
 
 1. Test Redis connection:
    ```bash
-   docker exec ogame_redis redis-cli ping
+   docker exec universus_redis redis-cli ping
    ```
 
 2. Check logs:

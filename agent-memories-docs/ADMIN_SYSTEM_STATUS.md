@@ -32,14 +32,14 @@
 7. `backend/src/routes/adminRoutes.ts` (808 lines)
 
 **Frontend:**
-8. `views/pages/admin/dashboard.njk` (406 lines)
-9. `views/pages/admin/users.njk` (561 lines) ✅ COMPLETE
-10. `views/partials/admin-sidebar.njk` (52 lines) ✅ NEW
-11. `views/pages/admin/monitoring.njk` (ready for data)
-12. `views/pages/admin/settings.njk` (ready for data)
-13. `views/pages/admin/events.njk` (ready for data)
-14. `views/pages/admin/analytics.njk` (ready for data)
-15. `views/pages/admin/audit.njk` (ready for data)
+8. `frontend/views/pages/admin/dashboard.njk` (406 lines)
+9. `frontend/views/pages/admin/users.njk` (561 lines) ✅ COMPLETE
+10. `frontend/views/partials/admin-sidebar.njk` (52 lines) ✅ NEW
+11. `frontend/views/pages/admin/monitoring.njk` (ready for data)
+12. `frontend/views/pages/admin/settings.njk` (ready for data)
+13. `frontend/views/pages/admin/events.njk` (ready for data)
+14. `frontend/views/pages/admin/analytics.njk` (ready for data)
+15. `frontend/views/pages/admin/audit.njk` (ready for data)
 
 **Integration:**
 - `backend/src/index.ts` (monitoring service integrated)
@@ -51,15 +51,15 @@
 
 ```bash
 # Apply admin schema
-cd /workspace/ogame-rpg/backend
-psql -U postgres -d ogame_rpg -f src/database/admin_schema.sql
+cd /workspace/universus-rpg/backend
+psql -U postgres -d universus_rpg -f src/database/admin_schema.sql
 ```
 
 #### 2. Create First Admin
 
 ```sql
 -- Connect to database
-psql -U postgres -d ogame_rpg
+psql -U postgres -d universus_rpg
 
 -- Insert first super admin (replace 1 with your user ID)
 INSERT INTO admin_users (user_id, admin_level, permissions, is_active)
@@ -69,7 +69,7 @@ VALUES (1, 'super_admin', ARRAY['*'], TRUE);
 #### 3. Start Server
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm run build
 npm start
 ```
@@ -260,8 +260,8 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 ### Support & Documentation
 
-- **Quick Start:** `/workspace/ogame-rpg/ADMIN_SYSTEM_QUICK_START.md`
-- **Full Report:** `/workspace/ogame-rpg/ADMIN_SYSTEM_IMPLEMENTATION_REPORT.md`
+- **Quick Start:** `/workspace/universus-rpg/ADMIN_SYSTEM_QUICK_START.md`
+- **Full Report:** `/workspace/universus-rpg/ADMIN_SYSTEM_IMPLEMENTATION_REPORT.md`
 - **This File:** Implementation completion status
 
 ---

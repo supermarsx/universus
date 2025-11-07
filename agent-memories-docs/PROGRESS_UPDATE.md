@@ -331,8 +331,8 @@ frontend/assets/
 3. 20 new visual assets in `/frontend/assets/planets/`
 
 ### Modified Files
-1. `views/layouts/base.njk` - Added design system CSS + fonts
-2. `views/layouts/game.njk` - Added game interface CSS
+1. `frontend/views/layouts/base.njk` - Added design system CSS + fonts
+2. `frontend/views/layouts/game.njk` - Added game interface CSS
 
 ---
 

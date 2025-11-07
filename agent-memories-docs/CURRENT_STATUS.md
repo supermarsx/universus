@@ -49,7 +49,7 @@ Successfully transformed core infrastructure from "SpaceEmpire RPG" to "UNIVERSU
 
 **Consistency Check:**
 - ✅ No "SpaceEmpire" in active code
-- ✅ No "OGame" in user-facing content
+- ✅ No "Universus" in user-facing content
 - ✅ Uniform branding throughout
 - ✅ Professional presentation
 
@@ -93,9 +93,9 @@ Successfully transformed core infrastructure from "SpaceEmpire RPG" to "UNIVERSU
 ## 📂 PROJECT STRUCTURE
 
 ```
-/workspace/ogame-rpg/
+/workspace/universus-rpg/
 │
-├── 📁 views/ (NEW - Template System)
+├── 📁 frontend/views/ (NEW - Template System)
 │   ├── layouts/
 │   │   ├── base.njk
 │   │   └── game.njk
@@ -153,7 +153,7 @@ Successfully transformed core infrastructure from "SpaceEmpire RPG" to "UNIVERSU
 
 ```bash
 # Navigate to backend
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 
 # Build TypeScript
 pnpm run build
@@ -162,7 +162,7 @@ pnpm run build
 pnpm start
 
 # Or use Docker
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d
 ```
 
@@ -195,7 +195,7 @@ Game Pages (via templates):
 - Easy maintenance
 
 **Example:** When you visit `/overview`, the server:
-1. Loads `views/pages/overview.njk`
+1. Loads `frontend/views/pages/overview.njk`
 2. Extends `layouts/game.njk`
 3. Includes `partials/nav.njk`, `partials/sidebar.njk`
 4. Renders final HTML with data
@@ -207,7 +207,7 @@ Game Pages (via templates):
 
 ### Available Assets
 
-**Location:** `/workspace/ogame-rpg/frontend/assets/`
+**Location:** `/workspace/universus-rpg/frontend/assets/`
 
 **Usage in Templates:**
 ```html
@@ -408,7 +408,7 @@ assets/
 
 ```bash
 # Clone/Navigate to project
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 
 # Build backend
 cd backend && pnpm run build

@@ -28,7 +28,7 @@ This guide provides step-by-step instructions to verify and test all newly imple
 ### Step 1.1: Start Docker Containers
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d
 ```
 
@@ -54,7 +54,7 @@ Expected output: `postgres:5432 - accepting connections`
 ### Step 1.3: Apply Migration 003 (Millisecond Precision Combat)
 
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
 ```
 
 **Expected output:**
@@ -71,7 +71,7 @@ CREATE INDEX
 
 **Verification:**
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "\dt *precise*"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "\dt *precise*"
 ```
 
 Should show 4 tables:
@@ -83,7 +83,7 @@ Should show 4 tables:
 ### Step 1.4: Apply Migration 004 (Admin Features)
 
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/004_admin_features.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/004_admin_features.sql
 ```
 
 **Expected output:**
@@ -96,13 +96,13 @@ CREATE INDEX
 
 **Verification:**
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "\d users"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "\d users"
 ```
 
 Should show `is_admin` column (boolean, default false).
 
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "\dt admin*"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "\dt admin*"
 ```
 
 Should show `admin_audit_log` table.
@@ -111,12 +111,12 @@ Should show `admin_audit_log` table.
 
 ```bash
 # Create or update the first user to be an admin
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;"
 ```
 
 **Verification:**
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "SELECT id, username, email, is_admin FROM users WHERE is_admin = true;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "SELECT id, username, email, is_admin FROM users WHERE is_admin = true;"
 ```
 
 Should show at least one admin user.
@@ -278,7 +278,7 @@ console.log("Socket connected:", window.socket?.connected);
 3. Click "Ban User" (or "Unban" if already banned)
 4. Verify ban status updates in database:
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "SELECT id, username, is_banned FROM users WHERE id = 2;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "SELECT id, username, is_banned FROM users WHERE id = 2;"
 ```
 
 ### Step 3.4: Test AI Planet Image Generator
@@ -319,13 +319,13 @@ console.log("Images match:", img1.src === img2.src);
 
 **Verify combat tracking in database:**
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "SELECT * FROM combats_precise ORDER BY created_at DESC LIMIT 1;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "SELECT * FROM combats_precise ORDER BY created_at DESC LIMIT 1;"
 ```
 
 Should show microsecond precision timestamps.
 
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "SELECT * FROM combat_events_precise WHERE combat_id = <COMBAT_ID> ORDER BY event_timestamp;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "SELECT * FROM combat_events_precise WHERE combat_id = <COMBAT_ID> ORDER BY event_timestamp;"
 ```
 
 Should show detailed combat events with microsecond timing.
@@ -372,7 +372,7 @@ Should show detailed combat events with microsecond timing.
 3. Ban a user
 4. Check audit log:
 ```bash
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "SELECT * FROM admin_audit_log ORDER BY performed_at DESC LIMIT 5;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "SELECT * FROM admin_audit_log ORDER BY performed_at DESC LIMIT 5;"
 ```
 
 **Verification:** All admin actions are logged with timestamps.
@@ -423,7 +423,7 @@ artillery run artillery-config.yml
 
 ```bash
 # Check slow queries
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "
 SELECT query, calls, mean_exec_time, max_exec_time 
 FROM pg_stat_statements 
 WHERE mean_exec_time > 100 
@@ -542,7 +542,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 **Solution:**
 ```bash
 # Drop and recreate specific tables
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "
 DROP TABLE IF EXISTS combat_events_precise CASCADE;
 DROP TABLE IF EXISTS combat_rounds_precise CASCADE;
 DROP TABLE IF EXISTS combats_precise CASCADE;
@@ -550,7 +550,7 @@ DROP TABLE IF EXISTS fleet_movements_precise CASCADE;
 "
 
 # Re-run migration 003
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
 ```
 
 ### Issue: Admin panel shows 403 Forbidden
@@ -558,10 +558,10 @@ docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/d
 **Solution:**
 ```bash
 # Verify user is admin
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "SELECT id, username, is_admin FROM users WHERE id = 1;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "SELECT id, username, is_admin FROM users WHERE id = 1;"
 
 # Set admin flag if false
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;"
 ```
 
 ### Issue: Socket.io not connecting
@@ -640,8 +640,8 @@ pnpm run test -- --verbose
 
 For issues or questions:
 1. Check logs: `docker-compose logs backend`
-2. Check database: `docker-compose exec postgres psql -U postgres -d ogame_rpg`
-3. Review code in `/workspace/ogame-rpg/backend/src/`
+2. Check database: `docker-compose exec postgres psql -U postgres -d universus_rpg`
+3. Review code in `/workspace/universus-rpg/backend/src/`
 4. Check frontend console errors in browser DevTools
 
 **Project Status:** 90% complete → Target: 100% production ready

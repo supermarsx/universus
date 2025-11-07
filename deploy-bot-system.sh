@@ -49,7 +49,7 @@ fi
 
 # 2. Apply Bot System Migration
 print_info "Applying bot system migration (005)..."
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -f backend/src/database/migrations/005_bot_system.sql 2>&1 | tee migration_output.txt
 
 if grep -q "ERROR" migration_output.txt; then
@@ -60,7 +60,7 @@ fi
 
 # 3. Verify tables created
 print_info "Verifying bot tables..."
-TABLES=$(PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg -t -c \
+TABLES=$(PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -t -c \
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'bot%' ORDER BY table_name;")
 
 if [ -z "$TABLES" ]; then

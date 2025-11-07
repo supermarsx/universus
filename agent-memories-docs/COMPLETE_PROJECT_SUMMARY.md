@@ -10,7 +10,7 @@
 
 ## PROJECT OVERVIEW
 
-Universus is an enterprise-grade, horizontally scalable browser-based space empire game inspired by OGame, featuring advanced admin tools, combat debris system, universe generation, and multi-server sharding architecture.
+Universus is an enterprise-grade, horizontally scalable browser-based space empire game inspired by Universus, featuring advanced admin tools, combat debris system, universe generation, and multi-server sharding architecture.
 
 ---
 
@@ -239,21 +239,21 @@ Universus is an enterprise-grade, horizontally scalable browser-based space empi
 ### Database Setup
 ```bash
 # 1. Create database
-createdb ogame_rpg
+createdb universus_rpg
 
 # 2. Run all schema files
-psql -d ogame_rpg -f backend/src/database/schema.sql
-psql -d ogame_rpg -f backend/src/database/admin_schema.sql
-psql -d ogame_rpg -f backend/src/database/debris_schema.sql
-psql -d ogame_rpg -f backend/src/database/universe_seeding_schema.sql
-psql -d ogame_rpg -f backend/src/database/phase5_sharding_schema.sql
+psql -d universus_rpg -f backend/src/database/schema.sql
+psql -d universus_rpg -f backend/src/database/admin_schema.sql
+psql -d universus_rpg -f backend/src/database/debris_schema.sql
+psql -d universus_rpg -f backend/src/database/universe_seeding_schema.sql
+psql -d universus_rpg -f backend/src/database/phase5_sharding_schema.sql
 
 # 3. Run migrations
-psql -d ogame_rpg -f backend/src/database/migrations/001_add_missing_columns.sql
-psql -d ogame_rpg -f backend/src/database/migrations/002_add_resource_generation.sql
-psql -d ogame_rpg -f backend/src/database/migrations/003_add_timestamps.sql
-psql -d ogame_rpg -f backend/src/database/migrations/004_add_leaderboard_tables.sql
-psql -d ogame_rpg -f backend/src/database/migrations/005_add_alliance_system.sql
+psql -d universus_rpg -f backend/src/database/migrations/001_add_missing_columns.sql
+psql -d universus_rpg -f backend/src/database/migrations/002_add_resource_generation.sql
+psql -d universus_rpg -f backend/src/database/migrations/003_add_timestamps.sql
+psql -d universus_rpg -f backend/src/database/migrations/004_add_leaderboard_tables.sql
+psql -d universus_rpg -f backend/src/database/migrations/005_add_alliance_system.sql
 ```
 
 ### Application Setup

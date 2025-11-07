@@ -70,7 +70,7 @@
 │ 📂 PROJECT STRUCTURE                                                         │
 └──────────────────────────────────────────────────────────────────────────────┘
 
-  ogame-rpg/
+  universus-rpg/
   ├── 📜 FEATURE_COMPLETION_REPORT.md ⭐ NEW (431 lines)
   ├── 📜 QUICK_START.md ⭐ NEW (323 lines)
   ├── 📜 VERIFICATION_AND_TESTING_GUIDE.md ⭐ NEW (648 lines)
@@ -117,7 +117,7 @@
   
   What You Need To Do:
   1. Ensure Docker is installed and running
-  2. Navigate to: cd /workspace/ogame-rpg
+  2. Navigate to: cd /workspace/universus-rpg
   3. Run: ./verify-and-test.sh
   4. Follow manual testing checklist in QUICK_START.md
 
@@ -156,7 +156,7 @@
 
   Step 1: Run Automated Verification (5 minutes)
   ┌────────────────────────────────────────────────────────────────────────┐
-  │ cd /workspace/ogame-rpg                                                │
+  │ cd /workspace/universus-rpg                                                │
   │ ./verify-and-test.sh                                                   │
   └────────────────────────────────────────────────────────────────────────┘
   

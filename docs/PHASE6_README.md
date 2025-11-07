@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./quickstart-phase6.sh
 ```
 
@@ -140,7 +140,7 @@ backend/src/
 ├── socket/realtimeHandler.ts (491 lines)
 └── routes/realtimeRoutes.ts (611 lines)
 
-views/pages/chat.njk (373 lines)
+frontend/views/pages/chat.njk (373 lines)
 frontend/js/chat.js (496 lines)
 ```
 
@@ -187,7 +187,7 @@ tail -f /var/log/redis/redis-server.log
 ### Schema deployment fails
 ```bash
 # Check database connection
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "SELECT 1;"
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "SELECT 1;"
 
 # View deployment errors
 ./deploy-phase6-schema.sh 2>&1 | tee deployment.log

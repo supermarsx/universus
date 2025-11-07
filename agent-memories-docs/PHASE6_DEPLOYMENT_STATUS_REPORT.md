@@ -61,7 +61,7 @@ Due to sandbox environment limitations:
   - Full CRUD operations for all features
 
 #### Frontend Code
-- **views/pages/chat.njk** (373 lines)
+- **frontend/views/pages/chat.njk** (373 lines)
   - Complete chat interface
   - Multi-channel tabs
   - Online users sidebar
@@ -188,19 +188,19 @@ sudo service redis-server start
 
 2. **Deploy Schema**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./deploy-phase6-schema.sh
 ```
 
 3. **Start Backend**
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm start
 ```
 
 4. **Run Tests**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./test-phase6-realtime.sh
 ```
 
@@ -218,7 +218,7 @@ cd /workspace/ogame-rpg
 
 **Method 3: Manual SQL**
 ```bash
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg -f backend/src/database/phase6_realtime_schema.sql
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -f backend/src/database/phase6_realtime_schema.sql
 ```
 
 ---
@@ -438,7 +438,7 @@ sudo service redis-server restart
 psql -h 127.0.0.1 -U postgres -l
 
 # Check existing tables
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "\dt"
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "\dt"
 
 # View detailed errors
 ./deploy-phase6-schema.sh 2>&1 | tee deployment.log
@@ -516,12 +516,12 @@ All necessary tools, scripts, and documentation have been provided to ensure a s
 - `test-phase6-realtime.sh` - Comprehensive test suite
 
 ### Code Locations
-- Schema: `/workspace/ogame-rpg/backend/src/database/phase6_realtime_schema.sql`
-- Types: `/workspace/ogame-rpg/backend/src/types/realtime.ts`
-- Services: `/workspace/ogame-rpg/backend/src/services/`
-- Routes: `/workspace/ogame-rpg/backend/src/routes/realtimeRoutes.ts`
-- Socket: `/workspace/ogame-rpg/backend/src/socket/realtimeHandler.ts`
-- Frontend: `/workspace/ogame-rpg/views/pages/chat.njk`, `/workspace/ogame-rpg/frontend/js/chat.js`
+- Schema: `/workspace/universus-rpg/backend/src/database/phase6_realtime_schema.sql`
+- Types: `/workspace/universus-rpg/backend/src/types/realtime.ts`
+- Services: `/workspace/universus-rpg/backend/src/services/`
+- Routes: `/workspace/universus-rpg/backend/src/routes/realtimeRoutes.ts`
+- Socket: `/workspace/universus-rpg/backend/src/socket/realtimeHandler.ts`
+- Frontend: `/workspace/universus-rpg/frontend/views/pages/chat.njk`, `/workspace/universus-rpg/frontend/js/chat.js`
 
 ---
 

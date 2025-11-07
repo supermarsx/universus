@@ -3,7 +3,7 @@
 # Phase 8: Seasonal Theme System - Complete Integration Script
 # =====================================================
 # This script integrates all Phase 8 components into Universus
-# Run from: /workspace/ogame-rpg/
+# Run from: /workspace/universus-rpg/
 # =====================================================
 
 set -e  # Exit on error
@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 
 # Check if running from correct directory
 if [ ! -f "backend/package.json" ]; then
-    echo -e "${RED}Error: Must run from /workspace/ogame-rpg/ directory${NC}"
+    echo -e "${RED}Error: Must run from /workspace/universus-rpg/ directory${NC}"
     exit 1
 fi
 

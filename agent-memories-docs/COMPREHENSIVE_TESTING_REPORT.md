@@ -112,11 +112,11 @@ WebSocket server: Ready
 **Test Objective:** Verify Nunjucks templating engine works correctly
 
 **Components Tested:**
-- **Base Layout:** `views/layouts/base.njk` ✅
-- **Game Layout:** `views/layouts/game.njk` ✅
-- **Navigation Partial:** `views/partials/nav.njk` ✅
-- **Sidebar Partial:** `views/partials/sidebar.njk` ✅
-- **Resource Display:** `views/partials/resource-display.njk` ✅
+- **Base Layout:** `frontend/views/layouts/base.njk` ✅
+- **Game Layout:** `frontend/views/layouts/game.njk` ✅
+- **Navigation Partial:** `frontend/views/partials/nav.njk` ✅
+- **Sidebar Partial:** `frontend/views/partials/sidebar.njk` ✅
+- **Resource Display:** `frontend/views/partials/resource-display.njk` ✅
 - **Page Templates:** 12 page templates created ✅
 
 **Template Features:**

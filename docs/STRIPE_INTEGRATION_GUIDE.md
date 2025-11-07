@@ -51,7 +51,7 @@
 
 ### Step 3: Configure Environment Variables
 
-Edit `/workspace/ogame-rpg/backend/.env`:
+Edit `/workspace/universus-rpg/backend/.env`:
 
 ```bash
 # Replace with your actual Stripe keys
@@ -62,7 +62,7 @@ STRIPE_WEBHOOK_SECRET=whsec_YOUR_WEBHOOK_SECRET_HERE  # Optional for local testi
 
 ### Step 4: Update Frontend Configuration
 
-Edit `/workspace/ogame-rpg/frontend/js/shop.js`:
+Edit `/workspace/universus-rpg/frontend/js/shop.js`:
 
 Find the line with `pk_test_dummy_key_for_testing` and replace with your publishable key:
 
@@ -95,7 +95,7 @@ Stripe provides test card numbers for different scenarios:
 
 1. **Start the application:**
    ```bash
-   cd /workspace/ogame-rpg/backend
+   cd /workspace/universus-rpg/backend
    npm start
    ```
 
@@ -429,10 +429,10 @@ LIMIT 10;
 - Webhooks: https://stripe.com/docs/webhooks
 
 ### Universus Implementation
-- Shop Service: `/workspace/ogame-rpg/backend/src/services/shopService.ts`
-- Shop Routes: `/workspace/ogame-rpg/backend/src/routes/shop.ts`
-- Shop Frontend: `/workspace/ogame-rpg/frontend/shop.html`
-- Shop Script: `/workspace/ogame-rpg/frontend/js/shop.js`
+- Shop Service: `/workspace/universus-rpg/backend/src/services/shopService.ts`
+- Shop Routes: `/workspace/universus-rpg/backend/src/routes/shop.ts`
+- Shop Frontend: `/workspace/universus-rpg/frontend/views/pages/shop.njk`
+- Shop Script: `/workspace/universus-rpg/frontend/js/shop.js`
 
 ---
 

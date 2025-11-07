@@ -7,7 +7,7 @@
 ## ⚡ Quick Verification (5 minutes)
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 
 # Run automated verification script
 ./verify-and-test.sh
@@ -133,11 +133,11 @@ After verification, you should see:
 - `backend/src/database/migrations/004_*.sql` (101 lines)
 
 ### Frontend (4,500+ lines)
-- `frontend/leaderboard.html` (414 lines)
+- `frontend/views/pages/leaderboard.njk` (414 lines)
 - `frontend/js/leaderboard.js` (462 lines)
-- `frontend/messages.html` (504 lines)
+- `frontend/views/pages/messages.njk` (504 lines)
 - `frontend/js/messages.js` (638 lines)
-- `frontend/admin.html` (525 lines)
+- `frontend/views/pages/admin.njk` (525 lines)
 - `frontend/js/admin.js` (736 lines)
 - `frontend/js/planetImageGenerator.js` (604 lines)
 
@@ -185,7 +185,7 @@ docker-compose logs -f
 ### Database Access
 ```bash
 # Connect to PostgreSQL
-docker-compose exec postgres psql -U postgres -d ogame_rpg
+docker-compose exec postgres psql -U postgres -d universus_rpg
 
 # Check tables
 \dt

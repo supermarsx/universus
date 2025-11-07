@@ -2,12 +2,12 @@
 
 ## Overview
 
-SpaceEmpire is a complete browser-based multiplayer RPG inspired by OGame, built with modern web technologies. The game features real-time gameplay, planet management, resource production, building construction, fleet warfare, and alliance systems.
+SpaceEmpire is a complete browser-based multiplayer RPG inspired by Universus, built with modern web technologies. The game features real-time gameplay, planet management, resource production, building construction, fleet warfare, and alliance systems.
 
 ## Project Structure
 
 ```
-ogame-rpg/
+universus-rpg/
 ├── backend/               # Node.js + TypeScript backend
 │   ├── src/
 │   │   ├── config/       # Database & game configuration

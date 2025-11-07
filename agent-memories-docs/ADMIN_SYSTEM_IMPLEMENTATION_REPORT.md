@@ -358,7 +358,7 @@ SUPPORT: ['user:read', 'user:assist', 'tickets:manage']
 ### Database:
 ```bash
 # Run admin schema migration
-psql -U postgres -d ogame_rpg -f backend/src/database/admin_schema.sql
+psql -U postgres -d universus_rpg -f backend/src/database/admin_schema.sql
 ```
 
 ### First Admin User:
@@ -474,13 +474,13 @@ The backend is production-ready and fully tested. The remaining work involves co
 7. backend/src/routes/adminRoutes.ts (808 lines)
 
 ### Frontend:
-8. views/pages/admin/dashboard.njk (406 lines)
-9. views/pages/admin/users.njk (9 lines)
-10. views/pages/admin/monitoring.njk (9 lines)
-11. views/pages/admin/settings.njk (9 lines)
-12. views/pages/admin/events.njk (9 lines)
-13. views/pages/admin/analytics.njk (9 lines)
-14. views/pages/admin/audit.njk (9 lines)
+8. frontend/views/pages/admin/dashboard.njk (406 lines)
+9. frontend/views/pages/admin/users.njk (9 lines)
+10. frontend/views/pages/admin/monitoring.njk (9 lines)
+11. frontend/views/pages/admin/settings.njk (9 lines)
+12. frontend/views/pages/admin/events.njk (9 lines)
+13. frontend/views/pages/admin/analytics.njk (9 lines)
+14. frontend/views/pages/admin/audit.njk (9 lines)
 
 ### Updated:
 - backend/src/index.ts (integrated services)

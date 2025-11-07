@@ -80,7 +80,7 @@
 - `backend/src/services/botService.ts` (594 lines)
 - `backend/src/services/botAIService.ts` (551 lines)
 - `backend/src/routes/bots.ts` (479 lines)
-- `frontend/admin/bots.html` (521 lines)
+- `frontend/views/pages/admin/bots.njk` (521 lines)
 - `frontend/js/bots.js` (517 lines)
 
 #### Phase 3: Debris & Loot System
@@ -368,10 +368,10 @@
 ## 📞 Support Resources
 
 ### Documentation Files
-All documents are in `/workspace/ogame-rpg/docs/`
+All documents are in `/workspace/universus-rpg/docs/`
 
 ### Code Files
-All source code in `/workspace/ogame-rpg/backend/src/`
+All source code in `/workspace/universus-rpg/backend/src/`
 
 ### Test Admin Account
 - Email: admin@universus.com

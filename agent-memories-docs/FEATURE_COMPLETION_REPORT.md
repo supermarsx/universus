@@ -59,7 +59,7 @@ All advanced features have been successfully implemented and are ready for verif
 - Real-time updates via Socket.io
 - Medal/trophy indicators for top 3
 - **Files:**
-  - `frontend/leaderboard.html` (414 lines)
+  - `frontend/views/pages/leaderboard.njk` (414 lines)
   - `frontend/js/leaderboard.js` (462 lines)
 
 ### 4. Messages/Inbox UI (1,142 lines)
@@ -73,7 +73,7 @@ All advanced features have been successfully implemented and are ready for verif
 - Real-time notifications via Socket.io
 - Special rendering for combat/espionage reports
 - **Files:**
-  - `frontend/messages.html` (504 lines)
+  - `frontend/views/pages/messages.njk` (504 lines)
   - `frontend/js/messages.js` (638 lines)
 
 ### 5. Admin Panel UI (1,261 lines)
@@ -89,7 +89,7 @@ All advanced features have been successfully implemented and are ready for verif
 - Role-based access (requires `is_admin = true`)
 - Responsive design
 - **Files:**
-  - `frontend/admin.html` (525 lines)
+  - `frontend/views/pages/admin.njk` (525 lines)
   - `frontend/js/admin.js` (736 lines)
 
 ### 6. AI Planet Image Generator (604 lines)
@@ -165,7 +165,7 @@ All advanced features have been successfully implemented and are ready for verif
 
 ### Quick Path (5 minutes)
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./verify-and-test.sh
 ```
 
@@ -244,7 +244,7 @@ frontend/
 
 ### Documentation & Scripts
 ```
-ogame-rpg/
+universus-rpg/
 ├── VERIFICATION_AND_TESTING_GUIDE.md (648 lines)
 ├── QUICK_START.md (323 lines)
 └── verify-and-test.sh (307 lines, executable)
@@ -306,9 +306,9 @@ The project will be 100% complete when:
   PHASE 3: Frontend File Verification
 ═══════════════════════════════════════════════════════════════
 
-[✓] frontend/leaderboard.html exists
-[✓] frontend/messages.html exists
-[✓] frontend/admin.html exists
+[✓] frontend/views/pages/leaderboard.njk exists
+[✓] frontend/views/pages/messages.njk exists
+[✓] frontend/views/pages/admin.njk exists
 [✓] frontend/js/leaderboard.js exists
 [✓] frontend/js/messages.js exists
 [✓] frontend/js/admin.js exists
@@ -392,7 +392,7 @@ Next steps:
 
 1. **When Docker is available**, run:
    ```bash
-   cd /workspace/ogame-rpg
+   cd /workspace/universus-rpg
    ./verify-and-test.sh
    ```
 

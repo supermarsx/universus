@@ -6,7 +6,7 @@ import path from 'path';
  * Configure Nunjucks templating engine
  */
 export function configureTemplateEngine(app: express.Application): nunjucks.Environment {
-  const viewsPath = path.join(__dirname, '../../views');
+  const viewsPath = path.join(__dirname, '../../frontend/views');
   
   // Configure Nunjucks
   const env = nunjucks.configure(viewsPath, {

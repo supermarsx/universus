@@ -59,7 +59,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files (frontend)
+// Serve static assets (CSS/JS)
 app.use(express.static(path.join(__dirname, '../../frontend')));
 
 // Template Routes (must be before static files)
@@ -94,11 +94,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Catch-all route for frontend (commented out temporarily for Express 5.x compatibility)
-// Will serve static files through express.static middleware above
+// Optional catch-all route for template rendering (Express 5.x compatibility considerations)
+// Static assets continue to be served via express.static middleware above
 // app.get('/*', (req, res, next) => {
 //   if (!req.path.startsWith('/api')) {
-//     res.sendFile(path.join(__dirname, '../../frontend/index.html'));
+//     res.render('pages/index.njk');
 //   } else {
 //     next();
 //   }

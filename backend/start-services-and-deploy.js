@@ -128,7 +128,7 @@ async function main() {
   console.log('  2. Access: http://localhost:3000');
   console.log('  3. Login: admin@universus.com / admin123');
   console.log('\nTo start the server now:');
-  console.log('  cd /workspace/ogame-rpg/backend');
+  console.log('  cd /workspace/universus-rpg/backend');
   console.log('  npm start');
   console.log('\n' + '='.repeat(80) + '\n');
 

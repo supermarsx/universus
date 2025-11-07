@@ -3,9 +3,9 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: ogame_postgres
+    container_name: universus_postgres
     environment:
-      POSTGRES_DB: ogame_rpg
+      POSTGRES_DB: universus_rpg
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -21,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ogame_redis
+    container_name: universus_redis
     ports:
       - "6379:6379"
     volumes:
@@ -34,7 +34,7 @@ services:
 
   backend:
     build: .
-    container_name: ogame_backend
+    container_name: universus_backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,7 +45,7 @@ services:
       PORT: 3000
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: ogame_rpg
+      DB_NAME: universus_rpg
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_HOST: redis
@@ -63,7 +63,7 @@ services:
     build:
       context: .
       dockerfile: bot-service/Dockerfile
-    container_name: ogame_bot_service
+    container_name: universus_bot_service
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,7 +74,7 @@ services:
       BOT_SERVICE_PORT: 4001
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: ogame_rpg
+      DB_NAME: universus_rpg
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_HOST: redis

@@ -20,7 +20,7 @@ All three critical requirements have been fully implemented:
 ## 1. FRONTEND IMPLEMENTATION ✅
 
 ### Chat Interface Created
-**File:** `views/pages/chat.njk` (373 lines)
+**File:** `frontend/views/pages/chat.njk` (373 lines)
 
 **Features Implemented:**
 - ✅ Multi-column layout (sidebar, main chat, info panel)
@@ -170,7 +170,7 @@ Return fleet home
 
 ### TypeScript Compilation
 ```bash
-cd /workspace/ogame-rpg/backend && npx tsc
+cd /workspace/universus-rpg/backend && npx tsc
 ```
 
 **Result:** ✅ ZERO ERRORS

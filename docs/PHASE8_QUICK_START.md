@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
 ### Add to Your HTML
 
 ```html
-<!-- In your base template (e.g., views/layouts/base.njk) -->
+<!-- In your base template (e.g., frontend/views/layouts/base.njk) -->
 <script src="/js/themeLoader.js"></script>
 ```
 

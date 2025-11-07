@@ -1,4 +1,4 @@
-# OGame-Inspired Browser RPG Development Progress
+# Universus-Inspired Browser RPG Development Progress
 
 ## Project Overview
 Building a complete browser-based multiplayer RPG with:
@@ -408,13 +408,13 @@ Building a complete browser-based multiplayer RPG with:
 11. backend/src/routes/accountRoutes.ts (623 lines)
 
 **Frontend Templates (7 files):**
-12. views/account/security-dashboard.njk (163 lines)
-13. views/account/2fa-setup.njk (246 lines)
-14. views/account/email-verification.njk (193 lines)
-15. views/account/password-recovery.njk (230 lines)
-16. views/account/gdpr-compliance.njk (285 lines)
-17. views/account/account-transfer.njk (237 lines)
-18. views/account/account-settings.njk (408 lines)
+12. frontend/views/account/security-dashboard.njk (163 lines)
+13. frontend/views/account/2fa-setup.njk (246 lines)
+14. frontend/views/account/email-verification.njk (193 lines)
+15. frontend/views/account/password-recovery.njk (230 lines)
+16. frontend/views/account/gdpr-compliance.njk (285 lines)
+17. frontend/views/account/account-transfer.njk (237 lines)
+18. frontend/views/account/account-settings.njk (408 lines)
 
 **Frontend JavaScript (7 files):**
 19. frontend/js/account/account-security.js (403 lines)
@@ -430,7 +430,7 @@ Building a complete browser-based multiplayer RPG with:
 
 **Integration (2 files):**
 27. backend/src/routes/templates.ts (updated - added 7 routes)
-28. views/partials/nav.njk (updated - added account dropdown)
+28. frontend/views/partials/nav.njk (updated - added account dropdown)
 
 **Deployment (2 files):**
 29. deploy-phase9.sh (296 lines)
@@ -914,7 +914,7 @@ Building a complete browser-based multiplayer RPG with:
 - ✅ Fixed botGenerationService.ts import (default → named export)
 
 **Remaining:** 23 errors (mostly property naming snake_case vs camelCase)
-**Documentation:** /workspace/ogame-rpg/TYPESCRIPT_FIX_PROGRESS.md
+**Documentation:** /workspace/universus-rpg/TYPESCRIPT_FIX_PROGRESS.md
 **Estimated Time to Zero Errors:** ~22 minutes
 
 #### Delivered:
@@ -1197,7 +1197,7 @@ Priority 7: Comprehensive documentation
 
 ## File Structure
 ```
-ogame-rpg/
+universus-rpg/
 ├── backend/ (TypeScript backend)
 │   ├── src/
 │   │   ├── config/ (database, redis, game config)

@@ -31,7 +31,7 @@ Complete transformation of SpaceEmpire RPG into "Universus" - a modern, template
 
 **Technical Details:**
 ```
-views/
+frontend/views/
 ├── layouts/ (2 files)
 │   ├── base.njk
 │   └── game.njk
@@ -50,7 +50,7 @@ views/
 
 ### Phase 4: Rebrand to "Universus" (100% Complete)
 
-**Achievement:** Complete rebranding from "SpaceEmpire/OGame" to "Universus"
+**Achievement:** Complete rebranding from "SpaceEmpire/Universus" to "Universus"
 
 **Deliverables:**
 - 16 files rebranded
@@ -66,9 +66,9 @@ views/
 - Market-ready presentation
 
 **Changes:**
-- `ogame-rpg-backend` → `universus-backend`
+- `universus-rpg-backend` → `universus-backend`
 - "SpaceEmpire" → "Universus" (all occurrences)
-- "OGame" → "Universus" (documentation)
+- "Universus" → "Universus" (documentation)
 
 ### Phase 5: Visual Asset Generation (25% Complete - 50/200)
 
@@ -441,8 +441,8 @@ The foundation is solid. Completing the remaining asset generation, implementing
 
 ### Project Structure
 ```
-ogame-rpg/
-├── views/ (19 template files)
+universus-rpg/
+├── frontend/views/ (19 template files)
 ├── frontend/
 │   └── assets/ (50 game assets)
 ├── backend/
@@ -466,9 +466,9 @@ http://localhost:3000
 ```
 
 ### Asset Locations
-- **Templates:** `/workspace/ogame-rpg/views/`
-- **Assets:** `/workspace/ogame-rpg/frontend/assets/`
-- **Documentation:** `/workspace/ogame-rpg/*.md`
+- **Templates:** `/workspace/universus-rpg/frontend/views/`
+- **Assets:** `/workspace/universus-rpg/frontend/assets/`
+- **Documentation:** `/workspace/universus-rpg/*.md`
 
 ---
 

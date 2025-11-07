@@ -17,7 +17,7 @@ Ensure your `.env` file contains:
 ```env
 DB_HOST=127.0.0.1
 DB_PORT=5432
-DB_NAME=ogame_rpg
+DB_NAME=universus_rpg
 DB_USER=postgres
 DB_PASSWORD=postgres
 REDIS_HOST=127.0.0.1
@@ -56,21 +56,21 @@ redis-cli ping
 
 **Option A: Using Bash Script (Recommended)**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 chmod +x deploy-phase6-schema.sh
 ./deploy-phase6-schema.sh
 ```
 
 **Option B: Using Node.js Script**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 node deploy-phase6-database.js
 ```
 
 **Option C: Manual Deployment**
 ```bash
-cd /workspace/ogame-rpg
-PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d ogame_rpg -f backend/src/database/phase6_realtime_schema.sql
+cd /workspace/universus-rpg
+PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d universus_rpg -f backend/src/database/phase6_realtime_schema.sql
 ```
 
 ### Step 3: Verify Deployment
@@ -89,7 +89,7 @@ The deployment scripts will automatically verify:
 ### Step 1: Start the Backend Server
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm start
 ```
 
@@ -98,7 +98,7 @@ The server should start on `http://localhost:3000`
 ### Step 2: Run Comprehensive Test Suite
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 chmod +x test-phase6-realtime.sh
 ./test-phase6-realtime.sh
 ```
@@ -247,7 +247,7 @@ pg_isready -h 127.0.0.1 -p 5432 -U postgres
 sudo service postgresql start
 
 # Verify credentials
-psql -h 127.0.0.1 -p 5432 -U postgres -d ogame_rpg -c "SELECT 1;"
+psql -h 127.0.0.1 -p 5432 -U postgres -d universus_rpg -c "SELECT 1;"
 ```
 
 ### Issue: Redis Connection Failed
@@ -269,10 +269,10 @@ redis-cli -h 127.0.0.1 -p 6379 ping
 **Solution:**
 ```bash
 # Check if tables already exist
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "\dt"
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "\dt"
 
 # If needed, drop existing tables
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "DROP TABLE IF EXISTS chat_messages CASCADE;"
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "DROP TABLE IF EXISTS chat_messages CASCADE;"
 
 # Re-run deployment
 ./deploy-phase6-schema.sh
@@ -304,7 +304,7 @@ redis-cli FLUSHDB
 
 ### Database
 - [ ] PostgreSQL 15+ running
-- [ ] Database `ogame_rpg` exists
+- [ ] Database `universus_rpg` exists
 - [ ] 18 Phase 6 tables created
 - [ ] 4 views created
 - [ ] 4 functions created
@@ -348,10 +348,10 @@ redis-cli FLUSHDB
 redis-cli CLIENT LIST | grep "age="
 
 # Monitor database queries
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "
   SELECT query, state, wait_event_type 
   FROM pg_stat_activity 
-  WHERE datname = 'ogame_rpg';
+  WHERE datname = 'universus_rpg';
 "
 
 # Check Redis memory usage
@@ -389,7 +389,7 @@ After successful deployment and testing:
 ## Support
 
 For issues or questions:
-1. Check the comprehensive documentation in `/workspace/ogame-rpg/PHASE6_*.md` files
+1. Check the comprehensive documentation in `/workspace/universus-rpg/PHASE6_*.md` files
 2. Review server logs: `tail -f backend/logs/app.log`
 3. Check database logs: `tail -f /var/log/postgresql/postgresql-15-main.log`
 4. Monitor Redis logs: `tail -f /var/log/redis/redis-server.log`

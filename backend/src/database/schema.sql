@@ -1,4 +1,4 @@
--- OGame-Inspired Browser RPG Database Schema
+-- Universus-Inspired Browser RPG Database Schema
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (

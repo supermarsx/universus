@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "=========================================="
-echo "SpaceEmpire - OGame-Inspired Browser RPG"
+echo "SpaceEmpire - Universus-Inspired Browser RPG"
 echo "=========================================="
 echo ""
 

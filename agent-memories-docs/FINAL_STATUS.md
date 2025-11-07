@@ -21,12 +21,12 @@ All requested work for the three critical tasks has been **100% COMPLETED**:
 
 **Execution Command:**
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node setup-database.js
 ```
 
 **What It Does:**
-1. Creates fresh `ogame_rpg` database
+1. Creates fresh `universus_rpg` database
 2. Applies base schema (20+ tables)
 3. Executes 5 migrations (001-005)
 4. Applies Phase 2 schema (Bot system)
@@ -46,7 +46,7 @@ node setup-database.js
 
 **Delivered:**
 - Complete implementation: `backend/src/services/shopService.ts` (602 lines)
-- Frontend UI: `frontend/shop.html` + `frontend/js/shop.js`
+- Frontend UI: `frontend/views/pages/shop.njk` + `frontend/js/shop.js`
 - Comprehensive guide: `docs/STRIPE_INTEGRATION_GUIDE.md` (456 lines)
 - 13+ shop items configured ($4.99 - $49.99)
 
@@ -162,11 +162,11 @@ Solution: Use Node.js scripts instead
 
 ### 1. Complete Codebase ✅
 
-**Location:** `/workspace/ogame-rpg/`
+**Location:** `/workspace/universus-rpg/`
 
 **Structure:**
 ```
-ogame-rpg/
+universus-rpg/
 ├── backend/
 │   ├── setup-database.js      # Database setup script
 │   ├── src/
@@ -199,7 +199,7 @@ ogame-rpg/
 
 ```bash
 # Step 1: Setup Database
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node setup-database.js
 
 # Step 2: Build Application  
@@ -255,7 +255,7 @@ redis-cli ping
 ### Step 1: Database Setup
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node setup-database.js
 ```
 
@@ -264,7 +264,7 @@ node setup-database.js
 ==========================================
 Database Setup Complete!
 ==========================================
-Database: ogame_rpg
+Database: universus_rpg
 Tables: 42
 Indexes: 54
 Views: 6
@@ -332,7 +332,7 @@ Follow test procedures in `COMPLETE_TESTING_DEPLOYMENT_GUIDE.md`
 ### After Database Setup
 
 - [ ] PostgreSQL running (pg_isready)
-- [ ] Database `ogame_rpg` exists
+- [ ] Database `universus_rpg` exists
 - [ ] 40+ tables created
 - [ ] 50+ indexes created
 - [ ] Admin user exists (admin@universus.com)
@@ -455,4 +455,4 @@ All work requested has been completed to production-grade quality standards. The
 7. **Test:** Follow procedures in testing guide
 8. **Configure Stripe:** (Optional) When ready for payments
 
-**All files are ready in `/workspace/ogame-rpg/`**
+**All files are ready in `/workspace/universus-rpg/`**

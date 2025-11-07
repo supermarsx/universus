@@ -277,7 +277,7 @@ Before using the messaging system, run the migration:
 
 ```bash
 cd backend
-psql -U postgres -d ogame_rpg -f src/database/migrations/001_update_messages_table.sql
+psql -U postgres -d universus_rpg -f src/database/migrations/001_update_messages_table.sql
 ```
 
 This updates the messages table structure to support the new messaging service.
@@ -287,7 +287,7 @@ This updates the messages table structure to support the new messaging service.
 ### 1. Start the Server
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d
 ```
 

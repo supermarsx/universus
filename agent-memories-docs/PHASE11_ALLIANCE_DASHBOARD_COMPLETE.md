@@ -15,7 +15,7 @@ The Alliance Dashboard is the main interface for Phase 11's Enhanced Alliance Ma
 ## 📦 Deliverables
 
 ### 1. Alliance Dashboard Template
-**File:** `/workspace/ogame-rpg/views/pages/alliance-dashboard.njk`  
+**File:** `/workspace/universus-rpg/frontend/views/pages/alliance-dashboard.njk`  
 **Lines:** 433  
 **Status:** ✅ Complete
 
@@ -74,7 +74,7 @@ The Alliance Dashboard is the main interface for Phase 11's Enhanced Alliance Ma
 ---
 
 ### 2. Alliance Dashboard Styling
-**File:** `/workspace/ogame-rpg/frontend/css/alliance-dashboard.css`  
+**File:** `/workspace/universus-rpg/frontend/css/alliance-dashboard.css`  
 **Lines:** 1,037  
 **Status:** ✅ Complete
 
@@ -131,7 +131,7 @@ The Alliance Dashboard is the main interface for Phase 11's Enhanced Alliance Ma
 ---
 
 ### 3. Alliance Dashboard JavaScript
-**File:** `/workspace/ogame-rpg/frontend/js/alliance-dashboard.js`  
+**File:** `/workspace/universus-rpg/frontend/js/alliance-dashboard.js`  
 **Lines:** 669  
 **Status:** ✅ Complete
 
@@ -192,7 +192,7 @@ The Alliance Dashboard is the main interface for Phase 11's Enhanced Alliance Ma
 ---
 
 ### 4. Route Integration
-**File:** `/workspace/ogame-rpg/backend/src/routes/templates.ts`  
+**File:** `/workspace/universus-rpg/backend/src/routes/templates.ts`  
 **Lines Added:** 18  
 **Status:** ✅ Complete
 
@@ -207,7 +207,7 @@ Both routes render the same template with proper context (user, title, currentPa
 ---
 
 ### 5. Navigation Integration
-**File:** `/workspace/ogame-rpg/views/partials/sidebar.njk`  
+**File:** `/workspace/universus-rpg/frontend/views/partials/sidebar.njk`  
 **Lines Modified:** 1  
 **Status:** ✅ Complete
 
@@ -338,20 +338,20 @@ The frontend is designed to integrate with the following Phase 11 backend endpoi
 
 1. **Verify File Placement:**
    ```bash
-   ls -la /workspace/ogame-rpg/views/pages/alliance-dashboard.njk
-   ls -la /workspace/ogame-rpg/frontend/css/alliance-dashboard.css
-   ls -la /workspace/ogame-rpg/frontend/js/alliance-dashboard.js
+   ls -la /workspace/universus-rpg/frontend/views/pages/alliance-dashboard.njk
+   ls -la /workspace/universus-rpg/frontend/css/alliance-dashboard.css
+   ls -la /workspace/universus-rpg/frontend/js/alliance-dashboard.js
    ```
 
 2. **Compile TypeScript Backend:**
    ```bash
-   cd /workspace/ogame-rpg/backend
+   cd /workspace/universus-rpg/backend
    npx tsc --noEmit
    ```
 
 3. **Start Backend Server:**
    ```bash
-   cd /workspace/ogame-rpg/backend
+   cd /workspace/universus-rpg/backend
    npm run dev
    ```
 
@@ -369,7 +369,7 @@ The frontend is designed to integrate with the following Phase 11 backend endpoi
 ```
 Phase 11 Alliance Dashboard Frontend
 ├── Template (433 lines)
-│   └── views/pages/alliance-dashboard.njk
+│   └── frontend/views/pages/alliance-dashboard.njk
 ├── Styling (1,037 lines)
 │   └── frontend/css/alliance-dashboard.css
 ├── JavaScript (669 lines)
@@ -377,7 +377,7 @@ Phase 11 Alliance Dashboard Frontend
 ├── Route Integration (18 lines)
 │   └── backend/src/routes/templates.ts
 └── Navigation Integration (1 line)
-    └── views/partials/sidebar.njk
+    └── frontend/views/partials/sidebar.njk
 
 Total: 2,158 lines of production-ready code
 ```

@@ -53,7 +53,7 @@ This session successfully implemented critical advanced features to transform Sp
   - Responsive dark space theme
 
 **Files Created:**
-- `frontend/leaderboard.html` (414 lines)
+- `frontend/views/pages/leaderboard.njk` (414 lines)
 - `frontend/js/leaderboard.js` (462 lines)
 
 ---
@@ -89,7 +89,7 @@ This session successfully implemented critical advanced features to transform Sp
   - Socket.io integration
 
 **Files Created:**
-- `frontend/messages.html` (504 lines)
+- `frontend/views/pages/messages.njk` (504 lines)
 - `frontend/js/messages.js` (638 lines)
 
 ---
@@ -155,8 +155,8 @@ This session successfully implemented critical advanced features to transform Sp
 
 **Files Modified:**
 - `frontend/js/galaxy.js` (integrated generator)
-- `frontend/galaxy.html` (added script reference)
-- `frontend/overview.html` (added script reference)
+- `frontend/views/pages/galaxy.njk` (added script reference)
+- `frontend/views/pages/overview.njk` (added script reference)
 
 ---
 
@@ -294,7 +294,7 @@ This session successfully implemented critical advanced features to transform Sp
 - Color-coded status indicators
 
 **Files Created:**
-- `frontend/admin.html` (525 lines)
+- `frontend/views/pages/admin.njk` (525 lines)
 - `frontend/js/admin.js` (736 lines)
 
 ---
@@ -397,7 +397,7 @@ cd backend && npm test -- --coverage
 
 1. **Database Migration**
    ```bash
-   psql -d ogame_rpg -U postgres -f backend/src/database/migrations/003_millisecond_precision_combat.sql
+   psql -d universus_rpg -U postgres -f backend/src/database/migrations/003_millisecond_precision_combat.sql
    ```
 
 2. **Environment Variables**

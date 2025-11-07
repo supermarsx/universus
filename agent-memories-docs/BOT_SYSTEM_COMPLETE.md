@@ -103,7 +103,7 @@ Comprehensive AI bot system successfully implemented for SpaceEmpire RPG with 8 
 ### Frontend Components (100% Complete)
 
 #### 1. Bot Management UI (521 lines)
-**File:** `frontend/admin/bots.html`
+**File:** `frontend/views/pages/admin/bots.njk`
 
 **Features:**
 - Summary dashboard with key metrics
@@ -263,7 +263,7 @@ Comprehensive AI bot system successfully implemented for SpaceEmpire RPG with 8 
 sudo service postgresql start
 
 # Apply migration
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -f backend/src/database/migrations/005_bot_system.sql
+psql -h 127.0.0.1 -U postgres -d universus_rpg -f backend/src/database/migrations/005_bot_system.sql
 ```
 
 ### 2. Backend Server Testing
@@ -281,7 +281,7 @@ curl http://localhost:3000/api/admin/bots \
 ### 3. Frontend Integration
 **Action Required:** Add bot management link to admin panel
 ```html
-<!-- In frontend/admin/admin.html -->
+<!-- In frontend/views/pages/admin.njk -->
 <a href="bots.html" class="admin-nav-link">
     Bot Management
 </a>
@@ -307,7 +307,7 @@ curl http://localhost:3000/api/admin/bots \
 2. `backend/src/services/botService.ts` - 594 lines
 3. `backend/src/services/botAIService.ts` - 551 lines
 4. `backend/src/routes/bots.ts` - 479 lines
-5. `frontend/admin/bots.html` - 521 lines
+5. `frontend/views/pages/admin/bots.njk` - 521 lines
 6. `frontend/js/bots.js` - 517 lines
 
 **Total:** 2,918 lines of production code

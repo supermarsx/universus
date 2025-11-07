@@ -383,7 +383,7 @@ await globalLeaderboardService.updatePlayerEntry(
 
 ### 1. Database Migration
 ```bash
-psql -d ogame_rpg -f backend/src/database/phase5_sharding_schema.sql
+psql -d universus_rpg -f backend/src/database/phase5_sharding_schema.sql
 ```
 
 ### 2. Redis Setup

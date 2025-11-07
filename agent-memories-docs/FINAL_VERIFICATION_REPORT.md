@@ -50,14 +50,14 @@ redis-cli ping
 
 #### 2. Apply Database Migration
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 
 # Apply bot system migration (005)
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -f backend/src/database/migrations/005_bot_system.sql
 
 # Verify tables were created
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -c "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'bot%';"
 ```
 
@@ -74,7 +74,7 @@ bot_targets
 
 #### 3. Build and Start Backend
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 
 # Build TypeScript
 npm run build
@@ -115,7 +115,7 @@ Login with admin credentials:
 The included `test_bot_system.sh` script performs comprehensive API testing:
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 chmod +x test_bot_system.sh
 ./test_bot_system.sh
 ```
@@ -386,7 +386,7 @@ curl -X POST http://localhost:3000/api/admin/bots/bulk \
 4. `backend/src/routes/bots.ts` (479 lines)
 
 ### Frontend Files
-1. `frontend/admin/bots.html` (521 lines)
+1. `frontend/views/pages/admin/bots.njk` (521 lines)
 2. `frontend/js/bots.js` (517 lines)
 
 ### Documentation Files
@@ -401,7 +401,7 @@ curl -X POST http://localhost:3000/api/admin/bots/bulk \
 2. `backend/src/services/gameLoopService.ts` - Added bot AI processing
 3. `backend/src/services/fleetService.ts` - Fixed TypeScript errors
 4. `backend/src/routes/admin.ts` - Fixed TypeScript errors
-5. `frontend/admin.html` - Added bot management link
+5. `frontend/views/pages/admin.njk` - Added bot management link
 
 ## Deployment Checklist
 
@@ -427,7 +427,7 @@ curl -X POST http://localhost:3000/api/admin/bots/bulk \
 lsof -i :3000
 
 # Check PostgreSQL connection
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "SELECT 1;"
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -c "SELECT 1;"
 
 # Check Redis connection
 redis-cli ping
@@ -439,18 +439,18 @@ tail -f backend.log
 ### Migration Errors
 ```bash
 # Check if migration already applied
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'bot_profiles');"
 
 # Manually check for errors
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -f backend/src/database/migrations/005_bot_system.sql 2>&1 | grep ERROR
 ```
 
 ### Bot Not Making Decisions
 ```bash
 # Check bot is active
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -c "SELECT id, username, is_active, next_think_at FROM bot_profiles;"
 
 # Force think cycle via API
@@ -458,7 +458,7 @@ curl -X POST http://localhost:3000/api/admin/bots/1/think \
     -H "Authorization: Bearer $TOKEN"
 
 # Check action logs
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -c "SELECT * FROM bot_actions_log ORDER BY created_at DESC LIMIT 10;"
 ```
 

@@ -47,7 +47,7 @@ window.toast.info('New features available');
 - Fallback to alert() if toast system not loaded
 
 ### Files Updated
-1. `views/layouts/base.njk` - Added toast script inclusion
+1. `frontend/views/layouts/base.njk` - Added toast script inclusion
 2. `frontend/js/account/account-security.js` - Replaced alerts with toast
 3. `frontend/js/account/2fa-setup.js` - Replaced alerts with toast
 4. `frontend/js/account/email-verification.js` - Replaced alerts with toast
@@ -215,7 +215,7 @@ chmod +x test-phase9.sh
    - Automated reporting
 
 ### Files Modified (8)
-1. **views/layouts/base.njk**
+1. **frontend/views/layouts/base.njk**
    - Added toast notification script inclusion
 
 2-8. **All 7 Account Management JavaScript Files**
@@ -254,11 +254,11 @@ Expected: Professional toast notification appears in top-right corner
 
 ```bash
 # Ensure server is running
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm start
 
 # In another terminal, run tests
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./test-phase9.sh
 ```
 

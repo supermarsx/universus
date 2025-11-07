@@ -154,7 +154,7 @@ Comprehensive metrics:
 **Estimated Time:** 2-3 hours
 
 **Required Files:**
-- `frontend/admin/bots.html` - Bot management page
+- `frontend/views/pages/admin/bots.njk` - Bot management page
 - `frontend/admin/js/bots.js` - Bot management logic
 - `frontend/admin/css/bots.css` - Bot-specific styles
 
@@ -180,7 +180,7 @@ Comprehensive metrics:
 **Priority:** HIGH  
 **Command:**
 ```bash
-psql -U postgres -d ogame_rpg -f backend/src/database/migrations/005_bot_system.sql
+psql -U postgres -d universus_rpg -f backend/src/database/migrations/005_bot_system.sql
 ```
 
 ### 3. Testing Requirements

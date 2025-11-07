@@ -88,13 +88,13 @@ Comprehensive transformation of SpaceEmpire RPG into "Universus" - a modern, tem
 
 ## PHASE 3: SPECIFICATION COMPLIANCE REVIEW
 
-### 3.1 OGame Specification Audit
-- [ ] Review original OGame building specifications
-- [ ] Review original OGame research tree
-- [ ] Review original OGame ship/defense types
-- [ ] Review original OGame fleet mechanics
-- [ ] Review original OGame alliance features
-- [ ] Review original OGame combat system
+### 3.1 Universus Specification Audit
+- [ ] Review original Universus building specifications
+- [ ] Review original Universus research tree
+- [ ] Review original Universus ship/defense types
+- [ ] Review original Universus fleet mechanics
+- [ ] Review original Universus alliance features
+- [ ] Review original Universus combat system
 
 ### 3.2 Missing Features Implementation
 - [ ] Additional building types (if missing)
@@ -118,7 +118,7 @@ Comprehensive transformation of SpaceEmpire RPG into "Universus" - a modern, tem
 
 ### 4.1 Text Content Updates
 - [ ] Replace all "SpaceEmpire" references
-- [ ] Replace all "OGame" references
+- [ ] Replace all "Universus" references
 - [ ] Update page titles and metadata
 - [ ] Update console logs and error messages
 

@@ -29,11 +29,11 @@ class BackgroundService {
 ```
 
 **Template Updates:**
-- `views/pages/overview.njk` → Planet backgrounds
-- `views/pages/galaxy.njk` → Deep space backgrounds
-- `views/pages/fleet.njk` → Space station backgrounds
-- `views/pages/shipyard.njk` → Hangar backgrounds
-- `views/pages/buildings.njk` → Planet surface backgrounds
+- `frontend/views/pages/overview.njk` → Planet backgrounds
+- `frontend/views/pages/galaxy.njk` → Deep space backgrounds
+- `frontend/views/pages/fleet.njk` → Space station backgrounds
+- `frontend/views/pages/shipyard.njk` → Hangar backgrounds
+- `frontend/views/pages/buildings.njk` → Planet surface backgrounds
 
 #### 2. CSS Background Integration
 **File:** `frontend/css/universus-game.css`
@@ -57,7 +57,7 @@ class BackgroundService {
 ### Phase B: Icon Integration (Estimated: 3 hours)
 
 #### 1. Navigation Menu Icons
-**Template:** `views/partials/nav.njk`
+**Template:** `frontend/views/partials/nav.njk`
 
 Replace text-only navigation with icon + text:
 ```html
@@ -68,7 +68,7 @@ Replace text-only navigation with icon + text:
 ```
 
 #### 2. Sidebar Menu Icons
-**Template:** `views/partials/sidebar.njk`
+**Template:** `frontend/views/partials/sidebar.njk`
 
 Add icons to each menu item:
 - Buildings → icon-construction.png
@@ -79,7 +79,7 @@ Add icons to each menu item:
 - etc.
 
 #### 3. Resource Display Icons
-**Template:** `views/partials/resource-display.njk`
+**Template:** `frontend/views/partials/resource-display.njk`
 
 ```html
 <div class="resource-item">
@@ -93,7 +93,7 @@ Add icons to each menu item:
 ### Phase C: Ship Asset Integration (Estimated: 4 hours)
 
 #### 1. Shipyard Ship Selection
-**Template:** `views/pages/shipyard.njk`
+**Template:** `frontend/views/pages/shipyard.njk`
 
 Create ship card grid with images:
 ```html
@@ -110,7 +110,7 @@ Create ship card grid with images:
 ```
 
 #### 2. Fleet Display
-**Template:** `views/pages/fleet.njk`
+**Template:** `frontend/views/pages/fleet.njk`
 
 Show fleet with ship images:
 ```html
@@ -146,7 +146,7 @@ export const shipAssets = {
 ### Phase D: Building Asset Integration (Estimated: 4 hours)
 
 #### 1. Buildings Page Grid
-**Template:** `views/pages/buildings.njk`
+**Template:** `frontend/views/pages/buildings.njk`
 
 ```html
 <div class="buildings-grid">
@@ -246,7 +246,7 @@ Add button background assets:
 ### Phase F: Environmental Assets (Estimated: 2 hours)
 
 #### 1. Galaxy Map Backgrounds
-**Template:** `views/pages/galaxy.njk`
+**Template:** `frontend/views/pages/galaxy.njk`
 
 Rotate through space environment backgrounds:
 ```javascript

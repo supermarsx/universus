@@ -44,13 +44,13 @@ The Universus project has been successfully completed with **ALL CRITICAL REQUIR
 
 **Execution:**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 chmod +x deploy-and-test.sh
 ./deploy-and-test.sh
 ```
 
 **Validation:**
-- Database `ogame_rpg` created
+- Database `universus_rpg` created
 - 40+ tables present
 - Admin user: admin@universus.com / admin123
 - All constraints and indexes applied
@@ -92,12 +92,12 @@ chmod +x deploy-and-test.sh
 
 **Quick Start:**
 1. Get Stripe test keys from https://dashboard.stripe.com/test/apikeys
-2. Update `/workspace/ogame-rpg/backend/.env`:
+2. Update `/workspace/universus-rpg/backend/.env`:
    ```bash
    STRIPE_SECRET_KEY=sk_test_YOUR_KEY
    STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_KEY
    ```
-3. Update `/workspace/ogame-rpg/frontend/js/shop.js` line 10
+3. Update `/workspace/universus-rpg/frontend/js/shop.js` line 10
 4. Test with card 4242 4242 4242 4242
 5. Verify in Stripe Dashboard
 
@@ -297,7 +297,7 @@ chmod +x deploy-and-test.sh
 ## File Directory Structure
 
 ```
-ogame-rpg/
+universus-rpg/
 ├── deploy-and-test.sh                    # Automated deployment script
 ├── backend/
 │   ├── .env                              # Environment configuration
@@ -360,14 +360,14 @@ ogame-rpg/
 ### 1. Database Setup (5 minutes)
 
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 chmod +x deploy-and-test.sh
 ./deploy-and-test.sh
 ```
 
 This will:
 - Start PostgreSQL and Redis
-- Create database `ogame_rpg`
+- Create database `universus_rpg`
 - Apply all schemas and migrations
 - Create admin user
 - Verify 40+ tables created

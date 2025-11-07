@@ -38,7 +38,7 @@ All Phase 8 code has been written and is ready for integration:
 
 ### 2. Integration Tools Created
 
-- **Integration Script**: `/workspace/ogame-rpg/integrate-phase8.sh`
+- **Integration Script**: `/workspace/universus-rpg/integrate-phase8.sh`
   - Automates file copying where possible
   - Checks integration status
   - Provides step-by-step instructions
@@ -49,7 +49,7 @@ All Phase 8 code has been written and is ready for integration:
 
 ### 1. File Location Issue
 
-**Problem**: Files were created in `/workspace/backend/src/` but the actual application is at `/workspace/ogame-rpg/backend/src/`
+**Problem**: Files were created in `/workspace/backend/src/` but the actual application is at `/workspace/universus-rpg/backend/src/`
 
 **Impact**: Backend files need to be copied to correct location
 
@@ -75,7 +75,7 @@ All Phase 8 code has been written and is ready for integration:
 
 **Problem**: Theme routes and scheduler not integrated into main `index.ts`
 
-**Required Changes** to `/workspace/ogame-rpg/backend/src/index.ts`:
+**Required Changes** to `/workspace/universus-rpg/backend/src/index.ts`:
 
 ```typescript
 // Add imports (around line 32)
@@ -100,7 +100,7 @@ process.on('SIGTERM', () => {
 
 **Problem**: Base templates don't include theme scripts
 
-**Required Changes** to `/workspace/ogame-rpg/views/layouts/base.njk`:
+**Required Changes** to `/workspace/universus-rpg/frontend/views/layouts/base.njk`:
 
 ```html
 <head>
@@ -135,7 +135,7 @@ process.on('SIGTERM', () => {
 
 **Required**:
 ```bash
-psql -U your_user -d universus_db -f /workspace/ogame-rpg/backend/src/database/phase8_seasonal_themes_schema.sql
+psql -U your_user -d universus_db -f /workspace/universus-rpg/backend/src/database/phase8_seasonal_themes_schema.sql
 ```
 
 ### 7. Not Deployed or Tested
@@ -150,7 +150,7 @@ psql -U your_user -d universus_db -f /workspace/ogame-rpg/backend/src/database/p
 
 ### Prerequisites
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ```
 
 ### Step 1: Copy Complete Backend Files
@@ -174,7 +174,7 @@ bash integrate-phase8.sh
 
 ### Step 2: Integrate into Main Server
 
-Edit `/workspace/ogame-rpg/backend/src/index.ts`:
+Edit `/workspace/universus-rpg/backend/src/index.ts`:
 
 ```typescript
 // 1. Add imports after line 32
@@ -215,25 +215,25 @@ psql -U your_user -d universus_db
 
 ```bash
 # Create theme loader
-# Copy content from /workspace/ogame-rpg/frontend/js/themeLoader.js (594 lines)
+# Copy content from /workspace/universus-rpg/frontend/js/themeLoader.js (594 lines)
 
 # Create theme preferences
-# Copy content from /workspace/ogame-rpg/frontend/js/themePreferences.js (308 lines)
+# Copy content from /workspace/universus-rpg/frontend/js/themePreferences.js (308 lines)
 
 # Create theme effects CSS
-# Copy content from /workspace/ogame-rpg/frontend/css/theme-effects.css (624 lines)
+# Copy content from /workspace/universus-rpg/frontend/css/theme-effects.css (624 lines)
 
 # Create admin UI
-# Copy content to views/pages/admin/themes.njk (670 lines)
+# Copy content to frontend/views/pages/admin/themes.njk (670 lines)
 
 # Create user settings
-mkdir -p views/pages/settings
-# Copy content to views/pages/settings/themes.njk (349 lines)
+mkdir -p frontend/views/pages/settings
+# Copy content to frontend/views/pages/settings/themes.njk (349 lines)
 ```
 
 ### Step 5: Update Base Template
 
-Edit `views/layouts/base.njk` (or `game.njk`):
+Edit `frontend/views/layouts/base.njk` (or `game.njk`):
 
 ```html
 <head>
@@ -252,7 +252,7 @@ Edit `views/layouts/base.njk` (or `game.njk`):
 
 ### Step 6: Add Navigation Links
 
-**Admin sidebar** (`views/partials/admin-nav.njk` or similar):
+**Admin sidebar** (`frontend/views/partials/admin-nav.njk` or similar):
 ```html
 <a href="/admin/themes" class="nav-link">
     <i class="fas fa-paint-brush"></i> Theme Management
@@ -391,11 +391,11 @@ Before deploying to production:
 - `/workspace/backend/src/routes/themeRoutes.ts` (788 lines)
 
 **Frontend**:
-- `/workspace/ogame-rpg/frontend/js/themeLoader.js` (594 lines)
-- `/workspace/ogame-rpg/frontend/js/themePreferences.js` (308 lines)
-- `/workspace/ogame-rpg/frontend/css/theme-effects.css` (624 lines)
-- `/workspace/ogame-rpg/views/pages/admin/themes.njk` (670 lines)
-- `/workspace/ogame-rpg/views/pages/settings/themes.njk` (349 lines)
+- `/workspace/universus-rpg/frontend/js/themeLoader.js` (594 lines)
+- `/workspace/universus-rpg/frontend/js/themePreferences.js` (308 lines)
+- `/workspace/universus-rpg/frontend/css/theme-effects.css` (624 lines)
+- `/workspace/universus-rpg/frontend/views/pages/admin/themes.njk` (670 lines)
+- `/workspace/universus-rpg/frontend/views/pages/settings/themes.njk` (349 lines)
 
 **Documentation**:
 - `/workspace/docs/PHASE8_SEASONAL_THEMES_IMPLEMENTATION.md` (580 lines)

@@ -644,7 +644,7 @@ The system provides administrators with complete control over all game parameter
 5. `backend/src/socket/realtimeHandler.ts` (updated, +95 lines)
 
 ### Frontend Files
-6. `views/pages/admin/config.njk` (687 lines)
+6. `frontend/views/pages/admin/config.njk` (687 lines)
 7. `frontend/js/admin/config.js` (651 lines)
 
 ### Infrastructure Files

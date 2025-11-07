@@ -95,9 +95,9 @@ Is Admin: ✅ true
 
 **Frontend:**
 ```
-✅ frontend/admin.html (525 lines)
-✅ frontend/leaderboard.html (414 lines)
-✅ frontend/messages.html (504 lines)
+✅ frontend/views/pages/admin.njk (525 lines)
+✅ frontend/views/pages/leaderboard.njk (414 lines)
+✅ frontend/views/pages/messages.njk (504 lines)
 ✅ frontend/js/admin.js (736 lines)
 ✅ frontend/js/leaderboard.js (462 lines)
 ✅ frontend/js/messages.js (638 lines)
@@ -199,7 +199,7 @@ Role: Administrator
 ```
 Host: localhost
 Port: 5432
-Database: ogame_rpg
+Database: universus_rpg
 Username: postgres
 Password: postgres
 ```

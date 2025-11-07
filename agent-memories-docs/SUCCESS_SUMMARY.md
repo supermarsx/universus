@@ -93,7 +93,7 @@ Each personality has unique behavior parameters and decision-making patterns:
 
 ### Option 1: Automated Deployment (Recommended)
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./deploy-bot-system.sh
 ```
 
@@ -114,7 +114,7 @@ sudo service redis-server start
 
 #### Step 2: Apply Migration
 ```bash
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -f backend/src/database/migrations/005_bot_system.sql
 ```
 
@@ -136,7 +136,7 @@ Login: `admin@example.com` / `admin123`
 
 ### Automated API Testing
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 chmod +x test_bot_system.sh
 ./test_bot_system.sh
 ```
@@ -174,7 +174,7 @@ This comprehensive test script verifies:
 
 ## 📁 Files Delivered
 
-### Location: `/workspace/ogame-rpg/`
+### Location: `/workspace/universus-rpg/`
 
 **Backend:**
 - `backend/src/database/migrations/005_bot_system.sql`
@@ -183,7 +183,7 @@ This comprehensive test script verifies:
 - `backend/src/routes/bots.ts`
 
 **Frontend:**
-- `frontend/admin/bots.html`
+- `frontend/views/pages/admin/bots.njk`
 - `frontend/js/bots.js`
 
 **Documentation:**
@@ -199,7 +199,7 @@ This comprehensive test script verifies:
 - `backend/src/services/gameLoopService.ts` - Bot AI processing integrated
 - `backend/src/services/fleetService.ts` - TypeScript errors fixed
 - `backend/src/routes/admin.ts` - TypeScript errors fixed
-- `frontend/admin.html` - Bot management link added
+- `frontend/views/pages/admin.njk` - Bot management link added
 
 ---
 
@@ -354,7 +354,7 @@ tail -f backend.log
 ### Migration Errors
 ```bash
 # Verify tables
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -c "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'bot%';"
 ```
 

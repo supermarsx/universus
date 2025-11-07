@@ -3,9 +3,9 @@
 # Image Optimization Script for Universus
 # Compresses PNG images while maintaining visual quality
 
-ASSETS_DIR="/workspace/ogame-rpg/frontend/assets"
-BACKUP_DIR="/workspace/ogame-rpg/frontend/assets_backup"
-LOG_FILE="/workspace/ogame-rpg/image_optimization.log"
+ASSETS_DIR="/workspace/universus-rpg/frontend/assets"
+BACKUP_DIR="/workspace/universus-rpg/frontend/assets_backup"
+LOG_FILE="/workspace/universus-rpg/image_optimization.log"
 
 echo "=== Universus Image Optimization ===" > "$LOG_FILE"
 echo "Start time: $(date)" >> "$LOG_FILE"

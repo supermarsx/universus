@@ -12,7 +12,7 @@ const DB_CONFIG = {
   database: 'postgres' // Connect to postgres first
 };
 
-const TARGET_DB = 'ogame_rpg';
+const TARGET_DB = 'universus_rpg';
 
 async function executeSQLFile(client, filePath) {
   const sql = fs.readFileSync(filePath, 'utf8');

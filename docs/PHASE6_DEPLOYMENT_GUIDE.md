@@ -38,7 +38,7 @@ SELECT * FROM notification_types;
 ### Step 2: Compile TypeScript (2 minutes)
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 
 # Clean previous build
 rm -rf dist/
@@ -76,7 +76,7 @@ redis-server &
 pg_ctl start
 
 # Start Universus backend
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm start
 
 # Should see:
@@ -404,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 ### 2. Chat UI HTML
 
-Add to `frontend/chat.html`:
+Add to `frontend/views/pages/chat.njk`:
 
 ```html
 <div class="chat-container">

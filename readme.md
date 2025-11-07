@@ -52,7 +52,7 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 1. Clone the repository:
    
    ```bash
-   cd ogame-rpg
+   cd universus-rpg
    ```
 
 2. Build and start all services (API, bot worker, Redis, PostgreSQL):
@@ -71,7 +71,7 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 
 ### Bot Service Worker
 
-- Dedicated container (`ogame_bot_service`) handles scheduled bot AI processing outside the main API service
+- Dedicated container (`universus_bot_service`) handles scheduled bot AI processing outside the main API service
 - Shares the same PostgreSQL and Redis instances via environment variables
 - Backend API proxies all admin bot endpoints to the worker via `BOT_SERVICE_URL` (defaults to `http://bot-service:4001`)
 - Configure cadence with `BOT_WORKER_INTERVAL_MS` and `BOT_WORKER_MAX_BOTS` (see `docker-compose.yml`)
@@ -99,10 +99,10 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 2. Set up PostgreSQL database:
 ```bash
 # Create database
-createdb ogame_rpg
+createdb universus_rpg
 
 # Initialize schema
-psql -U postgres -d ogame_rpg -f backend/src/database/schema.sql
+psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
 ```
 
 3. Start Redis:
@@ -146,7 +146,7 @@ PORT=3000
 # PostgreSQL
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=ogame_rpg
+DB_NAME=universus_rpg
 DB_USER=postgres
 DB_PASSWORD=your_password
 
@@ -174,7 +174,7 @@ BOT_SERVICE_PORT=4001
 # PostgreSQL
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=ogame_rpg
+DB_NAME=universus_rpg
 DB_USER=postgres
 DB_PASSWORD=your_password
 
@@ -239,7 +239,7 @@ BOT_WORKER_MAX_BOTS=25
 ## Project Structure
 
 ```
-ogame-rpg/
+universus-rpg/
 ├── backend/
 │   ├── src/
 │   │   ├── config/          # Database, Redis, game config
@@ -284,7 +284,7 @@ pnpm start      # Runs compiled JavaScript
 
 ```bash
 # Reinitialize database
-psql -U postgres -d ogame_rpg -f backend/src/database/schema.sql
+psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
 
 # Or use npm script
 cd backend

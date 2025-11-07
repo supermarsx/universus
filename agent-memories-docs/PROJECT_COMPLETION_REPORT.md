@@ -156,7 +156,7 @@
 3. Configure firewall and security settings
 
 ### Step 2: Database Setup (20 minutes)
-1. Create PostgreSQL database: `ogame_rpg`
+1. Create PostgreSQL database: `universus_rpg`
 2. Create database user with secure password
 3. Run all 5 migration files in order
 4. Verify tables created successfully

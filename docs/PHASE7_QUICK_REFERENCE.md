@@ -42,7 +42,7 @@
    - Admin subscription management
 
 ### Frontend Implementation (2 files)
-6. **`views/pages/admin/config.njk`** (687 lines)
+6. **`frontend/views/pages/admin/config.njk`** (687 lines)
    - Complete admin configuration interface
    - Category navigation
    - Parameter editing

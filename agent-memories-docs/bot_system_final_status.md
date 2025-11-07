@@ -46,7 +46,7 @@
 - backend/src/services/botService.ts
 - backend/src/services/botAIService.ts
 - backend/src/routes/bots.ts
-- frontend/admin/bots.html
+- frontend/views/pages/admin/bots.njk
 - frontend/js/bots.js
 - BOT_SYSTEM_COMPLETE.md
 - BOT_SYSTEM_QUICK_REFERENCE.md

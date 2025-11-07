@@ -136,7 +136,7 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 
 ### 1. Alliance Dashboard (2,139 lines)
 
-**Template:** `views/pages/alliance-dashboard.njk` (433 lines)
+**Template:** `frontend/views/pages/alliance-dashboard.njk` (433 lines)
 - Alliance header with tag badge and quick actions
 - Statistics grid (6 cards: members, power, rank, wars, territories, diplomacy)
 - Members list with search/filter, roles, online status
@@ -169,7 +169,7 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 
 ### 2. Alliance Wars (1,588 lines)
 
-**Template:** `views/pages/alliance-wars.njk` (438 lines)
+**Template:** `frontend/views/pages/alliance-wars.njk` (438 lines)
 - Active wars section with war cards (status, objectives, scores)
 - Declare war form (target search, 4 war types, objective selection)
 - War history section with status filters
@@ -197,7 +197,7 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 
 ### 3. Alliance Diplomacy (1,640 lines)
 
-**Template:** `views/pages/alliance-diplomacy.njk` (317 lines)
+**Template:** `frontend/views/pages/alliance-diplomacy.njk` (317 lines)
 - Diplomatic relations overview grid
 - Current relations cards (7 relation types with color coding)
 - Pending proposals section (incoming/outgoing)
@@ -227,7 +227,7 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 
 ### 4. Alliance Management Panel (1,641 lines)
 
-**Template:** `views/pages/alliance-management.njk` (294 lines)
+**Template:** `frontend/views/pages/alliance-management.njk` (294 lines)
 - 4-tab interface: Settings, Ranks, Treasury, Members
 - **Settings Tab:**
   - Alliance name, description, image URL
@@ -453,20 +453,20 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 7. `backend/src/index.ts` (updated - route registration)
 
 ### Frontend Files (12 files, 5,459 lines):
-8. `views/pages/alliance-dashboard.njk` (433 lines)
+8. `frontend/views/pages/alliance-dashboard.njk` (433 lines)
 9. `frontend/css/alliance-dashboard.css` (1,037 lines)
 10. `frontend/js/alliance-dashboard.js` (669 lines)
-11. `views/pages/alliance-wars.njk` (438 lines)
+11. `frontend/views/pages/alliance-wars.njk` (438 lines)
 12. `frontend/css/alliance-wars.css` (612 lines)
 13. `frontend/js/alliance-wars.js` (538 lines)
-14. `views/pages/alliance-diplomacy.njk` (317 lines)
+14. `frontend/views/pages/alliance-diplomacy.njk` (317 lines)
 15. `frontend/css/alliance-diplomacy.css` (747 lines)
 16. `frontend/js/alliance-diplomacy.js` (576 lines)
-17. `views/pages/alliance-management.njk` (294 lines)
+17. `frontend/views/pages/alliance-management.njk` (294 lines)
 18. `frontend/css/alliance-management.css` (724 lines)
 19. `frontend/js/alliance-management.js` (623 lines)
 20. `backend/src/routes/templates.ts` (updated - 4 routes added)
-21. `views/partials/sidebar.njk` (updated - alliance menu item)
+21. `frontend/views/partials/sidebar.njk` (updated - alliance menu item)
 
 ### Support Files:
 22. `frontend/css/css-components.css` (updated - 15 alliance icons added in previous phase)

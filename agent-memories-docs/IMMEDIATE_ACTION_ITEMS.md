@@ -6,9 +6,9 @@
 **Requirement:** Create millisecond precision combat tracking tables  
 **Action:**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d postgres
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
 ```
 
 **Verification:**
@@ -86,7 +86,7 @@ app.use('/api/admin', adminRoutes);
 
 **Start Services:**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d
 ```
 
@@ -134,7 +134,7 @@ test_website http://localhost:3000/admin.html "Verify admin panel loads and show
 
 **Action:**
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm test -- --coverage --forceExit
 ```
 
@@ -158,7 +158,7 @@ Coverage:    70%+ statements, branches, lines, functions
 **Action:**
 ```sql
 -- Connect to database
-docker-compose exec postgres psql -U postgres -d ogame_rpg
+docker-compose exec postgres psql -U postgres -d universus_rpg
 
 -- Add is_admin column if not exists
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
@@ -383,14 +383,14 @@ Create integration tests for API endpoints:
 
 ```bash
 # 1. Start all services
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 docker-compose up -d
 
 # 2. Apply migration
-docker-compose exec postgres psql -U postgres -d ogame_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
 
 # 3. Grant admin access
-docker-compose exec postgres psql -U postgres -d ogame_rpg -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false; UPDATE users SET is_admin = true WHERE id = 1;"
+docker-compose exec postgres psql -U postgres -d universus_rpg -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false; UPDATE users SET is_admin = true WHERE id = 1;"
 
 # 4. Run tests
 cd backend && npm test -- --coverage

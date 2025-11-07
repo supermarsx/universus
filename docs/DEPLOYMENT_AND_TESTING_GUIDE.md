@@ -50,19 +50,19 @@ ALLOWED_ORIGINS=http://localhost:3000,https://your-domain.com
 ## Phase 11: Database Schema Deployment
 
 ### Step 1: Locate Schema File
-File location: `/workspace/ogame-rpg/backend/src/database/phase11_alliance_management_schema.sql`
+File location: `/workspace/universus-rpg/backend/src/database/phase11_alliance_management_schema.sql`
 
 ### Step 2: Deploy to PostgreSQL
 
 **Option A: Using psql command line**
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 psql postgresql://user:password@localhost:5432/universus -f backend/src/database/phase11_alliance_management_schema.sql
 ```
 
 **Option B: Using Node.js script**
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node -e "
 const { Pool } = require('pg');
 const fs = require('fs');
@@ -146,7 +146,7 @@ ORDER BY routine_name;
 
 ### Step 1: Install Dependencies
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm install
 # or
 pnpm install

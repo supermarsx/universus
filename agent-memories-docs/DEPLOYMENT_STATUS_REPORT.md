@@ -68,13 +68,13 @@ redis-cli ping
 Run the automated setup script:
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node setup-database.js
 ```
 
 **This script will:**
 1. Connect to PostgreSQL
-2. Create `ogame_rpg` database
+2. Create `universus_rpg` database
 3. Apply base schema (20+ tables)
 4. Execute 5 migrations
 5. Apply Phase 2 schema (Bot system)
@@ -89,7 +89,7 @@ node setup-database.js
 ==========================================
 Database Setup Complete!
 ==========================================
-Database: ogame_rpg
+Database: universus_rpg
 Tables: 42
 Indexes: 54
 Views: 6
@@ -104,7 +104,7 @@ Admin Account:
 ### Step 2: Install Dependencies (2 minutes)
 
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npm install
 ```
 
@@ -138,7 +138,7 @@ curl http://localhost:3000/api/health
 
 ```sql
 -- Connect to database
-psql -U postgres -d ogame_rpg
+psql -U postgres -d universus_rpg
 
 -- Verify tables (should be 40+)
 SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';
@@ -238,14 +238,14 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
    - Copy Secret key (sk_test_...)
 
 2. **Update Backend:**
-Edit `/workspace/ogame-rpg/backend/.env`:
+Edit `/workspace/universus-rpg/backend/.env`:
 ```bash
 STRIPE_SECRET_KEY=sk_test_YOUR_KEY_HERE
 STRIPE_PUBLISHABLE_KEY=pk_test_YOUR_KEY_HERE
 ```
 
 3. **Update Frontend:**
-Edit `/workspace/ogame-rpg/frontend/js/shop.js` (line ~10):
+Edit `/workspace/universus-rpg/frontend/js/shop.js` (line ~10):
 ```javascript
 const stripe = Stripe('pk_test_YOUR_KEY_HERE');
 ```
@@ -301,7 +301,7 @@ curl http://localhost:3000/api/health
 # Expected: {"status":"ok"}
 
 # Test 1.2: Database Connection
-psql -U postgres -d ogame_rpg -c "SELECT COUNT(*) FROM users;"
+psql -U postgres -d universus_rpg -c "SELECT COUNT(*) FROM users;"
 # Expected: Count >= 1
 
 # Test 1.3: Redis Connection  
@@ -490,7 +490,7 @@ redis-server --daemonize yes
 
 2. **Run Database Setup:**
 ```bash
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node setup-database.js
 ```
 

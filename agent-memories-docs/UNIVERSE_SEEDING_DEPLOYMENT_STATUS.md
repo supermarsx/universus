@@ -107,7 +107,7 @@
 ### Compilation Status: ✅ SUCCESS
 
 ```bash
-$ cd /workspace/ogame-rpg/backend
+$ cd /workspace/universus-rpg/backend
 $ npx tsc --noEmit
 # No errors reported
 ```

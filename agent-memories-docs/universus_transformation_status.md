@@ -405,13 +405,13 @@
 5. backend/src/services/adminMonitoringService.ts (367 lines)
 6. backend/src/services/adminSettingsService.ts (481 lines)
 7. backend/src/routes/adminRoutes.ts (808 lines)
-8. views/pages/admin/dashboard.njk (406 lines)
-9. views/pages/admin/users.njk (9 lines)
-10. views/pages/admin/monitoring.njk (9 lines)
-11. views/pages/admin/settings.njk (9 lines)
-12. views/pages/admin/events.njk (9 lines)
-13. views/pages/admin/analytics.njk (9 lines)
-14. views/pages/admin/audit.njk (9 lines)
+8. frontend/views/pages/admin/dashboard.njk (406 lines)
+9. frontend/views/pages/admin/users.njk (9 lines)
+10. frontend/views/pages/admin/monitoring.njk (9 lines)
+11. frontend/views/pages/admin/settings.njk (9 lines)
+12. frontend/views/pages/admin/events.njk (9 lines)
+13. frontend/views/pages/admin/analytics.njk (9 lines)
+14. frontend/views/pages/admin/audit.njk (9 lines)
 
 ### Total Code: 3,851 lines
 
@@ -468,7 +468,7 @@
 ✅ **Integration Script**: integrate-phase8.sh created
 
 ### What Requires Manual Steps:
-⏳ **File Integration**: Files written to /workspace/backend/src/ need to be copied to /workspace/ogame-rpg/backend/src/
+⏳ **File Integration**: Files written to /workspace/backend/src/ need to be copied to /workspace/universus-rpg/backend/src/
 ⏳ **Database Setup**: Run phase8_seasonal_themes_schema.sql
 ⏳ **Server Integration**: Update index.ts to import and register theme routes
 ⏳ **Template Updates**: Add theme scripts to base templates
@@ -483,25 +483,25 @@
 - /workspace/backend/src/services/themeService.ts
 - /workspace/backend/src/services/themeScheduler.ts
 - /workspace/backend/src/routes/themeRoutes.ts
-- /workspace/ogame-rpg/frontend/js/themeLoader.js
-- /workspace/ogame-rpg/frontend/js/themePreferences.js
-- /workspace/ogame-rpg/frontend/css/theme-effects.css
-- /workspace/ogame-rpg/views/pages/admin/themes.njk
-- /workspace/ogame-rpg/views/pages/settings/themes.njk
+- /workspace/universus-rpg/frontend/js/themeLoader.js
+- /workspace/universus-rpg/frontend/js/themePreferences.js
+- /workspace/universus-rpg/frontend/css/theme-effects.css
+- /workspace/universus-rpg/frontend/views/pages/admin/themes.njk
+- /workspace/universus-rpg/frontend/views/pages/settings/themes.njk
 
 **Target locations**:
-- /workspace/ogame-rpg/backend/src/ (backend files)
-- /workspace/ogame-rpg/frontend/ (frontend files)
-- /workspace/ogame-rpg/views/pages/ (template files)
+- /workspace/universus-rpg/backend/src/ (backend files)
+- /workspace/universus-rpg/frontend/ (frontend files)
+- /workspace/universus-rpg/frontend/views/pages/ (template files)
 
 ### Integration Script Created:
-✅ /workspace/ogame-rpg/integrate-phase8.sh
+✅ /workspace/universus-rpg/integrate-phase8.sh
   - Automates file copying
   - Checks integration status
   - Provides manual step instructions
 
 ### Next Actions Required:
-1. Run integration script: `cd /workspace/ogame-rpg && bash integrate-phase8.sh`
+1. Run integration script: `cd /workspace/universus-rpg && bash integrate-phase8.sh`
 2. Manually copy complete service and route files
 3. Update backend/src/index.ts with theme routes
 4. Run database schema SQL

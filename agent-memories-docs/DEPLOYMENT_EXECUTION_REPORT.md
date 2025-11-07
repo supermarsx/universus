@@ -167,7 +167,7 @@ Deploy to an environment where PostgreSQL can run:
 ```bash
 # On Ubuntu/Debian server with sudo access
 git clone [repository]
-cd ogame-rpg/backend
+cd universus-rpg/backend
 sudo service postgresql start
 sudo service redis-server start
 node setup-database.js
@@ -189,7 +189,7 @@ RUN apt-get update && apt-get install -y postgresql-15 redis-server
 # On your local machine with PostgreSQL installed
 pg_ctl start
 redis-server --daemonize yes
-cd ogame-rpg/backend
+cd universus-rpg/backend
 node setup-database.js
 npm start
 ```
@@ -287,7 +287,7 @@ sudo service postgresql start
 sudo service redis-server start
 
 # Setup database
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 node setup-database.js
 
 # Build application

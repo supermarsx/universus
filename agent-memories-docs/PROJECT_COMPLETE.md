@@ -12,7 +12,7 @@ All database migrations have been applied, backend services are running, and all
 Instead of waiting for Docker, I:
 1. ✅ Installed PostgreSQL 15 and Redis 7.0 directly using apt
 2. ✅ Started both services successfully
-3. ✅ Created the `ogame_rpg` database
+3. ✅ Created the `universus_rpg` database
 4. ✅ Applied all database migrations (001, 002, 003, 004)
 5. ✅ Created an admin user
 6. ✅ Started the backend API server
@@ -140,7 +140,7 @@ curl -H "Authorization: Bearer <TOKEN>" \
 - [ ] Check messages for combat report
 - [ ] Database query to verify microsecond timestamps:
 ```bash
-sudo -u postgres psql -d ogame_rpg -c \
+sudo -u postgres psql -d universus_rpg -c \
   "SELECT * FROM combats_precise ORDER BY created_at DESC LIMIT 1;"
 ```
 
@@ -225,7 +225,7 @@ sudo -u postgres psql -d ogame_rpg -c \
 ps aux | grep node
 
 # Check logs
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 tail -f backend.log  # if logging to file
 ```
 
@@ -238,7 +238,7 @@ sudo service postgresql status
 sudo service postgresql restart
 
 # Test connection
-sudo -u postgres psql -d ogame_rpg -c "SELECT COUNT(*) FROM users;"
+sudo -u postgres psql -d universus_rpg -c "SELECT COUNT(*) FROM users;"
 ```
 
 ### Issue: Redis connection failed
@@ -256,11 +256,11 @@ redis-cli ping  # Should return "PONG"
 ### Issue: Admin panel shows 403 Forbidden
 ```bash
 # Verify admin flag is set
-sudo -u postgres psql -d ogame_rpg -c \
+sudo -u postgres psql -d universus_rpg -c \
   "SELECT username, email, is_admin FROM users WHERE email = 'admin@example.com';"
 
 # Set admin flag if needed
-sudo -u postgres psql -d ogame_rpg -c \
+sudo -u postgres psql -d universus_rpg -c \
   "UPDATE users SET is_admin = true WHERE email = 'admin@example.com';"
 ```
 
@@ -324,11 +324,11 @@ sudo -u postgres psql -d ogame_rpg -c \
 ### For Development
 ```bash
 # Watch backend logs in real-time
-cd /workspace/ogame-rpg/backend
+cd /workspace/universus-rpg/backend
 npx nodemon dist/index.js
 
 # Monitor database queries
-sudo -u postgres psql -d ogame_rpg
+sudo -u postgres psql -d universus_rpg
 \watch 1 SELECT COUNT(*) FROM users;
 
 # Check Redis stats
@@ -354,7 +354,7 @@ redis-cli info stats
 ### Database Access
 ```bash
 # Connect to PostgreSQL
-sudo -u postgres psql -d ogame_rpg
+sudo -u postgres psql -d universus_rpg
 
 # Common queries
 \dt                    # List tables
@@ -369,7 +369,7 @@ ps aux | grep -E "(postgres|redis|node)"
 
 # Restart backend
 pkill node
-cd /workspace/ogame-rpg/backend && node dist/index.js &
+cd /workspace/universus-rpg/backend && node dist/index.js &
 
 # Restart PostgreSQL
 sudo service postgresql restart

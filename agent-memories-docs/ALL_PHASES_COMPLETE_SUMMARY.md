@@ -127,7 +127,7 @@ Successfully implemented **4 major production-grade systems** for the Universus 
 #### Frontend Layer (1,038 lines)
 
 **1. Bot Management UI (521 lines)**
-**File:** `frontend/admin/bots.html`
+**File:** `frontend/views/pages/admin/bots.njk`
 
 Features:
 - Bot overview dashboard with statistics

@@ -4,7 +4,7 @@
 
 ### Deploy Bot System
 ```bash
-cd /workspace/ogame-rpg
+cd /workspace/universus-rpg
 ./deploy-bot-system.sh
 ```
 
@@ -28,8 +28,8 @@ sudo service redis-server start
 
 #### 2. Apply Migration
 ```bash
-cd /workspace/ogame-rpg
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+cd /workspace/universus-rpg
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -f backend/src/database/migrations/005_bot_system.sql
 ```
 
@@ -296,10 +296,10 @@ sudo service postgresql restart
 ### Migration Errors
 ```bash
 # Check existing tables
-psql -h 127.0.0.1 -U postgres -d ogame_rpg -c "\dt bot*"
+psql -h 127.0.0.1 -U postgres -d universus_rpg -c "\dt bot*"
 
 # Re-run migration
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d ogame_rpg \
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
     -f backend/src/database/migrations/005_bot_system.sql
 ```
 
@@ -350,7 +350,7 @@ Bot system integrates with:
 - `backend/src/services/gameLoopService.ts` - Bot processing integration
 
 ### Frontend
-- `frontend/admin/bots.html` - Bot management UI
+- `frontend/views/pages/admin/bots.njk` - Bot management UI
 - `frontend/js/bots.js` - Bot management logic
 
 ### Documentation

@@ -180,7 +180,7 @@ Game Mechanics Updated
 6. **`backend/src/services/gameConfigAdapter.ts` (377 lines)** ← NEW
 
 ### Frontend Files (2)
-7. `views/pages/admin/config.njk` (687 lines)
+7. `frontend/views/pages/admin/config.njk` (687 lines)
 8. `frontend/js/admin/config.js` (651 lines)
 
 ### Testing Files (3)
