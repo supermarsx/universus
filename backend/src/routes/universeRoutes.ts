@@ -6,7 +6,7 @@
 import express, { Request, Response } from 'express';
 import universeSeedingService from '../services/universeSeedingService';
 import playerPlacementService from '../services/playerPlacementService';
-import botGenerationService from '../services/botGenerationService';
+import botGenerationService from '../bot/services/botGenerationService';
 import universeMaintenanceService from '../services/universeMaintenanceService';
 import { authenticateToken } from '../middleware/auth';
 

@@ -58,6 +58,31 @@ services:
       - "3000:3000"
     restart: unless-stopped
 
+  bot-service:
+    build:
+      context: .
+      dockerfile: bot-service/Dockerfile
+    container_name: ogame_bot_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ogame_rpg
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      BOT_WORKER_INTERVAL_MS: 60000
+      BOT_WORKER_MAX_BOTS: 25
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

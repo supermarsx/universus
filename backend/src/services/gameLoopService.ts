@@ -1,6 +1,6 @@
 import { BuildingService } from './buildingService';
 import { FleetService } from './fleetService';
-import { BotAIService } from './botAIService';
+import { BotAIService } from '../bot/services/botAIService';
 import { pool } from '../config/database';
 
 export class GameLoopService {
@@ -19,15 +19,21 @@ export class GameLoopService {
       }
     }, 10000);
     
-    // Start bot AI processing (every 5 minutes)
-    console.log('Starting bot AI processing...');
-    this.botProcessingInterval = setInterval(async () => {
-      try {
-        await BotAIService.processAllBots();
-      } catch (error) {
-        console.error('Bot AI processing error:', error);
-      }
-    }, 300000); // 5 minutes
+    const shouldStartInlineBotProcessor = process.env.ENABLE_BACKEND_BOT_PROCESSOR === 'true';
+
+    if (shouldStartInlineBotProcessor) {
+      // Start bot AI processing (every 5 minutes) for legacy deployments
+      console.log('Starting inline bot AI processing from backend service...');
+      this.botProcessingInterval = setInterval(async () => {
+        try {
+          await BotAIService.processAllBots();
+        } catch (error) {
+          console.error('Bot AI processing error:', error);
+        }
+      }, 300000); // 5 minutes
+    } else {
+      console.log('Inline bot AI processing disabled; external bot-service worker will handle bot scheduling');
+    }
   }
 
   static stop(): void {

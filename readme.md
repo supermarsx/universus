@@ -55,7 +55,7 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    cd ogame-rpg
    ```
 
-2. Build and start all services:
+2. Build and start all services (API, bot worker, Redis, PostgreSQL):
    
    ```bash
    docker-compose up -d
@@ -68,6 +68,13 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    ```bash
    docker-compose down
    ```
+
+### Bot Service Worker
+
+- Dedicated container (`ogame_bot_service`) handles scheduled bot AI processing outside the main API service
+- Shares the same PostgreSQL and Redis instances via environment variables
+- Configure cadence with `BOT_WORKER_INTERVAL_MS` and `BOT_WORKER_MAX_BOTS` (see `docker-compose.yml`)
+- Set `ENABLE_BACKEND_BOT_PROCESSOR=true` only if you need the legacy inline processing instead of the worker
 
 ### Option 2: Local Development Setup
 

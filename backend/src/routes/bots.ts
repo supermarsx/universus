@@ -1,7 +1,7 @@
 import express, { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { BotService } from '../services/botService';
-import { BotAIService } from '../services/botAIService';
+import { BotService } from '../bot/services/botService';
+import { BotAIService } from '../bot/services/botAIService';
 
 const router: Router = express.Router();
 
