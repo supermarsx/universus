@@ -5,6 +5,7 @@
 
 import { pool } from '../config/database';
 import redis from '../config/redis';
+import { getRealtimeHandler } from '../socket';
 import {
   Notification,
   NotificationType,
@@ -15,6 +16,7 @@ import {
   NotificationsResponse,
   NotificationBatch,
   UserUnreadStats,
+  NotificationEvent,
 } from '../types/realtime';
 
 class NotificationService {
@@ -92,12 +94,16 @@ class NotificationService {
     // Increment unread count in Redis
     await this.incrementUnreadCount(userId);
 
-    return {
+    const payload: Notification = {
       ...notification,
       type_name: typeInfo.rows[0]?.type_name,
       category: typeInfo.rows[0]?.category,
       icon: typeInfo.rows[0]?.icon,
     };
+
+    this.emitRealtimeNotification(payload);
+
+    return payload;
   }
 
   async createBatchNotifications(batch: NotificationBatch): Promise<number> {
@@ -163,6 +169,40 @@ class NotificationService {
       actionLabel: 'View Fleet',
       referenceType: 'fleet',
       referenceId: fleetId,
+    });
+  }
+
+  async notifyFleetReturned(userId: number, fleetId: number, location: string): Promise<void> {
+    const type = await this.getNotificationTypeByName('fleet_returned');
+    if (!type) return;
+
+    await this.createNotification({
+      userId,
+      notificationTypeId: type.id,
+      title: 'Fleet Returned',
+      message: `Your fleet returned to ${location}`,
+      priority: 2,
+      actionUrl: `/fleet?id=${fleetId}`,
+      actionLabel: 'View Fleet',
+      referenceType: 'fleet',
+      referenceId: fleetId,
+    });
+  }
+
+  async notifyCombatReport(userId: number, combatId: number, winner: string, location: string): Promise<void> {
+    const type = await this.getNotificationTypeByName('combat_report');
+    if (!type) return;
+
+    await this.createNotification({
+      userId,
+      notificationTypeId: type.id,
+      title: 'Combat Report Available',
+      message: `${winner.toUpperCase()} at ${location}`,
+      priority: 3,
+      actionUrl: `/combat?id=${combatId}`,
+      actionLabel: 'View Report',
+      referenceType: 'combat',
+      referenceId: combatId,
     });
   }
 
@@ -556,6 +596,27 @@ class NotificationService {
     const expired = await this.cleanupExpiredNotifications();
     const old = await this.cleanupOldNotifications(30);
     console.log(`Notification cleanup: ${expired} expired, ${old} old notifications removed`);
+  }
+
+  private emitRealtimeNotification(notification: Notification): void {
+    const handler = getRealtimeHandler();
+    if (!handler) return;
+
+    const event: NotificationEvent = {
+      notificationId: notification.id,
+      userId: notification.user_id,
+      type: (notification as any).type_name,
+      category: (notification as any).category,
+      title: notification.title,
+      message: notification.message,
+      priority: notification.priority,
+      actionUrl: notification.action_url || undefined,
+      actionLabel: notification.action_label || undefined,
+      icon: (notification as any).icon,
+      timestamp: notification.created_at || new Date(),
+    };
+
+    handler.broadcastNotification(notification.user_id, event);
   }
 }
 

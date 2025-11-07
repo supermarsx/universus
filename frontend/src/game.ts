@@ -80,6 +80,16 @@ function initializeSocket(token) {
             loadPlanetData(GameState.currentPlanet.id);
         }
     });
+
+    GameState.socket.on('notification:new', (event) => {
+        const title = event?.title || 'Notification';
+        const message = event?.message || '';
+        if (window.toast) {
+            window.toast.info(`${title}: ${message}`, 6000);
+        } else {
+            showNotification(title, message, 'info');
+        }
+    });
 }
 
 // Load all planets

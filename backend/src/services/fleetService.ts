@@ -5,6 +5,7 @@ import { SHIPS } from '../config/gameConfig';
 import { PoolClient } from 'pg';
 import { Fleet } from '../types';
 import { getRealtimeHandler } from '../socket';
+import notificationService from './notificationService';
 import { CombatResult } from '../services/combatService';
 
 export class FleetService {
@@ -303,6 +304,12 @@ export class FleetService {
         action: 'arrival',
         fleetId: fleet.id,
       });
+
+      await notificationService.notifyFleetArrived(
+        fleet.user_id,
+        fleet.id,
+        this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position)
+      );
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -448,6 +455,22 @@ export class FleetService {
         report: summary,
       });
     }
+
+    await notificationService.notifyCombatReport(
+      fleet.user_id,
+      reportId,
+      combatResult.winner,
+      this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position)
+    );
+
+    if (targetPlanet.user_id) {
+      await notificationService.notifyCombatReport(
+        targetPlanet.user_id,
+        reportId,
+        combatResult.winner,
+        this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position)
+      );
+    }
   }
 
   private static async handleTransportMission(fleet: Fleet, client: PoolClient): Promise<void> {
@@ -555,5 +578,9 @@ export class FleetService {
       defenderLosses: result.defenderLosses,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  private static formatLocation(galaxy: number, system: number, position: number): string {
+    return `${galaxy}:${system}:${position}`;
   }
 }

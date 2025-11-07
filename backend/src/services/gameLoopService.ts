@@ -2,6 +2,7 @@ import { BuildingService } from './buildingService';
 import { FleetService } from './fleetService';
 import { ShipyardService } from './shipyardService';
 import { pool } from '../config/database';
+import notificationService from './notificationService';
 import { ResearchService } from './researchService';
 
 export class GameLoopService {
@@ -83,6 +84,11 @@ export class GameLoopService {
   }
 
   private static async returnFleetToOrigin(fleet: any): Promise<void> {
+    const planetResult = await pool.query(
+      'SELECT galaxy, system, position, name FROM planets WHERE id = $1',
+      [fleet.origin_planet_id]
+    );
+
     await pool.query('BEGIN');
 
     try {
@@ -107,6 +113,13 @@ export class GameLoopService {
       await pool.query('DELETE FROM fleets WHERE id = $1', [fleet.id]);
 
       await pool.query('COMMIT');
+
+      const planet = planetResult.rows[0];
+      const location = planet
+        ? `${planet.name || 'Planet'} (${planet.galaxy}:${planet.system}:${planet.position})`
+        : `Planet ${fleet.origin_planet_id}`;
+
+      await notificationService.notifyFleetReturned(fleet.user_id, fleet.id, location);
     } catch (error) {
       await pool.query('ROLLBACK');
       throw error;
