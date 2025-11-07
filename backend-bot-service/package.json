@@ -2,12 +2,12 @@
   "name": "universus-bot-service",
   "version": "1.0.0",
   "description": "Dedicated bot processing backend service for Universus",
-  "main": "dist/bot-service/src/index.js",
+  "main": "dist/backend-bot-service/src/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/bot-service/src/index.js",
+    "start": "node dist/backend-bot-service/src/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "worker": "node dist/bot-service/src/worker.js"
+    "worker": "node dist/backend-bot-service/src/worker.js"
   },
   "dependencies": {
     "@types/nunjucks": "^3.2.6",

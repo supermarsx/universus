@@ -89,7 +89,7 @@ services:
 
   bot-service:
     build:
-      context: ./bot-service
+      context: ./backend-bot-service
       dockerfile: Dockerfile
     container_name: universus_bot_service
     depends_on:
@@ -123,7 +123,7 @@ services:
 
   admin-service:
     build:
-      context: ./admin-service
+      context: ./backend-admin-service
       dockerfile: Dockerfile
     container_name: universus_admin_service
     depends_on:

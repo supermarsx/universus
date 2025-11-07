@@ -77,19 +77,19 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 - Configure cadence with `BOT_WORKER_INTERVAL_MS` and `BOT_WORKER_MAX_BOTS` (see `docker-compose.yml`)
 - For local development run the services:
   - `pnpm dev` inside `backend`
-  - `npm run dev` inside `bot-service`
+  - `npm run dev` inside `backend-bot-service`
   - `npm run build` (or desired workflow) inside `frontend`
 - PostgreSQL now lives in the dedicated `database` project (`universus_database` container). Build-time schema initialization is handled via `database/Dockerfile`.
 
 ### Admin Service
 
-- Lives under `admin-service/` and exposes all privileged admin APIs (dashboards, user moderation, monitoring, game configuration)
+- Lives under `backend-admin-service/` and exposes all privileged admin APIs (dashboards, user moderation, monitoring, game configuration)
 - Runs as its own container (`universus_admin_service`) so the public backend never handles admin-only routes
 - Shares the same PostgreSQL instance and JWT secret with the main backend; communicates over REST
 - Local development mirrors the backend workflow:
-  - `pnpm install` then `pnpm dev` inside `admin-service`
+  - `pnpm install` then `pnpm dev` inside `backend-admin-service`
   - Environment variables: `ADMIN_PORT` (defaults to `4002`), database credentials, shared `JWT_SECRET`
-- Docker deployments build the image via `admin-service/Dockerfile` and expose port `4002`
+- Docker deployments build the image via `backend-admin-service/Dockerfile` and expose port `4002`
 
 ### Option 2: Local Development Setup
 
@@ -101,11 +101,11 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    pnpm install
 
    # Bot service
-   cd ../bot-service
+   cd ../backend-bot-service
    npm install
 
    # Admin service
-   cd ../admin-service
+   cd ../backend-admin-service
    pnpm install
 
    # Frontend
@@ -135,7 +135,7 @@ psql -U postgres -d universus_rpg -f database/sql/schema.sql
    cp .env.example .env
    # Edit .env with your database credentials
 
-   cd ../bot-service
+   cd ../backend-bot-service
    cp .env.example .env
    ```
 
@@ -146,11 +146,11 @@ psql -U postgres -d universus_rpg -f database/sql/schema.sql
    pnpm run dev
 
    # In a new terminal
-   cd ../bot-service
+   cd ../backend-bot-service
    npm run dev
 
    # In a third terminal
-   cd ../admin-service
+   cd ../backend-admin-service
    pnpm run dev
 
    # In another terminal (when you need to refresh static assets)
@@ -194,7 +194,7 @@ GAME_SPEED=1
 RESOURCE_PRODUCTION_MULTIPLIER=1
 ```
 
-Create a `.env` file in the `bot-service/` directory:
+Create a `.env` file in the `backend-bot-service/` directory:
 
 ```env
 BOT_SERVICE_PORT=4001
@@ -218,7 +218,7 @@ BOT_WORKER_INTERVAL_MS=60000
 BOT_WORKER_MAX_BOTS=25
 ```
 
-Create a `.env` file in the `admin-service/` directory:
+Create a `.env` file in the `backend-admin-service/` directory:
 
 ```env
 ADMIN_PORT=4002
@@ -230,7 +230,7 @@ DB_NAME=universus_rpg
 DB_USER=postgres
 DB_PASSWORD=your_password
 
-# JWT shared with backend/bot-service
+# JWT shared with backend/backend-bot-service
 JWT_SECRET=your_super_secret_jwt_key_change_in_production
 ```
 
@@ -295,7 +295,10 @@ universus-rpg/
 │   ├── package.json
 │   ├── pnpm-lock.yaml
 │   └── Dockerfile
-├── bot-service/             # Dedicated bot processing worker/API
+├── backend-bot-service/     # Dedicated bot processing worker/API
+│   ├── src/
+│   └── package.json
+├── backend-admin-service/   # Standalone admin API service
 │   ├── src/
 │   └── package.json
 ├── frontend/                # Static assets and Nunjucks templates
