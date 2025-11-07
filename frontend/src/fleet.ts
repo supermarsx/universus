@@ -21,6 +21,7 @@ class FleetManager {
     this.selectedShips = {};
     this.selectedMission = null;
     this.activeFleets = [];
+    this.combatReports = [];
     this.currentStep = 1;
     this.selectedTab = 'dispatch';
     this.pollInterval = null;
@@ -89,7 +90,21 @@ class FleetManager {
 
   attachSocketListeners() {
     if (!window.socket) return;
-    window.socket.on('fleetUpdate', () => this.fetchActiveFleets());
+    window.socket.on('fleetUpdate', (payload = {}) => {
+      this.fetchActiveFleets();
+      if (payload.action === 'combat') {
+        const outcome =
+          payload.report?.winner === 'attacker'
+            ? payload.role === 'attacker'
+              ? 'Victory'
+              : 'Defeat'
+            : payload.role === 'defender'
+            ? 'Victory'
+            : 'Defeat';
+        this.notify(`${outcome}: combat at ${this.formatCoords(payload.report)}`, 'info');
+        this.loadCombatReports();
+      }
+    });
   }
 
   goToStep(step) {
@@ -123,6 +138,7 @@ class FleetManager {
     this.renderFleetSelection();
     this.renderOverview();
     this.fetchActiveFleets();
+    this.loadCombatReports();
   }
 
   renderFleetSelection() {
@@ -245,6 +261,7 @@ class FleetManager {
       this.resetForm();
       await loadPlanetData(this.planet.id);
       this.fetchActiveFleets();
+      this.loadCombatReports();
     } catch (error) {
       this.notify(error.message || 'Failed to dispatch fleet', 'error');
     }
@@ -270,6 +287,16 @@ class FleetManager {
       this.renderActiveMissions();
     } catch (error) {
       console.error('Failed to load fleets:', error);
+    }
+  }
+
+  async loadCombatReports() {
+    try {
+      const reports = await api.get('/fleet/reports?limit=5');
+      this.combatReports = Array.isArray(reports) ? reports : [];
+      this.renderCombatReports();
+    } catch (error) {
+      console.error('Failed to load combat reports:', error);
     }
   }
 
@@ -342,6 +369,42 @@ class FleetManager {
 
       container.appendChild(card);
     });
+  }
+
+  renderCombatReports() {
+    const container = document.getElementById('combatReports');
+    if (!container) return;
+
+    if (!this.combatReports.length) {
+      container.innerHTML = '<div class="empty-state card-compact">No recent combat reports.</div>';
+      return;
+    }
+
+    container.innerHTML = this.combatReports
+      .map(
+        (report) => `
+        <div class="combat-report card-compact">
+          <div class="combat-report-header">
+            <div>
+              <strong>${this.formatCoords(report)}</strong>
+              <span class="combat-tag ${report.winner}">${report.winner.toUpperCase()}</span>
+            </div>
+            <small>${new Date(report.battleTime).toLocaleString()}</small>
+          </div>
+          <div class="combat-report-body">
+            <p><strong>Attacker:</strong> ${report.attacker}</p>
+            <p><strong>Defender:</strong> ${report.defender || 'Unknown'}</p>
+            <div class="combat-loot">
+              <span>Loot: ${this.formatLoot(report.loot)}</span>
+            </div>
+            <div class="combat-losses">
+              <span>Attacker Losses: ${this.formatLosses(report.attackerLosses)}</span>
+              <span>Defender Losses: ${this.formatLosses(report.defenderLosses)}</span>
+            </div>
+          </div>
+        </div>`
+      )
+      .join('');
   }
 
   async recallFleet(fleetId) {
@@ -426,6 +489,28 @@ class FleetManager {
       .split('_')
       .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
       .join(' ');
+  }
+  formatCoords(report) {
+    if (!report?.target) return 'Unknown coordinates';
+    const { galaxy, system, position } = report.target;
+    return `${galaxy}:${system}:${position}`;
+  }
+
+  formatLoot(loot = {}) {
+    const parts = [];
+    if (loot.metal) parts.push(`${this.formatNumber(loot.metal)} metal`);
+    if (loot.crystal) parts.push(`${this.formatNumber(loot.crystal)} crystal`);
+    if (loot.deuterium) parts.push(`${this.formatNumber(loot.deuterium)} deut.`);
+    return parts.length ? parts.join(', ') : 'None';
+  }
+
+  formatLosses(losses = {}) {
+    const entries = Object.entries(losses);
+    if (!entries.length) return 'None';
+    return entries
+      .map(([key, count]) => `${this.formatName(key)}-${count}`)
+      .slice(0, 4)
+      .join(', ');
   }
 }
 

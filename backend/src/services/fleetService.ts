@@ -5,6 +5,7 @@ import { SHIPS } from '../config/gameConfig';
 import { PoolClient } from 'pg';
 import { Fleet } from '../types';
 import { getRealtimeHandler } from '../socket';
+import { CombatResult } from '../services/combatService';
 
 export class FleetService {
   static async dispatchFleet(
@@ -207,6 +208,48 @@ export class FleetService {
     });
   }
 
+  static async getRecentCombatReports(userId: number, limit = 5): Promise<any[]> {
+    const result = await pool.query(
+      `SELECT 
+        cr.*,
+        au.username AS attacker_name,
+        du.username AS defender_name
+       FROM combat_reports cr
+       LEFT JOIN users au ON au.id = cr.attacker_id
+       LEFT JOIN users du ON du.id = cr.defender_id
+       WHERE cr.attacker_id = $1 OR cr.defender_id = $1
+       ORDER BY cr.battle_time DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      attackerId: row.attacker_id,
+      defenderId: row.defender_id,
+      attacker: row.attacker_name || 'Unknown',
+      defender: row.defender_name || 'Unknown',
+      coordinates: {
+        galaxy: row.planet_galaxy,
+        system: row.planet_system,
+        position: row.planet_position,
+      },
+      winner: row.winner,
+      attackerLosses: this.safeParse(row.attacker_losses),
+      defenderLosses: this.safeParse(row.defender_losses),
+      loot: {
+        metal: row.loot_metal,
+        crystal: row.loot_crystal,
+        deuterium: row.loot_deuterium,
+      },
+      debris: {
+        metal: row.debris_metal,
+        crystal: row.debris_crystal,
+      },
+      battleTime: row.battle_time,
+    }));
+  }
+
   static async processFleetArrival(fleetId: number): Promise<void> {
     const client = await pool.connect();
     
@@ -372,6 +415,21 @@ export class FleetService {
       `UPDATE fleets SET status = 'returning' WHERE id = $1`,
       [fleet.id]
     );
+
+    const summary = this.buildCombatSummary(reportId, fleet, targetPlanet.user_id, combatResult);
+    this.emitFleetEvent(fleet.user_id, {
+      action: 'combat',
+      role: 'attacker',
+      report: summary,
+    });
+
+    if (targetPlanet.user_id) {
+      this.emitFleetEvent(targetPlanet.user_id, {
+        action: 'combat',
+        role: 'defender',
+        report: summary,
+      });
+    }
   }
 
   private static async handleTransportMission(fleet: Fleet, client: PoolClient): Promise<void> {
@@ -445,5 +503,39 @@ export class FleetService {
     if (!handler) return;
 
     handler.emitFleetUpdate(userId, payload);
+  }
+
+  private static safeParse(value: any): any {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+
+  private static buildCombatSummary(
+    reportId: number,
+    fleet: Fleet,
+    defenderId: number | null,
+    result: CombatResult
+  ) {
+    return {
+      id: reportId,
+      mission: fleet.mission_type,
+      target: {
+        galaxy: fleet.target_galaxy,
+        system: fleet.target_system,
+        position: fleet.target_position,
+      },
+      attackerId: fleet.user_id,
+      defenderId,
+      winner: result.winner,
+      loot: result.loot,
+      attackerLosses: result.attackerLosses,
+      defenderLosses: result.defenderLosses,
+      timestamp: new Date().toISOString(),
+    };
   }
 }

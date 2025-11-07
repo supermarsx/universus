@@ -15,7 +15,7 @@ interface CombatUnit {
   rapidFire?: { [key: string]: number };
 }
 
-interface CombatResult {
+export interface CombatResult {
   winner: 'attacker' | 'defender' | 'draw';
   rounds: any[];
   attackerLosses: { [key: string]: number };

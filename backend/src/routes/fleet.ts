@@ -18,6 +18,18 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/reports', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthRequest;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 5;
+    const reports = await FleetService.getRecentCombatReports(authReq.user!.id, limit || 5);
+    res.json(reports);
+  } catch (error: any) {
+    console.error('Error fetching combat reports:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/dispatch', async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
