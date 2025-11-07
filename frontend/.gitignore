@@ -1,5 +1,6 @@
 node_modules/
 dist/
+js/
 npm-debug.log
 .eslintcache
 .DS_Store

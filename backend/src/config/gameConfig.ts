@@ -35,6 +35,9 @@ export interface ResearchConfig {
   baseCost: BuildingCost;
   costMultiplier: number;
   baseTime: number;
+  displayName?: string;
+  description?: string;
+  category?: string;
   requirements?: {
     buildings?: { [key: string]: number };
     research?: { [key: string]: number };
@@ -381,12 +384,18 @@ export const DEFENSES: { [key: string]: ShipConfig } = {
 // Research configuration
 export const RESEARCH: { [key: string]: ResearchConfig } = {
   energy_technology: {
+    displayName: 'Energy Technology',
+    description: 'Boosts planetary energy output and unlocks advanced tech tiers.',
+    category: 'energy',
     baseCost: { metal: 0, crystal: 800, deuterium: 400 },
     costMultiplier: 2.0,
     baseTime: 120,
     requirements: { buildings: { research_lab: 1 } },
   },
   laser_technology: {
+    displayName: 'Laser Technology',
+    description: 'Foundation for laser weaponry and advanced ship systems.',
+    category: 'weapons',
     baseCost: { metal: 200, crystal: 100, deuterium: 0 },
     costMultiplier: 2.0,
     baseTime: 120,
@@ -396,6 +405,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   ion_technology: {
+    displayName: 'Ion Technology',
+    description: 'Enables ion cannons that pierce shields with focused energy.',
+    category: 'weapons',
     baseCost: { metal: 1000, crystal: 300, deuterium: 100 },
     costMultiplier: 2.0,
     baseTime: 180,
@@ -405,6 +417,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   hyperspace_technology: {
+    displayName: 'Hyperspace Technology',
+    description: 'Research into hyperspace travel and energy manipulation.',
+    category: 'propulsion',
     baseCost: { metal: 0, crystal: 4000, deuterium: 2000 },
     costMultiplier: 2.0,
     baseTime: 240,
@@ -414,6 +429,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   plasma_technology: {
+    displayName: 'Plasma Technology',
+    description: 'Unlocks devastating plasma weapon systems.',
+    category: 'weapons',
     baseCost: { metal: 2000, crystal: 4000, deuterium: 1000 },
     costMultiplier: 2.0,
     baseTime: 300,
@@ -423,6 +441,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   combustion_drive: {
+    displayName: 'Combustion Drive',
+    description: 'Basic propulsion system for light civilian and combat ships.',
+    category: 'propulsion',
     baseCost: { metal: 400, crystal: 0, deuterium: 600 },
     costMultiplier: 2.0,
     baseTime: 120,
@@ -432,6 +453,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   impulse_drive: {
+    displayName: 'Impulse Drive',
+    description: 'Advanced drive core for medium-class vessels.',
+    category: 'propulsion',
     baseCost: { metal: 2000, crystal: 4000, deuterium: 600 },
     costMultiplier: 2.0,
     baseTime: 180,
@@ -441,6 +465,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   hyperspace_drive: {
+    displayName: 'Hyperspace Drive',
+    description: 'Fastest propulsion for capital ships using hyperspace tunnels.',
+    category: 'propulsion',
     baseCost: { metal: 10000, crystal: 20000, deuterium: 6000 },
     costMultiplier: 2.0,
     baseTime: 240,
@@ -450,18 +477,27 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   espionage_technology: {
+    displayName: 'Espionage Technology',
+    description: 'Improves intel gathering and sensor efficiency.',
+    category: 'intelligence',
     baseCost: { metal: 200, crystal: 1000, deuterium: 200 },
     costMultiplier: 2.0,
     baseTime: 120,
     requirements: { buildings: { research_lab: 3 } },
   },
   computer_technology: {
+    displayName: 'Computer Technology',
+    description: 'Expands command-and-control capacity for fleets.',
+    category: 'infrastructure',
     baseCost: { metal: 0, crystal: 400, deuterium: 600 },
     costMultiplier: 2.0,
     baseTime: 120,
     requirements: { buildings: { research_lab: 1 } },
   },
   astrophysics: {
+    displayName: 'Astrophysics',
+    description: 'Essential for deep-space exploration and additional colonies.',
+    category: 'advanced',
     baseCost: { metal: 4000, crystal: 8000, deuterium: 4000 },
     costMultiplier: 1.75,
     baseTime: 240,
@@ -471,6 +507,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   intergalactic_research_network: {
+    displayName: 'Intergalactic Research Network',
+    description: 'Links laboratories across galaxies for collaborative research.',
+    category: 'advanced',
     baseCost: { metal: 240000, crystal: 400000, deuterium: 160000 },
     costMultiplier: 2.0,
     baseTime: 480,
@@ -480,18 +519,27 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   graviton_technology: {
+    displayName: 'Graviton Technology',
+    description: 'Harnesses gravity manipulation for superweapons.',
+    category: 'advanced',
     baseCost: { metal: 0, crystal: 0, deuterium: 0, energy: 300000 },
     costMultiplier: 3.0,
     baseTime: 4320,
     requirements: { buildings: { research_lab: 12 } },
   },
   weapons_technology: {
+    displayName: 'Weapons Technology',
+    description: 'Increases weapon damage for all ships and defenses.',
+    category: 'weapons',
     baseCost: { metal: 800, crystal: 200, deuterium: 0 },
     costMultiplier: 2.0,
     baseTime: 120,
     requirements: { buildings: { research_lab: 4 } },
   },
   shielding_technology: {
+    displayName: 'Shielding Technology',
+    description: 'Enhances defensive shield generators.',
+    category: 'defense',
     baseCost: { metal: 200, crystal: 600, deuterium: 0 },
     costMultiplier: 2.0,
     baseTime: 120,
@@ -501,6 +549,9 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
     },
   },
   armor_technology: {
+    displayName: 'Armor Technology',
+    description: 'Strengthens hull plating for all units.',
+    category: 'defense',
     baseCost: { metal: 1000, crystal: 0, deuterium: 0 },
     costMultiplier: 2.0,
     baseTime: 120,

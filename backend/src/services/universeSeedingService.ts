@@ -61,6 +61,9 @@ export class UniverseSeedingService {
       );
       
       const universe = result.rows[0] ? this.mapUniverseSeed(result.rows[0]) : null;
+      if (!universe) {
+        throw new Error('Failed to create universe seed');
+      }
       
       await client.query('COMMIT');
       

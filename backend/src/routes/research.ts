@@ -10,10 +10,16 @@ router.use(authenticateToken);
 router.get('/', async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const research = await ResearchService.getUserResearch(authReq.user!.id);
-    const queue = await ResearchService.getResearchQueue(authReq.user!.id);
+    const planetId = req.query.planetId
+      ? parseInt(req.query.planetId as string, 10)
+      : undefined;
+
+    const overview = await ResearchService.getResearchOverview(
+      authReq.user!.id,
+      planetId
+    );
     
-    res.json({ research, queue });
+    res.json(overview);
   } catch (error: any) {
     console.error('Error fetching research:', error);
     res.status(500).json({ error: error.message });
@@ -31,7 +37,7 @@ router.post('/start', async (req: Request, res: Response) => {
 
     const result = await ResearchService.startResearch(
       authReq.user!.id,
-      parseInt(planetId),
+      parseInt(planetId, 10),
       researchType
     );
 

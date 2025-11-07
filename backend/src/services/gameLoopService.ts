@@ -2,6 +2,7 @@ import { BuildingService } from './buildingService';
 import { FleetService } from './fleetService';
 import { ShipyardService } from './shipyardService';
 import { pool } from '../config/database';
+import { ResearchService } from './researchService';
 
 export class GameLoopService {
   private static intervalId: NodeJS.Timeout | null = null;
@@ -42,29 +43,9 @@ export class GameLoopService {
   }
 
   private static async checkAndFinishResearch(): Promise<void> {
-    const result = await pool.query(
-      'SELECT * FROM research_queue WHERE end_time <= NOW()'
-    );
-
-    for (const research of result.rows) {
-      try {
-        await pool.query('BEGIN');
-
-        // Update research level
-        await pool.query(
-          `UPDATE research SET ${research.research_type} = $1 WHERE user_id = $2`,
-          [research.level, research.user_id]
-        );
-
-        // Remove from queue
-        await pool.query('DELETE FROM research_queue WHERE id = $1', [research.id]);
-
-        await pool.query('COMMIT');
-        console.log(`Finished research ${research.research_type} for user ${research.user_id}`);
-      } catch (error) {
-        await pool.query('ROLLBACK');
-        console.error(`Error finishing research ${research.id}:`, error);
-      }
+    const completed = await ResearchService.completeFinishedResearch();
+    if (completed > 0) {
+      console.log(`Finished ${completed} research projects`);
     }
   }
 

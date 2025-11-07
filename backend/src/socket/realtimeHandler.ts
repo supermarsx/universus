@@ -428,6 +428,18 @@ export class RealtimeSocketHandler {
   }
 
   // =====================================================
+  // RESEARCH EVENTS
+  // =====================================================
+
+  public emitResearchUpdate(userId: number, payload: any): void {
+    this.io.to(`user:${userId}`).emit('researchUpdate', payload);
+  }
+
+  public emitResearchComplete(userId: number, payload: any): void {
+    this.io.to(`user:${userId}`).emit('researchComplete', payload);
+  }
+
+  // =====================================================
   // CONFIGURATION LISTENERS (Phase 7)
   // =====================================================
 
