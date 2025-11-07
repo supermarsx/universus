@@ -1,0 +1,43 @@
+{% extends "layouts/game.njk" %}
+
+{% set title = "Universus - Notifications" %}
+{% set currentPage = "notifications" %}
+{% set bodyClass = "game-body" %}
+
+{% block content %}
+<h2>Notifications Center</h2>
+
+<div class="notification-page card-enhanced">
+    <div class="notification-page-controls">
+        <label>
+            Category
+            <select id="notificationCategoryFilter">
+                <option value="all">All</option>
+                <option value="fleet">Fleet</option>
+                <option value="combat">Combat</option>
+                <option value="resource">Resources</option>
+                <option value="alliance">Alliance</option>
+                <option value="trade">Trade</option>
+                <option value="system">System</option>
+            </select>
+        </label>
+        <label class="checkbox-inline">
+            <input type="checkbox" id="notificationUnreadOnly">
+            Unread only
+        </label>
+        <div class="notification-page-actions">
+            <button class="btn-secondary" id="notificationsRefresh">Refresh</button>
+            <button class="btn-primary" id="notificationsMarkAll">Mark all read</button>
+        </div>
+    </div>
+
+    <div id="notificationPageList" class="notification-list notification-page-list">
+        <p class="text-muted">Loading notifications...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/notifications-page.js"></script>
+{% endblock %}

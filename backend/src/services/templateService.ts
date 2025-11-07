@@ -158,6 +158,17 @@ export class TemplateService {
   }
 
   /**
+   * Render notifications page
+   */
+  static renderNotifications(res: Response, context: TemplateContext = {}): void {
+    this.render(res, 'pages/notifications.njk', {
+      ...context,
+      currentPage: 'notifications',
+      pageBackground: backgroundService.getMessagesBackground(),
+    });
+  }
+
+  /**
    * Render admin page
    */
   static renderAdmin(res: Response, context: TemplateContext = {}): void {

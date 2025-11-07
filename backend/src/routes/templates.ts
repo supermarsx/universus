@@ -106,6 +106,15 @@ router.get('/shop.html', (req: Request, res: Response) => {
   TemplateService.renderShop(res);
 });
 
+// Notifications page
+router.get('/notifications', (req: Request, res: Response) => {
+  TemplateService.renderNotifications(res);
+});
+
+router.get('/notifications.html', (req: Request, res: Response) => {
+  TemplateService.renderNotifications(res);
+});
+
 // Matrix Shop (Phase 10 Enhanced Shop)
 router.get('/matrix-shop', (req: Request, res: Response) => {
   res.render('pages/matrix-shop.njk');
