@@ -57,14 +57,14 @@ redis-cli ping
 **Option A: Using Bash Script (Recommended)**
 ```bash
 cd /workspace/universus-rpg
-chmod +x deploy-phase6-schema.sh
-./deploy-phase6-schema.sh
+chmod +x scripts/deploy/scripts/deploy/deploy-phase6-schema.sh
+./scripts/deploy/scripts/deploy/deploy-phase6-schema.sh
 ```
 
 **Option B: Using Node.js Script**
 ```bash
 cd /workspace/universus-rpg
-node deploy-phase6-database.js
+node scripts/deploy/scripts/deploy/deploy-phase6-database.js
 ```
 
 **Option C: Manual Deployment**
@@ -99,8 +99,8 @@ The server should start on `http://localhost:3000`
 
 ```bash
 cd /workspace/universus-rpg
-chmod +x test-phase6-realtime.sh
-./test-phase6-realtime.sh
+chmod +x scripts/test/scripts/test/test-phase6-realtime.sh
+./scripts/test/scripts/test/test-phase6-realtime.sh
 ```
 
 ### Test Coverage
@@ -275,7 +275,7 @@ psql -h 127.0.0.1 -U postgres -d universus_rpg -c "\dt"
 psql -h 127.0.0.1 -U postgres -d universus_rpg -c "DROP TABLE IF EXISTS chat_messages CASCADE;"
 
 # Re-run deployment
-./deploy-phase6-schema.sh
+./scripts/deploy/scripts/deploy/deploy-phase6-schema.sh
 ```
 
 ### Issue: Socket.io Connection Fails

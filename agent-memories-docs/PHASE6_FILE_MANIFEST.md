@@ -94,7 +94,7 @@
 ### Deployment Scripts
 
 #### Bash Deployment Script
-- **`deploy-phase6-schema.sh`** (165 lines)
+- **`scripts/deploy/deploy-phase6-schema.sh`** (165 lines)
   - Automated database schema deployment
   - PostgreSQL connection validation
   - Verifies all 18 tables created
@@ -104,7 +104,7 @@
   - Comprehensive error handling
 
 #### Node.js Deployment Script
-- **`deploy-phase6-database.js`** (340 lines)
+- **`scripts/deploy/deploy-phase6-database.js`** (340 lines)
   - Cross-platform deployment
   - Real-time progress feedback
   - Comprehensive verification
@@ -114,7 +114,7 @@
 ### Testing Scripts
 
 #### Comprehensive Test Suite
-- **`test-phase6-realtime.sh`** (469 lines)
+- **`scripts/test/test-phase6-realtime.sh`** (469 lines)
   - 10 test scenarios covering all requirements
   - Database tables verification
   - Server and Socket.io connection testing
@@ -129,7 +129,7 @@
   - Automated pass/fail reporting
 
 ### Quick Start Script
-- **`quickstart-phase6.sh`** (236 lines)
+- **`scripts/deploy/quickstart-phase6.sh`** (236 lines)
   - Automated end-to-end deployment
   - Service startup (PostgreSQL, Redis)
   - Schema deployment
@@ -315,7 +315,7 @@ For immediate deployment in a proper environment:
 
 ```bash
 cd /workspace/universus-rpg
-./quickstart-phase6.sh
+./scripts/deploy/quickstart-phase6.sh
 ```
 
 This single command will:
@@ -349,10 +349,10 @@ This single command will:
 │   └── index.ts (updated)
 ├── frontend/views/pages/chat.njk
 ├── frontend/js/chat.js
-├── deploy-phase6-schema.sh
-├── deploy-phase6-database.js
-├── test-phase6-realtime.sh
-├── quickstart-phase6.sh
+├── scripts/deploy/deploy-phase6-schema.sh
+├── scripts/deploy/deploy-phase6-database.js
+├── scripts/test/test-phase6-realtime.sh
+├── scripts/deploy/quickstart-phase6.sh
 ├── PHASE6_DEPLOYMENT_STATUS_REPORT.md
 ├── PHASE6_DEPLOYMENT_TESTING_GUIDE.md
 ├── PHASE6_README.md
@@ -369,7 +369,7 @@ This single command will:
 
 ### Immediate Actions
 1. Start required services (PostgreSQL, Redis)
-2. Run quick start script: `./quickstart-phase6.sh`
+2. Run quick start script: `./scripts/deploy/quickstart-phase6.sh`
 3. Or follow manual deployment in any PHASE6_*.md file
 4. Access chat interface: http://localhost:3000/chat
 5. Test real-time features

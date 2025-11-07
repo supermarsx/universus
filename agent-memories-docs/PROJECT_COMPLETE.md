@@ -213,7 +213,7 @@ sudo -u postgres psql -d universus_rpg -c \
 - **README.md** - Project overview and setup
 - **PROJECT_SUMMARY.md** - Technical architecture
 - **DEPLOYMENT.md** - Deployment instructions
-- **verify-and-test.sh** - Automated verification script
+- **scripts/test/verify-and-test.sh** - Automated verification script
 
 ---
 

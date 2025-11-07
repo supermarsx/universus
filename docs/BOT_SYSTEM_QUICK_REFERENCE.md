@@ -5,7 +5,7 @@
 ### Deploy Bot System
 ```bash
 cd /workspace/universus-rpg
-./deploy-bot-system.sh
+./scripts/deploy/scripts/deploy/deploy-bot-system.sh
 ```
 
 This script will:
@@ -356,7 +356,7 @@ Bot system integrates with:
 ### Documentation
 - `BOT_SYSTEM_COMPLETE.md` - Complete implementation report
 - `BOT_SYSTEM_QUICK_REFERENCE.md` - This file
-- `deploy-bot-system.sh` - Automated deployment script
+- `scripts/deploy/scripts/deploy/deploy-bot-system.sh` - Automated deployment script
 
 ## Support
 

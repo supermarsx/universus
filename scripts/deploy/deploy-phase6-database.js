@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
+const ROOT_DIR = path.resolve(__dirname, '../../');
+
 // Database configuration from environment
 const pool = new Pool({
     host: process.env.DB_HOST || '127.0.0.1',
@@ -47,7 +49,7 @@ async function testDatabaseConnection() {
 async function deploySchema() {
     printHeader('Deploying Phase 6 Schema');
     
-    const schemaPath = path.join(__dirname, 'database/sql/phase6_realtime_schema.sql');
+    const schemaPath = path.join(ROOT_DIR, 'database/sql/phase6_realtime_schema.sql');
     
     try {
         log('Reading schema file...', 'blue');

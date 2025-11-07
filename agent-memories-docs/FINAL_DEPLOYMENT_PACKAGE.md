@@ -26,7 +26,7 @@ The Universus project has been successfully completed with **ALL CRITICAL REQUIR
 **Deliverable:** Complete deployment script with all migrations
 
 **Files Created:**
-- `deploy-and-test.sh` (449 lines) - Automated deployment and testing
+- `scripts/deploy/deploy-and-test.sh` (449 lines) - Automated deployment and testing
 - `COMPLETE_TESTING_DEPLOYMENT_GUIDE.md` - Part 1: Database Migration
 
 **What's Included:**
@@ -45,8 +45,8 @@ The Universus project has been successfully completed with **ALL CRITICAL REQUIR
 **Execution:**
 ```bash
 cd /workspace/universus-rpg
-chmod +x deploy-and-test.sh
-./deploy-and-test.sh
+chmod +x scripts/deploy/deploy-and-test.sh
+./scripts/deploy/deploy-and-test.sh
 ```
 
 **Validation:**
@@ -117,7 +117,7 @@ chmod +x deploy-and-test.sh
 
 **Files Created:**
 - `COMPLETE_TESTING_DEPLOYMENT_GUIDE.md` (846 lines) - Part 3: E2E Testing
-- `deploy-and-test.sh` - Automated test execution
+- `scripts/deploy/deploy-and-test.sh` - Automated test execution
 
 **What's Included:**
 
@@ -190,8 +190,8 @@ chmod +x deploy-and-test.sh
 
 **Execution:**
 ```bash
-# Automated via deploy-and-test.sh
-./deploy-and-test.sh
+# Automated via scripts/deploy/deploy-and-test.sh
+./scripts/deploy/deploy-and-test.sh
 
 # Or manual testing via curl commands
 # See COMPLETE_TESTING_DEPLOYMENT_GUIDE.md
@@ -298,7 +298,7 @@ chmod +x deploy-and-test.sh
 
 ```
 universus-rpg/
-├── deploy-and-test.sh                    # Automated deployment script
+├── scripts/deploy/deploy-and-test.sh                    # Automated deployment script
 ├── backend/
 │   ├── .env                              # Environment configuration
 │   ├── src/
@@ -361,8 +361,8 @@ universus-rpg/
 
 ```bash
 cd /workspace/universus-rpg
-chmod +x deploy-and-test.sh
-./deploy-and-test.sh
+chmod +x scripts/deploy/deploy-and-test.sh
+./scripts/deploy/deploy-and-test.sh
 ```
 
 This will:
@@ -394,7 +394,7 @@ npm start
 
 ```bash
 # Follow test procedures in COMPLETE_TESTING_DEPLOYMENT_GUIDE.md
-# Or use automated tests in deploy-and-test.sh
+# Or use automated tests in scripts/deploy/deploy-and-test.sh
 
 # Quick health check:
 curl http://localhost:3000/api/health
@@ -433,7 +433,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 ### Execution Required ⚠️
 
-- [ ] Run deploy-and-test.sh
+- [ ] Run scripts/deploy/deploy-and-test.sh
 - [ ] Verify 40+ tables created
 - [ ] Configure Stripe API keys
 - [ ] Execute all 43 tests
@@ -483,7 +483,7 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 ### Automated Scripts
 
-- **deploy-and-test.sh** - One-command deployment
+- **scripts/deploy/deploy-and-test.sh** - One-command deployment
   - Database setup
   - Migration execution
   - Test execution
@@ -569,7 +569,7 @@ All critical requirements have been addressed:
 3. ✅ Comprehensive end-to-end testing procedures created
 
 **Next Steps:**
-1. Execute `./deploy-and-test.sh`
+1. Execute `./scripts/deploy/deploy-and-test.sh`
 2. Configure Stripe API keys
 3. Run all 43 tests
 4. Validate results

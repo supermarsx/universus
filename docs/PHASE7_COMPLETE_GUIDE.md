@@ -820,17 +820,17 @@ class ResourceService {
 
 ```bash
 # Make deployment script executable
-chmod +x deploy-phase7-configuration.sh
+chmod +x scripts/deploy/deploy-phase7-configuration.sh
 
 # Run deployment
-./deploy-phase7-configuration.sh
+./scripts/deploy/deploy-phase7-configuration.sh
 ```
 
 ### Step 2: Verify Installation
 
 ```bash
 # Verify tables, views, and functions
-./deploy-phase7-configuration.sh verify
+./scripts/deploy/deploy-phase7-configuration.sh verify
 ```
 
 ### Step 3: Restart Backend Server
@@ -853,10 +853,10 @@ Navigate to: `http://localhost:3000/admin/config`
 
 ```bash
 # Make test script executable
-chmod +x test-phase7-configuration.sh
+chmod +x scripts/test/test-phase7-configuration.sh
 
 # Run all tests
-./test-phase7-configuration.sh
+./scripts/test/test-phase7-configuration.sh
 ```
 
 ### Test Categories
@@ -883,7 +883,7 @@ chmod +x test-phase7-configuration.sh
 **Solution:** Ensure database schema is deployed and parameters are seeded.
 
 ```bash
-./deploy-phase7-configuration.sh verify
+./scripts/deploy/deploy-phase7-configuration.sh verify
 ```
 
 #### Issue: "Authentication error" in API tests

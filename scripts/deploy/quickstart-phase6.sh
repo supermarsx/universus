@@ -5,6 +5,19 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v git >/dev/null 2>&1; then
+    REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+else
+    REPO_ROOT="$SCRIPT_DIR"
+    while [ "$REPO_ROOT" != "/" ] && [ ! -f "$REPO_ROOT/docker-compose.yml" ]; do
+        REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+    done
+fi
+DEPLOY_DIR="$REPO_ROOT/scripts/deploy"
+TEST_DIR="$REPO_ROOT/scripts/test"
+cd "$REPO_ROOT"
+
 # Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -117,7 +130,7 @@ if [ $POSTGRES_OK -ne 0 ] || [ $REDIS_OK -ne 0 ]; then
     echo "  Redis: sudo service redis-server start"
     echo
     echo "Then run this script again, or run the deployment manually:"
-    echo "  ./deploy-phase6-schema.sh"
+    echo "  ./scripts/deploy/deploy-phase6-schema.sh"
     exit 1
 fi
 
@@ -125,9 +138,9 @@ fi
 echo "Step 3: Deploying Database Schema"
 echo "----------------------------------"
 
-if [ -f "./deploy-phase6-schema.sh" ]; then
+if [ -f "$DEPLOY_DIR/deploy-phase6-schema.sh" ]; then
     echo "Running deployment script..."
-    ./deploy-phase6-schema.sh
+    "$DEPLOY_DIR/deploy-phase6-schema.sh"
     DEPLOY_STATUS=$?
     
     if [ $DEPLOY_STATUS -eq 0 ]; then
@@ -197,9 +210,9 @@ echo
 echo "Step 5: Running Comprehensive Tests"
 echo "------------------------------------"
 
-if [ -f "./test-phase6-realtime.sh" ]; then
+if [ -f "$TEST_DIR/test-phase6-realtime.sh" ]; then
     echo "Running test suite..."
-    ./test-phase6-realtime.sh
+    "$TEST_DIR/test-phase6-realtime.sh"
     TEST_STATUS=$?
     
     if [ $TEST_STATUS -eq 0 ]; then

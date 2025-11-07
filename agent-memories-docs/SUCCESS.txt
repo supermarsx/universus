@@ -180,7 +180,7 @@
 
   Technical:
     📄 PROJECT_SUMMARY.md              Technical architecture
-    🔧 verify-and-test.sh              Automated test script
+    🔧 scripts/test/verify-and-test.sh              Automated test script
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  🏆 ACHIEVEMENTS UNLOCKED                                                    │

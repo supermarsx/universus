@@ -80,7 +80,7 @@ No automated testing existed to validate:
 ### Solution
 Created a comprehensive bash-based testing script with 50+ tests covering all Phase 9 features.
 
-**File Created:** `test-phase9.sh` (518 lines, executable)
+**File Created:** `scripts/test/test-phase9.sh` (518 lines, executable)
 
 ### Test Coverage
 
@@ -160,8 +160,8 @@ export API_BASE_URL=http://localhost:3000/api
 export WEB_BASE_URL=http://localhost:3000
 
 # Run tests
-chmod +x test-phase9.sh
-./test-phase9.sh
+chmod +x scripts/test/test-phase9.sh
+./scripts/test/test-phase9.sh
 ```
 
 ### Sample Output
@@ -208,7 +208,7 @@ chmod +x test-phase9.sh
    - Smooth animations
    - Mobile responsive
 
-2. **test-phase9.sh** (518 lines)
+2. **scripts/test/test-phase9.sh** (518 lines)
    - Comprehensive test suite
    - 8 test suites
    - 33+ test cases
@@ -259,7 +259,7 @@ npm start
 
 # In another terminal, run tests
 cd /workspace/universus-rpg
-./test-phase9.sh
+./scripts/test/test-phase9.sh
 ```
 
 Expected: Test suite runs and shows pass/fail results

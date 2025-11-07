@@ -4,7 +4,7 @@
 
 ```bash
 cd /workspace/universus-rpg
-./quickstart-phase6.sh
+./scripts/deploy/scripts/deploy/quickstart-phase6.sh
 ```
 
 This automated script will:
@@ -28,13 +28,13 @@ sudo service redis-server start
 ### 2. Deploy Schema
 
 ```bash
-./deploy-phase6-schema.sh
+./scripts/deploy/scripts/deploy/deploy-phase6-schema.sh
 ```
 
 Or using Node.js:
 
 ```bash
-node deploy-phase6-database.js
+node scripts/deploy/scripts/deploy/deploy-phase6-database.js
 ```
 
 ### 3. Start Backend
@@ -47,7 +47,7 @@ npm start
 ### 4. Run Tests
 
 ```bash
-./test-phase6-realtime.sh
+./scripts/test/scripts/test/test-phase6-realtime.sh
 ```
 
 ## What's Included
@@ -146,10 +146,10 @@ frontend/js/chat.js (496 lines)
 
 ### Deployment & Testing Scripts
 ```
-deploy-phase6-schema.sh (165 lines)
-deploy-phase6-database.js (340 lines)
-test-phase6-realtime.sh (469 lines)
-quickstart-phase6.sh (236 lines)
+scripts/deploy/scripts/deploy/deploy-phase6-schema.sh (165 lines)
+scripts/deploy/scripts/deploy/deploy-phase6-database.js (340 lines)
+scripts/test/scripts/test/test-phase6-realtime.sh (469 lines)
+scripts/deploy/scripts/deploy/quickstart-phase6.sh (236 lines)
 ```
 
 ### Documentation
@@ -190,7 +190,7 @@ tail -f /var/log/redis/redis-server.log
 psql -h 127.0.0.1 -U postgres -d universus_rpg -c "SELECT 1;"
 
 # View deployment errors
-./deploy-phase6-schema.sh 2>&1 | tee deployment.log
+./scripts/deploy/scripts/deploy/deploy-phase6-schema.sh 2>&1 | tee deployment.log
 ```
 
 ### Backend won't start
@@ -214,7 +214,7 @@ pg_isready && redis-cli ping
 curl http://localhost:3000/api/health
 
 # Run tests with verbose output
-./test-phase6-realtime.sh 2>&1 | tee test-results.log
+./scripts/test/scripts/test/test-phase6-realtime.sh 2>&1 | tee test-results.log
 ```
 
 ## Performance

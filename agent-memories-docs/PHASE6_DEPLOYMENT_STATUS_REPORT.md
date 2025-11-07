@@ -81,9 +81,9 @@ Due to sandbox environment limitations:
 
 #### Automated Deployment Scripts
 
-**deploy-phase6-schema.sh** (165 lines)
+**scripts/deploy/deploy-phase6-schema.sh** (165 lines)
 ```bash
-./deploy-phase6-schema.sh
+./scripts/deploy/deploy-phase6-schema.sh
 ```
 - Connects to PostgreSQL database
 - Deploys complete Phase 6 schema
@@ -92,9 +92,9 @@ Due to sandbox environment limitations:
 - Validates seeded data
 - Provides detailed success/failure reporting
 
-**deploy-phase6-database.js** (340 lines)
+**scripts/deploy/deploy-phase6-database.js** (340 lines)
 ```bash
-node deploy-phase6-database.js
+node scripts/deploy/deploy-phase6-database.js
 ```
 - Node.js-based deployment
 - Real-time progress feedback
@@ -104,9 +104,9 @@ node deploy-phase6-database.js
 
 #### Comprehensive Test Suite
 
-**test-phase6-realtime.sh** (469 lines)
+**scripts/test/test-phase6-realtime.sh** (469 lines)
 ```bash
-./test-phase6-realtime.sh
+./scripts/test/test-phase6-realtime.sh
 ```
 
 Performs all 10 required test scenarios:
@@ -189,7 +189,7 @@ sudo service redis-server start
 2. **Deploy Schema**
 ```bash
 cd /workspace/universus-rpg
-./deploy-phase6-schema.sh
+./scripts/deploy/deploy-phase6-schema.sh
 ```
 
 3. **Start Backend**
@@ -201,7 +201,7 @@ npm start
 4. **Run Tests**
 ```bash
 cd /workspace/universus-rpg
-./test-phase6-realtime.sh
+./scripts/test/test-phase6-realtime.sh
 ```
 
 ### Alternative Deployment Methods
@@ -374,10 +374,10 @@ PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -f database/s
 ### Immediate Actions
 1. ✅ Start PostgreSQL service
 2. ✅ Start Redis service
-3. ✅ Run deployment script: `./deploy-phase6-schema.sh`
+3. ✅ Run deployment script: `./scripts/deploy/deploy-phase6-schema.sh`
 4. ✅ Verify deployment: Check script output
 5. ✅ Start backend server: `cd backend && npm start`
-6. ✅ Run test suite: `./test-phase6-realtime.sh`
+6. ✅ Run test suite: `./scripts/test/test-phase6-realtime.sh`
 7. ✅ Review test results
 8. ✅ Access chat interface: http://localhost:3000/chat
 9. ✅ Verify real-time features working
@@ -441,7 +441,7 @@ psql -h 127.0.0.1 -U postgres -l
 psql -h 127.0.0.1 -U postgres -d universus_rpg -c "\dt"
 
 # View detailed errors
-./deploy-phase6-schema.sh 2>&1 | tee deployment.log
+./scripts/deploy/deploy-phase6-schema.sh 2>&1 | tee deployment.log
 ```
 
 **Issue: Backend won't start**
@@ -511,9 +511,9 @@ All necessary tools, scripts, and documentation have been provided to ensure a s
 - `PHASE6_DEPLOYMENT_TESTING_GUIDE.md` - This comprehensive guide
 
 ### Deployment Scripts
-- `deploy-phase6-schema.sh` - Bash deployment script
-- `deploy-phase6-database.js` - Node.js deployment script
-- `test-phase6-realtime.sh` - Comprehensive test suite
+- `scripts/deploy/deploy-phase6-schema.sh` - Bash deployment script
+- `scripts/deploy/deploy-phase6-database.js` - Node.js deployment script
+- `scripts/test/test-phase6-realtime.sh` - Comprehensive test suite
 
 ### Code Locations
 - Schema: `/workspace/universus-rpg/database/sql/phase6_realtime_schema.sql`

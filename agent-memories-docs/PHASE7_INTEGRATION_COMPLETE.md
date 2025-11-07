@@ -97,7 +97,7 @@ await gameConfig.calculateResearchTime(researchType, level)
 ```
 
 ### 2. Integration Test Suite (356 lines)
-**File:** `test-phase7-integration.sh`
+**File:** `scripts/test/test-phase7-integration.sh`
 
 **Purpose:** End-to-end verification of configuration integration
 
@@ -111,8 +111,8 @@ await gameConfig.calculateResearchTime(researchType, level)
 
 **Usage:**
 ```bash
-chmod +x test-phase7-integration.sh
-./test-phase7-integration.sh
+chmod +x scripts/test/test-phase7-integration.sh
+./scripts/test/test-phase7-integration.sh
 ```
 
 ---
@@ -433,7 +433,7 @@ Temporary configurations for special events:
 ## Next Steps
 
 ### Immediate
-1. Run integration test suite: `./test-phase7-integration.sh`
+1. Run integration test suite: `./scripts/test/test-phase7-integration.sh`
 2. Perform manual verification tests
 3. Monitor configuration changes in production
 

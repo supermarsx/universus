@@ -5,6 +5,19 @@
 
 set -e  # Exit on error
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v git >/dev/null 2>&1; then
+    REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+else
+    REPO_ROOT="$SCRIPT_DIR"
+    while [ "$REPO_ROOT" != "/" ] && [ ! -f "$REPO_ROOT/docker-compose.yml" ]; do
+        REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+    done
+fi
+LOG_DIR="$REPO_ROOT/logs"
+mkdir -p "$LOG_DIR"
+cd "$REPO_ROOT"
+
 echo "=========================================="
 echo "Bot System Deployment Script"
 echo "=========================================="
@@ -85,9 +98,10 @@ fi
 # 5. Build Backend
 print_info "Building backend TypeScript..."
 cd backend
-npm run build 2>&1 | tee ../build_output.txt
+BUILD_LOG="$LOG_DIR/backend_build.log"
+npm run build 2>&1 | tee "$BUILD_LOG"
 
-if grep -q "error" ../build_output.txt; then
+if grep -q "error" "$BUILD_LOG"; then
     print_error "TypeScript compilation failed"
     cd ..
     exit 1
@@ -99,7 +113,8 @@ cd ..
 # 6. Start Backend (in background)
 print_info "Starting backend server..."
 cd backend
-npm start > ../backend.log 2>&1 &
+RUNTIME_LOG="$LOG_DIR/backend_runtime.log"
+npm start > "$RUNTIME_LOG" 2>&1 &
 BACKEND_PID=$!
 cd ..
 
@@ -109,7 +124,7 @@ sleep 5
 if curl -s http://localhost:3000/api/health | grep -q "ok"; then
     print_success "Backend server is running (PID: $BACKEND_PID)"
 else
-    print_error "Backend server failed to start - check backend.log"
+    print_error "Backend server failed to start - check $RUNTIME_LOG"
     kill $BACKEND_PID 2>/dev/null || true
     exit 1
 fi
@@ -209,7 +224,8 @@ print_info "Admin Panel: http://localhost:3000/admin/admin.html"
 print_info "Backend PID: $BACKEND_PID"
 echo ""
 print_info "To stop backend: kill $BACKEND_PID"
-print_info "Logs: backend.log"
+print_info "Build log: $BUILD_LOG"
+print_info "Runtime log: $RUNTIME_LOG"
 echo ""
 echo "=========================================="
 echo "Next Steps:"

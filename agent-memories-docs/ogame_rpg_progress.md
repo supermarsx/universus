@@ -386,7 +386,7 @@ Building a complete browser-based multiplayer RPG with:
 ### Integration & Deployment (100% Complete):
 - ✅ Template Routes (7 routes added to templates.ts)
 - ✅ Navigation Integration (Account dropdown in nav.njk)
-- ✅ Database Deployment Script (deploy-phase9.sh - 296 lines)
+- ✅ Database Deployment Script (scripts/deploy/deploy-phase9.sh - 296 lines)
 - ✅ Complete Documentation (PHASE9_COMPLETE_DOCUMENTATION.md - 655 lines)
 - ✅ TypeScript Compilation (Zero errors)
 
@@ -433,7 +433,7 @@ Building a complete browser-based multiplayer RPG with:
 28. frontend/views/partials/nav.njk (updated - added account dropdown)
 
 **Deployment (2 files):**
-29. deploy-phase9.sh (296 lines)
+29. scripts/deploy/deploy-phase9.sh (296 lines)
 30. PHASE9_COMPLETE_DOCUMENTATION.md (655 lines)
 
 **GRAND TOTAL: 10,353 lines across 30 files**
@@ -480,7 +480,7 @@ Building a complete browser-based multiplayer RPG with:
 **TypeScript Compilation Result:** ✅ ZERO ERRORS
 
 ### Remaining Work:
-- [ ] Deploy Phase 9 database schema using deploy-phase9.sh
+- [ ] Deploy Phase 9 database schema using scripts/deploy/deploy-phase9.sh
 - [ ] Execute tests in production environment
 - [ ] SMTP configuration for email sending
 - [ ] Redis configuration for session management
@@ -646,14 +646,14 @@ Building a complete browser-based multiplayer RPG with:
 **Total Code:** 5,474 lines (SQL + TypeScript + Routes + Frontend)
 
 ### Deployment & Testing Infrastructure Created:
-1. **deploy-phase6-schema.sh** (165 lines)
+1. **scripts/deploy/deploy-phase6-schema.sh** (165 lines)
    - Automated bash script for schema deployment
    - Verifies all 18 tables, 4 views, 4 functions
    - Checks seeded data (5 channels, 12 notification types)
    - Database connection validation
    - Comprehensive error handling
 
-2. **test-phase6-realtime.sh** (469 lines)
+2. **scripts/test/test-phase6-realtime.sh** (469 lines)
    - Complete test suite for all 10 required tests
    - Database tables verification
    - Server and Socket.io connection testing
@@ -667,7 +667,7 @@ Building a complete browser-based multiplayer RPG with:
    - Fleet movement event tests
    - Automated pass/fail reporting
 
-3. **deploy-phase6-database.js** (340 lines)
+3. **scripts/deploy/deploy-phase6-database.js** (340 lines)
    - Node.js deployment script
    - PostgreSQL client integration
    - Real-time deployment feedback
@@ -721,10 +721,10 @@ Building a complete browser-based multiplayer RPG with:
    - Updates: 4 existing files integrated
 
 2. **Infrastructure Scripts**: 1,210 lines
-   - deploy-phase6-schema.sh (165 lines)
-   - deploy-phase6-database.js (340 lines)
-   - test-phase6-realtime.sh (469 lines)
-   - quickstart-phase6.sh (236 lines)
+   - scripts/deploy/deploy-phase6-schema.sh (165 lines)
+   - scripts/deploy/deploy-phase6-database.js (340 lines)
+   - scripts/test/test-phase6-realtime.sh (469 lines)
+   - scripts/deploy/quickstart-phase6.sh (236 lines)
 
 3. **Documentation**: 3,648 lines (8 comprehensive files)
    - PHASE6_DEPLOYMENT_STATUS_REPORT.md (530 lines)
@@ -858,7 +858,7 @@ Building a complete browser-based multiplayer RPG with:
 ### Critical Tasks Addressed:
 
 #### 1. Database Migration Scripts ✅
-- Comprehensive deployment script created (deploy-and-test.sh)
+- Comprehensive deployment script created (scripts/deploy/deploy-and-test.sh)
 - Node.js setup script (setup-database.js - 212 lines)
 - All 9 schemas ready for execution:
   - Base schema (297 lines)
@@ -965,7 +965,7 @@ Building a complete browser-based multiplayer RPG with:
 - **Scale Stage (5,000+ players):** Full Phase 5 implementation
 
 ### Documentation Delivered:
-1. **deploy-and-test.sh** (449 lines) - Automated deployment script
+1. **scripts/deploy/deploy-and-test.sh** (449 lines) - Automated deployment script
 2. **setup-database.js** (212 lines) - Node.js database setup
 3. **STRIPE_INTEGRATION_GUIDE.md** (456 lines) - Payment setup guide
 4. **COMPLETE_TESTING_DEPLOYMENT_GUIDE.md** (846 lines) - Testing procedures
@@ -1073,7 +1073,7 @@ Building a complete browser-based multiplayer RPG with:
 - PRODUCTION_DEPLOYMENT_GUIDE.md (719 lines) - Production deployment guide
 - VERIFICATION_AND_TESTING_GUIDE.md (648 lines) - Detailed testing procedures
 - QUICK_START.md (323 lines) - Quick reference for verification
-- verify-and-test.sh (307 lines) - Automated verification script
+- scripts/test/verify-and-test.sh (307 lines) - Automated verification script
 
 ### VERIFICATION COMPLETE ✅ (100%)
 **All systems verified and operational:**
@@ -1092,7 +1092,7 @@ Building a complete browser-based multiplayer RPG with:
 - VERIFICATION_COMPLETE.md (376 lines) - Comprehensive verification report
 - VERIFICATION_AND_TESTING_GUIDE.md (648 lines) - Detailed testing procedures
 - QUICK_START.md (323 lines) - Quick reference guide
-- verify-and-test.sh (307 lines) - Automated verification script
+- scripts/test/verify-and-test.sh (307 lines) - Automated verification script
 - FEATURE_COMPLETION_REPORT.md (431 lines) - Session completion summary
 - FINAL_STATUS.txt (242 lines) - Visual status summary
 
@@ -1119,7 +1119,7 @@ Building a complete browser-based multiplayer RPG with:
 ### VERIFICATION GUIDES CREATED
 - VERIFICATION_AND_TESTING_GUIDE.md (648 lines) - Complete testing procedures
 - QUICK_START.md (323 lines) - Quick reference guide
-- verify-and-test.sh (307 lines) - Automated verification script
+- scripts/test/verify-and-test.sh (307 lines) - Automated verification script
 - FEATURE_COMPLETION_REPORT.md (431 lines) - Session completion summary
 - FINAL_STATUS.txt (242 lines) - Visual status summary
 

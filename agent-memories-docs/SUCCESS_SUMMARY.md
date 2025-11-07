@@ -55,8 +55,8 @@ I have successfully completed the comprehensive bot system implementation for yo
 ✅ **Complete Implementation Guide** - BOT_SYSTEM_COMPLETE.md (436 lines)
 ✅ **Quick Reference** - BOT_SYSTEM_QUICK_REFERENCE.md (368 lines)
 ✅ **Testing & Verification** - FINAL_VERIFICATION_REPORT.md (475 lines)
-✅ **Automated Test Script** - test_bot_system.sh (222 lines)
-✅ **Deployment Automation** - deploy-bot-system.sh (222 lines)
+✅ **Automated Test Script** - scripts/test/test_bot_system.sh (222 lines)
+✅ **Deployment Automation** - scripts/deploy/deploy-bot-system.sh (222 lines)
 
 ---
 
@@ -94,7 +94,7 @@ Each personality has unique behavior parameters and decision-making patterns:
 ### Option 1: Automated Deployment (Recommended)
 ```bash
 cd /workspace/universus-rpg
-./deploy-bot-system.sh
+./scripts/deploy/deploy-bot-system.sh
 ```
 
 This script will:
@@ -137,8 +137,8 @@ Login: `admin@example.com` / `admin123`
 ### Automated API Testing
 ```bash
 cd /workspace/universus-rpg
-chmod +x test_bot_system.sh
-./test_bot_system.sh
+chmod +x scripts/test/test_bot_system.sh
+./scripts/test/test_bot_system.sh
 ```
 
 This comprehensive test script verifies:
@@ -191,8 +191,8 @@ This comprehensive test script verifies:
 - `BOT_SYSTEM_QUICK_REFERENCE.md` - Quick reference and API docs
 - `FINAL_VERIFICATION_REPORT.md` - Testing procedures and verification
 - `SUCCESS_SUMMARY.md` - This document
-- `test_bot_system.sh` - Automated testing script
-- `deploy-bot-system.sh` - Automated deployment script
+- `scripts/test/test_bot_system.sh` - Automated testing script
+- `scripts/deploy/deploy-bot-system.sh` - Automated deployment script
 
 **Modified Files:**
 - `backend/src/index.ts` - Bot routes registered
@@ -419,7 +419,7 @@ Thank you for this exciting project! The AI bot system adds a new dimension to y
 
 **Admin Login:** admin@example.com / admin123
 
-**Start Command:** `./deploy-bot-system.sh`
+**Start Command:** `./scripts/deploy/deploy-bot-system.sh`
 
 ---
 

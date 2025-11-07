@@ -134,8 +134,8 @@ Game Mechanics Updated
 
 ### 3. End-to-End Verification
 **Automated tests created:**
-- `./test-phase7-configuration.sh` (Configuration API tests)
-- `./test-phase7-integration.sh` (Game system integration tests)
+- `./scripts/test/test-phase7-configuration.sh` (Configuration API tests)
+- `./scripts/test/test-phase7-integration.sh` (Game system integration tests)
 
 **Manual verification documented:**
 - Combat round count verification
@@ -184,9 +184,9 @@ Game Mechanics Updated
 8. `frontend/js/admin/config.js` (651 lines)
 
 ### Testing Files (3)
-9. `test-phase7-configuration.sh` (538 lines)
-10. **`test-phase7-integration.sh` (356 lines)** ← NEW
-11. `deploy-phase7-configuration.sh` (442 lines)
+9. `scripts/test/test-phase7-configuration.sh` (538 lines)
+10. **`scripts/test/test-phase7-integration.sh` (356 lines)** ← NEW
+11. `scripts/deploy/deploy-phase7-configuration.sh` (442 lines)
 
 ### Documentation Files (2)
 12. `PHASE7_COMPLETE_GUIDE.md` (974 lines)
@@ -198,25 +198,25 @@ Game Mechanics Updated
 
 ### 1. Deploy Database Schema
 ```bash
-chmod +x deploy-phase7-configuration.sh
-./deploy-phase7-configuration.sh
+chmod +x scripts/deploy/deploy-phase7-configuration.sh
+./scripts/deploy/deploy-phase7-configuration.sh
 ```
 
 ### 2. Verify Installation
 ```bash
-./deploy-phase7-configuration.sh verify
+./scripts/deploy/deploy-phase7-configuration.sh verify
 ```
 
 ### 3. Run Configuration Tests
 ```bash
-chmod +x test-phase7-configuration.sh
-./test-phase7-configuration.sh
+chmod +x scripts/test/test-phase7-configuration.sh
+./scripts/test/test-phase7-configuration.sh
 ```
 
 ### 4. Run Integration Tests
 ```bash
-chmod +x test-phase7-integration.sh
-./test-phase7-integration.sh
+chmod +x scripts/test/test-phase7-integration.sh
+./scripts/test/test-phase7-integration.sh
 ```
 
 ### 5. Restart Backend
@@ -358,9 +358,9 @@ Before deploying to production:
 - `PHASE7_FINAL_STATUS_REPORT.md` - Status report
 
 ### Testing
-- `test-phase7-configuration.sh` - Configuration system tests
-- `test-phase7-integration.sh` - Game integration tests
-- `deploy-phase7-configuration.sh` - Deployment and verification
+- `scripts/test/test-phase7-configuration.sh` - Configuration system tests
+- `scripts/test/test-phase7-integration.sh` - Game integration tests
+- `scripts/deploy/deploy-phase7-configuration.sh` - Deployment and verification
 
 ### Monitoring
 - Configuration change logs in database

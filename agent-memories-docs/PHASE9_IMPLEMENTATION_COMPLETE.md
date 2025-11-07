@@ -203,8 +203,8 @@ export DB_NAME=universus_db
 export DB_USER=postgres
 export DB_PASSWORD=your_password
 
-chmod +x deploy-phase9.sh
-./deploy-phase9.sh
+chmod +x scripts/deploy/scripts/deploy/deploy-phase9.sh
+./scripts/deploy/scripts/deploy/deploy-phase9.sh
 ```
 
 ---
@@ -354,7 +354,7 @@ chmod +x deploy-phase9.sh
 28. `frontend/views/partials/nav.njk` (added account dropdown)
 
 ### Deployment & Documentation (2 files)
-29. `deploy-phase9.sh` (296 lines)
+29. `scripts/deploy/scripts/deploy/deploy-phase9.sh` (296 lines)
 30. `PHASE9_COMPLETE_DOCUMENTATION.md` (655 lines)
 
 ---
@@ -415,7 +415,7 @@ SESSION_SECRET=your-session-secret
 ```
 
 ### Deployment Steps
-1. Deploy database schema: `./deploy-phase9.sh`
+1. Deploy database schema: `./scripts/deploy/scripts/deploy/deploy-phase9.sh`
 2. Configure environment variables
 3. Build backend: `cd backend && npm run build`
 4. Start server: `npm start`
@@ -428,7 +428,7 @@ SESSION_SECRET=your-session-secret
 
 ### Immediate Actions
 1. **Deploy Database Schema**
-   - Run `deploy-phase9.sh` script
+   - Run `scripts/deploy/scripts/deploy/deploy-phase9.sh` script
    - Verify all tables, views, and functions
 
 2. **Configure Services**

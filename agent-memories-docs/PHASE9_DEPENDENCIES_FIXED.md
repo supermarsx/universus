@@ -178,7 +178,7 @@ $ npx tsc --noEmit
 ### 1. Database Deployment
 ```bash
 cd /workspace/universus-rpg
-./deploy-phase9.sh
+./scripts/deploy/deploy-phase9.sh
 ```
 
 **Prerequisites:**
@@ -238,7 +238,7 @@ npm run dev
 **Run Phase 9 Tests:**
 ```bash
 cd /workspace/universus-rpg
-./test-phase9.sh
+./scripts/test/test-phase9.sh
 ```
 
 ## Technical Achievements

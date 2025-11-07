@@ -130,7 +130,7 @@ All advanced features have been successfully implemented and are ready for verif
   - 5-minute verification steps
   - Manual testing checklist
   - Feature highlights
-- **verify-and-test.sh** (307 lines)
+- **scripts/test/verify-and-test.sh** (307 lines)
   - Automated verification script
   - Applies migrations automatically
   - Runs all checks and reports results
@@ -166,7 +166,7 @@ All advanced features have been successfully implemented and are ready for verif
 ### Quick Path (5 minutes)
 ```bash
 cd /workspace/universus-rpg
-./verify-and-test.sh
+./scripts/test/verify-and-test.sh
 ```
 
 This automated script will:
@@ -210,7 +210,7 @@ For comprehensive instructions, see: **VERIFICATION_AND_TESTING_GUIDE.md**
 - ✅ Comprehensive verification scripts created
 
 **User Action Required:**
-When Docker is available, simply run `./verify-and-test.sh` to complete the final 5%.
+When Docker is available, simply run `./scripts/test/verify-and-test.sh` to complete the final 5%.
 
 ---
 
@@ -247,7 +247,7 @@ frontend/
 universus-rpg/
 ├── VERIFICATION_AND_TESTING_GUIDE.md (648 lines)
 ├── QUICK_START.md (323 lines)
-└── verify-and-test.sh (307 lines, executable)
+└── scripts/test/verify-and-test.sh (307 lines, executable)
 ```
 
 ---
@@ -278,7 +278,7 @@ The project will be 100% complete when:
 
 ---
 
-## 🔄 What Happens When You Run verify-and-test.sh
+## 🔄 What Happens When You Run scripts/test/verify-and-test.sh
 
 ```
 ═══════════════════════════════════════════════════════════════
@@ -393,7 +393,7 @@ Next steps:
 1. **When Docker is available**, run:
    ```bash
    cd /workspace/universus-rpg
-   ./verify-and-test.sh
+   ./scripts/test/verify-and-test.sh
    ```
 
 2. **If verification passes**, proceed to manual UI testing

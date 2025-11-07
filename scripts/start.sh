@@ -5,6 +5,17 @@ echo "SpaceEmpire - Universus-Inspired Browser RPG"
 echo "=========================================="
 echo ""
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v git >/dev/null 2>&1; then
+    REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+else
+    REPO_ROOT="$SCRIPT_DIR"
+    while [ "$REPO_ROOT" != "/" ] && [ ! -f "$REPO_ROOT/docker-compose.yml" ]; do
+        REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+    done
+fi
+cd "$REPO_ROOT"
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "Error: Docker is not installed"
@@ -36,8 +47,8 @@ if docker-compose ps | grep -q "Up"; then
     echo "Services started successfully!"
     echo "=========================================="
     echo ""
-echo "Backend-rendered game UI: http://localhost:3000"
-echo "Standalone frontend bundle: http://localhost:8080"
+    echo "Backend-rendered game UI: http://localhost:3000"
+    echo "Standalone frontend bundle: http://localhost:8080"
     echo ""
     echo "To view logs: docker-compose logs -f"
     echo "To stop services: docker-compose down"

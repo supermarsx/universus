@@ -57,14 +57,14 @@
    - Validation and error handling
 
 ### Infrastructure (2 files)
-8. **`test-phase7-configuration.sh`** (538 lines)
+8. **`scripts/test/scripts/test/test-phase7-configuration.sh`** (538 lines)
    - Comprehensive test suite
    - 50+ automated tests
    - Database verification
    - API endpoint testing
    - Real-time update testing
 
-9. **`deploy-phase7-configuration.sh`** (442 lines)
+9. **`scripts/deploy/scripts/deploy/deploy-phase7-configuration.sh`** (442 lines)
    - Automated deployment script
    - Schema application
    - Verification checks
@@ -94,19 +94,19 @@
 
 ### 1. Deploy Database Schema
 ```bash
-chmod +x deploy-phase7-configuration.sh
-./deploy-phase7-configuration.sh
+chmod +x scripts/deploy/scripts/deploy/deploy-phase7-configuration.sh
+./scripts/deploy/scripts/deploy/deploy-phase7-configuration.sh
 ```
 
 ### 2. Verify Installation
 ```bash
-./deploy-phase7-configuration.sh verify
+./scripts/deploy/scripts/deploy/deploy-phase7-configuration.sh verify
 ```
 
 ### 3. Run Tests
 ```bash
-chmod +x test-phase7-configuration.sh
-./test-phase7-configuration.sh
+chmod +x scripts/test/scripts/test/test-phase7-configuration.sh
+./scripts/test/scripts/test/test-phase7-configuration.sh
 ```
 
 ### 4. Restart Backend
@@ -332,7 +332,7 @@ All 14 requirements met:
 For questions or issues:
 1. Check `PHASE7_COMPLETE_GUIDE.md` for detailed documentation
 2. Review `PHASE7_FINAL_STATUS_REPORT.md` for technical details
-3. Run `./test-phase7-configuration.sh` for diagnostics
+3. Run `./scripts/test/scripts/test/test-phase7-configuration.sh` for diagnostics
 4. Check deployment logs in `/tmp/phase7_deploy.log`
 
 ---

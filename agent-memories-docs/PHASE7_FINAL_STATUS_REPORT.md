@@ -448,15 +448,15 @@ Request → Memory Cache (< 1ms)
 
 ```bash
 # 1. Deploy database schema
-chmod +x deploy-phase7-configuration.sh
-./deploy-phase7-configuration.sh
+chmod +x scripts/deploy/deploy-phase7-configuration.sh
+./scripts/deploy/deploy-phase7-configuration.sh
 
 # 2. Verify installation
-./deploy-phase7-configuration.sh verify
+./scripts/deploy/deploy-phase7-configuration.sh verify
 
 # 3. Run tests
-chmod +x test-phase7-configuration.sh
-./test-phase7-configuration.sh
+chmod +x scripts/test/test-phase7-configuration.sh
+./scripts/test/test-phase7-configuration.sh
 
 # 4. Restart backend server
 cd backend && npm run build && npm run dev
@@ -648,8 +648,8 @@ The system provides administrators with complete control over all game parameter
 7. `frontend/js/admin/config.js` (651 lines)
 
 ### Infrastructure Files
-8. `test-phase7-configuration.sh` (538 lines)
-9. `deploy-phase7-configuration.sh` (442 lines)
+8. `scripts/test/test-phase7-configuration.sh` (538 lines)
+9. `scripts/deploy/deploy-phase7-configuration.sh` (442 lines)
 
 ### Documentation Files
 10. `PHASE7_COMPLETE_GUIDE.md` (974 lines)

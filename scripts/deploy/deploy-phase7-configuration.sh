@@ -285,7 +285,7 @@ verify_api_endpoints() {
         print_success "Backend server is running"
         
         print_info "Note: API endpoint testing requires admin authentication"
-        print_info "Run './test-phase7-configuration.sh' for full API tests"
+        print_info "Run './scripts/test/test-phase7-configuration.sh' for full API tests"
     else
         print_warning "Backend server is not running"
         print_info "Start the server with: cd backend && npm run dev"
@@ -409,7 +409,7 @@ main() {
             print_success "Phase 7: Configuration System deployed successfully"
             print_info "Next steps:"
             echo "  1. Start/restart the backend server"
-            echo "  2. Run tests: ./test-phase7-configuration.sh"
+            echo "  2. Run tests: ./scripts/test/test-phase7-configuration.sh"
             echo "  3. Access admin config UI: http://localhost:3000/admin/config"
             echo ""
             ;;

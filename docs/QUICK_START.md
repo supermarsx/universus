@@ -10,7 +10,7 @@
 cd /workspace/universus-rpg
 
 # Run automated verification script
-./verify-and-test.sh
+./scripts/test/verify-and-test.sh
 ```
 
 This script will automatically:
@@ -143,7 +143,7 @@ After verification, you should see:
 
 ### Documentation
 - `VERIFICATION_AND_TESTING_GUIDE.md` (648 lines)
-- `verify-and-test.sh` (307 lines)
+- `scripts/test/verify-and-test.sh` (307 lines)
 - `QUICK_START.md` (this file)
 
 **Total: 5,000+ lines of production code**
@@ -320,4 +320,4 @@ For comprehensive testing and troubleshooting:
 
 ---
 
-**Ready to verify? Run: `./verify-and-test.sh`** 🚀
+**Ready to verify? Run: `./scripts/test/verify-and-test.sh`** 🚀

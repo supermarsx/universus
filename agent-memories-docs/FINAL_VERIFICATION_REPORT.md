@@ -112,12 +112,12 @@ Login with admin credentials:
 
 ### Automated API Testing Script
 
-The included `test_bot_system.sh` script performs comprehensive API testing:
+The included `scripts/test/test_bot_system.sh` script performs comprehensive API testing:
 
 ```bash
 cd /workspace/universus-rpg
-chmod +x test_bot_system.sh
-./test_bot_system.sh
+chmod +x scripts/test/test_bot_system.sh
+./scripts/test/test_bot_system.sh
 ```
 
 **Test Coverage:**
@@ -393,8 +393,8 @@ curl -X POST http://localhost:3000/api/admin/bots/bulk \
 1. `BOT_SYSTEM_COMPLETE.md` (436 lines) - Complete implementation guide
 2. `BOT_SYSTEM_QUICK_REFERENCE.md` (368 lines) - Quick reference
 3. `FINAL_VERIFICATION_REPORT.md` (This file) - Testing procedures
-4. `test_bot_system.sh` (222 lines) - Automated test script
-5. `deploy-bot-system.sh` (222 lines) - Deployment automation
+4. `scripts/test/test_bot_system.sh` (222 lines) - Automated test script
+5. `scripts/deploy/deploy-bot-system.sh` (222 lines) - Deployment automation
 
 ### Modified Files
 1. `backend/src/index.ts` - Added bot routes registration

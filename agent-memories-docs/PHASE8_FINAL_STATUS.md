@@ -38,7 +38,7 @@ All Phase 8 code has been written and is ready for integration:
 
 ### 2. Integration Tools Created
 
-- **Integration Script**: `/workspace/universus-rpg/integrate-phase8.sh`
+- **Integration Script**: `/workspace/universus-rpg/scripts/deploy/integrate-phase8.sh`
   - Automates file copying where possible
   - Checks integration status
   - Provides step-by-step instructions
@@ -159,7 +159,7 @@ Due to file location issues, the complete implementations need to be manually cr
 
 **Option A**: Use the integration script (partial):
 ```bash
-bash integrate-phase8.sh
+bash scripts/deploy/integrate-phase8.sh
 ```
 
 **Option B**: Manual file creation:

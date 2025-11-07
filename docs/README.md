@@ -49,7 +49,7 @@
 - Troubleshooting guide
 
 **Automated Scripts:**
-- `deploy-and-test.sh` (449 lines) - One-command deployment
+- `scripts/deploy/deploy-and-test.sh` (449 lines) - One-command deployment
 
 ---
 
@@ -143,7 +143,7 @@
 
 **Follow this path:**
 1. Read: `FINAL_DEPLOYMENT_PACKAGE.md` (Overview)
-2. Execute: `deploy-and-test.sh` (Database setup)
+2. Execute: `scripts/deploy/deploy-and-test.sh` (Database setup)
 3. Read: `STRIPE_INTEGRATION_GUIDE.md` (Payment setup)
 4. Execute: Tests from `COMPLETE_TESTING_DEPLOYMENT_GUIDE.md`
 5. Validate: Check all test results
@@ -286,7 +286,7 @@
 
 ### Phase 2: Database Setup
 
-- [ ] Execute `deploy-and-test.sh`
+- [ ] Execute `scripts/deploy/deploy-and-test.sh`
 - [ ] Verify 40+ tables created
 - [ ] Confirm admin user exists
 - [ ] Run validation queries
@@ -379,7 +379,7 @@ All source code in `/workspace/universus-rpg/backend/src/`
 - Dark Matter: 10,000
 
 ### Automated Scripts
-- `deploy-and-test.sh` - Complete deployment automation
+- `scripts/deploy/deploy-and-test.sh` - Complete deployment automation
 
 ---
 
@@ -387,7 +387,7 @@ All source code in `/workspace/universus-rpg/backend/src/`
 
 ### Beginner (1-2 hours)
 1. `FINAL_DEPLOYMENT_PACKAGE.md` - Overview
-2. `deploy-and-test.sh` - Run deployment
+2. `scripts/deploy/deploy-and-test.sh` - Run deployment
 3. Login and explore UI
 
 ### Intermediate (3-4 hours)
@@ -422,7 +422,7 @@ All source code in `/workspace/universus-rpg/backend/src/`
 ## 🎯 Next Steps
 
 1. **Read:** `FINAL_DEPLOYMENT_PACKAGE.md`
-2. **Execute:** `./deploy-and-test.sh`
+2. **Execute:** `./scripts/deploy/deploy-and-test.sh`
 3. **Configure:** Stripe API keys
 4. **Test:** Run all 43 tests
 5. **Deploy:** Production deployment

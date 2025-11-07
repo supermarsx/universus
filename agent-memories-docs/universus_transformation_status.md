@@ -465,7 +465,7 @@
   - Backend completion report
   - Complete system report
 
-✅ **Integration Script**: integrate-phase8.sh created
+✅ **Integration Script**: scripts/deploy/integrate-phase8.sh created
 
 ### What Requires Manual Steps:
 ⏳ **File Integration**: Files written to /workspace/backend/src/ need to be copied to /workspace/universus-rpg/backend/src/
@@ -495,13 +495,13 @@
 - /workspace/universus-rpg/frontend/views/pages/ (template files)
 
 ### Integration Script Created:
-✅ /workspace/universus-rpg/integrate-phase8.sh
+✅ /workspace/universus-rpg/scripts/deploy/integrate-phase8.sh
   - Automates file copying
   - Checks integration status
   - Provides manual step instructions
 
 ### Next Actions Required:
-1. Run integration script: `cd /workspace/universus-rpg && bash integrate-phase8.sh`
+1. Run integration script: `cd /workspace/universus-rpg && bash scripts/deploy/integrate-phase8.sh`
 2. Manually copy complete service and route files
 3. Update backend/src/index.ts with theme routes
 4. Run database schema SQL

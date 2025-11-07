@@ -5,7 +5,7 @@
 # 
 # Purpose: Automatically verify all new features and apply migrations
 # Created: 2025-11-06
-# Usage: ./verify-and-test.sh
+# Usage: ./scripts/test/verify-and-test.sh
 ###############################################################################
 
 set -e  # Exit on error

@@ -369,8 +369,8 @@ export DB_USER=postgres
 export DB_PASSWORD=your_password
 
 # Run deployment script
-chmod +x deploy-phase9.sh
-./deploy-phase9.sh
+chmod +x scripts/deploy/scripts/deploy/deploy-phase9.sh
+./scripts/deploy/scripts/deploy/deploy-phase9.sh
 ```
 
 ### Step 2: Configure Email Service

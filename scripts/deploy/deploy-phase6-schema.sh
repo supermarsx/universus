@@ -156,7 +156,7 @@ if [ $MISSING_TABLES -eq 0 ]; then
     echo
     echo "Next steps:"
     echo "  1. Start the backend server: cd backend && npm start"
-    echo "  2. Run the comprehensive test suite: ./test-phase6-realtime.sh"
+    echo "  2. Run the comprehensive test suite: ./scripts/test/test-phase6-realtime.sh"
     exit 0
 else
     echo -e "${RED}✗ $MISSING_TABLES table(s) missing${NC}"
