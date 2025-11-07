@@ -1,38 +1,30 @@
-# Bot worker build stage: reuse backend build artifacts
-FROM node:18-alpine AS backend-build
-
-WORKDIR /app/backend
-
-COPY backend/package*.json ./
-RUN npm install
-
-COPY backend/ ./
-RUN npm run build
-
-# Production bot worker image
-FROM node:18-alpine
+# Build stage
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm once for production dependency install
-RUN npm install -g pnpm
+# Install bot-service dependencies
+COPY bot-service/package.json bot-service/package-lock.json* ./bot-service/
+RUN cd bot-service && npm install
 
-# Copy dependency manifests
-COPY backend/package*.json backend/pnpm-lock.yaml* ./backend/
+# Copy source code
+COPY backend ./backend
+COPY bot-service ./bot-service
 
-WORKDIR /app/backend
+# Build bot-service (compiles shared modules as part of the graph)
+RUN cd bot-service && npm run build
 
-# Install production dependencies
-RUN pnpm install --prod
+# Production image
+FROM node:18-alpine
 
-# Copy compiled backend code from build stage
-COPY --from=backend-build /app/backend/dist ./dist
-
-# Copy required runtime assets (SQL scripts for migrations/queries)
-COPY backend/src/database ./src/database
-
-# Bot worker specific configuration
-ENV BOT_WORKER_INTERVAL_MS=60000 \
+ENV NODE_ENV=production \
+    BOT_WORKER_INTERVAL_MS=60000 \
     BOT_WORKER_MAX_BOTS=25
 
-CMD ["node", "dist/bot/botWorker.js"]
+WORKDIR /app/bot-service
+
+COPY --from=builder /app/bot-service/dist ./dist
+COPY --from=builder /app/bot-service/package.json ./package.json
+COPY --from=builder /app/bot-service/node_modules ./node_modules
+
+CMD ["node", "dist/bot-service/src/index.js"]

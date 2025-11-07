@@ -1,11 +1,9 @@
 import { BuildingService } from './buildingService';
 import { FleetService } from './fleetService';
-import { BotAIService } from '../bot/services/botAIService';
 import { pool } from '../config/database';
 
 export class GameLoopService {
   private static intervalId: NodeJS.Timeout | null = null;
-  private static botProcessingInterval: NodeJS.Timeout | null = null;
 
   static start(): void {
     console.log('Starting game loop...');
@@ -18,22 +16,6 @@ export class GameLoopService {
         console.error('Game loop error:', error);
       }
     }, 10000);
-    
-    const shouldStartInlineBotProcessor = process.env.ENABLE_BACKEND_BOT_PROCESSOR === 'true';
-
-    if (shouldStartInlineBotProcessor) {
-      // Start bot AI processing (every 5 minutes) for legacy deployments
-      console.log('Starting inline bot AI processing from backend service...');
-      this.botProcessingInterval = setInterval(async () => {
-        try {
-          await BotAIService.processAllBots();
-        } catch (error) {
-          console.error('Bot AI processing error:', error);
-        }
-      }, 300000); // 5 minutes
-    } else {
-      console.log('Inline bot AI processing disabled; external bot-service worker will handle bot scheduling');
-    }
   }
 
   static stop(): void {
@@ -41,12 +23,6 @@ export class GameLoopService {
       clearInterval(this.intervalId);
       this.intervalId = null;
       console.log('Game loop stopped');
-    }
-    
-    if (this.botProcessingInterval) {
-      clearInterval(this.botProcessingInterval);
-      this.botProcessingInterval = null;
-      console.log('Bot AI processing stopped');
     }
   }
 

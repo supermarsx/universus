@@ -73,8 +73,11 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 
 - Dedicated container (`ogame_bot_service`) handles scheduled bot AI processing outside the main API service
 - Shares the same PostgreSQL and Redis instances via environment variables
+- Backend API proxies all admin bot endpoints to the worker via `BOT_SERVICE_URL` (defaults to `http://bot-service:4001`)
 - Configure cadence with `BOT_WORKER_INTERVAL_MS` and `BOT_WORKER_MAX_BOTS` (see `docker-compose.yml`)
-- Set `ENABLE_BACKEND_BOT_PROCESSOR=true` only if you need the legacy inline processing instead of the worker
+- For local development run both services:
+  - `pnpm dev` inside `backend`
+  - `npm run dev` inside `bot-service`
 
 ### Option 2: Local Development Setup
 
@@ -84,6 +87,10 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    # Backend
    cd backend
    pnpm install
+
+   # Bot service
+   cd ../bot-service
+   npm install
    ```
 
 # No frontend dependencies needed (vanilla JS)
@@ -110,13 +117,20 @@ psql -U postgres -d ogame_rpg -f backend/src/database/schema.sql
    cd backend
    cp .env.example .env
    # Edit .env with your database credentials
+
+   cd ../bot-service
+   cp .env.example .env
    ```
 
-5. Start the backend server:
+5. Start the backend server and bot service:
    
    ```bash
    cd backend
    pnpm run dev
+
+   # In a new terminal
+   cd ../bot-service
+   npm run dev
    ```
 
 6. Open your browser and navigate to `http://localhost:3000`
@@ -144,9 +158,36 @@ REDIS_PORT=6379
 JWT_SECRET=your_super_secret_jwt_key_change_in_production
 JWT_EXPIRES_IN=7d
 
+# Bot service endpoint
+BOT_SERVICE_URL=http://localhost:4001
+
 # Game Configuration
 GAME_SPEED=1
 RESOURCE_PRODUCTION_MULTIPLIER=1
+```
+
+Create a `.env` file in the `bot-service/` directory:
+
+```env
+BOT_SERVICE_PORT=4001
+
+# PostgreSQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ogame_rpg
+DB_USER=postgres
+DB_PASSWORD=your_password
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# JWT shared with backend
+JWT_SECRET=your_super_secret_jwt_key_change_in_production
+
+# Bot worker cadence
+BOT_WORKER_INTERVAL_MS=60000
+BOT_WORKER_MAX_BOTS=25
 ```
 
 ## Game Mechanics

@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2020", "DOM"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "../",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,6 +12,15 @@
     "resolveJsonModule": true,
     "moduleResolution": "node"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*",
+    "../backend/src/config/**/*",
+    "../backend/src/utils/**/*",
+    "../backend/src/types/**/*",
+    "../backend/src/services/**/*"
+  ],
+  "exclude": [
+    "../backend/src/tests/**/*",
+    "../backend/src/**/__mocks__/**/*"
+  ]
 }

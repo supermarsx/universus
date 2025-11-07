@@ -1,39 +1,20 @@
 {
-  "name": "universus-backend",
+  "name": "universus-bot-service",
   "version": "1.0.0",
-  "description": "Universus - Space Empire Game Backend Server",
-  "main": "dist/index.js",
+  "description": "Dedicated bot processing backend service for Universus",
+  "main": "dist/bot-service/src/index.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "db:init": "psql -U postgres -d ogame_rpg -f src/database/schema.sql",
-    "test": "jest --coverage",
-    "test:watch": "jest --watch",
-    "test:unit": "jest --testPathPattern=tests/unit",
-    "test:integration": "jest --testPathPattern=tests/integration",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "type-check": "tsc --noEmit",
-    "validate": "pnpm run type-check && pnpm run lint && pnpm run test"
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/bot-service/src/index.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "worker": "node dist/bot-service/src/worker.js"
   },
-  "keywords": [
-    "game",
-    "mmo",
-    "rpg",
-    "space",
-    "universus"
-  ],
-  "author": "MiniMax Agent",
-  "license": "MIT",
   "dependencies": {
     "@types/nunjucks": "^3.2.6",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.3.1",
     "express": "^5.1.0",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
@@ -71,6 +52,7 @@
     "socket.io-client": "^4.8.1",
     "supertest": "^7.1.4",
     "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }
 }

@@ -37,7 +37,6 @@ import allianceRoutes from './routes/allianceRoutes';
 
 // Import services
 import { GameLoopService } from './services/gameLoopService';
-import { BotAIService } from './bot/services/botAIService';
 import { initializeSocket } from './socket';
 import { startMonitoring, autoExpireBlocks } from './services/adminMonitoringService';
 import debrisService from './services/debrisService';

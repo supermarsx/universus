@@ -54,6 +54,7 @@ services:
       JWT_EXPIRES_IN: 7d
       GAME_SPEED: 1
       RESOURCE_PRODUCTION_MULTIPLIER: 1
+      BOT_SERVICE_URL: http://bot-service:4001
     ports:
       - "3000:3000"
     restart: unless-stopped
@@ -68,10 +69,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      backend:
-        condition: service_started
     environment:
       NODE_ENV: production
+      BOT_SERVICE_PORT: 4001
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ogame_rpg
@@ -81,6 +81,9 @@ services:
       REDIS_PORT: 6379
       BOT_WORKER_INTERVAL_MS: 60000
       BOT_WORKER_MAX_BOTS: 25
+      JWT_SECRET: change_this_to_a_secure_random_string_in_production
+    ports:
+      - "4001:4001"
     restart: unless-stopped
 
 volumes:

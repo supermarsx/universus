@@ -6,9 +6,10 @@
 import express, { Request, Response } from 'express';
 import universeSeedingService from '../services/universeSeedingService';
 import playerPlacementService from '../services/playerPlacementService';
-import botGenerationService from '../bot/services/botGenerationService';
 import universeMaintenanceService from '../services/universeMaintenanceService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireAdmin } from '../middleware/auth';
+
+const BOT_SERVICE_URL = process.env.BOT_SERVICE_URL || 'http://bot-service:4001';
 
 const router = express.Router();
 
@@ -248,30 +249,32 @@ router.get('/:id/my-placement', async (req: Request, res: Response) => {
  * POST /api/universe/:id/generate-bots
  * Generate bots for the universe
  */
-router.post('/:id/generate-bots', async (req: Request, res: Response) => {
+router.post('/:id/generate-bots', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const universeId = parseInt(req.params.id);
-    
-    const generateRequest = {
-      universeId,
-      botCount: req.body.botCount || 100,
-      personalities: req.body.personalities,
-      skillLevels: req.body.skillLevels,
-      distributeEvenly: req.body.distributeEvenly !== false
-    };
-    
-    const result = await botGenerationService.generateBotsForUniverse(generateRequest);
-    
-    if (!result.success) {
-      return res.status(400).json(result);
+    const universeId = parseInt(req.params.id, 10);
+    const targetUrl = `${BOT_SERVICE_URL}/api/admin/bots/universe/${universeId}/generate`;
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: req.headers.authorization || '',
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    const payload = await response.json();
+
+    if (!response.ok) {
+      return res.status(response.status).json(payload);
     }
-    
-    res.json(result);
+
+    res.json(payload);
   } catch (error) {
-    console.error('Error generating bots:', error);
-    res.status(500).json({
+    console.error('Error proxying bot generation:', error);
+    res.status(502).json({
       success: false,
-      message: 'Failed to generate bots'
+      message: 'Bot service unavailable',
     });
   }
 });
