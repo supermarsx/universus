@@ -22,6 +22,8 @@ class FleetManager {
     this.selectedMission = null;
     this.activeFleets = [];
     this.combatReports = [];
+    this.missionLog = [];
+    this.filters = { mission: 'all', status: 'all' };
     this.currentStep = 1;
     this.selectedTab = 'dispatch';
     this.pollInterval = null;
@@ -33,6 +35,7 @@ class FleetManager {
     this.bindStepButtons();
     this.bindMissionButtons();
     this.bindLaunchButton();
+    this.bindFilters();
     this.startPolling();
     this.attachSocketListeners();
   }
@@ -80,6 +83,23 @@ class FleetManager {
     document.getElementById('resetFleet')?.addEventListener('click', () => this.resetForm());
   }
 
+  bindFilters() {
+    document.getElementById('missionFilterType')?.addEventListener('change', (e) => {
+      this.filters.mission = e.target.value;
+      this.renderActiveMissions();
+    });
+
+    document.getElementById('missionFilterStatus')?.addEventListener('change', (e) => {
+      this.filters.status = e.target.value;
+      this.renderActiveMissions();
+    });
+
+    document.getElementById('clearMissionLog')?.addEventListener('click', () => {
+      this.missionLog = [];
+      this.renderMissionLog();
+    });
+  }
+
   startPolling() {
     this.pollInterval = setInterval(() => {
       if (this.selectedTab === 'missions') {
@@ -92,6 +112,7 @@ class FleetManager {
     if (!window.socket) return;
     window.socket.on('fleetUpdate', (payload = {}) => {
       this.fetchActiveFleets();
+      this.recordMissionLog(payload);
       if (payload.action === 'combat') {
         const outcome =
           payload.report?.winner === 'attacker'
@@ -330,14 +351,16 @@ class FleetManager {
     const container = document.getElementById('activeMissions');
     if (!container) return;
 
-    if (this.activeFleets.length === 0) {
+    const fleets = this.filterFleets();
+
+    if (fleets.length === 0) {
       container.innerHTML = '<div class="empty-state card-compact">No active missions.</div>';
       return;
     }
 
     container.innerHTML = '';
 
-    this.activeFleets.forEach((fleet) => {
+    fleets.forEach((fleet) => {
       const ships = typeof fleet.ships === 'string' ? JSON.parse(fleet.ships) : fleet.ships;
       const card = document.createElement('div');
       card.className = 'mission-card card-enhanced';
@@ -402,6 +425,29 @@ class FleetManager {
               <span>Defender Losses: ${this.formatLosses(report.defenderLosses)}</span>
             </div>
           </div>
+        </div>`
+      )
+      .join('');
+  }
+
+  renderMissionLog() {
+    const container = document.getElementById('missionLogEntries');
+    if (!container) return;
+
+    if (!this.missionLog.length) {
+      container.innerHTML = '<div class="empty-state card-compact">No mission activity yet.</div>';
+      return;
+    }
+
+    container.innerHTML = this.missionLog
+      .map(
+        (entry) => `
+        <div class="mission-log-entry">
+          <div>
+            <strong>${entry.title}</strong>
+            <p>${entry.message}</p>
+          </div>
+          <small>${new Date(entry.timestamp).toLocaleTimeString()}</small>
         </div>`
       )
       .join('');
@@ -511,6 +557,61 @@ class FleetManager {
       .map(([key, count]) => `${this.formatName(key)}-${count}`)
       .slice(0, 4)
       .join(', ');
+  }
+  filterFleets() {
+    return this.activeFleets.filter((fleet) => {
+      const missionMatch = this.filters.mission === 'all' || fleet.mission_type === this.filters.mission;
+      const statusMatch = this.filters.status === 'all' || fleet.status === this.filters.status;
+      return missionMatch && statusMatch;
+    });
+  }
+
+  recordMissionLog(payload) {
+    const now = new Date().toISOString();
+    let entry = null;
+
+    switch (payload.action) {
+      case 'dispatch':
+        entry = {
+          title: 'Fleet Dispatched',
+          message: `${this.getMissionLabel(payload.fleet?.mission_type)} to ${this.formatCoords({
+            target: {
+              galaxy: payload.fleet?.target_galaxy,
+              system: payload.fleet?.target_system,
+              position: payload.fleet?.target_position,
+            },
+          })}`,
+          timestamp: now,
+        };
+        break;
+      case 'arrival':
+        entry = {
+          title: 'Fleet Arrived',
+          message: `Fleet #${payload.fleetId} reached its destination`,
+          timestamp: now,
+        };
+        break;
+      case 'recall':
+        entry = {
+          title: 'Recall Issued',
+          message: `Fleet #${payload.fleetId} is returning`,
+          timestamp: now,
+        };
+        break;
+      case 'combat':
+        entry = {
+          title: payload.role === 'attacker' ? 'Combat Report' : 'Defense Report',
+          message: `${payload.report?.winner?.toUpperCase()} at ${this.formatCoords(payload.report)}`,
+          timestamp: now,
+        };
+        break;
+    }
+
+    if (entry) {
+      this.missionLog.unshift(entry);
+      this.missionLog = this.missionLog.slice(0, 20);
+      this.renderMissionLog();
+    }
   }
 }
 

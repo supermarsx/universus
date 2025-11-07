@@ -479,6 +479,59 @@
     border-bottom: 2px solid var(--color-border-primary);
 }
 
+.mission-controls {
+    display: flex;
+    gap: var(--spacing-4);
+    align-items: flex-end;
+    margin-bottom: var(--spacing-4);
+}
+
+.mission-controls label {
+    display: flex;
+    flex-direction: column;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
+.mission-controls select {
+    margin-top: var(--spacing-2);
+    padding: var(--spacing-2);
+    background: var(--color-surface-secondary);
+    border: 1px solid var(--color-border-secondary);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+}
+
+.mission-log {
+    margin-top: var(--spacing-6);
+}
+
+.mission-log-entries {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-3);
+}
+
+.mission-log-entry {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--spacing-3);
+    background: var(--color-surface-secondary);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-secondary);
+}
+
+.mission-log-entry strong {
+    color: var(--color-text-primary);
+}
+
+.mission-log-entry p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
 .tab-button {
     padding: var(--spacing-3) var(--spacing-6);
     background: transparent;

@@ -84,11 +84,39 @@
 
 <!-- Active Missions Tab -->
 <div id="missionsTab" class="tab-content">
+    <div class="mission-controls card-compact">
+        <label>
+            Mission Type
+            <select id="missionFilterType">
+                <option value="all">All</option>
+                <option value="attack">Attack</option>
+                <option value="transport">Transport</option>
+                <option value="deploy">Deploy</option>
+                <option value="espionage">Espionage</option>
+                <option value="colonize">Colonize</option>
+            </select>
+        </label>
+        <label>
+            Status
+            <select id="missionFilterStatus">
+                <option value="all">All</option>
+                <option value="outbound">Outbound</option>
+                <option value="returning">Returning</option>
+            </select>
+        </label>
+        <button class="btn btn-text" id="clearMissionLog">Clear Log</button>
+    </div>
+
     <div id="activeMissions" class="missions-list"></div>
 
     <div class="combat-section card-enhanced">
         <h3>Recent Combat Reports</h3>
         <div id="combatReports" class="combat-reports"></div>
+    </div>
+
+    <div class="mission-log card-enhanced">
+        <h3>Mission Activity Log</h3>
+        <div id="missionLogEntries" class="mission-log-entries"></div>
     </div>
 </div>
 {% endblock %}
