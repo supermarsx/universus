@@ -5,8 +5,8 @@ This folder packages the Universus PostgreSQL schema and migrations as a standal
 ## Contents
 
 - `Dockerfile` builds a custom Postgres image with the schema automatically applied.
-- `scripts/init-db.sh` runs during container startup and applies `schema.sql`, each phase schema file, and any migration scripts in order.
-- `sql/` holds the schema and migration files that were previously embedded in the backend repository.
+- `scripts/init-db.sh` runs during container startup and applies the ordered step files under `sql/steps`.
+- `sql/steps/` contains every initialization stage, including the former migrations (numbered so they execute deterministically).
 
 ## Usage
 

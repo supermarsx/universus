@@ -20,7 +20,8 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    build:
+      context: ./redis
     container_name: universus_redis
     ports:
       - "6379:6379"
@@ -30,6 +31,24 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    build:
+      context: ./rabbitmq
+    container_name: universus_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: universus
+      RABBITMQ_DEFAULT_PASS: universus
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
       retries: 5
 
   backend:
@@ -42,6 +61,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -52,6 +73,11 @@ services:
       DB_PASSWORD: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: universus
+      RABBITMQ_PASSWORD: universus
+      RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
       JWT_SECRET: change_this_to_a_secure_random_string_in_production
       JWT_EXPIRES_IN: 7d
       GAME_SPEED: 1
@@ -71,6 +97,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       BOT_SERVICE_PORT: 4001
@@ -81,11 +109,37 @@ services:
       DB_PASSWORD: postgres
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: universus
+      RABBITMQ_PASSWORD: universus
+      RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
       BOT_WORKER_INTERVAL_MS: 60000
       BOT_WORKER_MAX_BOTS: 25
       JWT_SECRET: change_this_to_a_secure_random_string_in_production
     ports:
       - "4001:4001"
+    restart: unless-stopped
+
+  admin-service:
+    build:
+      context: ./admin-service
+      dockerfile: Dockerfile
+    container_name: universus_admin_service
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      ADMIN_PORT: 4002
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: universus_rpg
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: change_this_to_a_secure_random_string_in_production
+    ports:
+      - "4002:4002"
     restart: unless-stopped
 
   frontend:
@@ -102,3 +156,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:

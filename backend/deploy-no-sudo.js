@@ -30,21 +30,8 @@ async function main() {
   console.log('==========================================\n');
   console.log(`Started at: ${new Date().toISOString()}\n`);
 
-  // Step 1: Database setup (will fail gracefully if PostgreSQL not running)
-  console.log('\n[STEP 1] Running Database Setup...');
-  console.log('Note: This step requires PostgreSQL to be running on port 5432');
-  const setupResult = await runCommand('node setup-database.js', 'Database Setup');
-  
-  if (!setupResult.success) {
-    console.error('\n✗ Database setup failed!');
-    console.error('PostgreSQL may not be running. To start it:');
-    console.error('  1. Check if running: pg_isready');
-    console.error('  2. Start manually if needed');
-    console.error('\nContinuing with build steps...\n');
-  }
-
-  // Step 2: Install dependencies
-  console.log('\n[STEP 2] Installing Dependencies...');
+  // Step 1: Install dependencies
+  console.log('\n[STEP 1] Installing Dependencies...');
   const installResult = await runCommand('npm install --legacy-peer-deps', 'NPM Install');
   
   if (!installResult.success) {
@@ -52,8 +39,8 @@ async function main() {
     console.error('Check the errors above.');
   }
 
-  // Step 3: Build TypeScript
-  console.log('\n[STEP 3] Building TypeScript...');
+  // Step 2: Build TypeScript
+  console.log('\n[STEP 2] Building TypeScript...');
   const buildResult = await runCommand('npm run build', 'TypeScript Build');
   
   if (!buildResult.success) {
@@ -66,12 +53,11 @@ async function main() {
   console.log('╔' + '═'.repeat(78) + '╗');
   console.log('║' + '  DEPLOYMENT SUMMARY'.padEnd(79) + '║');
   console.log('╠' + '═'.repeat(78) + '╣');
-  console.log('║  Database Setup:   ' + (setupResult.success ? '✓ Complete' : '✗ Failed (check PostgreSQL)').padEnd(59) + '║');
   console.log('║  NPM Install:      ' + (installResult.success ? '✓ Complete' : '✗ Failed').padEnd(59) + '║');
   console.log('║  TypeScript Build: ' + (buildResult.success ? '✓ Complete' : '✗ Failed').padEnd(59) + '║');
   console.log('╚' + '═'.repeat(78) + '╝');
   
-  if (setupResult.success && installResult.success && buildResult.success) {
+  if (installResult.success && buildResult.success) {
     console.log('\n✓ ALL STEPS COMPLETED SUCCESSFULLY!\n');
     console.log('Next Steps:');
     console.log('  1. Start the server: npm start');

@@ -7,7 +7,6 @@
     "dev": "nodemon --exec ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "db:init": "psql -U postgres -d universus_rpg -f ../database/sql/schema.sql",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:unit": "jest --testPathPattern=tests/unit",

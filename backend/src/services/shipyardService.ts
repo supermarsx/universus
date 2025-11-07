@@ -106,7 +106,8 @@ export class ShipyardService {
       'SELECT * FROM shipyard_queue WHERE planet_id = $1 ORDER BY start_time',
       [planetId]
     );
-    return result.rows;
+
+    return result.rows.map((queue) => this.decorateQueueEntry(queue));
   }
 
   static async cancelProduction(userId: number, queueId: number): Promise<void> {
@@ -156,5 +157,49 @@ export class ShipyardService {
     } finally {
       client.release();
     }
+  }
+
+  static async completeFinishedJobs(): Promise<number> {
+    const result = await pool.query(
+      'SELECT * FROM shipyard_queue WHERE end_time <= NOW()'
+    );
+
+    let completed = 0;
+
+    for (const queue of result.rows) {
+      try {
+        await pool.query('BEGIN');
+
+        await pool.query(
+          `UPDATE planets SET ${queue.unit_type} = ${queue.unit_type} + $1 WHERE id = $2`,
+          [queue.quantity, queue.planet_id]
+        );
+
+        await pool.query('DELETE FROM shipyard_queue WHERE id = $1', [queue.id]);
+
+        await pool.query('COMMIT');
+        completed++;
+        console.log(`Shipyard queue ${queue.id} completed (${queue.quantity} ${queue.unit_type})`);
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        console.error(`Error completing shipyard queue ${queue.id}:`, error);
+      }
+    }
+
+    return completed;
+  }
+
+  private static decorateQueueEntry(queue: any) {
+    const now = Date.now();
+    const end = new Date(queue.end_time).getTime();
+    const start = new Date(queue.start_time).getTime();
+    const totalDuration = Math.max(end - start, 1);
+    const elapsed = Math.min(Math.max(now - start, 0), totalDuration);
+
+    return {
+      ...queue,
+      secondsRemaining: Math.max(Math.ceil((end - now) / 1000), 0),
+      progress: Math.min(elapsed / totalDuration, 1),
+    };
   }
 }

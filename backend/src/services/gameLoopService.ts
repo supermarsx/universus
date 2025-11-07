@@ -1,5 +1,6 @@
 import { BuildingService } from './buildingService';
 import { FleetService } from './fleetService';
+import { ShipyardService } from './shipyardService';
 import { pool } from '../config/database';
 
 export class GameLoopService {
@@ -68,30 +69,7 @@ export class GameLoopService {
   }
 
   private static async checkAndFinishShipyard(): Promise<void> {
-    const result = await pool.query(
-      'SELECT * FROM shipyard_queue WHERE end_time <= NOW()'
-    );
-
-    for (const queue of result.rows) {
-      try {
-        await pool.query('BEGIN');
-
-        // Add ships/defenses to planet
-        await pool.query(
-          `UPDATE planets SET ${queue.unit_type} = ${queue.unit_type} + $1 WHERE id = $2`,
-          [queue.quantity, queue.planet_id]
-        );
-
-        // Remove from queue
-        await pool.query('DELETE FROM shipyard_queue WHERE id = $1', [queue.id]);
-
-        await pool.query('COMMIT');
-        console.log(`Finished building ${queue.quantity} ${queue.unit_type} on planet ${queue.planet_id}`);
-      } catch (error) {
-        await pool.query('ROLLBACK');
-        console.error(`Error finishing shipyard queue ${queue.id}:`, error);
-      }
-    }
+    await ShipyardService.completeFinishedJobs();
   }
 
   private static async checkFleetArrivals(): Promise<void> {

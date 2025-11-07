@@ -88,17 +88,10 @@ def main():
     print("\n[2] Checking Redis...")
     redis_running = run_cmd('redis-cli ping', 'Redis Check')
     
-    print("\n[3] Running Database Setup...")
-    if pg_running:
-        db_setup = run_cmd('node setup-database.js', 'Database Setup')
-    else:
-        print("✗ Skipping database setup - PostgreSQL not running")
-        db_setup = False
-    
-    print("\n[4] Installing Dependencies...")
+    print("\n[3] Installing Dependencies...")
     npm_install = run_cmd('npm install --legacy-peer-deps 2>&1 | head -50', 'NPM Install')
     
-    print("\n[5] Building TypeScript...")
+    print("\n[4] Building TypeScript...")
     ts_build = run_cmd('npm run build 2>&1 | tail -20', 'TypeScript Build')
     
     # Summary
@@ -108,12 +101,11 @@ def main():
     print("╠" + "="*78 + "╣")
     print(f"║  PostgreSQL:     {'✓ Running' if pg_running else '✗ Not Running'}".ljust(79) + "║")
     print(f"║  Redis:          {'✓ Running' if redis_running else '✗ Not Running'}".ljust(79) + "║")
-    print(f"║  Database Setup: {'✓ Complete' if db_setup else '✗ Failed/Skipped'}".ljust(79) + "║")
     print(f"║  NPM Install:    {'✓ Complete' if npm_install else '✗ Failed'}".ljust(79) + "║")
     print(f"║  TS Build:       {'✓ Complete' if ts_build else '✗ Failed'}".ljust(79) + "║")
     print("╚" + "="*78 + "╝")
     
-    if all([pg_running, db_setup, npm_install, ts_build]):
+    if all([pg_running, npm_install, ts_build]):
         print("\n✓ ALL STEPS COMPLETED SUCCESSFULLY!")
         print("\nNext: Start the server with 'npm start'")
     else:

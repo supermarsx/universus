@@ -10,15 +10,15 @@ run_sql() {
 }
 
 SQL_DIR="/docker-entrypoint-initdb.d/sql"
+STEPS_DIR="$SQL_DIR/steps"
 
-run_sql "$SQL_DIR/schema.sql"
-
-find "$SQL_DIR" -maxdepth 1 -type f ! -name 'schema.sql' -name '*.sql' | sort | while read -r file; do
-  run_sql "$file"
-done
-
-if [ -d "$SQL_DIR/migrations" ]; then
-  find "$SQL_DIR/migrations" -type f -name '*.sql' | sort | while read -r file; do
+if [ -d "$STEPS_DIR" ]; then
+  echo "Applying ordered schema steps..."
+  find "$STEPS_DIR" -maxdepth 1 -type f -name '*.sql' | sort | while read -r file; do
     run_sql "$file"
   done
+else
+  echo "No steps directory found; skipping structured schema application."
 fi
+
+echo "Finished applying schema steps."

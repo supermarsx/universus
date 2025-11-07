@@ -81,6 +81,16 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
   - `npm run build` (or desired workflow) inside `frontend`
 - PostgreSQL now lives in the dedicated `database` project (`universus_database` container). Build-time schema initialization is handled via `database/Dockerfile`.
 
+### Admin Service
+
+- Lives under `admin-service/` and exposes all privileged admin APIs (dashboards, user moderation, monitoring, game configuration)
+- Runs as its own container (`universus_admin_service`) so the public backend never handles admin-only routes
+- Shares the same PostgreSQL instance and JWT secret with the main backend; communicates over REST
+- Local development mirrors the backend workflow:
+  - `pnpm install` then `pnpm dev` inside `admin-service`
+  - Environment variables: `ADMIN_PORT` (defaults to `4002`), database credentials, shared `JWT_SECRET`
+- Docker deployments build the image via `admin-service/Dockerfile` and expose port `4002`
+
 ### Option 2: Local Development Setup
 
 1. Install dependencies:
@@ -93,6 +103,10 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    # Bot service
    cd ../bot-service
    npm install
+
+   # Admin service
+   cd ../admin-service
+   pnpm install
 
    # Frontend
    cd ../frontend
@@ -108,7 +122,7 @@ createdb universus_rpg
 psql -U postgres -d universus_rpg -f database/sql/schema.sql
 ```
 
-3. Start Redis:
+3. Start Redis (or rely on `redis/` docker image with `docker-compose up redis`):
    
    ```bash
    redis-server
@@ -125,7 +139,7 @@ psql -U postgres -d universus_rpg -f database/sql/schema.sql
    cp .env.example .env
    ```
 
-5. Start the backend server, bot service, and optionally rebuild the frontend bundle:
+5. Start the backend server, bot service, admin service, and optionally rebuild the frontend bundle:
    
    ```bash
    cd backend
@@ -135,7 +149,11 @@ psql -U postgres -d universus_rpg -f database/sql/schema.sql
    cd ../bot-service
    npm run dev
 
-   # In a third terminal (when you need to refresh static assets)
+   # In a third terminal
+   cd ../admin-service
+   pnpm run dev
+
+   # In another terminal (when you need to refresh static assets)
    cd ../frontend
    npm run build
    ```
@@ -168,6 +186,9 @@ JWT_EXPIRES_IN=7d
 # Bot service endpoint
 BOT_SERVICE_URL=http://localhost:4001
 
+# Admin service endpoint (if the backend ever needs to call it)
+ADMIN_SERVICE_URL=http://localhost:4002
+
 # Game Configuration
 GAME_SPEED=1
 RESOURCE_PRODUCTION_MULTIPLIER=1
@@ -195,6 +216,22 @@ JWT_SECRET=your_super_secret_jwt_key_change_in_production
 # Bot worker cadence
 BOT_WORKER_INTERVAL_MS=60000
 BOT_WORKER_MAX_BOTS=25
+```
+
+Create a `.env` file in the `admin-service/` directory:
+
+```env
+ADMIN_PORT=4002
+
+# PostgreSQL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=universus_rpg
+DB_USER=postgres
+DB_PASSWORD=your_password
+
+# JWT shared with backend/bot-service
+JWT_SECRET=your_super_secret_jwt_key_change_in_production
 ```
 
 ## Game Mechanics

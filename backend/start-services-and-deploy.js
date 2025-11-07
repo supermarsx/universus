@@ -81,18 +81,8 @@ async function main() {
     console.log('Continuing without Redis (some features may not work)');
   }
 
-  // Step 3: Run database setup
-  console.log('\n[STEP 3] Running Database Setup...');
-  const setupResult = await runCommand('node setup-database.js', 'Database Setup');
-  
-  if (!setupResult.success) {
-    console.error('\n✗ Database setup failed!');
-    console.error('Check the error above for details.');
-    process.exit(1);
-  }
-
-  // Step 4: Install dependencies
-  console.log('\n[STEP 4] Installing Dependencies...');
+  // Step 3: Install dependencies
+  console.log('\n[STEP 3] Installing Dependencies...');
   const installResult = await runCommand('npm install --legacy-peer-deps', 'NPM Install');
   
   if (!installResult.success) {
@@ -100,8 +90,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Step 5: Build TypeScript
-  console.log('\n[STEP 5] Building TypeScript...');
+  // Step 4: Build TypeScript
+  console.log('\n[STEP 4] Building TypeScript...');
   const buildResult = await runCommand('npm run build', 'TypeScript Build');
   
   if (!buildResult.success) {
@@ -120,7 +110,6 @@ async function main() {
   console.log('\nServices Status:');
   console.log(`  ✓ PostgreSQL: ${pgRunning ? 'Running' : 'Not Running'}`);
   console.log(`  ✓ Redis: ${redisRunning ? 'Running' : 'Not Running'}`);
-  console.log('  ✓ Database: Setup Complete');
   console.log('  ✓ Dependencies: Installed');
   console.log('  ✓ Build: Complete');
   console.log('\nNext Steps:');

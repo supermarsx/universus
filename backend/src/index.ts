@@ -21,8 +21,6 @@ import galaxyRoutes from './routes/galaxy';
 import leaderboardRoutes from './routes/leaderboard';
 import messagesRoutes from './routes/messages';
 import shopRoutes from './routes/shop';
-import adminRoutes from './routes/admin';
-import adminApiRoutes from './routes/adminRoutes';
 import botRoutes from './routes/bots';
 import templateRoutes from './routes/templates';
 import debrisRoutes from './routes/debrisRoutes';
@@ -76,8 +74,6 @@ app.use('/api/galaxy', galaxyRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/shop', shopRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/admin', adminApiRoutes); // New comprehensive admin API
 app.use('/api/admin/bots', botRoutes);
 app.use('/api/debris', debrisRoutes); // Debris & Salvage System
 app.use('/api/universe', universeRoutes); // Universe Seeding System
