@@ -250,6 +250,24 @@ export class FleetService {
     }));
   }
 
+  static async getMissionHistory(userId: number, limit = 25): Promise<any[]> {
+    const result = await pool.query(
+      `SELECT f.*, p.name as origin_planet_name
+       FROM fleets f
+       LEFT JOIN planets p ON p.id = f.origin_planet_id
+       WHERE f.user_id = $1
+       ORDER BY f.departure_time DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+
+    return result.rows.map((row) => ({
+      ...row,
+      ships: this.safeParse(row.ships),
+      createdAt: row.departure_time,
+    }));
+  }
+
   static async processFleetArrival(fleetId: number): Promise<void> {
     const client = await pool.connect();
     

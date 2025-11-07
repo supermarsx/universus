@@ -78,4 +78,16 @@ router.post('/:id/recall', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/history', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthRequest;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 25;
+    const result = await FleetService.getMissionHistory(authReq.user!.id, limit);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching mission history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
