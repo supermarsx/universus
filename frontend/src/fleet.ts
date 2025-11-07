@@ -98,6 +98,10 @@ class FleetManager {
       this.missionLog = [];
       this.renderMissionLog();
     });
+
+    document.getElementById('refreshMissionLog')?.addEventListener('click', () => {
+      this.loadMissionHistory();
+    });
   }
 
   startPolling() {
@@ -124,6 +128,7 @@ class FleetManager {
             : 'Defeat';
         this.notify(`${outcome}: combat at ${this.formatCoords(payload.report)}`, 'info');
         this.loadCombatReports();
+        this.loadMissionHistory();
       }
     });
   }
@@ -158,8 +163,7 @@ class FleetManager {
     }
     this.renderFleetSelection();
     this.renderOverview();
-    this.fetchActiveFleets();
-    this.loadCombatReports();
+    Promise.all([this.fetchActiveFleets(), this.loadCombatReports(), this.loadMissionHistory()]);
   }
 
   renderFleetSelection() {
@@ -608,10 +612,38 @@ class FleetManager {
     }
 
     if (entry) {
-      this.missionLog.unshift(entry);
-      this.missionLog = this.missionLog.slice(0, 20);
+      this.missionLog = [entry, ...this.missionLog].slice(0, 25);
       this.renderMissionLog();
     }
+  }
+
+  async loadMissionHistory() {
+    try {
+      const history = await api.get('/fleet/history?limit=25');
+      this.missionLog = (history || []).map((fleet) => ({
+        title: `${this.getMissionLabel(fleet.mission_type)} (${fleet.status})`,
+        message: `${this.formatCoords({
+          target: {
+            galaxy: fleet.target_galaxy,
+            system: fleet.target_system,
+            position: fleet.target_position,
+          },
+        })} • Ships: ${this.formatShipsSummary(fleet.ships)}`,
+        timestamp: fleet.departure_time || fleet.createdAt || new Date().toISOString(),
+      }));
+      this.renderMissionLog();
+    } catch (error) {
+      console.error('Failed to load mission history:', error);
+    }
+  }
+
+  formatShipsSummary(ships = {}) {
+    const entries = Object.entries(ships);
+    if (!entries.length) return 'No ships';
+    return entries
+      .map(([key, count]) => `${SHIP_STATS[key]?.name || this.formatName(key)} ${count}`)
+      .slice(0, 4)
+      .join(', ');
   }
 }
 

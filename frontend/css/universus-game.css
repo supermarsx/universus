@@ -484,6 +484,7 @@
     gap: var(--spacing-4);
     align-items: flex-end;
     margin-bottom: var(--spacing-4);
+    flex-wrap: wrap;
 }
 
 .mission-controls label {
@@ -909,4 +910,9 @@
     .shipyard-grid {
         grid-template-columns: 1fr;
     }
+}
+.mission-actions-inline {
+    display: flex;
+    gap: var(--spacing-2);
+    align-items: center;
 }
