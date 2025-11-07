@@ -8,7 +8,7 @@ Comprehensive AI bot system successfully implemented for SpaceEmpire RPG with 8 
 ### Backend Components (100% Complete)
 
 #### 1. Database Schema - Migration 005 (256 lines)
-**File:** `backend/src/database/migrations/005_bot_system.sql`
+**File:** `database/sql/migrations/005_bot_system.sql`
 
 **Tables Created:**
 - `bot_profiles` - Bot personality and configuration (34 columns)
@@ -263,7 +263,7 @@ Comprehensive AI bot system successfully implemented for SpaceEmpire RPG with 8 
 sudo service postgresql start
 
 # Apply migration
-psql -h 127.0.0.1 -U postgres -d universus_rpg -f backend/src/database/migrations/005_bot_system.sql
+psql -h 127.0.0.1 -U postgres -d universus_rpg -f database/sql/migrations/005_bot_system.sql
 ```
 
 ### 2. Backend Server Testing
@@ -303,7 +303,7 @@ curl http://localhost:3000/api/admin/bots \
 ## File Summary
 
 ### New Files Created
-1. `backend/src/database/migrations/005_bot_system.sql` - 256 lines
+1. `database/sql/migrations/005_bot_system.sql` - 256 lines
 2. `backend/src/services/botService.ts` - 594 lines
 3. `backend/src/services/botAIService.ts` - 551 lines
 4. `backend/src/routes/bots.ts` - 479 lines

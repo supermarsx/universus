@@ -242,18 +242,18 @@ Universus is an enterprise-grade, horizontally scalable browser-based space empi
 createdb universus_rpg
 
 # 2. Run all schema files
-psql -d universus_rpg -f backend/src/database/schema.sql
-psql -d universus_rpg -f backend/src/database/admin_schema.sql
-psql -d universus_rpg -f backend/src/database/debris_schema.sql
-psql -d universus_rpg -f backend/src/database/universe_seeding_schema.sql
-psql -d universus_rpg -f backend/src/database/phase5_sharding_schema.sql
+psql -d universus_rpg -f database/sql/schema.sql
+psql -d universus_rpg -f database/sql/admin_schema.sql
+psql -d universus_rpg -f database/sql/debris_schema.sql
+psql -d universus_rpg -f database/sql/universe_seeding_schema.sql
+psql -d universus_rpg -f database/sql/phase5_sharding_schema.sql
 
 # 3. Run migrations
-psql -d universus_rpg -f backend/src/database/migrations/001_add_missing_columns.sql
-psql -d universus_rpg -f backend/src/database/migrations/002_add_resource_generation.sql
-psql -d universus_rpg -f backend/src/database/migrations/003_add_timestamps.sql
-psql -d universus_rpg -f backend/src/database/migrations/004_add_leaderboard_tables.sql
-psql -d universus_rpg -f backend/src/database/migrations/005_add_alliance_system.sql
+psql -d universus_rpg -f database/sql/migrations/001_add_missing_columns.sql
+psql -d universus_rpg -f database/sql/migrations/002_add_resource_generation.sql
+psql -d universus_rpg -f database/sql/migrations/003_add_timestamps.sql
+psql -d universus_rpg -f database/sql/migrations/004_add_leaderboard_tables.sql
+psql -d universus_rpg -f database/sql/migrations/005_add_alliance_system.sql
 ```
 
 ### Application Setup

@@ -13,7 +13,7 @@ A comprehensive AI bot system has been implemented for the SpaceEmpire RPG game,
 ### Components Completed
 
 #### 1. Database Schema (Migration 005)
-**File:** `backend/src/database/migrations/005_bot_system.sql` (256 lines)
+**File:** `database/sql/migrations/005_bot_system.sql` (256 lines)
 
 **Tables Created:**
 - `bot_profiles` - Bot personality and configuration
@@ -180,7 +180,7 @@ Comprehensive metrics:
 **Priority:** HIGH  
 **Command:**
 ```bash
-psql -U postgres -d universus_rpg -f backend/src/database/migrations/005_bot_system.sql
+psql -U postgres -d universus_rpg -f database/sql/migrations/005_bot_system.sql
 ```
 
 ### 3. Testing Requirements

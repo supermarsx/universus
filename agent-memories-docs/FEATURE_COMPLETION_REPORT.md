@@ -21,7 +21,7 @@ All advanced features have been successfully implemented and are ready for verif
 - Creates 4 tables: `fleet_movements_precise`, `combats_precise`, `combat_rounds_precise`, `combat_events_precise`
 - Implements microsecond timestamp tracking (BIGINT)
 - Optimized indexes for high-performance queries
-- **File:** `backend/src/database/migrations/003_millisecond_precision_combat.sql`
+- **File:** `database/sql/migrations/003_millisecond_precision_combat.sql`
 
 ✅ **Migration 004: Admin Features** (101 lines)
 - Adds admin columns to users table (`is_admin`, `is_banned`, `ban_reason`, etc.)
@@ -29,7 +29,7 @@ All advanced features have been successfully implemented and are ready for verif
 - Creates `system_logs` table for application logs
 - Creates `game_settings` table for configuration
 - Includes admin dashboard view with aggregated statistics
-- **File:** `backend/src/database/migrations/004_admin_features.sql`
+- **File:** `database/sql/migrations/004_admin_features.sql`
 
 ### 2. Admin Backend API (539 lines)
 ✅ **Complete Admin Routes Implementation**

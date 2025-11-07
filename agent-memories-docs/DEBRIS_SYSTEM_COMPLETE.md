@@ -16,7 +16,7 @@ Successfully implemented a comprehensive combat debris and loot system for Unive
 ## DELIVERABLES
 
 ### 1. Database Schema (491 lines)
-**File**: `backend/src/database/debris_schema.sql`
+**File**: `database/sql/debris_schema.sql`
 
 **Tables Created**: 10
 - ✅ `combat_debris` - Main debris field locations with decay mechanics
@@ -428,7 +428,7 @@ Response:
 ### 1. Database Migration
 ```sql
 -- Run debris schema
-psql -U username -d universus < backend/src/database/debris_schema.sql
+psql -U username -d universus < database/sql/debris_schema.sql
 ```
 
 ### 2. TypeScript Compilation
@@ -538,7 +538,7 @@ All tables have proper indexes for:
 
 ## FILES CREATED
 
-1. `backend/src/database/debris_schema.sql` (491 lines)
+1. `database/sql/debris_schema.sql` (491 lines)
 2. `backend/src/types/debris.ts` (complete types)
 3. `backend/src/services/debrisService.ts` (489 lines)
 4. `backend/src/services/salvageService.ts` (711 lines)

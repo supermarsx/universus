@@ -124,7 +124,7 @@ Backend TypeScript files:
 - `src/middleware/auth.ts` - JWT middleware
 - `src/socket/index.ts` - WebSocket handlers
 - `src/types/index.ts` - TypeScript definitions
-- `src/database/schema.sql` - Database schema (297 lines)
+- `database/sql/schema.sql` - Database schema (297 lines)
 
 Frontend files:
 - `index.html` - Login page
@@ -202,7 +202,7 @@ Access at: `http://localhost:3000`
 
 1. Install PostgreSQL and Redis
 2. Create database: `createdb universus_rpg`
-3. Initialize schema: `psql -U postgres -d universus_rpg -f backend/src/database/schema.sql`
+3. Initialize schema: `psql -U postgres -d universus_rpg -f database/sql/schema.sql`
 4. Configure `.env` file
 5. Install dependencies: `cd backend && pnpm install`
 6. Build: `pnpm run build`

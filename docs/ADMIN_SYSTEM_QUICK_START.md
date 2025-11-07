@@ -8,7 +8,7 @@ Run the admin schema to create all necessary tables:
 
 ```bash
 cd /workspace/universus-rpg/backend
-psql -U postgres -d universus_rpg -f src/database/admin_schema.sql
+psql -U postgres -d universus_rpg -f database/sql/admin_schema.sql
 ```
 
 ### 2. Create First Admin User

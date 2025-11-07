@@ -29,7 +29,7 @@ Phase 6 implements a comprehensive real-time communication infrastructure for th
 
 ## 1. DATABASE SCHEMA (561 lines)
 
-### File: `backend/src/database/phase6_realtime_schema.sql`
+### File: `database/sql/phase6_realtime_schema.sql`
 
 #### Tables Created (18 total):
 
@@ -671,7 +671,7 @@ socket.on('notification:unread_count', (data) => {
 
 ```bash
 # Using psql
-psql -U username -d universus_db -f backend/src/database/phase6_realtime_schema.sql
+psql -U username -d universus_db -f database/sql/phase6_realtime_schema.sql
 
 # Or using Node.js migration script
 node backend/setup-database.js --phase 6

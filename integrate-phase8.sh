@@ -243,7 +243,7 @@ echo -e "${GREEN}✓ Theme scheduler created${NC}"
 
 echo ""
 echo -e "${BLUE}Step 2: Database setup...${NC}"
-echo "Run manually: psql -U your_user -d universus_db -f backend/src/database/phase8_seasonal_themes_schema.sql"
+echo "Run manually: psql -U your_user -d universus_db -f database/sql/phase8_seasonal_themes_schema.sql"
 echo ""
 
 echo -e "${BLUE}Step 3: Frontend files setup...${NC}"

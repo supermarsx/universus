@@ -47,7 +47,7 @@ async function testDatabaseConnection() {
 async function deploySchema() {
     printHeader('Deploying Phase 6 Schema');
     
-    const schemaPath = path.join(__dirname, 'backend/src/database/phase6_realtime_schema.sql');
+    const schemaPath = path.join(__dirname, 'database/sql/phase6_realtime_schema.sql');
     
     try {
         log('Reading schema file...', 'blue');

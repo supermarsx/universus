@@ -28,46 +28,46 @@ All three critical tasks have been prepared with detailed execution scripts and 
 
 ### Migration Files Available
 
-✅ **Base Schema** (`backend/src/database/schema.sql` - 297 lines)
+✅ **Base Schema** (`database/sql/schema.sql` - 297 lines)
 - Core game tables (users, planets, buildings, ships, research, etc.)
 - 20+ primary tables
 - Complete constraint system
 
-✅ **Migration 001** (`backend/src/database/migrations/001_update_messages_table.sql`)
+✅ **Migration 001** (`database/sql/migrations/001_update_messages_table.sql`)
 - Message system updates
 - Message types and folders
 
-✅ **Migration 002** (`backend/src/database/migrations/002_add_shop_tables.sql`)
+✅ **Migration 002** (`database/sql/migrations/002_add_shop_tables.sql`)
 - Shop and purchase tables
 - Stripe integration tables
 - Officer and boost tracking
 
-✅ **Migration 003** (`backend/src/database/migrations/003_millisecond_precision_combat.sql`)
+✅ **Migration 003** (`database/sql/migrations/003_millisecond_precision_combat.sql`)
 - High-precision combat tracking
 - Millisecond timing tables
 - Combat analytics
 
-✅ **Migration 004** (`backend/src/database/migrations/004_admin_features.sql`)
+✅ **Migration 004** (`database/sql/migrations/004_admin_features.sql`)
 - Admin monitoring tables
 - User blocking system
 - Admin audit logs
 
-✅ **Migration 005** (`backend/src/database/migrations/005_bot_system.sql`)
+✅ **Migration 005** (`database/sql/migrations/005_bot_system.sql`)
 - Bot profiles and AI system
 - 8 personality types
 - Bot action logging
 
-✅ **Phase 2: Admin Schema** (`backend/src/database/admin_schema.sql`)
+✅ **Phase 2: Admin Schema** (`database/sql/admin_schema.sql`)
 - Enhanced admin capabilities
 - Monitoring and analytics
 - Additional admin tools
 
-✅ **Phase 3: Debris Schema** (`backend/src/database/debris_schema.sql` - 491 lines)
+✅ **Phase 3: Debris Schema** (`database/sql/debris_schema.sql` - 491 lines)
 - 7 debris-related tables
 - Salvage operations
 - Component inventory system
 
-✅ **Phase 4: Universe Seeding Schema** (`backend/src/database/universe_seeding_schema.sql` - 779 lines)
+✅ **Phase 4: Universe Seeding Schema** (`database/sql/universe_seeding_schema.sql` - 779 lines)
 - 8 universe management tables
 - Galaxy generation system
 - Player placement algorithms
@@ -92,27 +92,27 @@ EOF
 
 # 3. Apply base schema
 echo "Applying base schema..."
-sudo -u postgres psql -d universus_rpg -f src/database/schema.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/schema.sql
 
 # 4. Apply migrations in order
 echo "Applying migrations..."
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/001_update_messages_table.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/002_add_shop_tables.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/003_millisecond_precision_combat.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/004_admin_features.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/005_bot_system.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/001_update_messages_table.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/002_add_shop_tables.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/003_millisecond_precision_combat.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/004_admin_features.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/005_bot_system.sql
 
 # 5. Apply Phase 2 schema (Admin System)
 echo "Applying Phase 2 schema..."
-sudo -u postgres psql -d universus_rpg -f src/database/admin_schema.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/admin_schema.sql
 
 # 6. Apply Phase 3 schema (Debris System)
 echo "Applying Phase 3 schema..."
-sudo -u postgres psql -d universus_rpg -f src/database/debris_schema.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/debris_schema.sql
 
 # 7. Apply Phase 4 schema (Universe Seeding)
 echo "Applying Phase 4 schema..."
-sudo -u postgres psql -d universus_rpg -f src/database/universe_seeding_schema.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/universe_seeding_schema.sql
 
 # 8. Verify table count
 echo "Verifying database..."

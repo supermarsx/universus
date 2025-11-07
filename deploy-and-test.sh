@@ -128,8 +128,8 @@ log_step "Applying base schema..."
 
 cd /workspace/universus-rpg/backend
 
-if [ -f "src/database/schema.sql" ]; then
-    sudo -u postgres psql -d universus_rpg -f src/database/schema.sql > /dev/null 2>&1
+if [ -f "database/sql/schema.sql" ]; then
+    sudo -u postgres psql -d universus_rpg -f database/sql/schema.sql > /dev/null 2>&1
     log_success "Base schema applied"
 else
     log_warning "Base schema file not found, skipping"
@@ -142,11 +142,11 @@ fi
 log_step "Applying database migrations..."
 
 MIGRATIONS=(
-    "src/database/migrations/001_update_messages_table.sql"
-    "src/database/migrations/002_add_shop_tables.sql"
-    "src/database/migrations/003_millisecond_precision_combat.sql"
-    "src/database/migrations/004_admin_features.sql"
-    "src/database/migrations/005_bot_system.sql"
+  "database/sql/migrations/001_update_messages_table.sql"
+  "database/sql/migrations/002_add_shop_tables.sql"
+  "database/sql/migrations/003_millisecond_precision_combat.sql"
+  "database/sql/migrations/004_admin_features.sql"
+  "database/sql/migrations/005_bot_system.sql"
 )
 
 for migration in "${MIGRATIONS[@]}"; do
@@ -165,8 +165,8 @@ done
 
 log_step "Applying Phase 2: Admin System schema..."
 
-if [ -f "src/database/admin_schema.sql" ]; then
-    sudo -u postgres psql -d universus_rpg -f src/database/admin_schema.sql > /dev/null 2>&1
+if [ -f "database/sql/admin_schema.sql" ]; then
+    sudo -u postgres psql -d universus_rpg -f database/sql/admin_schema.sql > /dev/null 2>&1
     log_success "Admin schema applied"
 else
     log_warning "Admin schema file not found"
@@ -178,8 +178,8 @@ fi
 
 log_step "Applying Phase 3: Debris System schema..."
 
-if [ -f "src/database/debris_schema.sql" ]; then
-    sudo -u postgres psql -d universus_rpg -f src/database/debris_schema.sql > /dev/null 2>&1
+if [ -f "database/sql/debris_schema.sql" ]; then
+    sudo -u postgres psql -d universus_rpg -f database/sql/debris_schema.sql > /dev/null 2>&1
     log_success "Debris schema applied"
 else
     log_warning "Debris schema file not found"
@@ -191,8 +191,8 @@ fi
 
 log_step "Applying Phase 4: Universe Seeding schema..."
 
-if [ -f "src/database/universe_seeding_schema.sql" ]; then
-    sudo -u postgres psql -d universus_rpg -f src/database/universe_seeding_schema.sql > /dev/null 2>&1
+if [ -f "database/sql/universe_seeding_schema.sql" ]; then
+    sudo -u postgres psql -d universus_rpg -f database/sql/universe_seeding_schema.sql > /dev/null 2>&1
     log_success "Universe seeding schema applied"
 else
     log_warning "Universe seeding schema file not found"

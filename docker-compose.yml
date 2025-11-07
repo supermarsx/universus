@@ -1,9 +1,10 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: universus_postgres
+  database:
+    build:
+      context: ./database
+    container_name: universus_database
     environment:
       POSTGRES_DB: universus_rpg
       POSTGRES_USER: postgres
@@ -12,7 +13,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -33,17 +33,19 @@ services:
       retries: 5
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: universus_backend
     depends_on:
-      postgres:
+      database:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
-      DB_HOST: postgres
+      DB_HOST: database
       DB_PORT: 5432
       DB_NAME: universus_rpg
       DB_USER: postgres
@@ -61,18 +63,18 @@ services:
 
   bot-service:
     build:
-      context: .
-      dockerfile: bot-service/Dockerfile
+      context: ./bot-service
+      dockerfile: Dockerfile
     container_name: universus_bot_service
     depends_on:
-      postgres:
+      database:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       NODE_ENV: production
       BOT_SERVICE_PORT: 4001
-      DB_HOST: postgres
+      DB_HOST: database
       DB_PORT: 5432
       DB_NAME: universus_rpg
       DB_USER: postgres

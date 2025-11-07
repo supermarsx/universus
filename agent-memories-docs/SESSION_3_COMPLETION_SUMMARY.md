@@ -205,7 +205,7 @@ This session successfully implemented critical advanced features to transform Sp
 
 **Files Created:**
 - `backend/src/services/millisecondCombatTracker.ts` (465 lines)
-- `backend/src/database/migrations/003_millisecond_precision_combat.sql` (143 lines)
+- `database/sql/migrations/003_millisecond_precision_combat.sql` (143 lines)
 
 ---
 
@@ -397,7 +397,7 @@ cd backend && npm test -- --coverage
 
 1. **Database Migration**
    ```bash
-   psql -d universus_rpg -U postgres -f backend/src/database/migrations/003_millisecond_precision_combat.sql
+   psql -d universus_rpg -U postgres -f database/sql/migrations/003_millisecond_precision_combat.sql
    ```
 
 2. **Environment Variables**

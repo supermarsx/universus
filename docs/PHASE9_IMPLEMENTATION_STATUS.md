@@ -11,7 +11,7 @@ Phase 9 implements a comprehensive account management system with security, priv
 ## Implementation Progress
 
 ### 1. Database Schema - COMPLETE ✅ (740 lines)
-**File:** `backend/src/database/phase9_account_management_schema.sql`
+**File:** `database/sql/phase9_account_management_schema.sql`
 
 **Tables Created (12):**
 - `account_suspensions` - Track account suspensions with reasons and durations

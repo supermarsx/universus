@@ -8,7 +8,7 @@
 ```bash
 cd /workspace/universus-rpg
 docker-compose up -d postgres
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/003_millisecond_precision_combat.sql
 ```
 
 **Verification:**
@@ -387,7 +387,7 @@ cd /workspace/universus-rpg
 docker-compose up -d
 
 # 2. Apply migration
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/003_millisecond_precision_combat.sql
 
 # 3. Grant admin access
 docker-compose exec postgres psql -U postgres -d universus_rpg -c "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false; UPDATE users SET is_admin = true WHERE id = 1;"

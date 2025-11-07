@@ -57,7 +57,7 @@ async function main() {
 
     // Step 4: Apply base schema
     console.log('[4/10] Applying base schema...');
-    const baseSchema = path.join(__dirname, 'src/database/schema.sql');
+    const baseSchema = path.join(__dirname, '../database/sql/schema.sql');
     if (fs.existsSync(baseSchema)) {
       await executeSQLFile(targetClient, baseSchema);
     } else {
@@ -68,11 +68,11 @@ async function main() {
     // Step 5: Apply migrations
     console.log('[5/10] Applying migrations...');
     const migrations = [
-      'src/database/migrations/001_update_messages_table.sql',
-      'src/database/migrations/002_add_shop_tables.sql',
-      'src/database/migrations/003_millisecond_precision_combat.sql',
-      'src/database/migrations/004_admin_features.sql',
-      'src/database/migrations/005_bot_system.sql'
+      '../database/sql/migrations/001_update_messages_table.sql',
+      '../database/sql/migrations/002_add_shop_tables.sql',
+      '../database/sql/migrations/003_millisecond_precision_combat.sql',
+      '../database/sql/migrations/004_admin_features.sql',
+      '../database/sql/migrations/005_bot_system.sql'
     ];
 
     for (const migration of migrations) {
@@ -87,7 +87,7 @@ async function main() {
 
     // Step 6: Apply Phase 2 schema
     console.log('[6/10] Applying Phase 2 (Admin) schema...');
-    const adminSchema = path.join(__dirname, 'src/database/admin_schema.sql');
+    const adminSchema = path.join(__dirname, '../database/sql/admin_schema.sql');
     if (fs.existsSync(adminSchema)) {
       await executeSQLFile(targetClient, adminSchema);
     } else {
@@ -97,7 +97,7 @@ async function main() {
 
     // Step 7: Apply Phase 3 schema
     console.log('[7/10] Applying Phase 3 (Debris) schema...');
-    const debrisSchema = path.join(__dirname, 'src/database/debris_schema.sql');
+    const debrisSchema = path.join(__dirname, '../database/sql/debris_schema.sql');
     if (fs.existsSync(debrisSchema)) {
       await executeSQLFile(targetClient, debrisSchema);
     } else {
@@ -107,7 +107,7 @@ async function main() {
 
     // Step 8: Apply Phase 4 schema
     console.log('[8/10] Applying Phase 4 (Universe) schema...');
-    const universeSchema = path.join(__dirname, 'src/database/universe_seeding_schema.sql');
+    const universeSchema = path.join(__dirname, '../database/sql/universe_seeding_schema.sql');
     if (fs.existsSync(universeSchema)) {
       await executeSQLFile(targetClient, universeSchema);
     } else {

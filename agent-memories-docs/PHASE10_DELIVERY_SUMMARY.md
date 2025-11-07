@@ -77,7 +77,7 @@
 ## Files Created
 
 ### Backend
-1. `backend/src/database/phase10_enhanced_shop_schema.sql` (601 lines)
+1. `database/sql/phase10_enhanced_shop_schema.sql` (601 lines)
 2. `backend/src/types/enhancedShop.ts` (485 lines)
 3. `backend/src/services/enhancedShopService.ts` (850 lines)
 4. `backend/src/routes/enhancedShopRoutes.ts` (299 lines)
@@ -159,7 +159,7 @@
 ### 1. Database Setup
 ```bash
 cd /workspace/universus-rpg
-psql -U postgres -d universus -f backend/src/database/phase10_enhanced_shop_schema.sql
+psql -U postgres -d universus -f database/sql/phase10_enhanced_shop_schema.sql
 ```
 
 ### 2. Environment Variables

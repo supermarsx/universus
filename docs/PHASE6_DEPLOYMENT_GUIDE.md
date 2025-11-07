@@ -16,7 +16,7 @@
 psql -U postgres -d universus_db
 
 # Execute Phase 6 schema
-\i backend/src/database/phase6_realtime_schema.sql
+\i database/sql/phase6_realtime_schema.sql
 
 # Verify tables created
 SELECT COUNT(*) FROM information_schema.tables 
@@ -672,7 +672,7 @@ After Phase 6 deployment:
 
 - **Full Implementation Report:** `PHASE6_REALTIME_IMPLEMENTATION_COMPLETE.md`
 - **Quick Reference:** `PHASE6_QUICK_REFERENCE.md`
-- **Database Schema:** `backend/src/database/phase6_realtime_schema.sql`
+- **Database Schema:** `database/sql/phase6_realtime_schema.sql`
 - **API Documentation:** See Full Implementation Report Section 6
 
 ---

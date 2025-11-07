@@ -30,7 +30,7 @@ sudo service redis-server start
 ```bash
 cd /workspace/universus-rpg
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-    -f backend/src/database/migrations/005_bot_system.sql
+    -f database/sql/migrations/005_bot_system.sql
 ```
 
 #### 3. Build and Start Backend
@@ -300,7 +300,7 @@ psql -h 127.0.0.1 -U postgres -d universus_rpg -c "\dt bot*"
 
 # Re-run migration
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-    -f backend/src/database/migrations/005_bot_system.sql
+    -f database/sql/migrations/005_bot_system.sql
 ```
 
 ### Backend Not Starting
@@ -343,7 +343,7 @@ Bot system integrates with:
 ## Files Reference
 
 ### Backend
-- `backend/src/database/migrations/005_bot_system.sql` - Database schema
+- `database/sql/migrations/005_bot_system.sql` - Database schema
 - `backend/src/services/botService.ts` - Bot CRUD operations
 - `backend/src/services/botAIService.ts` - AI decision engine
 - `backend/src/routes/bots.ts` - API endpoints

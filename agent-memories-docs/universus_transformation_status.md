@@ -216,7 +216,7 @@
 ### Deliverables Completed:
 
 #### 1. Database Schema (601 lines) ✅
-- File: `backend/src/database/phase5_sharding_schema.sql`
+- File: `database/sql/phase5_sharding_schema.sql`
 - 8 core tables for sharding infrastructure
 - 40+ indexes for optimal performance
 
@@ -398,7 +398,7 @@
 - Created 7 new admin template routes
 
 ### Files Created:
-1. backend/src/database/admin_schema.sql (447 lines)
+1. database/sql/admin_schema.sql (447 lines)
 2. backend/src/types/admin.ts (392 lines)
 3. backend/src/middleware/adminAuth.ts (421 lines)
 4. backend/src/services/adminUserService.ts (493 lines)
@@ -478,7 +478,7 @@
 
 ### File Locations:
 **Source files** (need to be copied):
-- /workspace/backend/src/database/phase8_seasonal_themes_schema.sql
+- /workspace/database/sql/phase8_seasonal_themes_schema.sql
 - /workspace/backend/src/types/seasonalTheme.ts
 - /workspace/backend/src/services/themeService.ts
 - /workspace/backend/src/services/themeScheduler.ts

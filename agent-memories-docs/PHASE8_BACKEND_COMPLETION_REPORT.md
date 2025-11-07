@@ -14,7 +14,7 @@
 ## ✅ What Was Delivered
 
 ### 1. Database Infrastructure (615 lines)
-**File**: `backend/src/database/phase8_seasonal_themes_schema.sql`
+**File**: `database/sql/phase8_seasonal_themes_schema.sql`
 
 **Tables Created** (6):
 - `themes` - Core theme definitions with visual/audio settings
@@ -267,7 +267,7 @@ Complete type safety for all API operations
 
 **1. Database Setup** (2 minutes):
 ```bash
-psql -d universus_db -f backend/src/database/phase8_seasonal_themes_schema.sql
+psql -d universus_db -f database/sql/phase8_seasonal_themes_schema.sql
 ```
 
 **2. Code Integration** (3 minutes):

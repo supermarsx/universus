@@ -23,7 +23,7 @@
 ### Files Created/Updated (Total: 3,851+ lines)
 
 **Backend:**
-1. `backend/src/database/admin_schema.sql` (447 lines)
+1. `database/sql/admin_schema.sql` (447 lines)
 2. `backend/src/types/admin.ts` (392 lines)
 3. `backend/src/middleware/adminAuth.ts` (421 lines)
 4. `backend/src/services/adminUserService.ts` (493 lines)
@@ -52,7 +52,7 @@
 ```bash
 # Apply admin schema
 cd /workspace/universus-rpg/backend
-psql -U postgres -d universus_rpg -f src/database/admin_schema.sql
+psql -U postgres -d universus_rpg -f database/sql/admin_schema.sql
 ```
 
 #### 2. Create First Admin

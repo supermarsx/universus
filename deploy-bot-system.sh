@@ -50,7 +50,7 @@ fi
 # 2. Apply Bot System Migration
 print_info "Applying bot system migration (005)..."
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-    -f backend/src/database/migrations/005_bot_system.sql 2>&1 | tee migration_output.txt
+    -f database/sql/migrations/005_bot_system.sql 2>&1 | tee migration_output.txt
 
 if grep -q "ERROR" migration_output.txt; then
     print_error "Migration failed - check migration_output.txt for details"

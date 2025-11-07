@@ -274,7 +274,7 @@ All files compiled successfully:
 #### Prerequisites:
 - [ ] Deploy database schema:
   ```bash
-  psql -U postgres -d universus_db -f backend/src/database/phase6_realtime_schema.sql
+  psql -U postgres -d universus_db -f database/sql/phase6_realtime_schema.sql
   ```
 - [ ] Start Redis server
 - [ ] Start backend server: `npm start`
@@ -346,7 +346,7 @@ socket.on('chat:new_message', (msg) => {
 psql -U postgres -d universus_db
 
 # Execute Phase 6 schema
-\i backend/src/database/phase6_realtime_schema.sql
+\i database/sql/phase6_realtime_schema.sql
 
 # Verify tables created
 SELECT COUNT(*) FROM information_schema.tables 
@@ -442,7 +442,7 @@ curl -H "Authorization: Bearer <token>" \
 
 1. **Deploy Database:**
    ```bash
-   psql -U postgres -d universus_db -f backend/src/database/phase6_realtime_schema.sql
+   psql -U postgres -d universus_db -f database/sql/phase6_realtime_schema.sql
    ```
 
 2. **Start Services:**

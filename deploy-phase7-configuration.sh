@@ -24,7 +24,7 @@ DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-universus_rpg}"
 DB_USER="${DB_USER:-postgres}"
 DB_PASSWORD="${DB_PASSWORD:-postgres}"
-SCHEMA_FILE="backend/src/database/phase7_config_schema.sql"
+SCHEMA_FILE="database/sql/phase7_config_schema.sql"
 
 ##############################################################################
 # Helper Functions

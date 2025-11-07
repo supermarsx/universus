@@ -36,7 +36,7 @@
    createdb universus_rpg
    
    # Initialize schema
-   psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
+   psql -U postgres -d universus_rpg -f database/sql/schema.sql
    ```
 
 3. **Start Redis**:

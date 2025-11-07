@@ -143,7 +143,7 @@ pg_dump -U postgres universus > backup_before_phase4.sql
 
 #### 2. Apply Schema Migration
 ```bash
-psql -U postgres -d universus -f backend/src/database/universe_seeding_schema.sql
+psql -U postgres -d universus -f database/sql/universe_seeding_schema.sql
 ```
 
 #### 3. Verify Tables Created
@@ -456,7 +456,7 @@ git checkout HEAD~1 backend/src/index.ts  # Remove universe routes
 git checkout HEAD~1 backend/src/routes/universeRoutes.ts
 git checkout HEAD~1 backend/src/services/universe*.ts
 git checkout HEAD~1 backend/src/types/universe.ts
-git checkout HEAD~1 backend/src/database/universe_seeding_schema.sql
+git checkout HEAD~1 database/sql/universe_seeding_schema.sql
 ```
 
 #### 4. Rebuild and Restart

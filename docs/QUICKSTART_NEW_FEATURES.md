@@ -277,7 +277,7 @@ Before using the messaging system, run the migration:
 
 ```bash
 cd backend
-psql -U postgres -d universus_rpg -f src/database/migrations/001_update_messages_table.sql
+psql -U postgres -d universus_rpg -f database/sql/migrations/001_update_messages_table.sql
 ```
 
 This updates the messages table structure to support the new messaging service.

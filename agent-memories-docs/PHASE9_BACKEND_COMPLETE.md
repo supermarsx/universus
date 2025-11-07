@@ -477,7 +477,7 @@ Added columns to `users` table:
 
 2. **Deploy Database Schema**
    ```bash
-   psql -U postgres -d universus -f backend/src/database/phase9_account_management_schema.sql
+   psql -U postgres -d universus -f database/sql/phase9_account_management_schema.sql
    ```
 
 3. **Compile TypeScript**

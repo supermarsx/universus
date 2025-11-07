@@ -10,7 +10,7 @@
 
 ### 1. Database Setup
 ```bash
-psql -U postgres -d universus_db -f backend/src/database/phase6_realtime_schema.sql
+psql -U postgres -d universus_db -f database/sql/phase6_realtime_schema.sql
 ```
 
 ### 2. Compile TypeScript

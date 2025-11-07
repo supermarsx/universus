@@ -54,7 +54,7 @@ Expected output: `postgres:5432 - accepting connections`
 ### Step 1.3: Apply Migration 003 (Millisecond Precision Combat)
 
 ```bash
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/003_millisecond_precision_combat.sql
 ```
 
 **Expected output:**
@@ -83,7 +83,7 @@ Should show 4 tables:
 ### Step 1.4: Apply Migration 004 (Admin Features)
 
 ```bash
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/004_admin_features.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/004_admin_features.sql
 ```
 
 **Expected output:**
@@ -550,7 +550,7 @@ DROP TABLE IF EXISTS fleet_movements_precise CASCADE;
 "
 
 # Re-run migration 003
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/003_millisecond_precision_combat.sql
 ```
 
 ### Issue: Admin panel shows 403 Forbidden

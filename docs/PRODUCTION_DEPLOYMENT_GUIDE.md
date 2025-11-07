@@ -115,7 +115,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./database/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     ports:
       - "5432:5432"
     restart: unless-stopped
@@ -179,10 +179,10 @@ docker-compose up -d postgres redis
 sleep 10
 
 # Apply migrations in order
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/001_initial_schema.sql
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/002_add_shop_tables.sql
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/003_millisecond_precision_combat.sql
-docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/backend/src/database/migrations/004_admin_features.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/001_initial_schema.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/002_add_shop_tables.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/003_millisecond_precision_combat.sql
+docker-compose exec postgres psql -U postgres -d universus_rpg -f /app/database/sql/migrations/004_admin_features.sql
 
 # Verify migrations
 docker-compose exec postgres psql -U postgres -d universus_rpg -c "\dt"
@@ -441,7 +441,7 @@ DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p $BACKUP_DIR
 
 # Backup PostgreSQL
-docker-compose exec -T postgres pg_dump -U postgres universus_rpg | gzip > $BACKUP_DIR/db_$DATE.sql.gz
+docker-compose exec -T database pg_dump -U postgres universus_rpg | gzip > $BACKUP_DIR/db_$DATE.sql.gz
 
 # Backup Redis
 docker-compose exec -T redis redis-cli --rdb - > $BACKUP_DIR/redis_$DATE.rdb

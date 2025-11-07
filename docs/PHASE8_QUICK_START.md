@@ -9,7 +9,7 @@
 psql -U your_username -d universus_db
 
 # Execute the schema file
-\i backend/src/database/phase8_seasonal_themes_schema.sql
+\i database/sql/phase8_seasonal_themes_schema.sql
 
 # Verify tables were created
 \dt theme*

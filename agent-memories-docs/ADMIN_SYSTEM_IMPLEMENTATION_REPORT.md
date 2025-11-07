@@ -358,7 +358,7 @@ SUPPORT: ['user:read', 'user:assist', 'tickets:manage']
 ### Database:
 ```bash
 # Run admin schema migration
-psql -U postgres -d universus_rpg -f backend/src/database/admin_schema.sql
+psql -U postgres -d universus_rpg -f database/sql/admin_schema.sql
 ```
 
 ### First Admin User:
@@ -465,7 +465,7 @@ The backend is production-ready and fully tested. The remaining work involves co
 ## Files Delivered
 
 ### Backend:
-1. backend/src/database/admin_schema.sql (447 lines)
+1. database/sql/admin_schema.sql (447 lines)
 2. backend/src/types/admin.ts (392 lines)
 3. backend/src/middleware/adminAuth.ts (421 lines)
 4. backend/src/services/adminUserService.ts (493 lines)

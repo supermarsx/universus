@@ -50,14 +50,14 @@ ALLOWED_ORIGINS=http://localhost:3000,https://your-domain.com
 ## Phase 11: Database Schema Deployment
 
 ### Step 1: Locate Schema File
-File location: `/workspace/universus-rpg/backend/src/database/phase11_alliance_management_schema.sql`
+File location: `/workspace/universus-rpg/database/sql/phase11_alliance_management_schema.sql`
 
 ### Step 2: Deploy to PostgreSQL
 
 **Option A: Using psql command line**
 ```bash
 cd /workspace/universus-rpg
-psql postgresql://user:password@localhost:5432/universus -f backend/src/database/phase11_alliance_management_schema.sql
+psql postgresql://user:password@localhost:5432/universus -f database/sql/phase11_alliance_management_schema.sql
 ```
 
 **Option B: Using Node.js script**
@@ -69,7 +69,7 @@ const fs = require('fs');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function deploy() {
-  const sql = fs.readFileSync('src/database/phase11_alliance_management_schema.sql', 'utf8');
+  const sql = fs.readFileSync('database/sql/phase11_alliance_management_schema.sql', 'utf8');
   try {
     await pool.query(sql);
     console.log('✅ Phase 11 schema deployed successfully');

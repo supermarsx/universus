@@ -11,7 +11,7 @@
 ### Backend Code
 
 #### Database Schema
-- **`backend/src/database/phase6_realtime_schema.sql`** (561 lines)
+- **`database/sql/phase6_realtime_schema.sql`** (561 lines)
   - 18 tables for real-time features
   - 4 analytical views
   - 4 utility functions

@@ -131,7 +131,7 @@ This document outlines the complete architectural design for Phase 5: Enterprise
 
 ### 2.3 Database Schema (601 lines)
 
-**Location:** `/workspace/universus-rpg/backend/src/database/phase5_sharding_schema.sql`
+**Location:** `/workspace/universus-rpg/database/sql/phase5_sharding_schema.sql`
 
 **Tables Created:**
 1. `shard_servers` (21 fields) - Server registry
@@ -1103,4 +1103,4 @@ Phase 5 Server Sharding Architecture represents a **significant undertaking** re
 **Status:** Strategic Planning Document  
 **Next Review:** Upon reaching 1,000 active players
 
-**Database Schema:** `/workspace/universus-rpg/backend/src/database/phase5_sharding_schema.sql` (601 lines)
+**Database Schema:** `/workspace/universus-rpg/database/sql/phase5_sharding_schema.sql` (601 lines)

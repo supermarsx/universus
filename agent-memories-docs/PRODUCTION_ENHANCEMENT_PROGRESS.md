@@ -142,7 +142,7 @@ The SpaceEmpire RPG enhancement project aims to transform the existing working g
 ### 4. Database Enhancements
 
 #### Migration Created
-- **File:** `src/database/migrations/001_update_messages_table.sql`
+- **File:** `database/sql/migrations/001_update_messages_table.sql`
   - Updated column names to match service interface
   - Added metadata JSONB column
   - Updated message type constraints

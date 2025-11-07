@@ -26,7 +26,7 @@ DB_PASSWORD="${DB_PASSWORD:-}"
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCHEMA_FILE="${SCRIPT_DIR}/backend/src/database/phase9_account_management_schema.sql"
+SCHEMA_FILE="${SCRIPT_DIR}/database/sql/phase9_account_management_schema.sql"
 
 ###############################################################################
 # Functions

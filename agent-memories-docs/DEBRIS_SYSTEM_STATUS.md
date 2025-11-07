@@ -258,7 +258,7 @@ Started implementation of a comprehensive Combat Debris & Loot System for Univer
 
 ```bash
 cd /workspace/universus-rpg/backend
-psql -U postgres -d universus_rpg -f src/database/debris_schema.sql
+psql -U postgres -d universus_rpg -f database/sql/debris_schema.sql
 ```
 
 This will create all 10 tables, 3 views, 3 functions, and 1 trigger.

@@ -79,6 +79,7 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
   - `pnpm dev` inside `backend`
   - `npm run dev` inside `bot-service`
   - `npm run build` (or desired workflow) inside `frontend`
+- PostgreSQL now lives in the dedicated `database` project (`universus_database` container). Build-time schema initialization is handled via `database/Dockerfile`.
 
 ### Option 2: Local Development Setup
 
@@ -104,7 +105,7 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 createdb universus_rpg
 
 # Initialize schema
-psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
+psql -U postgres -d universus_rpg -f database/sql/schema.sql
 ```
 
 3. Start Redis:
@@ -246,28 +247,34 @@ BOT_WORKER_MAX_BOTS=25
 
 ```
 universus-rpg/
-├── backend/
+├── backend/                 # Express + TypeScript API
 │   ├── src/
-│   │   ├── config/          # Database, Redis, game config
-│   │   ├── services/        # Business logic
-│   │   ├── routes/          # API routes
-│   │   ├── middleware/      # Auth middleware
-│   │   ├── socket/          # WebSocket handlers
-│   │   ├── types/           # TypeScript types
-│   │   ├── database/        # SQL schema
-│   │   └── index.ts         # Server entry point
+│   │   ├── config/
+│   │   ├── middleware/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── socket/
+│   │   └── types/
 │   ├── package.json
-│   └── tsconfig.json
-├── frontend/
-│   ├── css/                 # Stylesheets
-│   ├── js/                  # JavaScript files
-│   ├── index.html           # Login page
-│   ├── overview.html        # Game overview
-│   └── buildings.html       # Buildings page
-├── docker-compose.yml
-├── Dockerfile
+│   ├── pnpm-lock.yaml
+│   └── Dockerfile
+├── bot-service/             # Dedicated bot processing worker/API
+│   ├── src/
+│   └── package.json
+├── frontend/                # Static assets and Nunjucks templates
+│   ├── assets/
+│   ├── css/
+│   ├── js/
+│   ├── views/
+│   └── package.json
+├── database/                # PostgreSQL schema and custom image
+│   ├── sql/
+│   ├── scripts/
+│   └── Dockerfile
+├── docker-compose.yml       # Orchestrates all services
 └── README.md
 ```
+
 
 ## Development
 
@@ -290,7 +297,7 @@ pnpm start      # Runs compiled JavaScript
 
 ```bash
 # Reinitialize database
-psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
+psql -U postgres -d universus_rpg -f database/sql/schema.sql
 
 # Or use npm script
 cd backend

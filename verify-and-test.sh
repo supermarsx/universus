@@ -65,7 +65,7 @@ sleep 10
 
 # Verify PostgreSQL is ready
 log_info "Checking PostgreSQL connection..."
-if docker-compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; then
+if docker-compose exec -T database pg_isready -U postgres > /dev/null 2>&1; then
     log_success "PostgreSQL is ready"
 else
     log_error "PostgreSQL is not ready"
@@ -74,14 +74,14 @@ fi
 
 # Check if migration 003 has been applied
 log_info "Checking if migration 003 needs to be applied..."
-if docker-compose exec -T postgres psql -U postgres -d universus_rpg -c "\dt fleet_movements_precise" 2>&1 | grep -q "fleet_movements_precise"; then
+if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\dt fleet_movements_precise" 2>&1 | grep -q "fleet_movements_precise"; then
     log_warning "Migration 003 already applied, skipping..."
 else
     log_info "Applying migration 003 (Millisecond Precision Combat)..."
-    docker-compose exec -T postgres psql -U postgres -d universus_rpg < backend/src/database/migrations/003_millisecond_precision_combat.sql
+    docker-compose exec -T database psql -U postgres -d universus_rpg < database/sql/migrations/003_millisecond_precision_combat.sql
     
     # Verify
-    if docker-compose exec -T postgres psql -U postgres -d universus_rpg -c "\dt fleet_movements_precise" 2>&1 | grep -q "fleet_movements_precise"; then
+    if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\dt fleet_movements_precise" 2>&1 | grep -q "fleet_movements_precise"; then
         log_success "Migration 003 applied successfully"
     else
         log_error "Migration 003 failed"
@@ -90,14 +90,14 @@ fi
 
 # Check if migration 004 has been applied
 log_info "Checking if migration 004 needs to be applied..."
-if docker-compose exec -T postgres psql -U postgres -d universus_rpg -c "\d users" 2>&1 | grep -q "is_admin"; then
+if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\d users" 2>&1 | grep -q "is_admin"; then
     log_warning "Migration 004 already applied, skipping..."
 else
     log_info "Applying migration 004 (Admin Features)..."
-    docker-compose exec -T postgres psql -U postgres -d universus_rpg < backend/src/database/migrations/004_admin_features.sql
+    docker-compose exec -T database psql -U postgres -d universus_rpg < database/sql/migrations/004_admin_features.sql
     
     # Verify
-    if docker-compose exec -T postgres psql -U postgres -d universus_rpg -c "\d users" 2>&1 | grep -q "is_admin"; then
+    if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\d users" 2>&1 | grep -q "is_admin"; then
         log_success "Migration 004 applied successfully"
     else
         log_error "Migration 004 failed"
@@ -106,8 +106,8 @@ fi
 
 # Create admin user
 log_info "Creating admin user..."
-docker-compose exec -T postgres psql -U postgres -d universus_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;" > /dev/null 2>&1
-ADMIN_COUNT=$(docker-compose exec -T postgres psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM users WHERE is_admin = true;" | xargs)
+docker-compose exec -T database psql -U postgres -d universus_rpg -c "UPDATE users SET is_admin = true WHERE id = 1;" > /dev/null 2>&1
+ADMIN_COUNT=$(docker-compose exec -T database psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM users WHERE is_admin = true;" | xargs)
 if [ "$ADMIN_COUNT" -gt 0 ]; then
     log_success "Admin user created/verified (count: $ADMIN_COUNT)"
 else
@@ -153,7 +153,7 @@ fi
 # Test admin endpoints (requires login)
 log_info "Testing admin API endpoints..."
 # Note: This requires a valid user account. Skip if no users exist.
-USER_COUNT=$(docker-compose exec -T postgres psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM users;" | xargs)
+USER_COUNT=$(docker-compose exec -T database psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM users;" | xargs)
 if [ "$USER_COUNT" -gt 0 ]; then
     log_info "Found $USER_COUNT users in database"
     log_warning "Admin API endpoint testing requires manual verification (login needed)"
@@ -218,7 +218,7 @@ TABLES=(
 )
 
 for TABLE in "${TABLES[@]}"; do
-    if docker-compose exec -T postgres psql -U postgres -d universus_rpg -c "\dt $TABLE" 2>&1 | grep -q "$TABLE"; then
+    if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\dt $TABLE" 2>&1 | grep -q "$TABLE"; then
         log_success "Table $TABLE exists"
     else
         log_error "Table $TABLE not found"
@@ -227,7 +227,7 @@ done
 
 # Check indexes
 log_info "Checking database indexes..."
-INDEX_COUNT=$(docker-compose exec -T postgres psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM pg_indexes WHERE tablename LIKE '%precise%' OR tablename = 'admin_audit_log';" | xargs)
+INDEX_COUNT=$(docker-compose exec -T database psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM pg_indexes WHERE tablename LIKE '%precise%' OR tablename = 'admin_audit_log';" | xargs)
 if [ "$INDEX_COUNT" -gt 5 ]; then
     log_success "Found $INDEX_COUNT indexes on new tables"
 else

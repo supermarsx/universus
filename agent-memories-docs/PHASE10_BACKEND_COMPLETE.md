@@ -16,7 +16,7 @@ Successfully implemented the complete backend infrastructure for Phase 10 Enhanc
 ## Implementation Details
 
 ### 1. Database Schema (601 lines)
-**File:** `backend/src/database/phase10_enhanced_shop_schema.sql`
+**File:** `database/sql/phase10_enhanced_shop_schema.sql`
 
 **Tables Created (20 tables):**
 
@@ -551,7 +551,7 @@ POST /api/shop-enhanced/webhook/stripe     - Stripe payment webhooks
 
 ```bash
 # Deploy Phase 10 schema
-psql -U postgres -d universus_db -f backend/src/database/phase10_enhanced_shop_schema.sql
+psql -U postgres -d universus_db -f database/sql/phase10_enhanced_shop_schema.sql
 
 # Verify tables created
 psql -U postgres -d universus_db -c "SELECT COUNT(*) FROM shop_cosmetic_items;"
@@ -674,7 +674,7 @@ The system is ready for frontend implementation and deployment.
 
 ## Files Created
 
-1. `backend/src/database/phase10_enhanced_shop_schema.sql` (601 lines)
+1. `database/sql/phase10_enhanced_shop_schema.sql` (601 lines)
 2. `backend/src/types/enhancedShop.ts` (485 lines)
 3. `backend/src/services/enhancedShopService.ts` (750 lines)
 4. `backend/src/routes/enhancedShopRoutes.ts` (299 lines)

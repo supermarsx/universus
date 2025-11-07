@@ -18,7 +18,7 @@ Phase 7 backend infrastructure is **100% complete** with 1,964 lines of producti
 ### 1. Complete Backend Infrastructure (1,964 lines)
 
 #### Database Schema (439 lines)
-**File:** `backend/src/database/phase7_config_schema.sql`
+**File:** `database/sql/phase7_config_schema.sql`
 
 **Tables Created (7):**
 - `config_categories` - Configuration categories (Combat, Resources, Buildings, etc.)

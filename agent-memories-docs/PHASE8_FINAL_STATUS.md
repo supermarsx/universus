@@ -135,7 +135,7 @@ process.on('SIGTERM', () => {
 
 **Required**:
 ```bash
-psql -U your_user -d universus_db -f /workspace/universus-rpg/backend/src/database/phase8_seasonal_themes_schema.sql
+psql -U your_user -d universus_db -f /workspace/universus-rpg/database/sql/phase8_seasonal_themes_schema.sql
 ```
 
 ### 7. Not Deployed or Tested
@@ -168,7 +168,7 @@ bash integrate-phase8.sh
 2. Create complete `backend/src/services/themeService.ts` (670 lines)
 3. Create complete `backend/src/services/themeScheduler.ts` (99 lines)
 4. Create complete `backend/src/routes/themeRoutes.ts` (788 lines)
-5. Copy `backend/src/database/phase8_seasonal_themes_schema.sql` (615 lines)
+5. Copy `database/sql/phase8_seasonal_themes_schema.sql` (615 lines)
 
 **Source**: All complete files are documented in `/workspace/docs/PHASE8_COMPLETE_REPORT.md`
 
@@ -202,7 +202,7 @@ process.on('SIGTERM', () => {
 psql -U your_user -d universus_db
 
 # Run schema
-\i backend/src/database/phase8_seasonal_themes_schema.sql
+\i database/sql/phase8_seasonal_themes_schema.sql
 
 # Verify
 \dt theme*
@@ -384,7 +384,7 @@ Before deploying to production:
 ### Source Files Created (Need Integration)
 
 **Backend**:
-- `/workspace/backend/src/database/phase8_seasonal_themes_schema.sql` (615 lines)
+- `/workspace/database/sql/phase8_seasonal_themes_schema.sql` (615 lines)
 - `/workspace/backend/src/types/seasonalTheme.ts` (666 lines)
 - `/workspace/backend/src/services/themeService.ts` (670 lines)
 - `/workspace/backend/src/services/themeScheduler.ts` (99 lines)

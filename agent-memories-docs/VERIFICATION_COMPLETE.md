@@ -88,8 +88,8 @@ Is Admin: ✅ true
 ```
 ✅ backend/src/routes/admin.ts (539 lines)
 ✅ backend/src/services/millisecondCombatTracker.ts (465 lines)
-✅ backend/src/database/migrations/003_millisecond_precision_combat.sql (143 lines)
-✅ backend/src/database/migrations/004_admin_features.sql (101 lines)
+✅ database/sql/migrations/003_millisecond_precision_combat.sql (143 lines)
+✅ database/sql/migrations/004_admin_features.sql (101 lines)
 ✅ backend/dist/ (compiled successfully)
 ```
 

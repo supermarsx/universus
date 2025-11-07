@@ -25,7 +25,7 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 ## Backend Implementation (100% Complete)
 
 ### 1. Database Schema (704 lines)
-**File:** `backend/src/database/phase11_alliance_management_schema.sql`
+**File:** `database/sql/phase11_alliance_management_schema.sql`
 
 **Tables Created:**
 1. `alliances` - Core alliance information
@@ -444,7 +444,7 @@ Phase 11 delivers a comprehensive alliance management system for Universus, prov
 ## File Manifest
 
 ### Backend Files (5 files, 3,807 lines):
-1. `backend/src/database/phase11_alliance_management_schema.sql` (704 lines)
+1. `database/sql/phase11_alliance_management_schema.sql` (704 lines)
 2. `backend/src/types/alliance.ts` (684 lines)
 3. `backend/src/services/allianceService.ts` (777 lines)
 4. `backend/src/services/allianceWarService.ts` (639 lines)

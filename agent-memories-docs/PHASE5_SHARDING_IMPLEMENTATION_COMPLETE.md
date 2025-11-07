@@ -15,7 +15,7 @@ Enterprise-level server sharding architecture has been fully implemented for Uni
 ## DELIVERABLES COMPLETED
 
 ### 1. Database Schema (601 lines) ✅
-**File:** `backend/src/database/phase5_sharding_schema.sql`
+**File:** `database/sql/phase5_sharding_schema.sql`
 
 **8 Core Tables:**
 - `shard_servers` - Server registry with health monitoring
@@ -383,7 +383,7 @@ await globalLeaderboardService.updatePlayerEntry(
 
 ### 1. Database Migration
 ```bash
-psql -d universus_rpg -f backend/src/database/phase5_sharding_schema.sql
+psql -d universus_rpg -f database/sql/phase5_sharding_schema.sql
 ```
 
 ### 2. Redis Setup

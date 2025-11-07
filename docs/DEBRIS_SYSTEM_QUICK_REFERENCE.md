@@ -8,7 +8,7 @@
 
 ### 1. Database Setup
 ```bash
-psql -U your_user -d universus < backend/src/database/debris_schema.sql
+psql -U your_user -d universus < database/sql/debris_schema.sql
 ```
 
 ### 2. Start Server
@@ -43,7 +43,7 @@ curl -X POST http://localhost:3000/api/debris/salvage/start \
 
 | File | Purpose | Lines |
 |------|---------|-------|
-| `backend/src/database/debris_schema.sql` | Database schema | 491 |
+| `database/sql/debris_schema.sql` | Database schema | 491 |
 | `backend/src/types/debris.ts` | TypeScript types | Complete |
 | `backend/src/services/debrisService.ts` | Debris management | 489 |
 | `backend/src/services/salvageService.ts` | Salvage operations | 711 |

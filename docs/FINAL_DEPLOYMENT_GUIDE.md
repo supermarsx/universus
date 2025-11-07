@@ -209,11 +209,11 @@ GRANT ALL PRIVILEGES ON DATABASE universus_rpg TO universus_user;
 cd /workspace/universus-rpg/backend
 
 # Run all migrations in order
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/001_initial_schema.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/002_planets.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/003_buildings_ships.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/004_game_mechanics.sql
-sudo -u postgres psql -d universus_rpg -f src/database/migrations/005_bot_system.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/001_initial_schema.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/002_planets.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/003_buildings_ships.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/004_game_mechanics.sql
+sudo -u postgres psql -d universus_rpg -f database/sql/migrations/005_bot_system.sql
 
 # Verify tables were created
 sudo -u postgres psql -d universus_rpg -c "\dt"

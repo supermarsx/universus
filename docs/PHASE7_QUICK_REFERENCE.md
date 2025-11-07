@@ -11,7 +11,7 @@
 ## Files Delivered (11 files)
 
 ### Backend Implementation (5 files)
-1. **`backend/src/database/phase7_config_schema.sql`** (439 lines)
+1. **`database/sql/phase7_config_schema.sql`** (439 lines)
    - 7 database tables
    - 3 analytical views
    - 5 helper functions

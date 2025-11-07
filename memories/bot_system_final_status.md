@@ -42,7 +42,7 @@
 - Production Ready: YES
 
 ### Files:
-- backend/src/database/migrations/005_bot_system.sql
+- database/sql/migrations/005_bot_system.sql
 - backend/src/services/botService.ts
 - backend/src/services/botAIService.ts
 - backend/src/routes/bots.ts

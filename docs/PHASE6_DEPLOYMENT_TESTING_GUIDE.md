@@ -70,7 +70,7 @@ node deploy-phase6-database.js
 **Option C: Manual Deployment**
 ```bash
 cd /workspace/universus-rpg
-PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d universus_rpg -f backend/src/database/phase6_realtime_schema.sql
+PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d universus_rpg -f database/sql/phase6_realtime_schema.sql
 ```
 
 ### Step 3: Verify Deployment

@@ -32,7 +32,7 @@ The Seasonal Theme System provides dynamic theming capabilities for Universus Sp
 ## 📁 Files Created
 
 ### Database Schema (615 lines)
-**File**: `backend/src/database/phase8_seasonal_themes_schema.sql`
+**File**: `database/sql/phase8_seasonal_themes_schema.sql`
 
 **Tables**:
 1. `themes` - Core theme definitions with visual/audio settings
@@ -116,7 +116,7 @@ The Seasonal Theme System provides dynamic theming capabilities for Universus Sp
 
 ```bash
 # Run the SQL schema
-psql -U your_user -d universus -f backend/src/database/phase8_seasonal_themes_schema.sql
+psql -U your_user -d universus -f database/sql/phase8_seasonal_themes_schema.sql
 ```
 
 The schema includes:

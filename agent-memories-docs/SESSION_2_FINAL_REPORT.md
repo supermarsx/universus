@@ -51,7 +51,7 @@ This session delivered critical production-grade features that were completely m
 **Files:**
 - Service: `src/services/shopService.ts` (602 lines)
 - Routes: `src/routes/shop.ts` (179 lines)
-- Migration: `src/database/migrations/002_add_shop_tables.sql` (37 lines)
+- Migration: `database/sql/migrations/002_add_shop_tables.sql` (37 lines)
 - UI: `frontend/views/pages/shop.njk` (111 lines)
 - JS: `frontend/js/shop.js` (385 lines)
 
@@ -100,7 +100,7 @@ This session delivered critical production-grade features that were completely m
 **Files:**
 - Service: `src/services/messagingService.ts` (516 lines)
 - Routes: `src/routes/messages.ts` (323 lines)
-- Migration: `src/database/migrations/001_update_messages_table.sql` (38 lines)
+- Migration: `database/sql/migrations/001_update_messages_table.sql` (38 lines)
 - Tests: `tests/unit/messagingService.test.ts` (479 lines)
 
 **Total:** 1,356 lines

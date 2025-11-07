@@ -53,7 +53,7 @@ echo
 echo "Deploying Phase 6 Real-time Communication Systems schema..."
 echo
 
-SCHEMA_FILE="backend/src/database/phase6_realtime_schema.sql"
+SCHEMA_FILE="database/sql/phase6_realtime_schema.sql"
 
 if [ ! -f "$SCHEMA_FILE" ]; then
     echo -e "${RED}✗ Schema file not found: $SCHEMA_FILE${NC}"

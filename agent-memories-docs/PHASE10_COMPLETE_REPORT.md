@@ -19,7 +19,7 @@ Phase 10 delivers a comprehensive premium shop system with Matrix-themed UI, fea
 ### Backend Implementation (2,235 lines)
 
 #### 1. Database Schema (601 lines)
-**File:** `backend/src/database/phase10_enhanced_shop_schema.sql`
+**File:** `database/sql/phase10_enhanced_shop_schema.sql`
 
 **Tables Created (18):**
 - `shop_cosmetic_categories` - Cosmetic item categories
@@ -491,7 +491,7 @@ app.use('/api/shop-enhanced', enhancedShopRoutes);
 ### Database Setup
 1. Run database schema:
    ```bash
-   psql -U postgres -d universus -f backend/src/database/phase10_enhanced_shop_schema.sql
+   psql -U postgres -d universus -f database/sql/phase10_enhanced_shop_schema.sql
    ```
 
 2. Verify tables created:
@@ -584,7 +584,7 @@ frontend/views/pages/
 ## File Manifest
 
 ### Backend Files (4)
-1. `backend/src/database/phase10_enhanced_shop_schema.sql` (601 lines)
+1. `database/sql/phase10_enhanced_shop_schema.sql` (601 lines)
 2. `backend/src/types/enhancedShop.ts` (485 lines)
 3. `backend/src/services/enhancedShopService.ts` (850 lines)
 4. `backend/src/routes/enhancedShopRoutes.ts` (299 lines)

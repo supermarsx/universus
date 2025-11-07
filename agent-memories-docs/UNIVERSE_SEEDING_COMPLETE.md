@@ -16,7 +16,7 @@ Successfully implemented a comprehensive universe seeding system for Universus R
 ## DELIVERABLES
 
 ### 1. Database Schema (779 lines)
-**File**: `backend/src/database/universe_seeding_schema.sql`
+**File**: `database/sql/universe_seeding_schema.sql`
 
 **Tables Created**: 13
 - `universe_seeds` - Universe configuration and parameters
@@ -361,7 +361,7 @@ alliance_seeds (20 seed alliances)
 
 ### 1. Database Migration
 ```bash
-psql -U your_user -d universus < backend/src/database/universe_seeding_schema.sql
+psql -U your_user -d universus < database/sql/universe_seeding_schema.sql
 ```
 
 ### 2. Create Default Universe
@@ -507,7 +507,7 @@ curl -X POST http://localhost:3000/api/universe/1/seed \
 
 ## FILES CREATED
 
-1. `backend/src/database/universe_seeding_schema.sql` (779 lines)
+1. `database/sql/universe_seeding_schema.sql` (779 lines)
 2. `backend/src/types/universe.ts` (620 lines)
 3. `backend/src/services/universeSeedingService.ts` (679 lines)
 4. `backend/src/services/playerPlacementService.ts` (512 lines)

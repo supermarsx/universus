@@ -127,7 +127,7 @@ The PostgreSQL startup process requires:
 
 | Component | Status | Lines | Location |
 |-----------|--------|-------|----------|
-| Database Schemas | ✅ Complete | 2,693 | `backend/src/database/*.sql` |
+| Database Schemas | ✅ Complete | 2,693 | `database/sql/*.sql` |
 | TypeScript Services | ⚠️ 92% Ready | 7,144 | `backend/src/services/` |
 | API Routes | ✅ Complete | 2,000+ | `backend/src/routes/` |
 | Frontend UI | ✅ Complete | 1,038 | `frontend/` |

@@ -218,7 +218,7 @@ cd /workspace/universus-rpg
 
 **Method 3: Manual SQL**
 ```bash
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -f backend/src/database/phase6_realtime_schema.sql
+PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -f database/sql/phase6_realtime_schema.sql
 ```
 
 ---
@@ -516,7 +516,7 @@ All necessary tools, scripts, and documentation have been provided to ensure a s
 - `test-phase6-realtime.sh` - Comprehensive test suite
 
 ### Code Locations
-- Schema: `/workspace/universus-rpg/backend/src/database/phase6_realtime_schema.sql`
+- Schema: `/workspace/universus-rpg/database/sql/phase6_realtime_schema.sql`
 - Types: `/workspace/universus-rpg/backend/src/types/realtime.ts`
 - Services: `/workspace/universus-rpg/backend/src/services/`
 - Routes: `/workspace/universus-rpg/backend/src/routes/realtimeRoutes.ts`

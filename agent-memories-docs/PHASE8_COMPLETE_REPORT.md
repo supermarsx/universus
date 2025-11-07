@@ -196,7 +196,7 @@ Built for performance:
 
 ```bash
 cd /workspace/universus-rpg
-psql -U your_user -d universus_db -f backend/src/database/phase8_seasonal_themes_schema.sql
+psql -U your_user -d universus_db -f database/sql/phase8_seasonal_themes_schema.sql
 ```
 
 ### Step 2: Copy Files to Correct Locations (1 minute)

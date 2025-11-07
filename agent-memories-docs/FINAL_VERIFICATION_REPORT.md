@@ -54,7 +54,7 @@ cd /workspace/universus-rpg
 
 # Apply bot system migration (005)
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-    -f backend/src/database/migrations/005_bot_system.sql
+    -f database/sql/migrations/005_bot_system.sql
 
 # Verify tables were created
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
@@ -380,7 +380,7 @@ curl -X POST http://localhost:3000/api/admin/bots/bulk \
 ## Files Delivered
 
 ### Backend Files
-1. `backend/src/database/migrations/005_bot_system.sql` (256 lines)
+1. `database/sql/migrations/005_bot_system.sql` (256 lines)
 2. `backend/src/services/botService.ts` (594 lines)
 3. `backend/src/services/botAIService.ts` (551 lines)
 4. `backend/src/routes/bots.ts` (479 lines)
@@ -444,7 +444,7 @@ PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
 
 # Manually check for errors
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-    -f backend/src/database/migrations/005_bot_system.sql 2>&1 | grep ERROR
+    -f database/sql/migrations/005_bot_system.sql 2>&1 | grep ERROR
 ```
 
 ### Bot Not Making Decisions

@@ -23,7 +23,7 @@ Successfully implemented Phase 3 Combat Debris & Loot System with:
 
 ### Code Files (7 total)
 
-1. **Database Schema** - `backend/src/database/debris_schema.sql`
+1. **Database Schema** - `database/sql/debris_schema.sql`
    - 491 lines
    - 10 tables, 3 views, 3 functions, 1 trigger
    - Complete debris, salvage, and component system
@@ -230,7 +230,7 @@ Server running on port 3000
 
 ### 2. Database Migration
 ```bash
-psql -U your_user -d universus < backend/src/database/debris_schema.sql
+psql -U your_user -d universus < database/sql/debris_schema.sql
 ```
 
 **Expected Output**:

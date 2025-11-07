@@ -637,7 +637,7 @@ The system provides administrators with complete control over all game parameter
 ## Files Delivered
 
 ### Backend Files
-1. `backend/src/database/phase7_config_schema.sql` (439 lines)
+1. `database/sql/phase7_config_schema.sql` (439 lines)
 2. `backend/src/types/configuration.ts` (362 lines)
 3. `backend/src/services/configurationService.ts` (668 lines)
 4. `backend/src/routes/configRoutes.ts` (515 lines)

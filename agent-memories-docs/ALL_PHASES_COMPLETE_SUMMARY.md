@@ -184,7 +184,7 @@ setInterval(async () => {
 ### System Architecture
 
 #### Database Layer (491 lines)
-**File:** `backend/src/database/debris_schema.sql`
+**File:** `database/sql/debris_schema.sql`
 
 **Tables Created:**
 1. `debris_fields` - Debris field tracking with coordinates
@@ -375,7 +375,7 @@ debrisService.startAutomaticCleanup(60);
 ### System Architecture
 
 #### Database Layer (779 lines)
-**File:** `backend/src/database/universe_seeding_schema.sql`
+**File:** `database/sql/universe_seeding_schema.sql`
 
 **Tables Created:**
 1. `universe_seeds` - Universe configuration tracking

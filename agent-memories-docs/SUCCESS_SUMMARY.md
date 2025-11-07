@@ -115,7 +115,7 @@ sudo service redis-server start
 #### Step 2: Apply Migration
 ```bash
 PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-    -f backend/src/database/migrations/005_bot_system.sql
+    -f database/sql/migrations/005_bot_system.sql
 ```
 
 #### Step 3: Start Backend
@@ -177,7 +177,7 @@ This comprehensive test script verifies:
 ### Location: `/workspace/universus-rpg/`
 
 **Backend:**
-- `backend/src/database/migrations/005_bot_system.sql`
+- `database/sql/migrations/005_bot_system.sql`
 - `backend/src/services/botService.ts`
 - `backend/src/services/botAIService.ts`
 - `backend/src/routes/bots.ts`

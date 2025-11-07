@@ -12,7 +12,7 @@
 ## What Was Delivered
 
 ### 1. DATABASE SCHEMA ✅
-**File:** `backend/src/database/phase6_realtime_schema.sql` (561 lines)
+**File:** `database/sql/phase6_realtime_schema.sql` (561 lines)
 
 - **18 Tables:** Chat channels, messages, notifications, player status, fleet events, combat alerts, trading
 - **4 Analytical Views:** Active players, chat activity, unread notifications, active trades
@@ -218,7 +218,7 @@
 ### Immediate (Required):
 1. **Deploy Database Schema**
    ```bash
-   psql -U postgres -d universus_db -f backend/src/database/phase6_realtime_schema.sql
+   psql -U postgres -d universus_db -f database/sql/phase6_realtime_schema.sql
    ```
 
 2. **Verify Tables Created**

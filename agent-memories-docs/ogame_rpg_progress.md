@@ -395,7 +395,7 @@ Building a complete browser-based multiplayer RPG with:
 ### Complete File Manifest (19 files created):
 
 **Backend (5 files):**
-1. backend/src/database/phase9_account_management_schema.sql (504 lines)
+1. database/sql/phase9_account_management_schema.sql (504 lines)
 2. backend/src/types/accountManagement.ts (458 lines)
 3. backend/src/services/accountSecurityService.ts (461 lines)
 4. backend/src/services/sessionManagementService.ts (460 lines)
