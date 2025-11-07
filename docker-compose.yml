@@ -86,6 +86,17 @@ services:
       - "4001:4001"
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+    container_name: universus_frontend
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

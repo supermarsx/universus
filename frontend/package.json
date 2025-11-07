@@ -1,0 +1,19 @@
+{
+  "name": "universus-frontend",
+  "version": "1.0.0",
+  "description": "Universus web client assets and Nunjucks templates packaged as a standalone module.",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && npm run copy",
+    "copy": "node scripts/copy-static.js",
+    "lint": "eslint \"js/**/*.js\" \"views/**/*.njk\"",
+    "format": "prettier --write \"js/**/*.js\" \"css/**/*.css\" \"views/**/*.njk\"",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "eslint": "^9.6.0",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5"
+  }
+}

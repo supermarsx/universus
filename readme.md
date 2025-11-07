@@ -55,13 +55,13 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    cd universus-rpg
    ```
 
-2. Build and start all services (API, bot worker, Redis, PostgreSQL):
+2. Build and start all services (API, bot worker, Redis, PostgreSQL, standalone frontend):
    
    ```bash
    docker-compose up -d
    ```
 
-3. The game will be available at `http://localhost:3000`
+3. The game will be available at `http://localhost:3000` (served by the backend) and the static bundle at `http://localhost:8080` (served by the dedicated frontend container)
 
 4. To stop the services:
    
@@ -75,9 +75,10 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 - Shares the same PostgreSQL and Redis instances via environment variables
 - Backend API proxies all admin bot endpoints to the worker via `BOT_SERVICE_URL` (defaults to `http://bot-service:4001`)
 - Configure cadence with `BOT_WORKER_INTERVAL_MS` and `BOT_WORKER_MAX_BOTS` (see `docker-compose.yml`)
-- For local development run both services:
+- For local development run the services:
   - `pnpm dev` inside `backend`
   - `npm run dev` inside `bot-service`
+  - `npm run build` (or desired workflow) inside `frontend`
 
 ### Option 2: Local Development Setup
 
@@ -91,11 +92,12 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
    # Bot service
    cd ../bot-service
    npm install
+
+   # Frontend
+   cd ../frontend
+   npm install
    ```
 
-# No frontend dependencies needed (vanilla JS)
-
-```
 2. Set up PostgreSQL database:
 ```bash
 # Create database
@@ -122,7 +124,7 @@ psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
    cp .env.example .env
    ```
 
-5. Start the backend server and bot service:
+5. Start the backend server, bot service, and optionally rebuild the frontend bundle:
    
    ```bash
    cd backend
@@ -131,9 +133,13 @@ psql -U postgres -d universus_rpg -f backend/src/database/schema.sql
    # In a new terminal
    cd ../bot-service
    npm run dev
+
+   # In a third terminal (when you need to refresh static assets)
+   cd ../frontend
+   npm run build
    ```
 
-6. Open your browser and navigate to `http://localhost:3000`
+6. Open your browser and navigate to `http://localhost:3000` (backend-rendered UI) or `http://localhost:8080` (static bundle)
 
 ## Environment Variables
 
