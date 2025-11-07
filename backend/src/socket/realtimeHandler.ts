@@ -439,6 +439,10 @@ export class RealtimeSocketHandler {
     this.io.to(`user:${userId}`).emit('researchComplete', payload);
   }
 
+  public emitFleetUpdate(userId: number, payload: any): void {
+    this.io.to(`user:${userId}`).emit('fleetUpdate', payload);
+  }
+
   // =====================================================
   // CONFIGURATION LISTENERS (Phase 7)
   // =====================================================

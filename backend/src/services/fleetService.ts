@@ -4,6 +4,7 @@ import { CombatService } from './combatService';
 import { SHIPS } from '../config/gameConfig';
 import { PoolClient } from 'pg';
 import { Fleet } from '../types';
+import { getRealtimeHandler } from '../socket';
 
 export class FleetService {
   static async dispatchFleet(
@@ -124,9 +125,18 @@ export class FleetService {
         ]
       );
 
+      const fleetRecord = fleetResult.rows[0] || null;
+
       await client.query('COMMIT');
 
-      return fleetResult.rows[0] || null;
+      if (fleetRecord) {
+        this.emitFleetEvent(userId, {
+          action: 'dispatch',
+          fleet: fleetRecord,
+        });
+      }
+
+      return fleetRecord;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -167,12 +177,34 @@ export class FleetService {
     return minSpeed === Infinity ? 0 : minSpeed;
   }
 
-  static async getUserFleets(userId: number): Promise<Fleet[]> {
+  static async getUserFleets(userId: number): Promise<any[]> {
     const result = await pool.query(
-      'SELECT * FROM fleets WHERE user_id = $1 ORDER BY arrival_time',
+      `SELECT 
+        f.*,
+        p.name AS origin_planet_name,
+        p.galaxy AS origin_galaxy,
+        p.system AS origin_system,
+        p.position AS origin_position
+      FROM fleets f
+      LEFT JOIN planets p ON p.id = f.origin_planet_id
+      WHERE f.user_id = $1
+      ORDER BY f.departure_time DESC`,
       [userId]
     );
-    return result.rows;
+
+    const now = Date.now();
+
+    return result.rows.map((row) => {
+      const arrival = new Date(row.arrival_time).getTime();
+      const returnTime = row.return_time ? new Date(row.return_time).getTime() : null;
+
+      return {
+        ...row,
+        ships: typeof row.ships === 'string' ? JSON.parse(row.ships) : row.ships,
+        secondsUntilArrival: Math.max(0, Math.ceil((arrival - now) / 1000)),
+        secondsUntilReturn: returnTime ? Math.max(0, Math.ceil((returnTime - now) / 1000)) : null,
+      };
+    });
   }
 
   static async processFleetArrival(fleetId: number): Promise<void> {
@@ -205,6 +237,11 @@ export class FleetService {
       }
 
       await client.query('COMMIT');
+
+      this.emitFleetEvent(fleet.user_id, {
+        action: 'arrival',
+        fleetId: fleet.id,
+      });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -396,5 +433,17 @@ export class FleetService {
       `UPDATE fleets SET status = 'returning', arrival_time = NOW() WHERE id = $1 AND user_id = $2`,
       [fleetId, userId]
     );
+
+    this.emitFleetEvent(userId, {
+      action: 'recall',
+      fleetId,
+    });
+  }
+
+  private static emitFleetEvent(userId: number, payload: any): void {
+    const handler = getRealtimeHandler();
+    if (!handler) return;
+
+    handler.emitFleetUpdate(userId, payload);
   }
 }

@@ -18,13 +18,11 @@
     <div class="fleet-dispatch-container">
         <div class="fleet-step" id="step1">
             <h3>Step 1: Select Fleet</h3>
-            <div id="fleetSelection" class="fleet-selection-grid">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Loading available ships...</p>
-                </div>
+            <p>Select ships stationed on this planet to include in the fleet.</p>
+            <div id="fleetSelection" class="fleet-selection-grid"></div>
+            <div class="fleet-step-actions">
+                <button class="btn-primary" id="nextToStep2">Next: Select Target</button>
             </div>
-            <button class="btn-primary" id="nextToStep2">Next: Select Target</button>
         </div>
 
         <div class="fleet-step hidden" id="step2">
@@ -34,8 +32,10 @@
                 <input type="number" id="targetSystem" placeholder="System" min="1" max="499">
                 <input type="number" id="targetPosition" placeholder="Position" min="1" max="15">
             </div>
-            <button class="btn-secondary" id="backToStep1">Back</button>
-            <button class="btn-primary" id="nextToStep3">Next: Select Mission</button>
+            <div class="fleet-step-actions">
+                <button class="btn-secondary" id="backToStep1">Back</button>
+                <button class="btn-primary" id="nextToStep3">Next: Select Mission</button>
+            </div>
         </div>
 
         <div class="fleet-step hidden" id="step3">
@@ -47,24 +47,44 @@
                 <button class="mission-button" data-mission="espionage">Espionage</button>
                 <button class="mission-button" data-mission="colonize">Colonize</button>
             </div>
-            <button class="btn-secondary" id="backToStep2">Back</button>
-            <button class="btn-primary" id="launchFleet">Launch Fleet</button>
+
+            <div id="cargoInputs" class="cargo-inputs">
+                <label>Metal
+                    <input type="number" id="cargoMetal" value="0" min="0">
+                </label>
+                <label>Crystal
+                    <input type="number" id="cargoCrystal" value="0" min="0">
+                </label>
+                <label>Deuterium
+                    <input type="number" id="cargoDeuterium" value="0" min="0">
+                </label>
+            </div>
+
+            <div class="fleet-summary">
+                <p><strong>Selected Ships:</strong> <span id="selectedShipsSummary">No ships selected.</span></p>
+                <div class="summary-metrics">
+                    <span>Available Cargo: <strong id="availableCargo">0</strong></span>
+                    <span>Fuel Estimate: <strong id="fuelEstimate">0</strong></span>
+                </div>
+            </div>
+
+            <div class="fleet-step-actions">
+                <button class="btn-secondary" id="backToStep2">Back</button>
+                <button class="btn-secondary" id="resetFleet">Reset</button>
+                <button class="btn-primary" id="launchFleet">Launch Fleet</button>
+            </div>
         </div>
     </div>
 </div>
 
 <!-- Fleet Overview Tab -->
 <div id="overviewTab" class="tab-content">
-    <div id="fleetInventory" class="fleet-inventory">
-        <p class="text-muted">Loading fleet inventory...</p>
-    </div>
+    <div id="fleetInventory" class="fleet-inventory card-enhanced"></div>
 </div>
 
 <!-- Active Missions Tab -->
 <div id="missionsTab" class="tab-content">
-    <div id="activeMissions" class="missions-list">
-        <p class="text-muted">Loading active missions...</p>
-    </div>
+    <div id="activeMissions" class="missions-list"></div>
 </div>
 {% endblock %}
 

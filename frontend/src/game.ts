@@ -129,6 +129,7 @@ async function loadPlanetData(planetId) {
 
         const data = await response.json();
         GameState.currentPlanet = data.planet;
+        window.currentPlanet = data.planet;
         window.currentPlanetId = data.planet.id;
         window.currentResources = {
             metal: data.planet.metal,
