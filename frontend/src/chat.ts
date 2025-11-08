@@ -14,6 +14,8 @@ class UniversusChat {
     this.onlinePlayers = [];
     this.currentUserId = null;
     this.currentUsername = null;
+    this.mutedUsers = new Set();
+    this.loadMutedUsers();
     
     this.init();
   }
@@ -62,7 +64,7 @@ class UniversusChat {
   async loadChannels() {
     try {
       const response = await fetch('/api/realtime/chat/channels', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
+        headers: this.getAuthHeaders()
       });
       const data = await response.json();
       this.channels = data.channels || [];
@@ -75,7 +77,7 @@ class UniversusChat {
   async loadConversations() {
     try {
       const response = await fetch('/api/realtime/chat/conversations?limit=20', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
+        headers: this.getAuthHeaders()
       });
       const data = await response.json();
       this.conversations = data.conversations || [];
@@ -88,7 +90,7 @@ class UniversusChat {
   async loadOnlinePlayers() {
     try {
       const response = await fetch('/api/realtime/players/online?limit=50', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
+        headers: this.getAuthHeaders()
       });
       const data = await response.json();
       this.onlinePlayers = data.players || [];
@@ -217,7 +219,7 @@ class UniversusChat {
   async loadChatHistory(channelId) {
     try {
       const response = await fetch(`/api/realtime/chat/channels/${channelId}/messages?limit=50`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
+        headers: this.getAuthHeaders()
       });
       const data = await response.json();
       
@@ -230,7 +232,7 @@ class UniversusChat {
   async loadPrivateMessages(conversationId) {
     try {
       const response = await fetch(`/api/realtime/chat/conversations/${conversationId}/messages?limit=50`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
+        headers: this.getAuthHeaders()
       });
       const data = await response.json();
       
@@ -238,6 +240,34 @@ class UniversusChat {
     } catch (error) {
       console.error('Failed to load private messages:', error);
     }
+  }
+
+  getAuthHeaders(includeJson = false) {
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+    };
+    if (includeJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return headers;
+  }
+
+  loadMutedUsers() {
+    try {
+      const stored = JSON.parse(localStorage.getItem('chatMutedUsers') || '[]');
+      this.mutedUsers = new Set((stored || []).map((name) => name.toLowerCase()));
+    } catch {
+      this.mutedUsers = new Set();
+    }
+  }
+
+  saveMutedUsers() {
+    localStorage.setItem('chatMutedUsers', JSON.stringify(Array.from(this.mutedUsers)));
+  }
+
+  isUserMuted(username?: string) {
+    if (!username) return false;
+    return this.mutedUsers.has(username.toLowerCase());
   }
 
   renderMessages(messages) {
@@ -249,14 +279,29 @@ class UniversusChat {
       return;
     }
     
-    container.innerHTML = messages.map(msg => this.createMessageHTML(msg)).join('');
+    const rendered = messages
+      .filter((msg) => !this.isUserMuted(msg.username || msg.sender_username))
+      .map((msg) => this.createMessageHTML(msg));
+
+    if (rendered.length === 0) {
+      container.innerHTML = '<div class="chat-welcome"><p>No messages to display.</p></div>';
+      return;
+    }
+
+    container.innerHTML = rendered.join('');
     container.scrollTop = container.scrollHeight;
   }
 
   createMessageHTML(msg) {
     const isOwnMessage = msg.user_id === this.currentUserId || msg.sender_id === this.currentUserId;
-    const username = msg.username || msg.sender_username || 'Unknown';
-    const messageClass = isOwnMessage ? 'chat-message own-message' : 'chat-message';
+    const username = msg.username || msg.sender_username || msg.systemUsername || 'Unknown';
+    let messageClass = 'chat-message';
+
+    if (msg.system) {
+      messageClass = 'chat-message system-message';
+    } else if (isOwnMessage) {
+      messageClass = 'chat-message own-message';
+    }
     
     return `
       <div class="${messageClass}" data-message-id="${msg.id}">
@@ -278,6 +323,10 @@ class UniversusChat {
     const welcome = container.querySelector('.chat-welcome');
     if (welcome) welcome.remove();
     
+    if (this.isUserMuted(msg.username)) {
+      return;
+    }
+
     // Append new message
     container.insertAdjacentHTML('beforeend', this.createMessageHTML(msg));
     container.scrollTop = container.scrollHeight;
@@ -288,6 +337,12 @@ class UniversusChat {
     const message = input.value.trim();
     
     if (!message) return;
+
+     if (message.startsWith('/')) {
+       await this.handleCommand(message);
+       input.value = '';
+       return;
+     }
     
     if (this.currentChannelId) {
       // Send to channel via Socket.io
@@ -309,6 +364,124 @@ class UniversusChat {
     }
     
     input.value = '';
+  }
+
+  async handleCommand(rawCommand: string) {
+    const parts = rawCommand.slice(1).trim().split(/\s+/).filter(Boolean);
+    const command = (parts.shift() || '').toLowerCase();
+
+    switch (command) {
+      case 'block':
+        if (!parts[0]) {
+          this.displaySystemMessage('Usage: /block <username> [scope]');
+          return;
+        }
+        await this.blockUserCommand(parts[0], parts[1]);
+        break;
+      case 'unblock':
+        if (!parts[0]) {
+          this.displaySystemMessage('Usage: /unblock <username>');
+          return;
+        }
+        await this.unblockUserCommand(parts[0], parts[1]);
+        break;
+      case 'mute':
+        if (!parts[0]) {
+          this.displaySystemMessage('Usage: /mute <username>');
+          return;
+        }
+        this.muteUser(parts[0]);
+        break;
+      case 'unmute':
+        if (!parts[0]) {
+          this.displaySystemMessage('Usage: /unmute <username>');
+          return;
+        }
+        this.unmuteUser(parts[0]);
+        break;
+      case 'muted':
+        this.listMutedUsers();
+        break;
+      case 'commands':
+      case 'help':
+        this.displaySystemMessage(
+          'Commands: /block, /unblock, /mute, /unmute, /muted, /help'
+        );
+        break;
+      default:
+        this.displaySystemMessage(`Unknown command: /${command}`);
+    }
+  }
+
+  async blockUserCommand(username, scope = 'all') {
+    try {
+      const response = await fetch('/api/player-blocks', {
+        method: 'POST',
+        headers: this.getAuthHeaders(true),
+        body: JSON.stringify({ username, scope }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to block player');
+      }
+      this.displaySystemMessage(`Blocked ${username} (${scope})`);
+    } catch (error: any) {
+      this.displaySystemMessage(error?.message || 'Failed to block player');
+    }
+  }
+
+  async unblockUserCommand(identifier, scope?: string) {
+    try {
+      const url = `/api/player-blocks/${encodeURIComponent(identifier)}${
+        scope ? `?scope=${scope}` : ''
+      }`;
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders(true),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to unblock player');
+      }
+      this.displaySystemMessage(`Unblocked ${identifier}`);
+    } catch (error: any) {
+      this.displaySystemMessage(error?.message || 'Failed to unblock player');
+    }
+  }
+
+  muteUser(username) {
+    this.mutedUsers.add(username.toLowerCase());
+    this.saveMutedUsers();
+    this.displaySystemMessage(`${username} muted locally.`);
+  }
+
+  unmuteUser(username) {
+    const removed = this.mutedUsers.delete(username.toLowerCase());
+    this.saveMutedUsers();
+    this.displaySystemMessage(
+      removed ? `${username} unmuted.` : `${username} was not muted.`
+    );
+  }
+
+  listMutedUsers() {
+    if (this.mutedUsers.size === 0) {
+      this.displaySystemMessage('Mute list is empty.');
+      return;
+    }
+    this.displaySystemMessage(
+      `Muted users: ${Array.from(this.mutedUsers).join(', ')}`
+    );
+  }
+
+  displaySystemMessage(message: string) {
+    const systemMessage = {
+      id: `sys-${Date.now()}`,
+      system: true,
+      systemUsername: 'System',
+      message,
+      created_at: new Date().toISOString(),
+    };
+    this.appendMessage(systemMessage);
   }
 
   async markConversationAsRead(conversationId) {

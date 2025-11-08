@@ -44,7 +44,7 @@ export interface AllianceScore {
 export class LeaderboardService {
   private db: Pool;
   private redis: Redis;
-  private readonly CACHE_TTL = 300; // 5 minutes
+  private readonly CACHE_TTL = 600; // 10 minutes
   private readonly PLAYER_LEADERBOARD_KEY = 'leaderboard:players';
   private readonly ALLIANCE_LEADERBOARD_KEY = 'leaderboard:alliances';
 
@@ -326,6 +326,16 @@ export class LeaderboardService {
       );
 
       const pipeline = this.redis.pipeline();
+      const snapshotRows: Array<{
+        userId: number;
+        username: string;
+        totalScore: number;
+        buildingScore: number;
+        researchScore: number;
+        fleetScore: number;
+        defenseScore: number;
+        allianceTag?: string;
+      }> = [];
 
       // Clear existing leaderboard
       pipeline.del(this.PLAYER_LEADERBOARD_KEY);
@@ -344,6 +354,16 @@ export class LeaderboardService {
               allianceTag: score.allianceTag,
             })
           );
+          snapshotRows.push({
+            userId: score.userId,
+            username: score.username,
+            totalScore: score.totalScore,
+            buildingScore: score.buildingScore,
+            researchScore: score.researchScore,
+            fleetScore: score.fleetScore,
+            defenseScore: score.defenseScore,
+            allianceTag: score.allianceTag,
+          });
         } catch (error) {
           console.error(`Error calculating score for user ${user.id}:`, error);
         }
@@ -353,6 +373,7 @@ export class LeaderboardService {
       pipeline.expire(this.PLAYER_LEADERBOARD_KEY, this.CACHE_TTL);
 
       await pipeline.exec();
+      await this.persistPlayerSnapshots(snapshotRows);
 
       return usersQuery.rows.length;
     } catch (error) {
@@ -485,6 +506,14 @@ export class LeaderboardService {
 
       const pipeline = this.redis.pipeline();
       pipeline.del(this.ALLIANCE_LEADERBOARD_KEY);
+      const snapshotRows: Array<{
+        allianceId: number;
+        allianceName: string;
+        allianceTag: string;
+        totalScore: number;
+        memberCount: number;
+        averageScore: number;
+      }> = [];
 
       for (const alliance of alliancesQuery.rows) {
         // Get all member scores
@@ -517,10 +546,19 @@ export class LeaderboardService {
             averageScore: Math.floor(averageScore),
           })
         );
+        snapshotRows.push({
+          allianceId: alliance.id,
+          allianceName: alliance.name,
+          allianceTag: alliance.tag,
+          totalScore,
+          memberCount: Number(alliance.member_count) || 0,
+          averageScore: Math.floor(averageScore),
+        });
       }
 
       pipeline.expire(this.ALLIANCE_LEADERBOARD_KEY, this.CACHE_TTL);
       await pipeline.exec();
+      await this.persistAllianceSnapshots(snapshotRows);
 
       return alliancesQuery.rows.length;
     } catch (error) {
@@ -569,5 +607,97 @@ export class LeaderboardService {
       console.error('Error getting top alliances:', error);
       throw error;
     }
+  }
+
+  private async persistPlayerSnapshots(rows: Array<{
+    userId: number;
+    username: string;
+    totalScore: number;
+    buildingScore: number;
+    researchScore: number;
+    fleetScore: number;
+    defenseScore: number;
+    allianceTag?: string;
+  }>): Promise<void> {
+    if (!rows.length) return;
+
+    const snapshotAt = new Date();
+    const columns = 9;
+    const values: any[] = [];
+    const placeholders = rows
+      .map((row, index) => {
+        const base = index * columns;
+        values.push(
+          snapshotAt,
+          row.userId,
+          row.username,
+          row.totalScore,
+          row.buildingScore,
+          row.researchScore,
+          row.fleetScore,
+          row.defenseScore,
+          row.allianceTag || null
+        );
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
+      })
+      .join(',');
+
+    await this.db.query(
+      `INSERT INTO player_leaderboard_snapshots (
+        snapshot_at,
+        user_id,
+        username,
+        total_score,
+        building_score,
+        research_score,
+        fleet_score,
+        defense_score,
+        alliance_tag
+      ) VALUES ${placeholders}`,
+      values
+    );
+  }
+
+  private async persistAllianceSnapshots(rows: Array<{
+    allianceId: number;
+    allianceName: string;
+    allianceTag: string;
+    totalScore: number;
+    memberCount: number;
+    averageScore: number;
+  }>): Promise<void> {
+    if (!rows.length) return;
+
+    const snapshotAt = new Date();
+    const columns = 7;
+    const values: any[] = [];
+    const placeholders = rows
+      .map((row, index) => {
+        const base = index * columns;
+        values.push(
+          snapshotAt,
+          row.allianceId,
+          row.allianceName,
+          row.allianceTag,
+          row.totalScore,
+          row.memberCount,
+          row.averageScore
+        );
+        return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+      })
+      .join(',');
+
+    await this.db.query(
+      `INSERT INTO alliance_leaderboard_snapshots (
+        snapshot_at,
+        alliance_id,
+        alliance_name,
+        alliance_tag,
+        total_score,
+        member_count,
+        average_score
+      ) VALUES ${placeholders}`,
+      values
+    );
   }
 }

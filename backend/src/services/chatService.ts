@@ -5,6 +5,7 @@
 
 import { pool } from '../config/database';
 import redis from '../config/redis';
+import playerBlockService from './playerBlockService';
 import {
   ChatChannel,
   ChatMessage,
@@ -491,13 +492,18 @@ class ChatService {
   }
 
   async isUserBlocked(userId: number, otherUserId: number): Promise<boolean> {
-    const result = await pool.query(
-      `SELECT 1 FROM user_blocks 
-       WHERE user_id = $1 AND blocked_user_id = $2
-         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`,
-      [userId, otherUserId]
-    );
+    return playerBlockService.isBlockedEither(userId, otherUserId, 'messages');
+  }
 
+  async isShadowBanned(userId: number, channelId: number | null): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 1 FROM chat_restrictions 
+       WHERE user_id = $1
+         AND restriction_type = 'shadow'
+         AND (channel_id IS NULL OR channel_id = $2)
+         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`,
+      [userId, channelId]
+    );
     return result.rows.length > 0;
   }
 

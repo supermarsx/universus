@@ -2,6 +2,14 @@ import { MessagingService, MessageType } from '../../src/services/messagingServi
 import { Pool, PoolClient } from 'pg';
 
 jest.mock('pg');
+jest.mock('../../src/services/playerBlockService', () => ({
+  __esModule: true,
+  default: {
+    isBlockedEither: jest.fn().mockResolvedValue(false),
+  },
+}));
+
+const mockPlayerBlockService = require('../../src/services/playerBlockService').default;
 
 describe('MessagingService', () => {
   let messagingService: MessagingService;
@@ -58,6 +66,22 @@ describe('MessagingService', () => {
       expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
       expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
       expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it('should reject when players block each other', async () => {
+      mockPlayerBlockService.isBlockedEither.mockResolvedValueOnce(true);
+
+      await expect(
+        messagingService.sendMessage({
+          fromUserId: 1,
+          toUserId: 2,
+          subject: 'Hello',
+          content: 'Test',
+          messageType: MessageType.PLAYER_MESSAGE,
+        })
+      ).rejects.toThrow(/blocked/i);
+
+      expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
     });
 
     it('should send system notification without sender', async () => {

@@ -33,6 +33,7 @@ import acsRoutes from './routes/acs';
 import accountRoutes from './routes/accountRoutes';
 import enhancedShopRoutes from './routes/enhancedShopRoutes';
 import allianceRoutes from './routes/allianceRoutes';
+import playerBlockRoutes from './routes/playerBlocks';
 import LeaderboardScheduler from './services/leaderboardScheduler';
 
 // Import services
@@ -87,6 +88,7 @@ app.use('/api/acs', acsRoutes); // ACS coordination
 app.use('/api/account', accountRoutes); // Phase 9: Advanced Account Management System
 app.use('/api/shop-enhanced', enhancedShopRoutes); // Phase 10: Enhanced Shop & Matrix Theme
 app.use('/api/alliances', allianceRoutes); // Phase 11: Enhanced Alliance Management System
+app.use('/api/player-blocks', playerBlockRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -147,7 +149,7 @@ console.log('Theme scheduler started');
 
 // Leaderboard rebuild scheduler
 LeaderboardScheduler.start(
-  parseInt(process.env.LEADERBOARD_REFRESH_MS || '', 10) || 60 * 60 * 1000
+  parseInt(process.env.LEADERBOARD_REFRESH_MS || '', 10) || 10 * 60 * 1000
 );
 console.log('Leaderboard scheduler started');
 

@@ -120,7 +120,12 @@ export class RealtimeSocketHandler {
         };
 
         // Broadcast to all users in channel
-        this.io.to(`chat:${data.channelId}`).emit('chat:new_message', event);
+        const shadowed = await chatService.isShadowBanned(userId, data.channelId);
+        if (shadowed) {
+          socket.emit('chat:new_message', event);
+        } else {
+          this.io.to(`chat:${data.channelId}`).emit('chat:new_message', event);
+        }
 
         // Log activity
         await this.logPlayerActivity(userId, 'chat_message', { channelId: data.channelId });
@@ -133,7 +138,7 @@ export class RealtimeSocketHandler {
     socket.on('chat:edit', async (data: { messageId: number; newMessage: string }) => {
       try {
         await chatService.editMessage(data.messageId, userId, data.newMessage);
-        this.io.to(`chat:*`).emit('chat:message_edited', {
+        this.io.emit('chat:message_edited', {
           messageId: data.messageId,
           newMessage: data.newMessage,
           editedAt: new Date(),
@@ -147,7 +152,7 @@ export class RealtimeSocketHandler {
     socket.on('chat:delete', async (messageId: number) => {
       try {
         await chatService.deleteMessage(messageId, userId);
-        this.io.to(`chat:*`).emit('chat:message_deleted', { messageId });
+        this.io.emit('chat:message_deleted', { messageId });
       } catch (error: any) {
         socket.emit('error', { message: error.message });
       }

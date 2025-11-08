@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import playerBlockService from './playerBlockService';
 
 /**
  * Message types enumeration
@@ -85,6 +86,17 @@ export class MessagingService {
     const client = await this.db.connect();
 
     try {
+      if (
+        messageData.fromUserId &&
+        (await playerBlockService.isBlockedEither(
+          messageData.fromUserId,
+          messageData.toUserId,
+          'messages'
+        ))
+      ) {
+        throw new Error('Messaging between these players is blocked.');
+      }
+
       await client.query('BEGIN');
 
       const query = `

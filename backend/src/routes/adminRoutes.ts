@@ -19,6 +19,7 @@ import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import LeaderboardScheduler from '../services/leaderboardScheduler';
 import { getRealtimeHandler } from '../socket';
+import chatService from '../services/chatService';
 
 const router = Router();
 
@@ -462,6 +463,72 @@ router.post(
     } catch (error: any) {
       console.error('Manual leaderboard rebuild error:', error);
       res.status(500).json({ error: error.message || 'Failed to rebuild leaderboard' });
+    }
+  }
+);
+
+// ========================================
+// CHAT MODERATION
+// ========================================
+
+router.post(
+  '/chat/restrictions',
+  requireAdmin,
+  requirePermission('monitoring:write'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const { userId, restrictionType, reason, durationMinutes, channelId } = req.body || {};
+
+      if (!userId || !restrictionType || !reason) {
+        res.status(400).json({ error: 'userId, restrictionType, and reason are required' });
+        return;
+      }
+
+      const allowed = ['mute', 'ban', 'slowmode', 'shadow'];
+      if (!allowed.includes(restrictionType)) {
+        res.status(400).json({ error: 'Invalid restriction type' });
+        return;
+      }
+
+      await chatService.restrictUser(
+        userId,
+        channelId ? Number(channelId) : null,
+        restrictionType,
+        reason,
+        req.user!.id,
+        durationMinutes ? Number(durationMinutes) : undefined
+      );
+
+      res.json({ success: true, message: 'Restriction applied' });
+    } catch (error: any) {
+      console.error('Apply chat restriction error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+router.delete(
+  '/chat/restrictions',
+  requireAdmin,
+  requirePermission('monitoring:write'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const { userId, restrictionType, channelId } = req.body || {};
+      if (!userId || !restrictionType) {
+        res.status(400).json({ error: 'userId and restrictionType are required' });
+        return;
+      }
+
+      await chatService.removeRestriction(
+        userId,
+        channelId ? Number(channelId) : null,
+        restrictionType
+      );
+
+      res.json({ success: true, message: 'Restriction removed' });
+    } catch (error: any) {
+      console.error('Remove chat restriction error:', error);
+      res.status(500).json({ error: error.message });
     }
   }
 );
