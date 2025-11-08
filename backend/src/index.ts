@@ -35,6 +35,7 @@ import enhancedShopRoutes from './routes/enhancedShopRoutes';
 import allianceRoutes from './routes/allianceRoutes';
 import moonRoutes from './routes/moons';
 import playerBlockRoutes from './routes/playerBlocks';
+import analyticsRoutes from './routes/analytics';
 import LeaderboardScheduler from './services/leaderboardScheduler';
 
 // Import services
@@ -92,6 +93,7 @@ app.use('/api/shop-enhanced', enhancedShopRoutes); // Phase 10: Enhanced Shop & 
 app.use('/api/alliances', allianceRoutes); // Phase 11: Enhanced Alliance Management System
 app.use('/api/moons', moonRoutes);
 app.use('/api/player-blocks', playerBlockRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

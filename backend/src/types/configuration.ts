@@ -274,6 +274,30 @@ export interface GameplayConfig {
     bot_protection_enabled?: boolean;
 }
 
+export interface NotificationConfig {
+    email_provider: string;
+    email_from_address: string;
+    email_from_name: string;
+    smtp_host?: string;
+    smtp_port?: number;
+    smtp_secure?: boolean;
+    smtp_username?: string;
+    smtp_password?: string;
+    sendgrid_api_key?: string;
+    ses_access_key?: string;
+    ses_secret_key?: string;
+    ses_region?: string;
+    mailersend_api_key?: string;
+    queue_enabled?: boolean;
+    templates?: Record<string, Record<string, EmailTemplate>>;
+}
+
+export interface EmailTemplate {
+    subject: string;
+    html: string;
+    text?: string;
+}
+
 // Complete typed configuration interface
 export interface GameConfiguration {
     combat: CombatConfig;
@@ -284,6 +308,7 @@ export interface GameConfiguration {
     universe: UniverseConfig;
     alliance: AllianceConfig;
     gameplay: GameplayConfig;
+    notifications: NotificationConfig;
 }
 
 // Event types for real-time updates

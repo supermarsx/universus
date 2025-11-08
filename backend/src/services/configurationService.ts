@@ -28,6 +28,7 @@ import {
     UniverseConfig,
     AllianceConfig,
     GameplayConfig,
+    NotificationConfig,
     ConfigBulkUpdateResult,
     ConfigUpdateResult,
     ConfigExportOptions,
@@ -47,6 +48,7 @@ const CATEGORY_MAP: Record<string, keyof GameConfiguration> = {
     alliances: 'alliance',
     alliance: 'alliance',
     gameplay: 'gameplay',
+    notifications: 'notifications',
 };
 
 export class ConfigurationService {
@@ -118,7 +120,7 @@ export class ConfigurationService {
     }
 
     private async loadGameConfigFromDb(): Promise<GameConfiguration> {
-        const [combat, resources, buildings, research, fleet, universe, alliance, gameplay] =
+        const [combat, resources, buildings, research, fleet, universe, alliance, gameplay, notifications] =
             await Promise.all([
                 this.fetchCategoryFromDb('combat'),
                 this.fetchCategoryFromDb('resources'),
@@ -128,6 +130,7 @@ export class ConfigurationService {
                 this.fetchCategoryFromDb('universe'),
                 this.fetchCategoryFromDb('alliances'),
                 this.fetchCategoryFromDb('gameplay'),
+                this.fetchCategoryFromDb('notifications'),
             ]);
 
         return {
@@ -139,6 +142,7 @@ export class ConfigurationService {
             universe,
             alliance,
             gameplay,
+            notifications,
         };
     }
 
@@ -259,8 +263,13 @@ export class ConfigurationService {
         return snapshot.gameplay;
     }
 
+    async getNotificationConfig(): Promise<NotificationConfig> {
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.notifications;
+    }
+
     async getAllConfig(): Promise<GameConfiguration> {
-        const [combat, resources, buildings, research, fleet, universe, alliance, gameplay] =
+        const [combat, resources, buildings, research, fleet, universe, alliance, gameplay, notifications] =
             await Promise.all([
                 this.getCombatConfig(),
                 this.getResourceConfig(),
@@ -269,7 +278,8 @@ export class ConfigurationService {
                 this.getFleetConfig(),
                 this.getUniverseConfig(),
                 this.getAllianceConfig(),
-                this.getGameplayConfig()
+                this.getGameplayConfig(),
+                this.getNotificationConfig()
             ]);
 
         return {
@@ -280,7 +290,8 @@ export class ConfigurationService {
             fleet,
             universe,
             alliance,
-            gameplay
+            gameplay,
+            notifications
         };
     }
 

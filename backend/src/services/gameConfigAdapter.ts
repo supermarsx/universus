@@ -234,6 +234,33 @@ export class GameConfigAdapter {
         return Math.round(clamped * 100) / 100;
     }
 
+    async getAuthRateLimitWindowSeconds(): Promise<number> {
+        return this.getConfigValue('gameplay.auth_rate_limit_window_seconds', 300);
+    }
+
+    async getAuthRateLimitMaxAttempts(): Promise<number> {
+        return this.getConfigValue('gameplay.auth_rate_limit_max_attempts', 10);
+    }
+
+    async getAuthCaptchaFailureThreshold(): Promise<number> {
+        return this.getConfigValue('gameplay.auth_captcha_failure_threshold', 3);
+    }
+
+    async getNotificationConfig() {
+        try {
+            const snapshot = await this.configService.getGameConfigSnapshot();
+            return snapshot.notifications;
+        } catch (error) {
+            console.warn('[GameConfig] Failed to load notification config, returning defaults', error);
+            return {
+                email_provider: 'smtp',
+                email_from_address: 'noreply@universus.game',
+                email_from_name: 'Universus Command',
+                queue_enabled: true
+            };
+        }
+    }
+
     // ============================================
     // HELPER METHODS FOR COMPLEX CALCULATIONS
     // ============================================

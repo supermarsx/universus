@@ -1,9 +1,203 @@
 {% extends "base.njk" %}
 {% block title %}Analytics - Admin Panel{% endblock %}
+
+{% block styles %}
+<style>
+  .analytics-wrapper {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+    padding: 2rem;
+    color: #e2e8f0;
+  }
+
+  .analytics-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+  }
+
+  .analytics-card {
+    background: rgba(26, 26, 46, 0.9);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 1rem;
+    padding: 1.5rem;
+  }
+
+  .analytics-card h3 {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  .analytics-card p {
+    font-size: 2.4rem;
+    margin: 0.75rem 0 0;
+    color: #c7d2fe;
+  }
+
+  .analytics-controls {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+  }
+
+  .analytics-controls select,
+  .analytics-controls button {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    color: #e2e8f0;
+    padding: 0.65rem 1rem;
+    border-radius: 0.5rem;
+  }
+
+  .analytics-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(26, 26, 46, 0.9);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 1rem;
+    margin-top: 2rem;
+    overflow: hidden;
+  }
+
+  .analytics-table th,
+  .analytics-table td {
+    padding: 0.9rem 1.25rem;
+  }
+
+  .analytics-table th {
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    background: rgba(148, 163, 184, 0.1);
+  }
+
+  .analytics-table tbody tr:nth-child(every odd) {
+    background: rgba(15, 23, 42, 0.4);
+  }
+
+  .trend-up {
+    color: #34d399;
+  }
+
+  .trend-down {
+    color: #f87171;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div style="padding: 2rem; color: #e2e8f0;">
-  <h1>Analytics & Reports</h1>
-  <p>Analytics dashboard coming soon...</p>
-  <a href="/admin/dashboard" style="color: #6366f1;">← Back to Dashboard</a>
+<div class="analytics-wrapper">
+  <div>
+    <a href="/admin/dashboard" style="color: #6366f1;">← Back to Dashboard</a>
+    <h1 style="margin: 1rem 0 0;">Analytics &amp; Usage</h1>
+    <p style="color: #94a3b8;">Monitor key engagement events in real-time.</p>
+  </div>
+
+  <div class="analytics-controls">
+    <label>
+      Range
+      <select id="analyticsRange">
+        <option value="1">Last 24h</option>
+        <option value="3">Last 3 days</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30">Last 30 days</option>
+      </select>
+    </label>
+    <button id="analyticsRefresh">Refresh</button>
+    <span id="analyticsStatus" style="align-self: center; color: #94a3b8;"></span>
+  </div>
+
+  <div class="analytics-card-grid" id="analyticsSummary"></div>
+
+  <table class="analytics-table" id="analyticsDailyTable">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Event Type</th>
+        <th>Total Events</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const summaryContainer = document.getElementById('analyticsSummary');
+  const dailyTableBody = document.querySelector('#analyticsDailyTable tbody');
+  const rangeSelect = document.getElementById('analyticsRange');
+  const refreshBtn = document.getElementById('analyticsRefresh');
+  const statusLabel = document.getElementById('analyticsStatus');
+
+  async function loadAnalytics() {
+    try {
+      statusLabel.textContent = 'Loading analytics...';
+      const token = localStorage.getItem('token');
+      if (!token) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const days = rangeSelect.value;
+      const response = await fetch(\`/api/analytics/usage?days=\${days}\`, {
+        headers: {
+          'Authorization': \`Bearer \${token}\`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('Failed to load analytics data');
+      }
+      const payload = await response.json();
+      renderSummary(payload.data?.summary || []);
+      renderDaily(payload.data?.daily || []);
+      statusLabel.textContent = \`Updated just now • Last \${days} day(s)\`;
+    } catch (error) {
+      console.error(error);
+      statusLabel.textContent = 'Unable to load analytics';
+    }
+  }
+
+  function renderSummary(summary) {
+    if (!summary.length) {
+      summaryContainer.innerHTML = '<p style="color:#94a3b8;">No events tracked for this range.</p>';
+      return;
+    }
+
+    summaryContainer.innerHTML = summary.map(item => `
+      <div class="analytics-card">
+        <h3>${item.event_type}</h3>
+        <p>${Number(item.total_events).toLocaleString()}</p>
+        <small style="color:#94a3b8;">Unique sources: ${Number(item.unique_sources).toLocaleString()}</small>
+      </div>
+    `).join('');
+  }
+
+  function renderDaily(daily) {
+    if (!daily.length) {
+      dailyTableBody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8;">No daily data available.</td></tr>';
+      return;
+    }
+
+    dailyTableBody.innerHTML = daily.map(row => `
+      <tr>
+        <td>${row.event_date}</td>
+        <td>${row.event_type}</td>
+        <td>${Number(row.total_events).toLocaleString()}</td>
+      </tr>
+    `).join('');
+  }
+
+  rangeSelect.addEventListener('change', loadAnalytics);
+  refreshBtn.addEventListener('click', loadAnalytics);
+
+  loadAnalytics();
+})();
+</script>
 {% endblock %}

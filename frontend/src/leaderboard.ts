@@ -14,6 +14,9 @@ const PAGE_SIZE = 50;
 let socket = null;
 let currentUserId = null;
 let sparklineIdCounter = 0;
+let selectedAllianceId: number | null = null;
+let allianceMembersOffset = 0;
+const ALLIANCE_MEMBERS_LIMIT = 25;
 
 /**
  * Initialize the leaderboard page
@@ -38,6 +41,7 @@ async function init() {
     // Load initial data
     await loadPlayersLeaderboard();
     await fetchMyRank();
+    await loadLeaderboardStatus();
 
     // Setup auto-refresh
     setInterval(() => {
@@ -49,6 +53,10 @@ async function init() {
             loadMyRankingDetail();
         }
     }, 30000); // Refresh every 30 seconds
+
+    setInterval(() => {
+        loadLeaderboardStatus();
+    }, 60000);
 }
 
 /**
@@ -110,6 +118,16 @@ function setupEventListeners() {
     document.getElementById('alliancesNextBtn').addEventListener('click', () => {
         alliancePage++;
         loadAlliancesLeaderboard();
+    });
+
+    document.getElementById('alliancesTableBody').addEventListener('click', (event) => {
+        const row = event.target.closest('tr');
+        if (!row) return;
+        const allianceId = parseInt(row.getAttribute('data-alliance-id'), 10);
+        if (Number.isNaN(allianceId)) return;
+        selectedAllianceId = allianceId;
+        allianceMembersOffset = 0;
+        loadAllianceDetail();
     });
 
     // Logout
@@ -205,6 +223,11 @@ async function loadPlayersLeaderboard() {
 
         const payload = await response.json();
         const players = Array.isArray(payload) ? payload : payload.data || [];
+        const paginationTotal = (!Array.isArray(payload) && payload.pagination) ? payload.pagination.total : null;
+        const playerTotal = typeof paginationTotal === 'number'
+            ? paginationTotal
+            : ((playerPage * PAGE_SIZE) + players.length);
+        document.getElementById('totalPlayers').textContent = playerTotal.toString();
 
         loadingEl.style.display = 'none';
 
@@ -311,7 +334,7 @@ async function loadAlliancesLeaderboard() {
             const rankDelta = renderRankDelta(alliance.weeklyRankChange);
 
             return `
-                <tr>
+                <tr data-alliance-id="${alliance.allianceId}">
                     <td>
                         <div class="rank-badge ${rankBadgeClass}">${alliance.rank}</div>
                     </td>
@@ -333,12 +356,22 @@ async function loadAlliancesLeaderboard() {
         }).join('');
 
         tableEl.style.display = 'table';
-        paginationEl.style.display = 'flex';
+        paginationEl.style.display = alliances.length === PAGE_SIZE ? 'flex' : 'none';
 
         // Update pagination
         document.getElementById('alliancesCurrentPage').textContent = alliancePage + 1;
         document.getElementById('alliancesPrevBtn').disabled = alliancePage === 0;
         document.getElementById('alliancesNextBtn').disabled = alliances.length < PAGE_SIZE;
+
+        if (alliances.length) {
+            if (!selectedAllianceId || !alliances.some((a) => a.allianceId === selectedAllianceId)) {
+                selectedAllianceId = alliances[0].allianceId;
+                allianceMembersOffset = 0;
+            }
+            loadAllianceDetail(true);
+        } else {
+            document.getElementById('allianceDetailPanel').style.display = 'none';
+        }
 
         // Update total alliances count
         if (alliances.length > 0) {
@@ -430,6 +463,108 @@ async function loadMyRankingDetail() {
     } catch (error) {
         console.error('Error loading my ranking detail:', error);
     }
+}
+
+async function loadAllianceDetail(silent?: boolean) {
+    if (!selectedAllianceId) {
+        document.getElementById('allianceDetailPanel').style.display = 'none';
+        return;
+    }
+
+    const panel = document.getElementById('allianceDetailPanel');
+    const tbody = document.getElementById('allianceMembersBody');
+
+    if (!silent) {
+        tbody.innerHTML = '<tr><td colspan="7" style="color:#94a3b8;">Loading alliance members…</td></tr>';
+    }
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/leaderboard/alliances/${selectedAllianceId}/details?limit=${ALLIANCE_MEMBERS_LIMIT}&offset=${allianceMembersOffset}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            }
+        );
+        if (!response.ok) throw new Error('Failed to load alliance details');
+
+        const payload = await response.json();
+        const alliance = payload.data?.alliance;
+        const members = payload.data?.members || [];
+        if (!alliance) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        panel.style.display = 'block';
+        document.getElementById('detailAllianceName').textContent = alliance.allianceName;
+        document.getElementById('detailAllianceTag').textContent = alliance.allianceTag || '-';
+        document.getElementById('detailAllianceScore').textContent = formatNumber(alliance.totalScore);
+        document.getElementById('detailAllianceMembers').textContent = alliance.memberCount || members.length;
+        document.getElementById('detailAllianceAverage').textContent = formatNumber(alliance.averageScore || 0);
+        document.getElementById('detailAllianceRank').textContent = alliance.rank;
+
+        tbody.innerHTML = members.map(member => `
+            <tr>
+                <td>${member.rank}</td>
+                <td>${escapeHtml(member.username)}</td>
+                <td>${formatNumber(member.totalScore)}</td>
+                <td>${formatNumber(member.buildingScore || 0)}</td>
+                <td>${formatNumber(member.researchScore || 0)}</td>
+                <td>${formatNumber(member.fleetScore || 0)}</td>
+                <td>${formatNumber(member.defenseScore || 0)}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading alliance detail', error);
+        panel.style.display = 'none';
+    }
+}
+
+async function loadLeaderboardStatus() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/leaderboard/cache/meta`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+        if (!response.ok) throw new Error('Failed to load cache metadata');
+        const payload = await response.json();
+        const players = payload.cache?.players;
+        const alliances = payload.cache?.alliances;
+        const scheduler = payload.scheduler;
+
+        document.getElementById('playersCacheStatus').textContent = players?.lastBuild
+            ? new Date(players.lastBuild).toLocaleTimeString()
+            : 'pending';
+        document.getElementById('alliancesCacheStatus').textContent = alliances?.lastBuild
+            ? new Date(alliances.lastBuild).toLocaleTimeString()
+            : 'pending';
+
+        document.getElementById('playersCacheTTL').textContent = `TTL: ${formatTTL(players?.ttlSeconds)}`;
+        document.getElementById('alliancesCacheTTL').textContent = `TTL: ${formatTTL(alliances?.ttlSeconds)}`;
+
+        document.getElementById('schedulerStatus').textContent = scheduler?.running ? 'Running' : 'Idle';
+        if (scheduler?.lastRun && scheduler?.intervalMs) {
+            const nextRun = new Date(new Date(scheduler.lastRun).getTime() + scheduler.intervalMs);
+            document.getElementById('schedulerNextRun').textContent = `Next run: ${nextRun.toLocaleTimeString()}`;
+        } else {
+            document.getElementById('schedulerNextRun').textContent = 'Next run: --';
+        }
+    } catch (error) {
+        console.error('Failed to load leaderboard status', error);
+    }
+}
+
+function formatTTL(ttl?: number) {
+    if (typeof ttl !== 'number' || ttl < 0) return 'expired';
+    if (ttl > 3600) {
+        return `${Math.floor(ttl / 3600)}h`;
+    }
+    const minutes = Math.floor(ttl / 60);
+    const seconds = ttl % 60;
+    return `${minutes}m ${seconds}s`;
 }
 
 /**

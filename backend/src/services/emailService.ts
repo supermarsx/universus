@@ -1,106 +1,174 @@
-// Email Service - Handles all email communications
-// Uses Nodemailer for sending emails
+// Email Service - enqueues outbound mail for the dedicated delivery worker.
 
 import nodemailer, { Transporter } from 'nodemailer';
+import { emailQueueService, EmailJobPayload } from './emailQueueService';
+import { gameConfig } from './gameConfigAdapter';
+import { NotificationConfig } from '../types/configuration';
 
 interface EmailOptions {
     to: string;
     subject: string;
     html: string;
     text?: string;
+    metadata?: Record<string, any>;
+    template?: string;
+    context?: Record<string, any>;
+}
+
+interface TemplateDefaults {
+    subject: string;
+    html: string;
+    text?: string;
 }
 
 export class EmailService {
-    private static transporter: Transporter | null = null;
+    private static fallbackTransporter: Transporter | null = null;
 
-    // Initialize email transporter
-    private static getTransporter(): Transporter {
-        if (this.transporter) {
-            return this.transporter;
-        }
-
-        // Configure based on environment
-        if (process.env.EMAIL_SERVICE === 'smtp') {
-            // SMTP Configuration
-            this.transporter = nodemailer.createTransport({
-                host: process.env.SMTP_HOST || 'smtp.gmail.com',
-                port: parseInt(process.env.SMTP_PORT || '587'),
-                secure: process.env.SMTP_SECURE === 'true',
-                auth: {
-                    user: process.env.SMTP_USER,
-                    pass: process.env.SMTP_PASS
-                }
-            });
-        } else if (process.env.EMAIL_SERVICE === 'sendgrid') {
-            // SendGrid Configuration
-            this.transporter = nodemailer.createTransport({
-                host: 'smtp.sendgrid.net',
-                port: 587,
-                auth: {
-                    user: 'apikey',
-                    pass: process.env.SENDGRID_API_KEY
-                }
-            });
-        } else {
-            // Development mode - use ethereal for testing
-            console.warn('No email service configured. Using development mode.');
-            // Note: In production, this should throw an error
-            // For now, create a test account
-            nodemailer.createTestAccount().then(testAccount => {
-                this.transporter = nodemailer.createTransport({
-                    host: 'smtp.ethereal.email',
-                    port: 587,
-                    secure: false,
-                    auth: {
-                        user: testAccount.user,
-                        pass: testAccount.pass
-                    }
-                });
-            });
-        }
-
-        return this.transporter as Transporter;
+    private static formatFrom(config?: NotificationConfig): string {
+        const name = config?.email_from_name || process.env.EMAIL_FROM_NAME || 'Universus Command';
+        const address = config?.email_from_address || process.env.EMAIL_FROM || 'noreply@universus.game';
+        return `"${name}" <${address}>`;
     }
 
-    // Send email
-    static async send(options: EmailOptions): Promise<void> {
+    private static async resolveNotificationConfig(): Promise<NotificationConfig | undefined> {
         try {
-            const transporter = this.getTransporter();
-            
-            const mailOptions = {
-                from: process.env.EMAIL_FROM || '"Universus Space Empire" <noreply@universus.game>',
-                to: options.to,
-                subject: options.subject,
-                html: options.html,
-                text: options.text || this.htmlToText(options.html)
-            };
+            return await gameConfig.getNotificationConfig();
+        } catch (error) {
+            console.warn('[EmailService] Failed to load notification config. Falling back to env.', error);
+            return undefined;
+        }
+    }
 
-            const info = await transporter.sendMail(mailOptions);
-            
-            console.log('Email sent:', {
-                messageId: info.messageId,
-                to: options.to,
-                subject: options.subject
+    private static shouldUseQueue(config?: NotificationConfig): boolean {
+        if (process.env.EMAIL_QUEUE_BYPASS === 'true') {
+            return false;
+        }
+        if (config && config.queue_enabled === false) {
+            return false;
+        }
+        return true;
+    }
+
+    static async send(options: EmailOptions, notificationConfig?: NotificationConfig): Promise<void> {
+        const resolvedConfig = notificationConfig || await this.resolveNotificationConfig();
+        const useQueue = this.shouldUseQueue(resolvedConfig);
+        const payload: EmailJobPayload = {
+            to: options.to,
+            subject: options.subject,
+            html: options.html,
+            text: options.text || this.htmlToText(options.html),
+            from: this.formatFrom(resolvedConfig),
+            metadata: options.metadata,
+            template: options.template,
+            context: options.context
+        };
+
+        if (useQueue) {
+            await emailQueueService.enqueue(payload);
+            return;
+        }
+
+        await this.sendDirect(payload, resolvedConfig);
+    }
+
+    private static async sendDirect(job: EmailJobPayload, config?: NotificationConfig): Promise<void> {
+        try {
+            const transporter = await this.getFallbackTransporter(config);
+            const info = await transporter.sendMail({
+                from: job.from || this.formatFrom(config),
+                to: job.to,
+                subject: job.subject,
+                html: job.html,
+                text: job.text || this.htmlToText(job.html)
             });
 
-            // Log preview URL in development
             if (process.env.NODE_ENV !== 'production') {
                 const previewUrl = nodemailer.getTestMessageUrl(info);
                 if (previewUrl) {
-                    console.log('Preview URL:', previewUrl);
+                    console.log('[EmailService] Preview URL:', previewUrl);
                 }
             }
         } catch (error) {
-            console.error('Email send error:', error);
+            console.error('[EmailService] Direct send failed:', error);
             throw new Error('Failed to send email');
         }
     }
 
+    private static async getFallbackTransporter(config?: NotificationConfig): Promise<Transporter> {
+        if (this.fallbackTransporter) {
+            return this.fallbackTransporter;
+        }
+
+        const host = config?.smtp_host || process.env.SMTP_HOST || 'smtp.gmail.com';
+        const port = parseInt(String(config?.smtp_port ?? process.env.SMTP_PORT ?? '587'), 10);
+        const secure = typeof config?.smtp_secure === 'boolean'
+            ? config.smtp_secure
+            : process.env.SMTP_SECURE === 'true';
+        const authUser = config?.smtp_username || process.env.SMTP_USER;
+        const authPass = config?.smtp_password || process.env.SMTP_PASS;
+
+        this.fallbackTransporter = nodemailer.createTransport({
+            host,
+            port,
+            secure,
+            auth: authUser && authPass ? { user: authUser, pass: authPass } : undefined
+        });
+
+        return this.fallbackTransporter;
+    }
+
+    private static replacePlaceholders(template: string, context: Record<string, any> = {}) {
+        if (!template) return template;
+        return template.replace(/{{\s*([\w.]+)\s*}}/g, (_, key) => {
+            const value = context[key];
+            return value === undefined || value === null ? '' : String(value);
+        });
+    }
+
+    private static async renderTemplateContent(
+        templateKey: string,
+        defaults: TemplateDefaults,
+        context: Record<string, any>,
+        locale: string = 'en',
+        notificationConfig?: NotificationConfig
+    ) {
+        const config = notificationConfig || await this.resolveNotificationConfig();
+        const templateSet = config?.templates?.[templateKey];
+
+        if (!templateSet) {
+            return defaults;
+        }
+
+        const localeKey = locale.toLowerCase();
+        const normalizedLocale = localeKey.includes('-') ? localeKey.split('-')[0] : localeKey;
+
+        const template =
+            templateSet[localeKey] ||
+            templateSet[normalizedLocale] ||
+            templateSet.en ||
+            Object.values(templateSet)[0];
+
+        if (!template) {
+            return defaults;
+        }
+
+        const subject = this.replacePlaceholders(template.subject || defaults.subject, context);
+        const html = this.replacePlaceholders(template.html || defaults.html, context);
+        const textSource = template.text || defaults.text || this.htmlToText(template.html || defaults.html || '');
+        const text = this.replacePlaceholders(textSource, context);
+
+        return { subject, html, text };
+    }
+
     // Email verification
-    static async sendEmailVerification(email: string, token: string, userName?: string): Promise<void> {
+    static async sendEmailVerification(email: string, token: string, userName?: string, locale: string = 'en'): Promise<void> {
         const verificationUrl = `${process.env.APP_URL}/account/verify-email?token=${token}`;
-        
-        const html = `
+        const context = {
+            username: userName || 'Commander',
+            verification_link: verificationUrl
+        };
+
+        const defaultHtml = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -138,18 +206,34 @@ export class EmailService {
             </html>
         `;
 
+        const defaults = {
+            subject: 'Verify Your Email - Universus Space Empire',
+            html: defaultHtml,
+            text: `Hi ${context.username}, verify your Universus account using ${verificationUrl}`
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('verification', defaults, context, locale, notificationConfig);
+
         await this.send({
             to: email,
-            subject: 'Verify Your Email - Universus Space Empire',
-            html
-        });
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'verification',
+            context
+        }, notificationConfig);
     }
 
     // Password reset
-    static async sendPasswordReset(email: string, token: string, userName?: string): Promise<void> {
+    static async sendPasswordReset(email: string, token: string, userName?: string, locale: string = 'en'): Promise<void> {
         const resetUrl = `${process.env.APP_URL}/account/reset-password?token=${token}`;
-        
-        const html = `
+        const context = {
+            username: userName || 'Commander',
+            reset_link: resetUrl
+        };
+
+        const defaultHtml = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -188,11 +272,23 @@ export class EmailService {
             </html>
         `;
 
+        const defaults = {
+            subject: 'Reset Your Password - Universus Space Empire',
+            html: defaultHtml,
+            text: `Reset your Universus password using ${resetUrl}`
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('password_reset', defaults, context, locale, notificationConfig);
+
         await this.send({
             to: email,
-            subject: 'Reset Your Password - Universus Space Empire',
-            html
-        });
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'password_reset',
+            context
+        }, notificationConfig);
     }
 
     // Account transfer verification
@@ -274,24 +370,59 @@ export class EmailService {
             </html>
         `;
 
-        // Send to both emails
+        const notificationConfig = await this.resolveNotificationConfig();
+        const toContext = {
+            from_email: fromEmail,
+            verify_link: verifyUrl
+        };
+        const fromContext = {
+            to_email: toEmail,
+            verify_link: verifyUrl
+        };
+
+        const toDefaults = {
+            subject: 'Verify Account Transfer - Universus Space Empire',
+            html: htmlTo,
+            text: `Verify the account transfer request from ${fromEmail} using ${verifyUrl}`
+        };
+        const fromDefaults = {
+            subject: 'Account Transfer Initiated - Universus Space Empire',
+            html: htmlFrom,
+            text: `You initiated a transfer to ${toEmail}.`
+        };
+
+        const [renderedTo, renderedFrom] = await Promise.all([
+            this.renderTemplateContent('account_transfer_request', toDefaults, toContext, 'en', notificationConfig),
+            this.renderTemplateContent('account_transfer_notification', fromDefaults, fromContext, 'en', notificationConfig)
+        ]);
+
         await Promise.all([
             this.send({
                 to: toEmail,
-                subject: 'Verify Account Transfer - Universus Space Empire',
-                html: htmlTo
-            }),
+                subject: renderedTo.subject,
+                html: renderedTo.html,
+                text: renderedTo.text,
+                template: 'account_transfer_request',
+                context: toContext
+            }, notificationConfig),
             this.send({
                 to: fromEmail,
-                subject: 'Account Transfer Initiated - Universus Space Empire',
-                html: htmlFrom
-            })
+                subject: renderedFrom.subject,
+                html: renderedFrom.html,
+                text: renderedFrom.text,
+                template: 'account_transfer_notification',
+                context: fromContext
+            }, notificationConfig)
         ]);
     }
 
     // 2FA enabled notification
-    static async send2FAEnabled(email: string, userName?: string): Promise<void> {
-        const html = `
+    static async send2FAEnabled(email: string, userName?: string, locale: string = 'en'): Promise<void> {
+        const context = {
+            username: userName || 'Commander'
+        };
+
+        const defaultHtml = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -325,16 +456,33 @@ export class EmailService {
             </html>
         `;
 
+        const defaults = {
+            subject: 'Two-Factor Authentication Enabled - Universus Space Empire',
+            html: defaultHtml,
+            text: 'Two-factor authentication has been enabled on your account.'
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('two_factor_enabled', defaults, context, locale, notificationConfig);
+
         await this.send({
             to: email,
-            subject: 'Two-Factor Authentication Enabled - Universus Space Empire',
-            html
-        });
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'two_factor_enabled',
+            context
+        }, notificationConfig);
     }
 
     // Security alert
-    static async sendSecurityAlert(email: string, alertType: string, details: string): Promise<void> {
-        const html = `
+    static async sendSecurityAlert(email: string, alertType: string, details: string, locale: string = 'en'): Promise<void> {
+        const context = {
+            alert_type: alertType,
+            alert_details: details
+        };
+
+        const defaultHtml = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -368,11 +516,23 @@ export class EmailService {
             </html>
         `;
 
+        const defaults = {
+            subject: `Security Alert - ${alertType}`,
+            html: defaultHtml,
+            text: `${alertType}: ${details}`
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('security_alert', defaults, context, locale, notificationConfig);
+
         await this.send({
             to: email,
-            subject: `Security Alert - ${alertType}`,
-            html
-        });
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'security_alert',
+            context
+        }, notificationConfig);
     }
 
     // Convert HTML to plain text (basic implementation)

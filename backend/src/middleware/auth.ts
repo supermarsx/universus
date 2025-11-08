@@ -31,6 +31,7 @@ export const authenticateToken = async (
         u.is_admin,
         u.is_banned,
         u.alliance_id,
+        u.email_verified,
         au.admin_level,
         CASE 
           WHEN u.is_admin THEN TRUE

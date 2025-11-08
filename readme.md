@@ -14,6 +14,7 @@ A complete browser-based multiplayer strategy game inspired by Universus, featur
 - **Alliance System**: Create and manage alliances with chat (in progress)
 - **Leaderboards**: Player rankings by score
 - **Responsive UI**: Modern, space-themed interface
+- **Analytics Tracking**: Built-in event tracking and admin usage reporting
 
 ## Technology Stack
 
@@ -188,6 +189,12 @@ BOT_SERVICE_URL=http://localhost:4001
 
 # Admin service endpoint (if the backend ever needs to call it)
 ADMIN_SERVICE_URL=http://localhost:4002
+
+# RabbitMQ (for analytics queue)
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+ANALYTICS_QUEUE_NAME=analytics_events
+# Set to true to bypass RabbitMQ and write analytics directly
+ANALYTICS_QUEUE_DISABLED=false
 
 # Game Configuration
 GAME_SPEED=1
@@ -394,6 +401,19 @@ pnpm run db:init
 - **Redis Pub/Sub**: Socket.io adapter for multi-node support
 - **Database**: PostgreSQL supports read replicas and sharding
 - **Load Balancing**: Docker Swarm or Kubernetes ready
+
+## Email Delivery Service
+
+- Outbound transactional emails are enqueued by the main backend and processed by the worker in `email-delivery-service/`.
+- Configure providers (SMTP, SendGrid, Amazon SES, MailerSend) and sender details under **Admin → Configuration → Notifications**.
+- Start the worker locally with `pnpm dev` (after installing dependencies inside `email-delivery-service`) so verification, password reset, and alert emails are dispatched automatically.
+
+## Analytics & Usage Tracking
+
+- The frontend emits lightweight page-view events through `/api/analytics/events`, storing them in `analytics_events`.
+- Custom events can be sent by calling `window.UniversusAnalytics.track('event_name', { ...properties })` anywhere in the UI.
+- Admins can retrieve aggregate stats via `GET /api/analytics/usage?days=7` (requires admin token) for quick dashboards or exports.
+- For high-volume deployments, set `RABBITMQ_URL` and start the queue worker (`pnpm run analytics:worker`) so events are published to RabbitMQ and processed asynchronously. When RabbitMQ is unavailable, the backend automatically falls back to direct writes.
 
 ## Contributing
 

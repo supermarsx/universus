@@ -30,7 +30,7 @@ export class AuthService {
       const userResult = await client.query(
         `INSERT INTO users (username, email, password_hash, dark_matter, last_login)
          VALUES ($1, $2, $3, 0, NOW())
-         RETURNING id, username, email, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id`,
+         RETURNING id, username, email, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified`,
         [username, email, passwordHash]
       );
 
@@ -80,13 +80,19 @@ export class AuthService {
   }
 
   static async login(
-    username: string,
+    identifier: string,
     password: string
   ): Promise<{ user: User; token: string }> {
-    const result = await pool.query(
-      'SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id FROM users WHERE username = $1',
-      [username]
-    );
+    const normalizedIdentifier = identifier.trim();
+    const isEmail = normalizedIdentifier.includes('@');
+    const query = isEmail
+      ? `SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified 
+         FROM users WHERE LOWER(email) = LOWER($1)`
+      : `SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified 
+         FROM users WHERE username = $1`;
+
+    const lookupValue = isEmail ? normalizedIdentifier.toLowerCase() : normalizedIdentifier;
+    const result = await pool.query(query, [lookupValue]);
 
     if (result.rows.length === 0) {
       throw new Error('Invalid username or password');

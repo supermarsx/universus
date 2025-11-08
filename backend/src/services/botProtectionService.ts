@@ -15,6 +15,7 @@ interface BotChallengeResponse {
     operands?: number[];
     operator?: string;
     expiresIn?: number;
+    forced?: boolean;
 }
 
 export interface BotChallengePayload {
@@ -69,8 +70,14 @@ export class BotProtectionService {
         return this.fetchEnabledFlag();
     }
 
-    async createChallenge(meta: { ip?: string; userAgent?: string }): Promise<BotChallengeResponse> {
-        if (!(await this.isEnabled())) {
+    async createChallenge(
+        meta: { ip?: string; userAgent?: string },
+        options?: { force?: boolean }
+    ): Promise<BotChallengeResponse> {
+        const enabledGlobally = await this.isEnabled();
+        const shouldForce = !!options?.force;
+
+        if (!enabledGlobally && !shouldForce) {
             return { enabled: false };
         }
 
@@ -92,12 +99,19 @@ export class BotProtectionService {
             token,
             operands,
             operator: '+',
-            expiresIn: CHALLENGE_TTL_SECONDS
+            expiresIn: CHALLENGE_TTL_SECONDS,
+            forced: shouldForce && !enabledGlobally
         };
     }
 
-    async validateChallenge(payload?: BotChallengePayload): Promise<boolean> {
-        if (!(await this.isEnabled())) {
+    async validateChallenge(
+        payload?: BotChallengePayload,
+        options?: { force?: boolean }
+    ): Promise<boolean> {
+        const enabledGlobally = await this.isEnabled();
+        const shouldForce = !!options?.force;
+
+        if (!enabledGlobally && !shouldForce) {
             return true;
         }
 

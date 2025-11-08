@@ -7,6 +7,7 @@ import Redis from 'ioredis';
 export interface PlayerScore {
   userId: number;
   username: string;
+  allianceId?: number;
   totalScore: number;
   buildingScore: number;
   researchScore: number;
@@ -49,8 +50,12 @@ export class LeaderboardService {
   private db: Pool;
   private redis: Redis;
   private readonly CACHE_TTL = 600; // 10 minutes
+  private readonly CACHE_TTL_MS = 10 * 60 * 1000;
   private readonly PLAYER_LEADERBOARD_KEY = 'leaderboard:players';
   private readonly ALLIANCE_LEADERBOARD_KEY = 'leaderboard:alliances';
+  private readonly ALLIANCE_LOOKUP_KEY = 'leaderboard:alliances:lookup';
+  private readonly META_KEY = 'leaderboard:meta';
+  private readonly ALLIANCE_MEMBER_PREFIX = 'leaderboard:alliance_members:';
 
   /**
    * Creates an instance of LeaderboardService
@@ -93,7 +98,7 @@ export class LeaderboardService {
     try {
       // Get user info
       const userQuery = await this.db.query(
-        `SELECT u.id, u.username, a.tag as alliance_tag
+        `SELECT u.id, u.username, u.alliance_id, a.tag as alliance_tag
          FROM users u
          LEFT JOIN alliances a ON u.alliance_id = a.id
          WHERE u.id = $1`,
@@ -124,6 +129,7 @@ export class LeaderboardService {
       return {
         userId: user.id,
         username: user.username,
+        allianceId: user.alliance_id || undefined,
         totalScore,
         buildingScore,
         researchScore,
@@ -354,6 +360,7 @@ export class LeaderboardService {
             JSON.stringify({
               userId: score.userId,
               username: score.username,
+              allianceId: score.allianceId,
               allianceTag: score.allianceTag,
               buildingScore: score.buildingScore,
               researchScore: score.researchScore,
@@ -381,6 +388,11 @@ export class LeaderboardService {
 
       await pipeline.exec();
       await this.persistPlayerSnapshots(snapshotRows);
+      await this.redis.hset(
+        this.META_KEY,
+        'players_last_build',
+        Date.now().toString()
+      );
 
       return usersQuery.rows.length;
     } catch (error) {
@@ -404,13 +416,7 @@ export class LeaderboardService {
    */
   async getTopPlayers(limit: number = 100, offset: number = 0): Promise<PlayerScore[]> {
     try {
-      // Check if leaderboard exists in cache
-      const exists = await this.redis.exists(this.PLAYER_LEADERBOARD_KEY);
-
-      if (!exists) {
-        // Update leaderboard if not in cache
-        await this.updatePlayerLeaderboard();
-      }
+      await this.ensurePlayerCacheFresh();
 
       // Get top players (sorted by score descending)
       const players = await this.redis.zrevrange(
@@ -429,6 +435,7 @@ export class LeaderboardService {
         result.push({
           userId: playerData.userId,
           username: playerData.username,
+          allianceId: playerData.allianceId,
           allianceTag: playerData.allianceTag,
           totalScore: score,
           rank: offset + (i / 2) + 1,
@@ -518,6 +525,7 @@ export class LeaderboardService {
 
       const pipeline = this.redis.pipeline();
       pipeline.del(this.ALLIANCE_LEADERBOARD_KEY);
+      pipeline.del(this.ALLIANCE_LOOKUP_KEY);
       const snapshotRows: Array<{
         allianceId: number;
         allianceName: string;
@@ -546,9 +554,15 @@ export class LeaderboardService {
 
         const averageScore = alliance.member_count > 0 ? totalScore / alliance.member_count : 0;
 
+        const memberValue = this.getAllianceMemberValue(alliance.id);
         pipeline.zadd(
           this.ALLIANCE_LEADERBOARD_KEY,
           totalScore,
+          memberValue
+        );
+        pipeline.hset(
+          this.ALLIANCE_LOOKUP_KEY,
+          alliance.id.toString(),
           JSON.stringify({
             allianceId: alliance.id,
             allianceName: alliance.name,
@@ -569,8 +583,14 @@ export class LeaderboardService {
       }
 
       pipeline.expire(this.ALLIANCE_LEADERBOARD_KEY, this.CACHE_TTL);
+      pipeline.expire(this.ALLIANCE_LOOKUP_KEY, this.CACHE_TTL);
       await pipeline.exec();
       await this.persistAllianceSnapshots(snapshotRows);
+      await this.redis.hset(
+        this.META_KEY,
+        'alliances_last_build',
+        Date.now().toString()
+      );
 
       return alliancesQuery.rows.length;
     } catch (error) {
@@ -588,11 +608,7 @@ export class LeaderboardService {
    */
   async getTopAlliances(limit: number = 50, offset: number = 0): Promise<AllianceScore[]> {
     try {
-      const exists = await this.redis.exists(this.ALLIANCE_LEADERBOARD_KEY);
-
-      if (!exists) {
-        await this.updateAllianceLeaderboard();
-      }
+      await this.ensureAllianceCacheFresh();
 
       const alliances = await this.redis.zrevrange(
         this.ALLIANCE_LEADERBOARD_KEY,
@@ -602,15 +618,32 @@ export class LeaderboardService {
       );
 
       const result: AllianceScore[] = [];
+      const allianceIds: number[] = [];
+      const scores: number[] = [];
 
       for (let i = 0; i < alliances.length; i += 2) {
-        const allianceData = JSON.parse(alliances[i]);
+        const memberValue = alliances[i];
         const score = parseInt(alliances[i + 1]);
+        const allianceId = this.parseAllianceMemberValue(memberValue);
+        if (!allianceId) continue;
+        allianceIds.push(allianceId);
+        scores.push(score);
+      }
 
-        result.push({
-          ...allianceData,
-          totalScore: score,
-          rank: offset + (i / 2) + 1,
+      if (allianceIds.length) {
+        const lookupValues = await this.redis.hmget(
+          this.ALLIANCE_LOOKUP_KEY,
+          ...allianceIds.map(String)
+        );
+
+        lookupValues.forEach((raw, idx) => {
+          if (!raw) return;
+          const data = JSON.parse(raw);
+          result.push({
+            ...data,
+            totalScore: scores[idx],
+            rank: offset + idx + 1,
+          });
         });
       }
 
@@ -622,6 +655,191 @@ export class LeaderboardService {
       console.error('Error getting top alliances:', error);
       throw error;
     }
+  }
+
+  async getAllianceDetails(
+    allianceId: number,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{ alliance: AllianceScore; members: PlayerScore[] }> {
+    await this.ensureAllianceCacheFresh();
+
+    const raw = await this.redis.hget(
+      this.ALLIANCE_LOOKUP_KEY,
+      allianceId.toString()
+    );
+
+    if (!raw) {
+      // Attempt rebuild once
+      await this.updateAllianceLeaderboard();
+    }
+
+    const refreshedRaw = raw || await this.redis.hget(
+      this.ALLIANCE_LOOKUP_KEY,
+      allianceId.toString()
+    );
+
+    if (!refreshedRaw) {
+      throw new Error('Alliance not found on leaderboard');
+    }
+
+    const allianceData = JSON.parse(refreshedRaw);
+    const memberValue = this.getAllianceMemberValue(allianceId);
+    const rank =
+      ((await this.redis.zrevrank(this.ALLIANCE_LEADERBOARD_KEY, memberValue)) ??
+        0) + 1;
+
+    const members = await this.getAllianceMembers(
+      allianceId,
+      options.limit ?? 25,
+      options.offset ?? 0
+    );
+
+    return {
+      alliance: {
+        ...allianceData,
+        totalScore: allianceData.totalScore,
+        rank,
+      },
+      members,
+    };
+  }
+
+  async getAllianceMembers(
+    allianceId: number,
+    limit: number = 25,
+    offset: number = 0
+  ): Promise<PlayerScore[]> {
+    const key = this.getAllianceMemberKey(allianceId);
+    const exists = await this.redis.exists(key);
+    if (!exists || (await this.redis.ttl(key)) <= 0) {
+      await this.buildAllianceMemberLeaderboard(allianceId);
+    }
+
+    const members = await this.redis.zrevrange(
+      key,
+      offset,
+      offset + limit - 1,
+      'WITHSCORES'
+    );
+
+    const result: PlayerScore[] = [];
+    for (let i = 0; i < members.length; i += 2) {
+      const player = JSON.parse(members[i]);
+      const score = parseInt(members[i + 1]);
+      result.push({
+        ...player,
+        totalScore: score,
+        rank: offset + (i / 2) + 1,
+      });
+    }
+    return result;
+  }
+
+  private async buildAllianceMemberLeaderboard(
+    allianceId: number
+  ): Promise<void> {
+    const key = this.getAllianceMemberKey(allianceId);
+    const membersQuery = await this.db.query(
+      'SELECT id FROM users WHERE alliance_id = $1',
+      [allianceId]
+    );
+
+    const pipeline = this.redis.pipeline();
+    pipeline.del(key);
+
+    for (const member of membersQuery.rows) {
+      try {
+        const score = await this.calculatePlayerScore(member.id);
+        pipeline.zadd(
+          key,
+          score.totalScore,
+          JSON.stringify({
+            userId: score.userId,
+            username: score.username,
+            allianceId: score.allianceId,
+            allianceTag: score.allianceTag,
+            buildingScore: score.buildingScore,
+            researchScore: score.researchScore,
+            fleetScore: score.fleetScore,
+            defenseScore: score.defenseScore,
+          })
+        );
+      } catch (error) {
+        console.error(
+          `[Leaderboards] Failed to calculate score for alliance member ${member.id}`,
+          error
+        );
+      }
+    }
+
+    pipeline.expire(key, this.CACHE_TTL);
+    await pipeline.exec();
+  }
+
+  private async ensurePlayerCacheFresh(): Promise<void> {
+    const exists = await this.redis.exists(this.PLAYER_LEADERBOARD_KEY);
+    if (!exists || (await this.isCacheStale('players'))) {
+      await this.updatePlayerLeaderboard();
+    }
+  }
+
+  private async ensureAllianceCacheFresh(): Promise<void> {
+    const exists = await this.redis.exists(this.ALLIANCE_LEADERBOARD_KEY);
+    if (!exists || (await this.isCacheStale('alliances'))) {
+      await this.updateAllianceLeaderboard();
+    }
+  }
+
+  async getCacheMetadata() {
+    const meta = await this.redis.hgetall(this.META_KEY);
+    const playersTTL = await this.redis.ttl(this.PLAYER_LEADERBOARD_KEY);
+    const alliancesTTL = await this.redis.ttl(this.ALLIANCE_LEADERBOARD_KEY);
+
+    const normalize = (timestamp?: string) =>
+      timestamp ? new Date(parseInt(timestamp, 10)).toISOString() : null;
+
+    return {
+      players: {
+        lastBuild: normalize(meta.players_last_build),
+        ttlSeconds: playersTTL,
+        stale: await this.isCacheStale('players')
+      },
+      alliances: {
+        lastBuild: normalize(meta.alliances_last_build),
+        ttlSeconds: alliancesTTL,
+        stale: await this.isCacheStale('alliances')
+      }
+    };
+  }
+
+  private getAllianceMemberKey(allianceId: number): string {
+    return `${this.ALLIANCE_MEMBER_PREFIX}${allianceId}`;
+  }
+
+  private getAllianceMemberValue(allianceId: number): string {
+    return `alliance:${allianceId}`;
+  }
+
+  private parseAllianceMemberValue(value: string): number | null {
+    if (!value?.startsWith('alliance:')) {
+      return null;
+    }
+    const [, idPart] = value.split(':');
+    const id = parseInt(idPart, 10);
+    return Number.isNaN(id) ? null : id;
+  }
+
+  private async isCacheStale(kind: 'players' | 'alliances'): Promise<boolean> {
+    const field = `${kind}_last_build`;
+    const lastBuild = await this.redis.hget(this.META_KEY, field);
+    if (!lastBuild) {
+      return true;
+    }
+    const lastBuildTs = parseInt(lastBuild, 10);
+    if (Number.isNaN(lastBuildTs)) {
+      return true;
+    }
+    return Date.now() - lastBuildTs >= this.CACHE_TTL_MS;
   }
 
   private async persistPlayerSnapshots(rows: Array<{

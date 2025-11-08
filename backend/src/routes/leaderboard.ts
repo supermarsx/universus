@@ -84,6 +84,34 @@ router.get('/alliances', async (req: AuthRequest, res) => {
   }
 });
 
+router.get('/alliances/:allianceId/details', async (req: AuthRequest, res) => {
+  try {
+    const allianceId = parseInt(req.params.allianceId, 10);
+    if (Number.isNaN(allianceId)) {
+      return res.status(400).json({ success: false, error: 'Invalid alliance id' });
+    }
+
+    const limit = parseInt(req.query.limit as string) || 25;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const details = await leaderboardService.getAllianceDetails(allianceId, {
+      limit,
+      offset,
+    });
+
+    res.json({
+      success: true,
+      data: details,
+    });
+  } catch (error: any) {
+    console.error('Error fetching alliance details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch alliance details',
+    });
+  }
+});
+
 /**
  * GET /leaderboard/player/:userId
  * Get specific player's rank and surrounding players
@@ -152,6 +180,24 @@ router.post('/update', async (req: AuthRequest, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to update leaderboard',
+    });
+  }
+});
+
+router.get('/cache/meta', async (req: AuthRequest, res) => {
+  try {
+    const cache = await leaderboardService.getCacheMetadata();
+    const scheduler = LeaderboardScheduler.getStatus();
+    res.json({
+      success: true,
+      cache,
+      scheduler,
+    });
+  } catch (error: any) {
+    console.error('Error fetching leaderboard cache metadata:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load cache metadata',
     });
   }
 });

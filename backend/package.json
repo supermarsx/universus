@@ -17,7 +17,8 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
     "type-check": "tsc --noEmit",
     "validate": "pnpm run type-check && pnpm run lint && pnpm run test",
-    "load:test": "ts-node scripts/loadTest.ts"
+    "load:test": "ts-node scripts/loadTest.ts",
+    "analytics:worker": "ts-node src/workers/analyticsQueueWorker.ts"
   },
   "keywords": [
     "game",
@@ -31,6 +32,7 @@
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/nunjucks": "^3.2.6",
+    "amqplib": "^0.10.4",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",

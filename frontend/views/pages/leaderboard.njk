@@ -16,6 +16,23 @@
         </div>
         <button id="logoutBtn" class="btn-secondary">Log Out</button>
     </div>
+    <div class="leaderboard-cache-status">
+        <div class="status-chip">
+            <div class="status-label">Players Cache</div>
+            <div class="status-value" id="playersCacheStatus">--</div>
+            <small id="playersCacheTTL">TTL: --</small>
+        </div>
+        <div class="status-chip">
+            <div class="status-label">Alliances Cache</div>
+            <div class="status-value" id="alliancesCacheStatus">--</div>
+            <small id="alliancesCacheTTL">TTL: --</small>
+        </div>
+        <div class="status-chip">
+            <div class="status-label">Scheduler</div>
+            <div class="status-value" id="schedulerStatus">--</div>
+            <small id="schedulerNextRun">Next run: --</small>
+        </div>
+    </div>
 
     <div class="leaderboard-tabs">
         <button class="tab-button active" data-tab="players">Top Commanders</button>
@@ -87,6 +104,47 @@
                 <button id="alliancesPrevBtn" class="btn-secondary">Previous</button>
                 <span>Page <strong id="alliancesCurrentPage">1</strong></span>
                 <button id="alliancesNextBtn" class="btn-secondary">Next</button>
+            </div>
+            <div id="allianceDetailPanel" class="alliance-detail-card" style="display:none;">
+                <div class="alliance-detail-header">
+                    <div>
+                        <p class="detail-label">Selected Alliance</p>
+                        <h3 id="detailAllianceName">-</h3>
+                        <p id="detailAllianceTag" class="detail-tag">-</p>
+                    </div>
+                    <div class="detail-stats">
+                        <div>
+                            <p>Total Score</p>
+                            <strong id="detailAllianceScore">0</strong>
+                        </div>
+                        <div>
+                            <p>Members</p>
+                            <strong id="detailAllianceMembers">0</strong>
+                        </div>
+                        <div>
+                            <p>Average</p>
+                            <strong id="detailAllianceAverage">0</strong>
+                        </div>
+                        <div>
+                            <p>Rank</p>
+                            <strong id="detailAllianceRank">-</strong>
+                        </div>
+                    </div>
+                </div>
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Commander</th>
+                            <th>Total</th>
+                            <th>Economy</th>
+                            <th>Research</th>
+                            <th>Fleet</th>
+                            <th>Defense</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allianceMembersBody"></tbody>
+                </table>
             </div>
         </div>
     </section>

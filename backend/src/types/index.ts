@@ -4,6 +4,7 @@ export interface User {
   id: number;
   username: string;
   email: string;
+  email_verified?: boolean;
   dark_matter: number;
   created_at: Date;
   last_login?: Date;

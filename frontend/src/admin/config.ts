@@ -100,6 +100,7 @@ class ConfigurationManager {
             { key: 'universe', label: 'Universe' },
             { key: 'alliance', label: 'Alliance' },
             { key: 'gameplay', label: 'Gameplay' },
+            { key: 'notifications', label: 'Notifications' },
         ];
 
         container.innerHTML = sections
