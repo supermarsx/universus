@@ -60,6 +60,18 @@ export class LeaderboardService {
   }
 
   /**
+   * Rebuild both player and alliance leaderboards.
+   */
+  async rebuildLeaderboards(): Promise<{
+    playersUpdated: number;
+    alliancesUpdated: number;
+  }> {
+    const playersUpdated = await this.updatePlayerLeaderboard();
+    const alliancesUpdated = await this.updateAllianceLeaderboard();
+    return { playersUpdated, alliancesUpdated };
+  }
+
+  /**
    * Calculate the total score for a specific player
    *
    * Aggregates scores from all planets owned by the player,
@@ -114,7 +126,7 @@ export class LeaderboardService {
         fleetScore,
         defenseScore,
         rank: 0, // Will be set when retrieving leaderboard
-        allianceTag: user.alliance_tag,
+        allianceTag: user.alliance_tag || undefined,
       };
     } catch (error) {
       console.error('Error calculating player score:', error);

@@ -41,6 +41,7 @@ router.post('/dispatch', async (req: Request, res: Response) => {
       missionType,
       ships,
       cargo,
+      acsGroupId,
     } = req.body;
 
     if (!originPlanetId || !targetGalaxy || !targetSystem || !targetPosition || !missionType || !ships) {
@@ -55,7 +56,8 @@ router.post('/dispatch', async (req: Request, res: Response) => {
       parseInt(targetPosition),
       missionType,
       ships,
-      cargo || { metal: 0, crystal: 0, deuterium: 0 }
+      cargo || { metal: 0, crystal: 0, deuterium: 0 },
+      acsGroupId ? parseInt(acsGroupId, 10) : undefined
     );
 
     res.status(201).json(result);

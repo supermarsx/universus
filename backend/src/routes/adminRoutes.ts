@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import os from 'os';
 import { AdminAuthRequest } from '../types/admin';
 import { 
   requireAdmin,
@@ -15,6 +16,9 @@ import {
   AdminAnalyticsService,
 } from '../services/adminSettingsService';
 import { pool } from '../config/database';
+import { redis } from '../config/redis';
+import LeaderboardScheduler from '../services/leaderboardScheduler';
+import { getRealtimeHandler } from '../socket';
 
 const router = Router();
 
@@ -393,6 +397,71 @@ router.get(
     } catch (error: any) {
       console.error('Get database stats error:', error);
       res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/monitoring/scaling
+ * Get process, socket, and leaderboard scheduler metrics
+ */
+router.get(
+  '/monitoring/scaling',
+  requireAdmin,
+  requirePermission('monitoring:read'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const handler = getRealtimeHandler();
+      const socketStats = handler
+        ? handler.getStats()
+        : { connectedClients: 0, rooms: 0, namespaces: 0, adapterName: 'n/a' };
+
+      const memoryUsage = process.memoryUsage();
+      let redisLatencyMs: number | null = null;
+
+      try {
+        const start = Date.now();
+        await redis.ping();
+        redisLatencyMs = Date.now() - start;
+      } catch (error) {
+        console.warn('Redis latency check failed:', error);
+      }
+
+      res.json({
+        process: {
+          uptimeSeconds: process.uptime(),
+          loadAverage: os.loadavg(),
+          memory: {
+            rss: memoryUsage.rss,
+            heapUsed: memoryUsage.heapUsed,
+            heapTotal: memoryUsage.heapTotal,
+          },
+        },
+        sockets: socketStats,
+        redis: {
+          status: redis.status,
+          latencyMs: redisLatencyMs,
+        },
+        leaderboard: LeaderboardScheduler.getStatus(),
+      });
+    } catch (error: any) {
+      console.error('Get scaling metrics error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+router.post(
+  '/monitoring/leaderboard/rebuild',
+  requireAdmin,
+  requirePermission('monitoring:write'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      await LeaderboardScheduler.triggerRebuild();
+      res.json({ success: true, message: 'Leaderboard rebuild triggered.' });
+    } catch (error: any) {
+      console.error('Manual leaderboard rebuild error:', error);
+      res.status(500).json({ error: error.message || 'Failed to rebuild leaderboard' });
     }
   }
 );

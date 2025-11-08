@@ -8,6 +8,11 @@ import { getRealtimeHandler } from '../socket';
 import notificationService from './notificationService';
 import { CombatResult } from '../services/combatService';
 
+interface FleetParticipant {
+  fleet: Fleet;
+  ships: { [key: string]: number };
+}
+
 export class FleetService {
   static async dispatchFleet(
     userId: number,
@@ -17,7 +22,8 @@ export class FleetService {
     targetPosition: number,
     missionType: string,
     ships: { [key: string]: number },
-    cargo: { metal: number; crystal: number; deuterium: number }
+    cargo: { metal: number; crystal: number; deuterium: number },
+    acsGroupId?: number
   ): Promise<Fleet> {
     const client = await pool.connect();
     
@@ -108,8 +114,8 @@ export class FleetService {
       const fleetResult = await client.query(
         `INSERT INTO fleets 
          (user_id, mission_type, origin_planet_id, target_galaxy, target_system, target_position,
-          departure_time, arrival_time, return_time, ships, cargo_metal, cargo_crystal, cargo_deuterium, status)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10, $11, $12, 'outbound')
+          departure_time, arrival_time, return_time, ships, cargo_metal, cargo_crystal, cargo_deuterium, status, acs_group_id)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9, $10, $11, $12, 'outbound', $13)
          RETURNING *`,
         [
           userId,
@@ -124,6 +130,7 @@ export class FleetService {
           cargo.metal,
           cargo.crystal,
           cargo.deuterium,
+          acsGroupId ?? null,
         ]
       );
 
@@ -248,6 +255,7 @@ export class FleetService {
         crystal: row.debris_crystal,
       },
       battleTime: row.battle_time,
+      attackerAllies: this.safeParse(row.attacker_allies) || [],
     }));
   }
 
@@ -319,31 +327,29 @@ export class FleetService {
   }
 
   private static async handleAttackMission(fleet: Fleet, client: PoolClient): Promise<void> {
-    // Find target planet
     const targetResult = await client.query(
       'SELECT * FROM planets WHERE galaxy = $1 AND system = $2 AND position = $3',
       [fleet.target_galaxy, fleet.target_system, fleet.target_position]
     );
 
     if (targetResult.rows.length === 0) {
-      // No target, return fleet
       await this.returnFleet(fleet, client);
       return;
     }
 
     const targetPlanet = targetResult.rows[0];
+    const participants = await this.collectAttackParticipants(fleet, client);
+    const participantUserIds = participants.map((p) => p.fleet.user_id);
 
-    // Get attacker and defender tech levels
-    const attackerTech = await client.query(
-      'SELECT * FROM research WHERE user_id = $1',
-      [fleet.user_id]
+    const attackerTechRows = await client.query(
+      'SELECT * FROM research WHERE user_id = ANY($1)',
+      [participantUserIds]
     );
     const defenderTech = await client.query(
       'SELECT * FROM research WHERE user_id = $1',
       [targetPlanet.user_id]
     );
 
-    // Get defender ships and defenses
     const defenderShips: { [key: string]: number } = {};
     const defenderDefenses: { [key: string]: number } = {};
 
@@ -353,72 +359,30 @@ export class FleetService {
       }
     }
 
-    // Simulate combat
+    const aggregateShips = this.combineFleetShips(participants);
     const combatResult = await CombatService.simulateBattle(
-      fleet.ships,
+      aggregateShips,
       defenderShips,
       defenderDefenses,
-      attackerTech.rows[0] || {},
+      this.mergeTechLevels(attackerTechRows.rows),
       defenderTech.rows[0] || {},
       {
         metal: targetPlanet.metal,
         crystal: targetPlanet.crystal,
         deuterium: targetPlanet.deuterium,
-      }
-    );
-
-    // Save combat report
-    const reportId = await CombatService.saveCombatReport(
-      fleet.user_id,
-      targetPlanet.user_id,
-      {
-        galaxy: fleet.target_galaxy,
-        system: fleet.target_system,
-        position: fleet.target_position,
       },
-      combatResult
+      targetPlanet.id
     );
 
-    // Send combat notifications
-    const attackerInfo = await pool.query('SELECT username FROM users WHERE id = $1', [fleet.user_id]);
-    const defenderInfo = await pool.query('SELECT username FROM users WHERE id = $1', [targetPlanet.user_id]);
-    const planetInfo = await pool.query('SELECT name FROM planets WHERE id = $1', [targetPlanet.id]);
-    
-    if (attackerInfo.rows.length > 0 && defenderInfo.rows.length > 0 && planetInfo.rows.length > 0) {
-      await CombatService.sendCombatNotifications(
-        fleet.user_id,
-        targetPlanet.user_id,
-        attackerInfo.rows[0].username,
-        defenderInfo.rows[0].username,
-        planetInfo.rows[0].name,
-        reportId,
-        combatResult
-      );
-    }
-
-    // Update planets based on combat result
     if (combatResult.winner === 'attacker') {
-      // Deduct resources from defender
       await client.query(
         `UPDATE planets 
          SET metal = metal - $1, crystal = crystal - $2, deuterium = deuterium - $3
          WHERE id = $4`,
         [combatResult.loot.metal, combatResult.loot.crystal, combatResult.loot.deuterium, targetPlanet.id]
       );
-
-      // Update fleet cargo
-      await client.query(
-        `UPDATE fleets 
-         SET cargo_metal = cargo_metal + $1, 
-             cargo_crystal = cargo_crystal + $2, 
-             cargo_deuterium = cargo_deuterium + $3,
-             status = 'returning'
-         WHERE id = $4`,
-        [combatResult.loot.metal, combatResult.loot.crystal, combatResult.loot.deuterium, fleet.id]
-      );
     }
 
-    // Create debris field
     if (combatResult.debris.metal > 0 || combatResult.debris.crystal > 0) {
       await client.query(
         `INSERT INTO debris_fields (galaxy, system, position, metal, crystal)
@@ -435,18 +399,76 @@ export class FleetService {
       );
     }
 
-    // Update fleet status
-    await client.query(
-      `UPDATE fleets SET status = 'returning' WHERE id = $1`,
-      [fleet.id]
+    await this.updateAttackerFleetsAfterCombat(participants, combatResult, client);
+
+    const usernameMap = await this.fetchUsernames([
+      ...participantUserIds,
+      targetPlanet.user_id,
+    ]);
+
+    const attackerAlliesMeta = participants
+      .filter((participant) => participant.fleet.user_id !== fleet.user_id)
+      .map((participant) => ({
+        userId: participant.fleet.user_id,
+        username: usernameMap[participant.fleet.user_id] || 'Unknown Commander',
+      }));
+
+    const reportId = await CombatService.saveCombatReport(
+      fleet.user_id,
+      targetPlanet.user_id,
+      {
+        galaxy: fleet.target_galaxy,
+        system: fleet.target_system,
+        position: fleet.target_position,
+      },
+      combatResult,
+      attackerAlliesMeta
     );
 
-    const summary = this.buildCombatSummary(reportId, fleet, targetPlanet.user_id, combatResult);
-    this.emitFleetEvent(fleet.user_id, {
-      action: 'combat',
-      role: 'attacker',
-      report: summary,
-    });
+    const attackerUsername =
+      usernameMap[fleet.user_id] ||
+      (await pool
+        .query('SELECT username FROM users WHERE id = $1', [fleet.user_id])
+        .then((r) => r.rows[0]?.username || 'Commander'));
+    const defenderUsername =
+      usernameMap[targetPlanet.user_id] ||
+      (await pool
+        .query('SELECT username FROM users WHERE id = $1', [targetPlanet.user_id])
+        .then((r) => r.rows[0]?.username || 'Unknown'));
+    const planetInfo = await pool.query('SELECT name FROM planets WHERE id = $1', [targetPlanet.id]);
+
+    if (planetInfo.rows.length > 0) {
+      await CombatService.sendCombatNotifications(
+        fleet.user_id,
+        targetPlanet.user_id,
+        attackerUsername,
+        defenderUsername,
+        planetInfo.rows[0].name,
+        reportId,
+        combatResult
+      );
+    }
+
+    const summary = this.buildCombatSummary(reportId, fleet, targetPlanet.user_id, combatResult, attackerAlliesMeta);
+    const location = this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position);
+
+    const notifiedAttackers = new Set<number>();
+    for (const participant of participants) {
+      if (!notifiedAttackers.has(participant.fleet.user_id)) {
+        notifiedAttackers.add(participant.fleet.user_id);
+        this.emitFleetEvent(participant.fleet.user_id, {
+          action: 'combat',
+          role: 'attacker',
+          report: summary,
+        });
+        await notificationService.notifyCombatReport(
+          participant.fleet.user_id,
+          reportId,
+          combatResult.winner,
+          location
+        );
+      }
+    }
 
     if (targetPlanet.user_id) {
       this.emitFleetEvent(targetPlanet.user_id, {
@@ -454,21 +476,11 @@ export class FleetService {
         role: 'defender',
         report: summary,
       });
-    }
-
-    await notificationService.notifyCombatReport(
-      fleet.user_id,
-      reportId,
-      combatResult.winner,
-      this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position)
-    );
-
-    if (targetPlanet.user_id) {
       await notificationService.notifyCombatReport(
         targetPlanet.user_id,
         reportId,
         combatResult.winner,
-        this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position)
+        location
       );
     }
   }
@@ -556,11 +568,197 @@ export class FleetService {
     }
   }
 
+  private static async collectAttackParticipants(fleet: Fleet, client: PoolClient): Promise<FleetParticipant[]> {
+    const participants: FleetParticipant[] = [
+      { fleet, ships: this.safeParse(fleet.ships) }
+    ];
+
+    if (!fleet.acs_group_id) {
+      return participants;
+    }
+
+    const alliedResult = await client.query(
+      `SELECT * FROM fleets 
+       WHERE acs_group_id = $1
+         AND status = 'outbound'
+         AND id <> $2
+         AND target_galaxy = $3
+         AND target_system = $4
+         AND target_position = $5
+         AND arrival_time <= NOW()
+       FOR UPDATE`,
+      [
+        fleet.acs_group_id,
+        fleet.id,
+        fleet.target_galaxy,
+        fleet.target_system,
+        fleet.target_position,
+      ]
+    );
+
+    alliedResult.rows.forEach((row) => {
+      participants.push({ fleet: row, ships: this.safeParse(row.ships) });
+    });
+
+    return participants;
+  }
+
+  private static combineFleetShips(participants: FleetParticipant[]): { [key: string]: number } {
+    const totals: { [key: string]: number } = {};
+    participants.forEach((participant) => {
+      Object.entries(participant.ships).forEach(([type, count]) => {
+        totals[type] = (totals[type] || 0) + (count as number);
+      });
+    });
+    return totals;
+  }
+
+  private static mergeTechLevels(rows: any[]): any {
+    const merged: Record<string, number> = {};
+    rows.forEach((row) => {
+      if (!row) return;
+      Object.entries(row).forEach(([key, value]) => {
+        if (typeof value === 'number') {
+          merged[key] = Math.max(merged[key] ?? 0, value);
+        }
+      });
+    });
+    return merged;
+  }
+
+  private static async fetchUsernames(userIds: Array<number | null | undefined>): Promise<Record<number, string>> {
+    const ids = Array.from(
+      new Set(
+        userIds.filter((id): id is number => typeof id === 'number')
+      )
+    );
+
+    if (!ids.length) {
+      return {};
+    }
+
+    const result = await pool.query(
+      'SELECT id, username FROM users WHERE id = ANY($1)',
+      [ids]
+    );
+
+    const map: Record<number, string> = {};
+    result.rows.forEach((row) => {
+      map[row.id] = row.username;
+    });
+    return map;
+  }
+
+  private static async updateAttackerFleetsAfterCombat(
+    participants: FleetParticipant[],
+    result: CombatResult,
+    client: PoolClient
+  ): Promise<void> {
+    const totalLosses = result.attackerLosses || {};
+    const totals = this.combineFleetShips(participants);
+    const lossAllocations = this.allocateLosses(participants, totalLosses, totals);
+    const lootPool = result.winner === 'attacker' ? result.loot : { metal: 0, crystal: 0, deuterium: 0 };
+    const lootShares = this.splitLoot(lootPool, participants.length);
+
+    for (let i = 0; i < participants.length; i++) {
+      const participant = participants[i];
+      const losses = lossAllocations[i] || {};
+      const survivors: { [key: string]: number } = {};
+      Object.entries(participant.ships).forEach(([type, count]) => {
+        const remaining = (count as number) - (losses[type] || 0);
+        if (remaining > 0) {
+          survivors[type] = remaining;
+        }
+      });
+
+      const loot = lootShares[i] || { metal: 0, crystal: 0, deuterium: 0 };
+
+      await client.query(
+        `UPDATE fleets 
+         SET ships = $1,
+             cargo_metal = cargo_metal + $2,
+             cargo_crystal = cargo_crystal + $3,
+             cargo_deuterium = cargo_deuterium + $4,
+             status = 'returning'
+         WHERE id = $5`,
+        [
+          JSON.stringify(survivors),
+          loot.metal,
+          loot.crystal,
+          loot.deuterium,
+          participant.fleet.id,
+        ]
+      );
+    }
+  }
+
+  private static allocateLosses(
+    participants: FleetParticipant[],
+    totalLosses: { [key: string]: number },
+    totals: { [key: string]: number }
+  ): Array<{ [key: string]: number }> {
+    const allocations = participants.map(() => ({} as { [key: string]: number }));
+    const allocated: Record<string, number> = {};
+    const types = Object.keys(totalLosses);
+
+    participants.forEach((participant, index) => {
+      types.forEach((type) => {
+        const totalLoss = totalLosses[type] || 0;
+        if (totalLoss === 0) {
+          allocations[index][type] = 0;
+          return;
+        }
+        const fleetCount = participant.ships[type] || 0;
+        const totalCount = totals[type] || 0;
+        if (fleetCount === 0 || totalCount === 0) {
+          allocations[index][type] = 0;
+          return;
+        }
+
+        let loss: number;
+        if (index === participants.length - 1) {
+          const remaining = totalLoss - (allocated[type] || 0);
+          loss = Math.min(fleetCount, Math.max(remaining, 0));
+        } else {
+          loss = Math.min(
+            fleetCount,
+            Math.round((totalLoss * fleetCount) / totalCount)
+          );
+          allocated[type] = (allocated[type] || 0) + loss;
+        }
+
+        allocations[index][type] = loss;
+      });
+    });
+
+    return allocations;
+  }
+
+  private static splitLoot(
+    loot: { metal: number; crystal: number; deuterium: number },
+    parts: number
+  ): Array<{ metal: number; crystal: number; deuterium: number }> {
+    if (parts <= 0) return [];
+    const shares = Array.from({ length: parts }, () => ({ metal: 0, crystal: 0, deuterium: 0 }));
+
+    (['metal', 'crystal', 'deuterium'] as const).forEach((resource) => {
+      let remaining = loot[resource];
+      for (let i = 0; i < parts; i++) {
+        const value = Math.floor(remaining / (parts - i));
+        shares[i][resource] = value;
+        remaining -= value;
+      }
+    });
+
+    return shares;
+  }
+
   private static buildCombatSummary(
     reportId: number,
     fleet: Fleet,
     defenderId: number | null,
-    result: CombatResult
+    result: CombatResult,
+    attackerAllies: Array<{ userId: number; username: string }> = []
   ) {
     return {
       id: reportId,
@@ -577,6 +775,7 @@ export class FleetService {
       attackerLosses: result.attackerLosses,
       defenderLosses: result.defenderLosses,
       timestamp: new Date().toISOString(),
+      attackerAllies,
     };
   }
 

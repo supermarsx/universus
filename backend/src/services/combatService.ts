@@ -381,14 +381,15 @@ export class CombatService {
     attackerId: number,
     defenderId: number | null,
     coordinates: { galaxy: number; system: number; position: number },
-    result: CombatResult
+    result: CombatResult,
+    attackerAllies: Array<{ userId: number; username: string }> = []
   ): Promise<number> {
     const reportResult = await pool.query(
       `INSERT INTO combat_reports 
        (attacker_id, defender_id, planet_galaxy, planet_system, planet_position,
         rounds, winner, attacker_losses, defender_losses, loot_metal, loot_crystal, 
-        loot_deuterium, debris_metal, debris_crystal)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        loot_deuterium, debris_metal, debris_crystal, attacker_allies)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING id`,
       [
         attackerId,
@@ -405,6 +406,7 @@ export class CombatService {
         result.loot.deuterium,
         result.debris.metal,
         result.debris.crystal,
+        JSON.stringify(attackerAllies),
       ]
     );
 

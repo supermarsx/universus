@@ -77,6 +77,34 @@
         font-weight: bold;
         color: #007bff;
     }
+
+    .custom-css-input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-family: 'Source Code Pro', monospace;
+        font-size: 13px;
+        resize: vertical;
+        min-height: 140px;
+        background: #f8fafc;
+    }
+
+    .custom-css-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+    }
+
+    .custom-css-buttons {
+        display: flex;
+        gap: 10px;
+    }
+
+    .text-error {
+        color: #dc3545;
+    }
     
     .switch {
         position: relative;
@@ -286,6 +314,33 @@
             </div>
             <small class="text-muted">Adjust speed of animations (50% slower - 200% faster)</small>
         </div>
+    </div>
+
+    <!-- Custom CSS -->
+    <div class="settings-section">
+        <h3>Custom CSS</h3>
+        <p class="text-muted">
+            Paste optional styles to personalize the interface. Selectors are automatically scoped to <code>body.user-theme-scope</code> and only color, background, typography, border, and shadow properties are allowed.
+        </p>
+        <div class="custom-css-guidelines text-muted">
+            <strong>Ideas:</strong>
+            <ul>
+                <li>Recolor resource bars or headers (e.g. <code>.resource-bar { background-color: #10172a; }</code>)</li>
+                <li>Adjust typography (font families, weights, uppercase transforms)</li>
+                <li>Customize buttons using borders and box-shadows</li>
+            </ul>
+        </div>
+        <textarea id="customCssInput" class="custom-css-input" rows="8" placeholder="/* Example */&#10;.resource-bar { font-size: 14px; }"></textarea>
+        <div class="custom-css-actions">
+            <span id="custom-css-counter" class="text-muted">0/8000</span>
+            <div class="custom-css-buttons">
+                <button type="button" class="btn btn-secondary" id="clear-custom-css">Clear</button>
+                <button type="button" class="btn btn-primary" id="save-custom-css">
+                    <i class="fas fa-save"></i> Save Custom CSS
+                </button>
+            </div>
+        </div>
+        <small class="text-muted">Note: External imports, scripts, and data URLs are blocked for security reasons.</small>
     </div>
 
     <!-- Action Buttons -->

@@ -29,9 +29,11 @@ import shardingRoutes from './routes/shardingRoutes';
 import realtimeRoutes from './routes/realtimeRoutes';
 import configRoutes from './routes/configRoutes';
 import themeRoutes from './routes/themeRoutes';
+import acsRoutes from './routes/acs';
 import accountRoutes from './routes/accountRoutes';
 import enhancedShopRoutes from './routes/enhancedShopRoutes';
 import allianceRoutes from './routes/allianceRoutes';
+import LeaderboardScheduler from './services/leaderboardScheduler';
 
 // Import services
 import { GameLoopService } from './services/gameLoopService';
@@ -81,6 +83,7 @@ app.use('/api/shards', shardingRoutes); // Phase 5: Server Sharding System
 app.use('/api/realtime', realtimeRoutes); // Phase 6: Real-time Communication System
 app.use('/api/config', configRoutes); // Phase 7: Configuration System
 app.use('/api/themes', themeRoutes); // Phase 8: Seasonal Theme System
+app.use('/api/acs', acsRoutes); // ACS coordination
 app.use('/api/account', accountRoutes); // Phase 9: Advanced Account Management System
 app.use('/api/shop-enhanced', enhancedShopRoutes); // Phase 10: Enhanced Shop & Matrix Theme
 app.use('/api/alliances', allianceRoutes); // Phase 11: Enhanced Alliance Management System
@@ -141,6 +144,12 @@ console.log('Chat and notification cleanup services started');
 // Phase 8: Start theme scheduler (check every minute)
 themeScheduler.start();
 console.log('Theme scheduler started');
+
+// Leaderboard rebuild scheduler
+LeaderboardScheduler.start(
+  parseInt(process.env.LEADERBOARD_REFRESH_MS || '', 10) || 60 * 60 * 1000
+);
+console.log('Leaderboard scheduler started');
 
 // Phase 5: Initialize sharding services
 if (process.env.ENABLE_SHARDING === 'true') {

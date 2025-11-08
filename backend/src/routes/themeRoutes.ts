@@ -202,6 +202,55 @@ router.put('/user/preferences', authenticateToken, async (req: Request, res: Res
     }
 });
 
+/**
+ * GET /api/themes/user/custom-css
+ * Retrieve the current user's custom CSS snippet
+ */
+router.get('/user/custom-css', authenticateToken, async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.userId;
+        const result = await ThemeService.getUserCustomCSS(userId);
+
+        res.json({
+            success: true,
+            customCSS: result.custom_css,
+            updatedAt: result.custom_css_updated_at
+        });
+    } catch (error) {
+        console.error('Error fetching custom CSS:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to load custom CSS'
+        });
+    }
+});
+
+/**
+ * PUT /api/themes/user/custom-css
+ * Update the current user's custom CSS
+ */
+router.put('/user/custom-css', authenticateToken, async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.userId;
+        const css = typeof req.body?.css === 'string' ? req.body.css : '';
+
+        const result = await ThemeService.updateUserCustomCSS(userId, css);
+
+        res.json({
+            success: true,
+            customCSS: result.custom_css,
+            updatedAt: result.custom_css_updated_at,
+            message: result.custom_css ? 'Custom CSS updated' : 'Custom CSS cleared'
+        });
+    } catch (error: any) {
+        console.error('Error updating custom CSS:', error);
+        res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to update custom CSS'
+        });
+    }
+});
+
 // =====================================================
 // ADMIN ENDPOINTS (Admin Authentication Required)
 // =====================================================

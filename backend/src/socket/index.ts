@@ -4,8 +4,9 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../config/database';
 import redis from '../config/redis';
 import RealtimeSocketHandler from './realtimeHandler';
+import { createAdapter } from '@socket.io/redis-adapter';
 
-let realtimeHandler: RealtimeSocketHandler;
+let realtimeHandler: RealtimeSocketHandler | null = null;
 
 export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
   const io = new SocketIOServer(httpServer, {
@@ -14,6 +15,8 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
       methods: ['GET', 'POST'],
     },
   });
+
+  attachRedisAdapter(io);
 
   // Authentication middleware
   io.use(async (socket: Socket, next) => {
@@ -113,6 +116,22 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
   return io;
 }
 
+async function attachRedisAdapter(io: SocketIOServer): Promise<void> {
+  try {
+    const pubClient = redis.duplicate();
+    const subClient = redis.duplicate();
+
+    pubClient.on('error', (err) => console.error('[Socket] Redis pub error:', err));
+    subClient.on('error', (err) => console.error('[Socket] Redis sub error:', err));
+
+    await Promise.all([pubClient.connect(), subClient.connect()]);
+    io.adapter(createAdapter(pubClient, subClient));
+    console.log('[Socket] Redis adapter enabled for horizontal scaling');
+  } catch (error) {
+    console.error('[Socket] Failed to initialize Redis adapter. Real-time scaling will be limited.', error);
+  }
+}
+
 // Helper function to emit to specific users
 export async function emitToUser(
   io: SocketIOServer,
@@ -134,6 +153,6 @@ export async function emitToPlanet(
 }
 
 // Export realtime handler instance for use in services
-export function getRealtimeHandler(): RealtimeSocketHandler {
+export function getRealtimeHandler(): RealtimeSocketHandler | null {
   return realtimeHandler;
 }

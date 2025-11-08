@@ -11,6 +11,7 @@ class ThemeLoader {
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.effectsEnabled = true;
         this.soundsEnabled = true;
+        this.userCustomCSS = null;
     }
 
     /**
@@ -21,6 +22,9 @@ class ThemeLoader {
         
         // Load user preferences
         await this.loadUserPreferences();
+
+        // Load user custom CSS
+        await this.loadUserCustomCSS();
         
         // Load current theme
         await this.loadCurrentTheme();
@@ -56,6 +60,31 @@ class ThemeLoader {
             }
         } catch (error) {
             console.warn('[ThemeLoader] Failed to load preferences:', error);
+        }
+    }
+
+    /**
+     * Load user custom CSS snippet
+     */
+    async loadUserCustomCSS() {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            const response = await fetch('/api/themes/user/custom-css', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+            if (data.success) {
+                this.applyUserCustomCSS(data.customCSS || '');
+            }
+        } catch (error) {
+            console.warn('[ThemeLoader] Failed to load user custom CSS:', error);
         }
     }
 
@@ -180,6 +209,31 @@ class ThemeLoader {
             styleEl.textContent = css;
             document.head.appendChild(styleEl);
         }
+    }
+
+    /**
+     * Inject user-provided CSS
+     */
+    applyUserCustomCSS(css) {
+        const styleId = 'user-custom-css';
+        let styleEl = document.getElementById(styleId);
+
+        if (!css) {
+            if (styleEl) styleEl.remove();
+            document.body.classList.remove('user-theme-scope');
+            this.userCustomCSS = null;
+            return;
+        }
+
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = styleId;
+            document.head.appendChild(styleEl);
+        }
+
+        styleEl.textContent = css;
+        document.body.classList.add('user-theme-scope');
+        this.userCustomCSS = css;
     }
 
     /**
@@ -547,6 +601,10 @@ class ThemeLoader {
             } else {
                 this.loadCurrentTheme();
             }
+        });
+
+        window.addEventListener('userCustomCssUpdated', (event: CustomEvent) => {
+            this.applyUserCustomCSS(event.detail.css || '');
         });
     }
 

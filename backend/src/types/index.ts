@@ -50,6 +50,7 @@ export interface Fleet {
   cargo_crystal: number;
   cargo_deuterium: number;
   status: string;
+  acs_group_id?: number | null;
 }
 
 export interface Research {

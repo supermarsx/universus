@@ -8,6 +8,9 @@ class ThemePreferences {
     constructor() {
         this.preferences = null;
         this.apiUrl = '/api/themes/user/preferences';
+        this.customCssApiUrl = '/api/themes/user/custom-css';
+        this.customCss = '';
+        this.maxCustomCssLength = 8000;
     }
 
     /**
@@ -15,6 +18,7 @@ class ThemePreferences {
      */
     async init() {
         await this.loadPreferences();
+        await this.loadCustomCSS();
         this.setupEventListeners();
     }
 
@@ -120,6 +124,23 @@ class ThemePreferences {
             });
         }
 
+        const customCssInput = document.getElementById('customCssInput') as HTMLTextAreaElement | null;
+        if (customCssInput) {
+            customCssInput.addEventListener('input', (e) => {
+                this.updateCustomCssCounter(e.target.value.length);
+            });
+        }
+
+        const saveCustomCssButton = document.getElementById('save-custom-css');
+        if (saveCustomCssButton) {
+            saveCustomCssButton.addEventListener('click', () => this.saveCustomCSS());
+        }
+
+        const clearCustomCssButton = document.getElementById('clear-custom-css');
+        if (clearCustomCssButton) {
+            clearCustomCssButton.addEventListener('click', () => this.clearCustomCSS());
+        }
+
         // Theme enabled toggle - immediate effect
         const enabledCheckbox = document.getElementById('theme-enabled');
         if (enabledCheckbox) {
@@ -153,6 +174,102 @@ class ThemePreferences {
                 }
             });
         }
+    }
+
+    /**
+     * Load custom CSS snippet
+     */
+    async loadCustomCSS() {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) return;
+
+            const response = await fetch(this.customCssApiUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) return;
+
+            const data = await response.json();
+            if (data.success) {
+                this.customCss = data.customCSS || '';
+                this.updateCustomCssUI();
+            }
+        } catch (error) {
+            console.error('[ThemePreferences] Error loading custom CSS:', error);
+        }
+    }
+
+    updateCustomCssUI() {
+        const textarea = document.getElementById('customCssInput') as HTMLTextAreaElement | null;
+        if (textarea) {
+            textarea.value = this.customCss || '';
+        }
+        this.updateCustomCssCounter((this.customCss || '').length);
+    }
+
+    updateCustomCssCounter(length: number) {
+        const counter = document.getElementById('custom-css-counter');
+        if (counter) {
+            counter.textContent = `${length}/${this.maxCustomCssLength}`;
+            counter.classList.toggle('text-error', length > this.maxCustomCssLength);
+        }
+    }
+
+    async saveCustomCSS() {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                this.showNotification('You must be logged in to save custom CSS.', 'error');
+                return;
+            }
+
+            const textarea = document.getElementById('customCssInput') as HTMLTextAreaElement | null;
+            const css = textarea?.value || '';
+
+            if (css.length > this.maxCustomCssLength) {
+                this.showNotification(`Custom CSS is limited to ${this.maxCustomCssLength} characters.`, 'error');
+                return;
+            }
+
+            const response = await fetch(this.customCssApiUrl, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ css })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data?.message || 'Failed to save custom CSS');
+            }
+
+            this.customCss = data.customCSS || '';
+            this.updateCustomCssUI();
+            this.showNotification(data.message || 'Custom CSS saved.', 'success');
+
+            window.dispatchEvent(new CustomEvent('userCustomCssUpdated', {
+                detail: { css: this.customCss }
+            }));
+        } catch (error) {
+            console.error('[ThemePreferences] Error saving custom CSS:', error);
+            const message = error instanceof Error ? error.message : 'Failed to save custom CSS';
+            this.showNotification(message, 'error');
+        }
+    }
+
+    async clearCustomCSS() {
+        const textarea = document.getElementById('customCssInput') as HTMLTextAreaElement | null;
+        if (textarea) {
+            textarea.value = '';
+        }
+        this.customCss = '';
+        await this.saveCustomCSS();
     }
 
     /**

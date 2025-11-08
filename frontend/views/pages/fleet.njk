@@ -68,6 +68,28 @@
                 </div>
             </div>
 
+            <div id="acsPanel" class="acs-panel card-compact">
+                <div class="acs-panel-header">
+                    <div>
+                        <h4>Alliance Coordinated Strikes</h4>
+                        <p>Link this fleet to an ACS group to synchronize attacks with your alliance.</p>
+                    </div>
+                    <div class="acs-panel-actions">
+                        <button class="btn btn-text" id="refreshAcsGroups">Refresh</button>
+                        <button class="btn btn-primary" id="openAcsModal">New Group</button>
+                    </div>
+                </div>
+                <div id="acsGroupList" class="acs-group-list">
+                    <div class="empty-state card-compact">
+                        No ACS groups yet. Create one to begin coordinating.
+                    </div>
+                </div>
+                <div id="selectedAcsBadge" class="acs-selected hidden">
+                    Linked to <span id="selectedAcsLabel"></span>
+                    <button class="btn-text" id="leaveAcsSelection">Leave Group</button>
+                </div>
+            </div>
+
             <div class="fleet-step-actions">
                 <button class="btn-secondary" id="backToStep2">Back</button>
                 <button class="btn-secondary" id="resetFleet">Reset</button>
@@ -122,9 +144,55 @@
         <div id="missionLogEntries" class="mission-log-entries"></div>
     </div>
 </div>
+
+<!-- ACS Modal -->
+<div id="acsModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close" id="closeAcsModal">&times;</span>
+        <h3>Create ACS Group</h3>
+        <form id="acsForm">
+            <label>Mission Type
+                <select id="acsMissionType">
+                    <option value="attack">Attack</option>
+                    <option value="transport">Transport</option>
+                    <option value="deploy">Deploy</option>
+                </select>
+            </label>
+            <div class="target-inputs">
+                <input type="number" id="acsTargetGalaxy" placeholder="Galaxy" min="1" max="9">
+                <input type="number" id="acsTargetSystem" placeholder="System" min="1" max="499">
+                <input type="number" id="acsTargetPosition" placeholder="Position" min="1" max="15">
+            </div>
+            <label>Departure Window Start
+                <input type="datetime-local" id="acsWindowStart">
+            </label>
+            <label>Departure Window End
+                <input type="datetime-local" id="acsWindowEnd">
+            </label>
+            <label>Notes
+                <textarea id="acsNotes" rows="3" placeholder="Optional instructions for your allies"></textarea>
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="cancelAcsModal">Cancel</button>
+                <button type="submit" class="btn-primary">Create Group</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Combat Replay Modal -->
+<div id="combatReplayModal" class="modal" style="display:none;">
+    <div class="modal-content combat-replay-modal">
+        <span class="close" id="closeCombatReplay">&times;</span>
+        <h3>Battle Replay</h3>
+        <canvas id="combatReplayCanvas" width="700" height="320"></canvas>
+        <div id="combatReplaySummary" class="combat-replay-summary"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
+<script src="/js/combatVisualizer.js"></script>
 <script src="/js/fleet.js"></script>
 {% endblock %}

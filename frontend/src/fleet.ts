@@ -19,7 +19,7 @@ class FleetManager {
   constructor() {
     this.planet = null;
     this.selectedShips = {};
-    this.selectedMission = null;
+    this.selectedMission = 'attack';
     this.activeFleets = [];
     this.combatReports = [];
     this.missionLog = [];
@@ -27,6 +27,9 @@ class FleetManager {
     this.currentStep = 1;
     this.selectedTab = 'dispatch';
     this.pollInterval = null;
+    this.explicitTarget = false;
+    this.acsGroups = [];
+    this.selectedAcsGroupId = null;
     this.init();
   }
 
@@ -36,8 +39,11 @@ class FleetManager {
     this.bindMissionButtons();
     this.bindLaunchButton();
     this.bindFilters();
+    this.bindAcsControls();
     this.startPolling();
     this.attachSocketListeners();
+    this.prefillTargetFromQuery();
+    this.loadAcsGroups();
   }
 
   bindTabs() {
@@ -74,6 +80,7 @@ class FleetManager {
         btn.classList.add('selected');
         this.selectedMission = btn.dataset.mission;
         this.toggleCargoInputs();
+        this.updateAcsPanelState();
       });
     });
   }
@@ -102,6 +109,18 @@ class FleetManager {
     document.getElementById('refreshMissionLog')?.addEventListener('click', () => {
       this.loadMissionHistory();
     });
+  }
+
+  bindAcsControls() {
+    document.getElementById('refreshAcsGroups')?.addEventListener('click', () => this.loadAcsGroups());
+    document.getElementById('openAcsModal')?.addEventListener('click', () => this.openAcsModal());
+    document.getElementById('closeAcsModal')?.addEventListener('click', () => this.closeAcsModal());
+    document.getElementById('cancelAcsModal')?.addEventListener('click', () => this.closeAcsModal());
+    document.getElementById('acsForm')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.createAcsGroup();
+    });
+    document.getElementById('leaveAcsSelection')?.addEventListener('click', () => this.clearAcsSelection());
   }
 
   startPolling() {
@@ -156,7 +175,7 @@ class FleetManager {
 
   updatePlanet(data) {
     this.planet = data.planet;
-    if (!document.getElementById('targetGalaxy')?.value) {
+    if (!this.hasExplicitTarget()) {
       document.getElementById('targetGalaxy').value = this.planet.galaxy;
       document.getElementById('targetSystem').value = this.planet.system;
       document.getElementById('targetPosition').value = this.planet.position;
@@ -204,6 +223,176 @@ class FleetManager {
 
       container.appendChild(card);
     });
+  }
+
+  prefillTargetFromQuery() {
+    if (!window?.location?.search) return;
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get('target');
+    if (!target) return;
+
+    const [galaxy, system, position] = target.split(':').map((value) => parseInt(value, 10));
+    if (![galaxy, system, position].every((val) => Number.isFinite(val))) return;
+
+    const galaxyInput = document.getElementById('targetGalaxy') as HTMLInputElement | null;
+    const systemInput = document.getElementById('targetSystem') as HTMLInputElement | null;
+    const positionInput = document.getElementById('targetPosition') as HTMLInputElement | null;
+
+    if (galaxyInput) galaxyInput.value = String(galaxy);
+    if (systemInput) systemInput.value = String(system);
+    if (positionInput) positionInput.value = String(position);
+
+    this.markExplicitTarget();
+  }
+
+  markExplicitTarget() {
+    this.explicitTarget = true;
+  }
+
+  async loadAcsGroups() {
+    try {
+      const response = await api.get('/acs');
+      this.acsGroups = response?.groups || [];
+      this.renderAcsGroups();
+    } catch (error) {
+      console.error('Failed to load ACS groups:', error);
+    }
+  }
+
+  renderAcsGroups() {
+    const container = document.getElementById('acsGroupList');
+    if (!container) return;
+
+    if (!this.acsGroups.length) {
+      container.innerHTML = '<div class="empty-state card-compact">No ACS groups available. Create one to coordinate attacks.</div>';
+      this.updateAcsSelectionBadge();
+      return;
+    }
+
+    container.innerHTML = '';
+    this.acsGroups.forEach((group) => {
+      const card = document.createElement('div');
+      card.className = 'acs-group-card';
+      const coords = `${group.target_galaxy}:${group.target_system}:${group.target_position}`;
+      const windowLabel = group.departure_window_start
+        ? `${new Date(group.departure_window_start).toLocaleTimeString()} - ${new Date(
+            group.departure_window_end
+          ).toLocaleTimeString()}`
+        : 'Flexible window';
+      const selected = this.selectedAcsGroupId === group.id;
+      card.innerHTML = `
+        <div>
+          <p class="acs-group-title">${group.mission_type.toUpperCase()} • ${coords}</p>
+          <p class="acs-group-window">${windowLabel}</p>
+          ${group.notes ? `<p class="acs-group-notes">${group.notes}</p>` : ''}
+        </div>
+        <button class="btn ${selected ? 'btn-secondary' : 'btn-primary'} acs-join-btn" data-group="${group.id}">
+          ${selected ? 'Selected' : 'Link Fleet'}
+        </button>
+      `;
+      card.querySelector('button')?.addEventListener('click', () => this.joinAcsGroup(group.id, coords));
+      container.appendChild(card);
+    });
+    this.updateAcsSelectionBadge();
+    this.updateAcsPanelState();
+  }
+
+  updateAcsSelectionBadge() {
+    const badge = document.getElementById('selectedAcsBadge');
+    const label = document.getElementById('selectedAcsLabel');
+    if (!badge || !label) return;
+    if (!this.selectedAcsGroupId) {
+      badge.classList.add('hidden');
+      return;
+    }
+    const group = this.acsGroups.find((g) => g.id === this.selectedAcsGroupId);
+    label.textContent = group
+      ? `${group.mission_type.toUpperCase()} @ ${group.target_galaxy}:${group.target_system}:${group.target_position}`
+      : `#${this.selectedAcsGroupId}`;
+    badge.classList.remove('hidden');
+  }
+
+  openAcsModal() {
+    if (this.selectedMission !== 'attack') {
+      this.notify('ACS groups are only available for attack missions.', 'info');
+      return;
+    }
+    const modal = document.getElementById('acsModal');
+    const galaxyInput = document.getElementById('acsTargetGalaxy') as HTMLInputElement | null;
+    const systemInput = document.getElementById('acsTargetSystem') as HTMLInputElement | null;
+    const positionInput = document.getElementById('acsTargetPosition') as HTMLInputElement | null;
+
+    const targetGalaxy = (document.getElementById('targetGalaxy') as HTMLInputElement)?.value || this.planet?.galaxy || 1;
+    galaxyInput && (galaxyInput.value = String(targetGalaxy));
+    systemInput && (systemInput.value = (document.getElementById('targetSystem') as HTMLInputElement)?.value || String(this.planet?.system || 1));
+    positionInput && (positionInput.value = (document.getElementById('targetPosition') as HTMLInputElement)?.value || String(this.planet?.position || 1));
+
+    if (modal) modal.style.display = 'block';
+  }
+
+  closeAcsModal() {
+    const modal = document.getElementById('acsModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  async createAcsGroup() {
+    try {
+      const missionType = (document.getElementById('acsMissionType') as HTMLSelectElement)?.value || 'attack';
+      const payload = {
+        missionType,
+        targetGalaxy: parseInt((document.getElementById('acsTargetGalaxy') as HTMLInputElement)?.value || '1', 10),
+        targetSystem: parseInt((document.getElementById('acsTargetSystem') as HTMLInputElement)?.value || '1', 10),
+        targetPosition: parseInt((document.getElementById('acsTargetPosition') as HTMLInputElement)?.value || '1', 10),
+        departureWindowStart: (document.getElementById('acsWindowStart') as HTMLInputElement)?.value || undefined,
+        departureWindowEnd: (document.getElementById('acsWindowEnd') as HTMLInputElement)?.value || undefined,
+        notes: (document.getElementById('acsNotes') as HTMLTextAreaElement)?.value || undefined,
+      };
+
+      await api.post('/acs', payload);
+      this.closeAcsModal();
+      await this.loadAcsGroups();
+      this.notify('ACS group created.', 'success');
+    } catch (error) {
+      console.error('Failed to create ACS group:', error);
+      this.notify(error?.response?.data?.message || 'Unable to create ACS group.', 'error');
+    }
+  }
+
+  async joinAcsGroup(groupId: number, label: string) {
+    if (this.selectedMission !== 'attack') {
+      this.notify('Select an attack mission before joining an ACS group.', 'info');
+      return;
+    }
+    try {
+      await api.post(`/acs/${groupId}/join`, { planetId: this.planet?.id });
+      this.selectedAcsGroupId = groupId;
+      this.updateAcsSelectionBadge();
+      await this.loadAcsGroups();
+      this.notify(`Linked fleet to ACS group targeting ${label}.`, 'success');
+    } catch (error) {
+      console.error('Failed to join ACS group:', error);
+      this.notify(error?.response?.data?.message || 'Unable to join ACS group.', 'error');
+    }
+  }
+
+  clearAcsSelection() {
+    this.selectedAcsGroupId = null;
+    this.updateAcsSelectionBadge();
+    this.updateAcsPanelState();
+  }
+
+  updateAcsPanelState() {
+    const panel = document.getElementById('acsPanel');
+    if (!panel) return;
+    const enabled = this.selectedMission === 'attack';
+    panel.classList.toggle('acs-disabled', !enabled);
+    if (!enabled && this.selectedAcsGroupId) {
+      this.clearAcsSelection();
+    }
+  }
+
+  hasExplicitTarget(): boolean {
+    return Boolean(this.explicitTarget);
   }
 
   handleShipSelection() {
@@ -278,6 +467,7 @@ class FleetManager {
         crystal: parseInt(document.getElementById('cargoCrystal')?.value) || 0,
         deuterium: parseInt(document.getElementById('cargoDeuterium')?.value) || 0,
       },
+      acsGroupId: this.selectedMission === 'attack' ? this.selectedAcsGroupId : null,
     };
 
     try {
@@ -407,31 +597,47 @@ class FleetManager {
       return;
     }
 
-    container.innerHTML = this.combatReports
-      .map(
-        (report) => `
-        <div class="combat-report card-compact">
-          <div class="combat-report-header">
-            <div>
-              <strong>${this.formatCoords(report)}</strong>
-              <span class="combat-tag ${report.winner}">${report.winner.toUpperCase()}</span>
-            </div>
-            <small>${new Date(report.battleTime).toLocaleString()}</small>
+    container.innerHTML = '';
+    this.combatReports.forEach((report, index) => {
+      const card = document.createElement('div');
+      card.className = 'combat-report card-compact';
+      card.innerHTML = `
+        <div class="combat-report-header">
+          <div>
+            <strong>${this.formatCoords(report)}</strong>
+            <span class="combat-tag ${report.winner}">${report.winner.toUpperCase()}</span>
           </div>
-          <div class="combat-report-body">
-            <p><strong>Attacker:</strong> ${report.attacker}</p>
-            <p><strong>Defender:</strong> ${report.defender || 'Unknown'}</p>
-            <div class="combat-loot">
-              <span>Loot: ${this.formatLoot(report.loot)}</span>
-            </div>
-            <div class="combat-losses">
-              <span>Attacker Losses: ${this.formatLosses(report.attackerLosses)}</span>
-              <span>Defender Losses: ${this.formatLosses(report.defenderLosses)}</span>
-            </div>
+          <small>${new Date(report.battleTime).toLocaleString()}</small>
+        </div>
+        <div class="combat-report-body">
+          <p><strong>Attacker:</strong> ${report.attacker}</p>
+          ${report.attackerAllies?.length ? `<p class="combat-allies">Allies: ${report.attackerAllies.map((ally) => ally.username).join(', ')}</p>` : ''}
+          <p><strong>Defender:</strong> ${report.defender || 'Unknown'}</p>
+          <div class="combat-loot">
+            <span>Loot: ${this.formatLoot(report.loot)}</span>
           </div>
-        </div>`
-      )
-      .join('');
+          <div class="combat-losses">
+            <span>Attacker Losses: ${this.formatLosses(report.attackerLosses)}</span>
+            <span>Defender Losses: ${this.formatLosses(report.defenderLosses)}</span>
+          </div>
+          <div class="combat-report-actions">
+            <button class="btn btn-secondary btn-small" data-replay="${index}">Watch Replay</button>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+
+    container.querySelectorAll<HTMLButtonElement>('[data-replay]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const report = this.combatReports[parseInt(btn.dataset.replay, 10)];
+        if (window.combatVisualizer && report) {
+          window.combatVisualizer.play(report);
+        } else {
+          this.notify('Replay unavailable for this report.', 'info');
+        }
+      });
+    });
   }
 
   renderMissionLog() {

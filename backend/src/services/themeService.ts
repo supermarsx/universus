@@ -3,6 +3,7 @@
 // =====================================================
 
 import pool from '../config/database';
+import CustomCssSanitizer from '../utils/customCssSanitizer';
 import {
     Theme,
     ThemeSchedule,
@@ -27,6 +28,8 @@ import {
 } from '../types/seasonalTheme';
 
 export class ThemeService {
+    private static readonly MAX_CUSTOM_CSS_LENGTH = 8000;
+
     /**
      * Get all themes with optional filtering
      */
@@ -579,6 +582,37 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    static async getUserCustomCSS(userId: number): Promise<{
+        custom_css: string | null;
+        custom_css_updated_at: Date | null;
+    }> {
+        const prefs = await this.getUserPreferences(userId);
+        return {
+            custom_css: prefs?.custom_css || null,
+            custom_css_updated_at: prefs?.custom_css_updated_at || null
+        };
+    }
+
+    static async updateUserCustomCSS(
+        userId: number,
+        css: string | null
+    ): Promise<{ custom_css: string | null; custom_css_updated_at: Date | null }> {
+        const sanitized = this.sanitizeCustomCSS(css);
+
+        const result = await pool.query(
+            `INSERT INTO theme_preferences (user_id, custom_css, custom_css_updated_at)
+             VALUES ($1, $2, CASE WHEN $2 IS NULL THEN NULL ELSE NOW() END)
+             ON CONFLICT (user_id) DO UPDATE SET
+                custom_css = EXCLUDED.custom_css,
+                custom_css_updated_at = CASE WHEN EXCLUDED.custom_css IS NULL THEN NULL ELSE NOW() END,
+                updated_at = CURRENT_TIMESTAMP
+             RETURNING custom_css, custom_css_updated_at`,
+            [userId, sanitized]
+        );
+
+        return result.rows[0];
+    }
+
     /**
      * Preview Mode
      */
@@ -666,5 +700,9 @@ export class ThemeService {
             `UPDATE theme_activations SET ${updates.join(', ')} WHERE id = $${paramCount}`,
             params
         );
+    }
+
+    private static sanitizeCustomCSS(css?: string | null): string | null {
+        return CustomCssSanitizer.sanitize(css, this.MAX_CUSTOM_CSS_LENGTH);
     }
 }

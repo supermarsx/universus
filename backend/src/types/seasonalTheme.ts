@@ -472,6 +472,10 @@ export interface ThemePreferences {
     sound_volume: number;
     animation_speed: number;
 
+    // Custom CSS
+    custom_css?: string | null;
+    custom_css_updated_at?: Date | null;
+
     // Metadata
     created_at: Date;
     updated_at: Date;

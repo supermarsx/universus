@@ -4,6 +4,7 @@ import { authenticateToken } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
+import LeaderboardScheduler from '../services/leaderboardScheduler';
 
 const router = express.Router();
 const leaderboardService = new LeaderboardService(pool, redis);
@@ -39,6 +40,18 @@ router.get('/players', async (req: AuthRequest, res) => {
       error: 'Failed to fetch leaderboard',
     });
   }
+});
+
+/**
+ * GET /leaderboard/status
+ * Get scheduler status / last rebuild time
+ */
+router.get('/status', (req: AuthRequest, res) => {
+  const status = LeaderboardScheduler.getStatus();
+  res.json({
+    success: true,
+    status,
+  });
 });
 
 /**
@@ -127,16 +140,12 @@ router.get('/me', async (req: AuthRequest, res) => {
  */
 router.post('/update', async (req: AuthRequest, res) => {
   try {
-    // In production, add admin check here
-    const playerCount = await leaderboardService.updatePlayerLeaderboard();
-    const allianceCount = await leaderboardService.updateAllianceLeaderboard();
+    await LeaderboardScheduler.triggerRebuild();
+    const status = LeaderboardScheduler.getStatus();
 
     res.json({
       success: true,
-      data: {
-        playersUpdated: playerCount,
-        alliancesUpdated: allianceCount,
-      },
+      status,
     });
   } catch (error: any) {
     console.error('Error updating leaderboard:', error);

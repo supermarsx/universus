@@ -523,6 +523,28 @@ export class RealtimeSocketHandler {
     console.log(`[Config] Broadcasted bulk update: ${data.changes.length} changes by ${data.changedByUsername}`);
   }
 
+  broadcastLeaderboardUpdate(): void {
+    this.io.emit('leaderboard:updated');
+  }
+
+  getStats(): {
+    connectedClients: number;
+    rooms: number;
+    namespaces: number;
+    adapterName: string;
+  } {
+    const namespace = this.io.of('/');
+    const adapter = namespace.adapter;
+    const roomsSize = adapter.rooms?.size ?? 0;
+    const adapterName = (adapter as any)?.name || 'unknown';
+    return {
+      connectedClients: namespace.sockets.size,
+      rooms: roomsSize,
+      namespaces: this.io._nsps.size,
+      adapterName,
+    };
+  }
+
   // =====================================================
   // UTILITY METHODS
   // =====================================================
