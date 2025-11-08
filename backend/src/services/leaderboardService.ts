@@ -14,6 +14,8 @@ export interface PlayerScore {
   defenseScore: number;
   rank: number;
   allianceTag?: string;
+  scoreTrend?: Array<{ timestamp: string; score: number }>;
+  weeklyRankChange?: number | null;
 }
 
 /**
@@ -27,6 +29,8 @@ export interface AllianceScore {
   memberCount: number;
   averageScore: number;
   rank: number;
+  scoreTrend?: Array<{ timestamp: string; score: number }>;
+  weeklyRankChange?: number | null;
 }
 
 /**
@@ -350,8 +354,11 @@ export class LeaderboardService {
             JSON.stringify({
               userId: score.userId,
               username: score.username,
-              totalScore: score.totalScore,
               allianceTag: score.allianceTag,
+              buildingScore: score.buildingScore,
+              researchScore: score.researchScore,
+              fleetScore: score.fleetScore,
+              defenseScore: score.defenseScore,
             })
           );
           snapshotRows.push({
@@ -420,15 +427,20 @@ export class LeaderboardService {
         const score = parseInt(players[i + 1]);
 
         result.push({
-          ...playerData,
+          userId: playerData.userId,
+          username: playerData.username,
+          allianceTag: playerData.allianceTag,
           totalScore: score,
           rank: offset + (i / 2) + 1,
-          buildingScore: 0, // Can be added if needed
-          researchScore: 0,
-          fleetScore: 0,
-          defenseScore: 0,
+          buildingScore: playerData.buildingScore ?? 0,
+          researchScore: playerData.researchScore ?? 0,
+          fleetScore: playerData.fleetScore ?? 0,
+          defenseScore: playerData.defenseScore ?? 0,
         });
       }
+
+      await this.attachScoreTrends(result);
+      await this.appendWeeklyRankChanges(result);
 
       return result;
     } catch (error) {
@@ -602,6 +614,9 @@ export class LeaderboardService {
         });
       }
 
+      await this.attachAllianceScoreTrends(result);
+      await this.appendAllianceWeeklyRankChanges(result);
+
       return result;
     } catch (error) {
       console.error('Error getting top alliances:', error);
@@ -699,5 +714,178 @@ export class LeaderboardService {
       ) VALUES ${placeholders}`,
       values
     );
+  }
+
+  private async attachScoreTrends(players: PlayerScore[], points = 10): Promise<void> {
+    if (!players.length) return;
+    const userIds = players.map((p) => p.userId);
+    const trendResult = await this.db.query(
+      `
+        SELECT user_id, snapshot_at, total_score
+        FROM (
+          SELECT
+            user_id,
+            snapshot_at,
+            total_score,
+            ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY snapshot_at DESC) AS row_num
+          FROM player_leaderboard_snapshots
+          WHERE user_id = ANY($1::int[])
+        ) ranked
+        WHERE row_num <= $2
+        ORDER BY user_id, snapshot_at ASC
+      `,
+      [userIds, points]
+    );
+
+    const trendMap = new Map<number, Array<{ timestamp: string; score: number }>>();
+    trendResult.rows.forEach((row) => {
+      if (!trendMap.has(row.user_id)) {
+        trendMap.set(row.user_id, []);
+      }
+      trendMap.get(row.user_id)!.push({
+        timestamp: row.snapshot_at,
+        score: Number(row.total_score),
+      });
+    });
+
+    players.forEach((player) => {
+      player.scoreTrend = trendMap.get(player.userId) || [];
+    });
+  }
+
+  private async appendWeeklyRankChanges(players: PlayerScore[]): Promise<void> {
+    if (!players.length) return;
+    const userIds = players.map((p) => p.userId);
+
+    const snapshotRef = await this.db.query(
+      `
+        SELECT snapshot_at
+        FROM player_leaderboard_snapshots
+        WHERE snapshot_at <= NOW() - INTERVAL '7 days'
+        ORDER BY snapshot_at DESC
+        LIMIT 1
+      `
+    );
+
+    if (!snapshotRef.rows.length) {
+      players.forEach((player) => (player.weeklyRankChange = null));
+      return;
+    }
+
+    const referenceDate = snapshotRef.rows[0].snapshot_at;
+    const ranksResult = await this.db.query(
+      `
+        SELECT user_id, rank
+        FROM (
+          SELECT
+            user_id,
+            total_score,
+            RANK() OVER (ORDER BY total_score DESC) AS rank
+          FROM player_leaderboard_snapshots
+          WHERE snapshot_at = $1
+        ) ranked
+        WHERE user_id = ANY($2::int[])
+      `,
+      [referenceDate, userIds]
+    );
+
+    const rankMap = new Map<number, number>();
+    ranksResult.rows.forEach((row) => {
+      rankMap.set(row.user_id, Number(row.rank));
+    });
+
+    players.forEach((player) => {
+      const previousRank = rankMap.get(player.userId);
+      player.weeklyRankChange =
+        typeof previousRank === 'number' ? previousRank - player.rank : null;
+    });
+  }
+
+  private async attachAllianceScoreTrends(
+    alliances: AllianceScore[],
+    points = 10
+  ): Promise<void> {
+    if (!alliances.length) return;
+    const allianceIds = alliances.map((a) => a.allianceId);
+    const trendResult = await this.db.query(
+      `
+        SELECT alliance_id, snapshot_at, total_score
+        FROM (
+          SELECT
+            alliance_id,
+            snapshot_at,
+            total_score,
+            ROW_NUMBER() OVER (PARTITION BY alliance_id ORDER BY snapshot_at DESC) AS row_num
+          FROM alliance_leaderboard_snapshots
+          WHERE alliance_id = ANY($1::int[])
+        ) ranked
+        WHERE row_num <= $2
+        ORDER BY alliance_id, snapshot_at ASC
+      `,
+      [allianceIds, points]
+    );
+
+    const trendMap = new Map<number, Array<{ timestamp: string; score: number }>>();
+    trendResult.rows.forEach((row) => {
+      if (!trendMap.has(row.alliance_id)) {
+        trendMap.set(row.alliance_id, []);
+      }
+      trendMap.get(row.alliance_id)!.push({
+        timestamp: row.snapshot_at,
+        score: Number(row.total_score),
+      });
+    });
+
+    alliances.forEach((entry) => {
+      entry.scoreTrend = trendMap.get(entry.allianceId) || [];
+    });
+  }
+
+  private async appendAllianceWeeklyRankChanges(alliances: AllianceScore[]): Promise<void> {
+    if (!alliances.length) return;
+    const allianceIds = alliances.map((a) => a.allianceId);
+
+    const snapshotRef = await this.db.query(
+      `
+        SELECT snapshot_at
+        FROM alliance_leaderboard_snapshots
+        WHERE snapshot_at <= NOW() - INTERVAL '7 days'
+        ORDER BY snapshot_at DESC
+        LIMIT 1
+      `
+    );
+
+    if (!snapshotRef.rows.length) {
+      alliances.forEach((entry) => (entry.weeklyRankChange = null));
+      return;
+    }
+
+    const referenceDate = snapshotRef.rows[0].snapshot_at;
+    const ranksResult = await this.db.query(
+      `
+        SELECT alliance_id, rank
+        FROM (
+          SELECT
+            alliance_id,
+            total_score,
+            RANK() OVER (ORDER BY total_score DESC) AS rank
+          FROM alliance_leaderboard_snapshots
+          WHERE snapshot_at = $1
+        ) ranked
+        WHERE alliance_id = ANY($2::int[])
+      `,
+      [referenceDate, allianceIds]
+    );
+
+    const rankMap = new Map<number, number>();
+    ranksResult.rows.forEach((row) => {
+      rankMap.set(row.alliance_id, Number(row.rank));
+    });
+
+    alliances.forEach((entry) => {
+      const previousRank = rankMap.get(entry.allianceId);
+      entry.weeklyRankChange =
+        typeof previousRank === 'number' ? previousRank - entry.rank : null;
+    });
   }
 }

@@ -5,7 +5,11 @@
  */
 
 // Global state
+const API_BASE = '/api/alliances';
 let currentTab = 'settings';
+let currentAllianceId: number | null = null;
+let allianceProfile: any = null;
+let pendingApplications: any[] = [];
 let allMembers = [];
 let allRanks = [];
 let socket = null;
@@ -18,13 +22,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // === INITIALIZATION === //
 
-function initializeManagement() {
-    // Load initial data based on default tab
-    loadAllianceSettings();
-    loadRanks();
-    loadTreasuryData();
-    loadMembers();
-    
+async function initializeManagement() {
+    await loadAllianceSettings();
+    if (currentAllianceId) {
+        loadRanks();
+        loadTreasuryData();
+        loadMembers();
+        loadApplications();
+    }
+
     // Connect to Socket.io for real-time updates
     if (typeof io !== 'undefined') {
         socket = io();
@@ -79,6 +85,8 @@ function switchTab(tabName) {
         loadTreasuryData();
     } else if (tabName === 'members') {
         loadMembers();
+    } else if (tabName === 'applications') {
+        loadApplications();
     }
 }
 
@@ -86,16 +94,32 @@ function switchTab(tabName) {
 
 async function loadAllianceSettings() {
     try {
-        const response = await fetch('/api/alliance/current', {
+        const response = await fetch(`${API_BASE}/my-alliance`, {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             }
         });
 
-        if (!response.ok) throw new Error('Failed to load alliance settings');
+        const payload = await response.json();
 
-        const data = await response.json();
-        populateSettingsForm(data.alliance);
+        if (!response.ok || !payload.success) {
+            if (response.status === 404) {
+                currentAllianceId = null;
+                allianceProfile = null;
+                populateSettingsForm(null);
+                return;
+            }
+            throw new Error(payload?.error?.message || 'Failed to load alliance settings');
+        }
+
+        allianceProfile = payload.data;
+        currentAllianceId =
+            payload.data?.alliance_id ||
+            payload.data?.alliance?.id ||
+            payload.data?.id ||
+            null;
+
+        populateSettingsForm(payload.data?.alliance || payload.data);
     } catch (error) {
         console.error('Error loading alliance settings:', error);
         showNotification('Failed to load alliance settings', 'error');
@@ -103,8 +127,13 @@ async function loadAllianceSettings() {
 }
 
 async function updateAllianceSettings(formData) {
+    if (!currentAllianceId) {
+        showNotification('You are not part of an alliance', 'error');
+        return;
+    }
+
     try {
-        const response = await fetch('/api/alliance/current', {
+        const response = await fetch(`${API_BASE}/${currentAllianceId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -241,7 +270,20 @@ async function kickMember(memberId) {
 // === RENDERING === //
 
 function populateSettingsForm(alliance) {
-    if (!alliance) return;
+    const nameInput = document.getElementById('allianceNameInput');
+    if (!nameInput) return;
+
+    if (!alliance) {
+        ['allianceNameInput', 'allianceTagInput', 'allianceDescInput', 'allianceImageInput', 'minRankInput', 'autoAcceptInput', 'autoRejectInput', 'autoNoteInput'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) (el as HTMLInputElement | HTMLTextAreaElement).value = '';
+        });
+        const joinTypeInput = document.getElementById('joinTypeInput') as HTMLSelectElement;
+        if (joinTypeInput) joinTypeInput.value = 'APPROVAL';
+        const publicInput = document.getElementById('publicVisibleInput') as HTMLInputElement;
+        if (publicInput) publicInput.checked = false;
+        return;
+    }
 
     document.getElementById('allianceNameInput').value = alliance.name || '';
     document.getElementById('allianceTagInput').value = alliance.tag || '';
@@ -250,6 +292,13 @@ function populateSettingsForm(alliance) {
     document.getElementById('joinTypeInput').value = alliance.join_type || 'APPROVAL';
     document.getElementById('minRankInput').value = alliance.min_rank_requirement || '';
     document.getElementById('publicVisibleInput').checked = alliance.is_public || false;
+
+    const autoAcceptInput = document.getElementById('autoAcceptInput');
+    if (autoAcceptInput) autoAcceptInput.value = alliance.auto_accept_min_score ?? '';
+    const autoRejectInput = document.getElementById('autoRejectInput');
+    if (autoRejectInput) autoRejectInput.value = alliance.auto_reject_below_score ?? '';
+    const autoNoteInput = document.getElementById('autoNoteInput');
+    if (autoNoteInput) autoNoteInput.value = alliance.auto_application_notes || '';
 }
 
 function renderRanks(ranks) {
@@ -381,6 +430,83 @@ function renderMembersAdmin(members) {
     `).join('');
 }
 
+async function loadApplications() {
+    if (!currentAllianceId) return;
+    try {
+        const response = await fetch(`${API_BASE}/${currentAllianceId}/applications`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error?.message || 'Failed to load applications');
+        }
+
+        const payload = await response.json();
+        pendingApplications = payload.data || [];
+        renderApplications(pendingApplications);
+    } catch (error) {
+        console.error('Error loading applications:', error);
+        showNotification(error.message || 'Failed to load applications', 'error');
+        renderApplications([]);
+    }
+}
+
+function renderApplications(applications) {
+    const container = document.getElementById('applicationsList');
+    if (!container) return;
+
+    if (!applications || applications.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <span class="css-icon icon-inbox"></span>
+                <p>No applications pending review</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = applications.map((app) => {
+        const status = (app.status || 'pending').toLowerCase();
+        const actions = status === 'pending'
+            ? `
+                <div class="application-actions">
+                    <button class="btn btn-sm btn-success" onclick="handleApplicationAction(${app.id}, true)">
+                        Accept
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="handleApplicationAction(${app.id}, false)">
+                        Reject
+                    </button>
+                </div>
+            `
+            : `<span class="status-badge status-${status}">${status}</span>`;
+
+        return `
+            <div class="application-card status-${status}">
+                <div class="application-header">
+                    <div>
+                        <div class="applicant-name">${escapeHtml(app.username || 'Unknown Commander')}</div>
+                        <div class="application-meta">
+                            <span>Score: ${formatNumber(app.user_score || 0)}</span>
+                            <span>Submitted ${formatTimeAgo(app.created_at)}</span>
+                        </div>
+                    </div>
+                    <div class="application-status">
+                        ${actions}
+                    </div>
+                </div>
+                ${app.message ? `
+                    <div class="application-message">
+                        ${escapeHtml(app.message)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
 // === UI INTERACTIONS === //
 
 function resetSettingsForm() {
@@ -489,6 +615,34 @@ function confirmKickMember(memberId) {
     }
 }
 
+window.handleApplicationAction = async function(applicationId, accept) {
+    if (!currentAllianceId) return;
+    try {
+        const response = await fetch(`${API_BASE}/${currentAllianceId}/applications/${applicationId}/process`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ accept })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error?.error?.message || error?.message || 'Failed to update application');
+        }
+
+        showNotification(accept ? 'Application accepted' : 'Application rejected', accept ? 'success' : 'info');
+        await loadApplications();
+        if (accept) {
+            loadMembers();
+        }
+    } catch (error) {
+        console.error('Error processing application:', error);
+        showNotification(error.message || 'Failed to update application', 'error');
+    }
+};
+
 // === FORM HANDLERS === //
 
 async function handleUpdateSettings(event) {
@@ -499,8 +653,11 @@ async function handleUpdateSettings(event) {
         description: document.getElementById('allianceDescInput').value,
         image_url: document.getElementById('allianceImageInput').value || null,
         join_type: document.getElementById('joinTypeInput').value,
-        min_rank_requirement: parseInt(document.getElementById('minRankInput').value) || null,
-        is_public: document.getElementById('publicVisibleInput').checked
+        min_rank_requirement: getNumericInputValue('minRankInput'),
+        is_public: document.getElementById('publicVisibleInput').checked,
+        auto_accept_min_score: getNumericInputValue('autoAcceptInput'),
+        auto_reject_below_score: getNumericInputValue('autoRejectInput'),
+        auto_application_notes: document.getElementById('autoNoteInput').value || null
     };
 
     try {
@@ -573,6 +730,13 @@ document.addEventListener('click', (e) => {
 function formatNumber(num) {
     if (!num) return '0';
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function getNumericInputValue(id) {
+    const input = document.getElementById(id);
+    if (!input) return null;
+    const value = parseInt(input.value, 10);
+    return isNaN(value) ? null : value;
 }
 
 function formatTimeAgo(dateString) {

@@ -4,16 +4,31 @@
  * Handles chat channels, private messages, and real-time updates
  */
 
+const CHAT_REACTIONS = [
+  { type: 'thumbs_up', emoji: '👍', label: 'Thumbs up' },
+  { type: 'thumbs_down', emoji: '👎', label: 'Thumbs down' },
+  { type: 'rofl', emoji: '🤣', label: 'ROFL' },
+  { type: 'clap', emoji: '👏', label: 'Clap' },
+  { type: 'angry', emoji: '😡', label: 'Angry' },
+  { type: 'cry', emoji: '😭', label: 'Crying' },
+];
+
 class UniversusChat {
   constructor() {
     this.socket = window.realtimeSocket || null;
     this.currentChannelId = null;
     this.currentConversationId = null;
     this.channels = [];
+    this.channelMap = new Map();
     this.conversations = [];
     this.onlinePlayers = [];
     this.currentUserId = null;
     this.currentUsername = null;
+    this.isAdmin = false;
+    this.activeMessages = [];
+    this.pinnedMessages = [];
+    this.announcements = [];
+    this.messageCache = new Map();
     this.mutedUsers = new Set();
     this.loadMutedUsers();
     
@@ -30,6 +45,13 @@ class UniversusChat {
     
     this.currentUserId = userInfo.id;
     this.currentUsername = userInfo.username;
+    this.isAdmin = Boolean(
+      userInfo.is_admin ||
+      userInfo.isAdmin ||
+      userInfo.is_moderator ||
+      userInfo.isModerator ||
+      (userInfo.admin_level && ['moderator', 'game_admin', 'super_admin'].includes(userInfo.admin_level))
+    );
     
     // Load channels and conversations
     await this.loadChannels();
@@ -54,7 +76,8 @@ class UniversusChat {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
       });
       if (!response.ok) return null;
-      return await response.json();
+      const data = await response.json();
+      return data.user || data;
     } catch (error) {
       console.error('Failed to get user info:', error);
       return null;
@@ -68,6 +91,7 @@ class UniversusChat {
       });
       const data = await response.json();
       this.channels = data.channels || [];
+      this.channelMap = new Map(this.channels.map(channel => [channel.id, channel]));
       this.renderChannels();
     } catch (error) {
       console.error('Failed to load channels:', error);
@@ -153,6 +177,8 @@ class UniversusChat {
     
     const channel = this.channels.find(c => c.id === channelId);
     if (!channel) return;
+    this.currentChannel = channel;
+    this.updateAdminControls(channel);
     
     // Update UI
     document.getElementById('chat-title').textContent = channel.channel_name;
@@ -187,6 +213,7 @@ class UniversusChat {
   async selectConversation(conversationId) {
     this.currentConversationId = conversationId;
     this.currentChannelId = null;
+    this.updateAdminControls(null);
     
     const conversation = this.conversations.find(c => c.id === conversationId);
     if (!conversation) return;
@@ -222,8 +249,20 @@ class UniversusChat {
         headers: this.getAuthHeaders()
       });
       const data = await response.json();
-      
-      this.renderMessages(data.messages || []);
+      const messages = data.messages || [];
+      this.activeMessages = messages;
+      this.pinnedMessages = data.pinnedMessages || [];
+      this.announcements = data.announcements || [];
+      this.sortPinnedMessages();
+      this.sortAnnouncements();
+      this.renderAnnouncements();
+      this.renderPinnedMessages();
+      this.renderMessages(messages);
+      [...this.pinnedMessages, ...this.announcements].forEach((msg) => {
+        if (msg?.id) {
+          this.messageCache.set(msg.id, msg);
+        }
+      });
     } catch (error) {
       console.error('Failed to load chat history:', error);
     }
@@ -270,15 +309,25 @@ class UniversusChat {
     return this.mutedUsers.has(username.toLowerCase());
   }
 
-  renderMessages(messages) {
+  renderMessages(messages = this.activeMessages) {
     const container = document.getElementById('chat-messages');
     if (!container) return;
     
-    if (messages.length === 0) {
+    if (!messages || messages.length === 0) {
+      this.activeMessages = [];
+      this.messageCache.clear();
       container.innerHTML = '<div class="chat-welcome"><p>No messages yet. Start the conversation!</p></div>';
       return;
     }
     
+    this.activeMessages = messages;
+    this.messageCache.clear();
+    messages.forEach((msg) => {
+      if (msg?.id) {
+        this.messageCache.set(msg.id, msg);
+      }
+    });
+
     const rendered = messages
       .filter((msg) => !this.isUserMuted(msg.username || msg.sender_username))
       .map((msg) => this.createMessageHTML(msg));
@@ -293,6 +342,7 @@ class UniversusChat {
   }
 
   createMessageHTML(msg) {
+    if (!msg) return '';
     const isOwnMessage = msg.user_id === this.currentUserId || msg.sender_id === this.currentUserId;
     const username = msg.username || msg.sender_username || msg.systemUsername || 'Unknown';
     let messageClass = 'chat-message';
@@ -302,20 +352,62 @@ class UniversusChat {
     } else if (isOwnMessage) {
       messageClass = 'chat-message own-message';
     }
-    
+
+    if (msg.is_announcement) {
+      messageClass += ' announcement-message';
+    } else if (msg.is_pinned) {
+      messageClass += ' pinned-message';
+    }
+
+    const badges = this.renderMessageBadges(msg);
+    const adminControls = this.renderMessageAdminActions(msg);
+    const reactionBar = this.renderReactionBar(msg);
+    const allianceTag = msg.alliance_tag ? `<span class="alliance-tag">[${this.escapeHTML(msg.alliance_tag)}]</span>` : '';
+
     return `
       <div class="${messageClass}" data-message-id="${msg.id}">
         <div class="message-header">
-          <span class="username">${username}</span>
-          ${msg.alliance_tag ? `<span class="alliance-tag">[${msg.alliance_tag}]</span>` : ''}
-          <span class="timestamp">${this.formatTime(msg.created_at)}</span>
+          <div class="message-meta">
+            <span class="username">${this.escapeHTML(username)}</span>
+            ${allianceTag}
+            <span class="timestamp">${this.formatTime(msg.created_at)}</span>
+            ${badges}
+          </div>
+          ${adminControls}
         </div>
-        <div class="message-content">${this.escapeHTML(msg.message)}</div>
+        <div class="message-content">${this.formatMessageContent(msg.message)}</div>
+        ${reactionBar}
       </div>
     `;
   }
 
   appendMessage(msg) {
+    if (!msg) return;
+    const isChannelMessage = typeof msg.channel_id === 'number';
+    const isConversationMessage = typeof msg.conversation_id === 'number';
+
+    this.messageCache.set(msg.id, msg);
+
+    if (isChannelMessage) {
+      if (this.currentChannelId !== msg.channel_id) {
+        return;
+      }
+    } else if (isConversationMessage) {
+      if (this.currentConversationId !== msg.conversation_id) {
+        return;
+      }
+    }
+
+    this.syncMessageAcrossCollections(msg, { appendToActive: true });
+    if (isChannelMessage) {
+      if (msg.is_pinned) {
+        this.upsertPinnedMessage(msg);
+      }
+      if (msg.is_announcement) {
+        this.upsertAnnouncement(msg);
+      }
+    }
+
     const container = document.getElementById('chat-messages');
     if (!container) return;
     
@@ -344,12 +436,15 @@ class UniversusChat {
        return;
      }
     
+    const adminFlags = this.getAdminMessageFlags();
+
     if (this.currentChannelId) {
       // Send to channel via Socket.io
       if (this.socket) {
         this.socket.emit('chat:message', {
           channelId: this.currentChannelId,
-          message: message
+          message: message,
+          ...adminFlags,
         });
       }
     } else if (this.currentConversationId) {
@@ -364,6 +459,7 @@ class UniversusChat {
     }
     
     input.value = '';
+    this.resetAdminMessageFlags();
   }
 
   async handleCommand(rawCommand: string) {
@@ -473,6 +569,387 @@ class UniversusChat {
     );
   }
 
+  getAdminMessageFlags() {
+    if (!this.isAdmin) {
+      return {};
+    }
+    const pinToggle = document.getElementById('send-pin') as HTMLInputElement;
+    const announcementToggle = document.getElementById('send-announcement') as HTMLInputElement;
+    const expiryInput = document.getElementById('announcement-expiry') as HTMLInputElement;
+    const isWorld = this.isWorldChannel(this.currentChannelId);
+
+    const pinMessage = !!(pinToggle && pinToggle.checked);
+    let isAnnouncement = !!(announcementToggle && announcementToggle.checked && isWorld);
+
+    if (announcementToggle && announcementToggle.checked && !isWorld) {
+      this.displaySystemMessage('Announcements are limited to the world chat.');
+      announcementToggle.checked = false;
+      isAnnouncement = false;
+    }
+
+    let announcementExpiresAt;
+    if (isAnnouncement && expiryInput && expiryInput.value) {
+      const date = new Date(expiryInput.value);
+      if (!Number.isNaN(date.getTime())) {
+        announcementExpiresAt = date.toISOString();
+      }
+    }
+
+    return {
+      pinMessage,
+      isAnnouncement,
+      announcementExpiresAt,
+    };
+  }
+
+  resetAdminMessageFlags() {
+    if (!this.isAdmin) return;
+    const pinToggle = document.getElementById('send-pin') as HTMLInputElement;
+    const announcementToggle = document.getElementById('send-announcement') as HTMLInputElement;
+    const expiryInput = document.getElementById('announcement-expiry') as HTMLInputElement;
+    if (pinToggle) pinToggle.checked = false;
+    if (announcementToggle) announcementToggle.checked = false;
+    if (expiryInput) expiryInput.value = '';
+  }
+
+  isWorldChannel(channelId) {
+    const channel = this.channelMap.get(channelId);
+    return Boolean(channel && channel.channel_type === 'global');
+  }
+
+  updateAdminControls(channel) {
+    const controls = document.getElementById('chat-admin-controls');
+    if (!controls) return;
+
+    if (!this.isAdmin) {
+      controls.style.display = 'none';
+      return;
+    }
+
+    if (!channel && this.currentChannelId === null) {
+      controls.style.display = 'none';
+      return;
+    }
+
+    controls.style.display = 'flex';
+    const announcementToggle = document.getElementById('send-announcement') as HTMLInputElement;
+    const expiryInput = document.getElementById('announcement-expiry') as HTMLInputElement;
+    const announcementWrapper = controls.querySelector('[data-role="announcement"]');
+    const isWorld = channel ? channel.channel_type === 'global' : this.isWorldChannel(this.currentChannelId);
+
+    if (announcementToggle) {
+      announcementToggle.disabled = !isWorld;
+      if (!isWorld) {
+        announcementToggle.checked = false;
+      }
+    }
+    if (expiryInput) {
+      expiryInput.disabled = !isWorld;
+      if (!isWorld) {
+        expiryInput.value = '';
+      }
+    }
+    if (announcementWrapper) {
+      announcementWrapper.classList.toggle('disabled', !isWorld);
+    }
+  }
+
+  syncMessageAcrossCollections(message, options: { appendToActive?: boolean } = {}) {
+    const { appendToActive = false } = options;
+    if (!message || !message.id) return;
+
+    let replaced = false;
+    this.activeMessages = this.activeMessages.map((existing) => {
+      if (existing.id === message.id) {
+        replaced = true;
+        return message;
+      }
+      return existing;
+    });
+
+    if (!replaced && appendToActive) {
+      this.activeMessages.push(message);
+    }
+
+    this.messageCache.set(message.id, message);
+  }
+
+  updateMessageCollection(list, message, shouldInclude) {
+    const index = list.findIndex((item) => item.id === message.id);
+    if (shouldInclude) {
+      if (index === -1) {
+        list.unshift(message);
+      } else {
+        list[index] = message;
+      }
+    } else if (index !== -1) {
+      list.splice(index, 1);
+    }
+  }
+
+  sortPinnedMessages() {
+    this.pinnedMessages.sort((a, b) => {
+      const aDate = new Date(a.pinned_at || a.created_at || Date.now());
+      const bDate = new Date(b.pinned_at || b.created_at || Date.now());
+      return bDate.getTime() - aDate.getTime();
+    });
+  }
+
+  sortAnnouncements() {
+    this.announcements.sort((a, b) => {
+      const aDate = new Date(a.created_at || Date.now());
+      const bDate = new Date(b.created_at || Date.now());
+      return bDate.getTime() - aDate.getTime();
+    });
+  }
+
+  renderPinnedMessages() {
+    const container = document.getElementById('chat-pinned');
+    if (!container) return;
+    if (!this.pinnedMessages.length) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = this.pinnedMessages
+      .map((msg) => this.createPinnedCardHTML(msg))
+      .join('');
+  }
+
+  renderAnnouncements() {
+    const container = document.getElementById('chat-announcements');
+    if (!container) return;
+    if (!this.announcements.length) {
+      container.style.display = 'none';
+      container.innerHTML = '';
+      return;
+    }
+
+    container.style.display = 'block';
+    container.innerHTML = this.announcements
+      .map((msg) => this.createAnnouncementCardHTML(msg))
+      .join('');
+  }
+
+  createPinnedCardHTML(msg) {
+    return `
+      <div class="pinned-card" data-scroll-to="${msg.id}">
+        <div class="pinned-meta">
+          <span class="username">${this.escapeHTML(msg.username || 'Unknown')}</span>
+          <span class="timestamp">${this.formatTime(msg.pinned_at || msg.created_at)}</span>
+        </div>
+        <div class="pinned-body">${this.formatMessageContent(msg.message)}</div>
+      </div>
+    `;
+  }
+
+  createAnnouncementCardHTML(msg) {
+    return `
+      <div class="announcement-card" data-scroll-to="${msg.id}">
+        <div class="announcement-meta">
+          <span class="username">${this.escapeHTML(msg.username || 'Unknown')}</span>
+          <span class="timestamp">${this.formatTime(msg.created_at)}</span>
+        </div>
+        <div class="announcement-body">${this.formatMessageContent(msg.message)}</div>
+      </div>
+    `;
+  }
+
+  upsertPinnedMessage(msg) {
+    const shouldInclude = Boolean(msg.is_pinned);
+    this.updateMessageCollection(this.pinnedMessages, msg, shouldInclude);
+    this.sortPinnedMessages();
+    this.renderPinnedMessages();
+  }
+
+  upsertAnnouncement(msg) {
+    const expiresAt = msg.announcement_expires_at ? new Date(msg.announcement_expires_at).getTime() : null;
+    const isExpired = expiresAt && expiresAt < Date.now();
+    const shouldInclude = Boolean(msg.is_announcement) && !isExpired;
+    this.updateMessageCollection(this.announcements, msg, shouldInclude);
+    this.sortAnnouncements();
+    this.renderAnnouncements();
+  }
+
+  scrollToMessage(messageId) {
+    const container = document.getElementById('chat-messages');
+    if (!container) return;
+    const target = container.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+    if (target) {
+      target.classList.add('message-highlight');
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => target.classList.remove('message-highlight'), 1500);
+    }
+  }
+
+  renderMessageBadges(msg) {
+    const badges: string[] = [];
+    if (msg.is_announcement) {
+      badges.push('<span class="message-badge announcement">Announcement</span>');
+    }
+    if (msg.is_pinned) {
+      badges.push('<span class="message-badge pinned">Pinned</span>');
+    }
+    return badges.join('');
+  }
+
+  renderMessageAdminActions(msg) {
+    if (!this.isAdmin || !msg.id || !msg.channel_id) return '';
+    const actions: string[] = [];
+    const isPinned = Boolean(msg.is_pinned);
+    actions.push(
+      `<button class="message-action-btn" data-message-action="pin" data-message-id="${msg.id}" data-pinned="${isPinned}">
+        ${isPinned ? 'Unpin' : 'Pin'}
+      </button>`
+    );
+
+    if (this.isWorldChannel(msg.channel_id)) {
+      const isAnnouncement = Boolean(msg.is_announcement);
+      actions.push(
+        `<button class="message-action-btn" data-message-action="announcement" data-message-id="${msg.id}" data-announcement="${isAnnouncement}">
+          ${isAnnouncement ? 'Unmark' : 'Announcement'}
+        </button>`
+      );
+    }
+
+    if (!actions.length) return '';
+    return `<div class="message-actions">${actions.join('')}</div>`;
+  }
+
+  renderReactionBar(msg) {
+    if (!msg || !msg.id || !msg.channel_id) return '';
+    const reactions = msg.reactions || {};
+    const viewerReactions = msg.viewerReactions || [];
+
+    const buttons = CHAT_REACTIONS.map((reaction) => {
+      const count = reactions[reaction.type] || 0;
+      const isActive = viewerReactions.includes(reaction.type);
+      return `
+        <button
+          class="reaction-btn ${isActive ? 'active' : ''}"
+          data-reaction-btn
+          data-reaction="${reaction.type}"
+          data-message-id="${msg.id}"
+        >
+          <span class="reaction-emoji">${reaction.emoji}</span>
+          <span class="reaction-count">${count}</span>
+        </button>
+      `;
+    }).join('');
+
+    return `<div class="message-reactions" data-message-id="${msg.id}">${buttons}</div>`;
+  }
+
+  formatMessageContent(text = '') {
+    return this.escapeHTML(text).replace(/\n/g, '<br>');
+  }
+
+  async toggleReaction(messageId, reactionType) {
+    if (!messageId || !reactionType) return;
+    try {
+      const response = await fetch(`/api/realtime/chat/messages/${messageId}/reactions`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(true),
+        body: JSON.stringify({ reactionType }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to toggle reaction');
+      }
+      const data = await response.json();
+      const existing = this.messageCache.get(messageId) || {};
+      existing.reactions = data.reactions || {};
+      existing.viewerReactions = data.viewerReactions || [];
+      this.messageCache.set(messageId, existing);
+      this.syncMessageAcrossCollections(existing);
+      this.refreshMessage(messageId);
+    } catch (error) {
+      console.error('Failed to toggle reaction:', error);
+    }
+  }
+
+  refreshMessage(messageId) {
+    const container = document.querySelector(`.chat-message[data-message-id="${messageId}"]`);
+    const message = this.messageCache.get(messageId);
+    if (!container || !message) return;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = this.createMessageHTML(message).trim();
+    const next = wrapper.firstElementChild;
+    if (next) {
+      container.replaceWith(next);
+    }
+  }
+
+  async handleMessageAction(action, messageId, target) {
+    if (!action || !messageId) return;
+    if (action === 'pin') {
+      const isPinned = target?.dataset?.pinned === 'true';
+      await this.setPinnedState(messageId, !isPinned);
+    } else if (action === 'announcement') {
+      const isAnnouncement = target?.dataset?.announcement === 'true';
+      let expiresAt;
+      if (!isAnnouncement) {
+        const input = prompt('Announcement duration in minutes (leave blank for no expiry):');
+        if (input) {
+          const minutes = parseInt(input, 10);
+          if (!Number.isNaN(minutes) && minutes > 0) {
+            const date = new Date(Date.now() + minutes * 60000);
+            expiresAt = date.toISOString();
+          }
+        }
+      }
+      await this.setAnnouncementState(messageId, !isAnnouncement, expiresAt);
+    }
+  }
+
+  async setPinnedState(messageId, shouldPin) {
+    try {
+      const response = await fetch(`/api/realtime/chat/messages/${messageId}/pin`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(true),
+        body: JSON.stringify({ pinned: shouldPin }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update pin');
+      }
+      const data = await response.json();
+      const updated = data.message;
+      this.messageCache.set(updated.id, updated);
+      this.syncMessageAcrossCollections(updated);
+      this.upsertPinnedMessage(updated);
+      this.refreshMessage(updated.id);
+    } catch (error) {
+      console.error('Failed to update pin:', error);
+      this.displaySystemMessage('Unable to update pin state.');
+    }
+  }
+
+  async setAnnouncementState(messageId, enabled, expiresAt) {
+    try {
+      const response = await fetch(`/api/realtime/chat/messages/${messageId}/announcement`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(true),
+        body: JSON.stringify({
+          isAnnouncement: enabled,
+          expiresAt: expiresAt || null,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update announcement');
+      }
+      const data = await response.json();
+      const updated = data.message;
+      this.messageCache.set(updated.id, updated);
+      this.syncMessageAcrossCollections(updated);
+      this.upsertAnnouncement(updated);
+      this.refreshMessage(updated.id);
+    } catch (error) {
+      console.error('Failed to update announcement:', error);
+      this.displaySystemMessage('Unable to update announcement state.');
+    }
+  }
+
   displaySystemMessage(message: string) {
     const systemMessage = {
       id: `sys-${Date.now()}`,
@@ -514,15 +991,57 @@ class UniversusChat {
     
     // Chat messages
     this.socket.on('chat:new_message', (data) => {
-      if (data.channelId === this.currentChannelId) {
-        this.appendMessage({
-          id: data.messageId,
-          user_id: data.userId,
-          username: data.username,
-          alliance_tag: data.allianceTag,
-          message: data.message,
-          created_at: data.timestamp
-        });
+      if (!data) return;
+      const payload = data.message
+        ? data
+        : {
+            channelId: data.channelId,
+            message: {
+              id: data.messageId,
+              user_id: data.userId,
+              username: data.username,
+              alliance_tag: data.allianceTag,
+              message: data.message,
+              created_at: data.timestamp,
+              channel_id: data.channelId,
+              reactions: {},
+              viewerReactions: [],
+            },
+          };
+
+      this.messageCache.set(payload.message.id, payload.message);
+      if (payload.channelId === this.currentChannelId) {
+        this.appendMessage(payload.message);
+      }
+    });
+
+    this.socket.on('chat:message_pinned', ({ channelId, message }) => {
+      if (!message) return;
+      this.messageCache.set(message.id, message);
+      if (channelId === this.currentChannelId) {
+        this.syncMessageAcrossCollections(message);
+        this.upsertPinnedMessage(message);
+        this.refreshMessage(message.id);
+      }
+    });
+
+    this.socket.on('chat:announcement_changed', ({ channelId, message }) => {
+      if (!message) return;
+      this.messageCache.set(message.id, message);
+      if (channelId === this.currentChannelId) {
+        this.syncMessageAcrossCollections(message);
+        this.upsertAnnouncement(message);
+        this.refreshMessage(message.id);
+      }
+    });
+
+    this.socket.on('chat:reaction_update', ({ channelId, messageId, reactions }) => {
+      if (channelId !== this.currentChannelId) return;
+      const message = this.messageCache.get(messageId);
+      if (message) {
+        message.reactions = reactions || {};
+        this.messageCache.set(messageId, message);
+        this.refreshMessage(messageId);
       }
     });
     
@@ -534,7 +1053,8 @@ class UniversusChat {
           sender_id: data.senderId,
           sender_username: data.senderUsername,
           message: data.message,
-          created_at: data.timestamp
+          created_at: data.timestamp,
+          conversation_id: data.conversationId,
         });
       } else {
         // Show notification
@@ -592,6 +1112,53 @@ class UniversusChat {
           typingTimeout = setTimeout(() => {
             // Stop typing indicator after 3 seconds
           }, 3000);
+        }
+      });
+    }
+
+    const messagesContainer = document.getElementById('chat-messages');
+    if (messagesContainer) {
+      messagesContainer.addEventListener('click', (event) => {
+        const target = (event.target as HTMLElement) || null;
+        if (!target) return;
+        const reactionBtn = target.closest('[data-reaction-btn]');
+        if (reactionBtn) {
+          const messageId = parseInt(reactionBtn.getAttribute('data-message-id') || '0', 10);
+          const reactionType = reactionBtn.getAttribute('data-reaction');
+          this.toggleReaction(messageId, reactionType);
+          return;
+        }
+        const actionBtn = target.closest('[data-message-action]');
+        if (actionBtn) {
+          const messageId = parseInt(actionBtn.getAttribute('data-message-id') || '0', 10);
+          const action = actionBtn.getAttribute('data-message-action');
+          this.handleMessageAction(action, messageId, actionBtn);
+        }
+      });
+    }
+
+    const pinnedContainer = document.getElementById('chat-pinned');
+    if (pinnedContainer) {
+      pinnedContainer.addEventListener('click', (event) => {
+        const target = (event.target as HTMLElement) || null;
+        if (!target) return;
+        const card = target.closest('[data-scroll-to]');
+        if (card) {
+          const messageId = parseInt(card.getAttribute('data-scroll-to') || '0', 10);
+          this.scrollToMessage(messageId);
+        }
+      });
+    }
+
+    const announcementContainer = document.getElementById('chat-announcements');
+    if (announcementContainer) {
+      announcementContainer.addEventListener('click', (event) => {
+        const target = (event.target as HTMLElement) || null;
+        if (!target) return;
+        const card = target.closest('[data-scroll-to]');
+        if (card) {
+          const messageId = parseInt(card.getAttribute('data-scroll-to') || '0', 10);
+          this.scrollToMessage(messageId);
         }
       });
     }

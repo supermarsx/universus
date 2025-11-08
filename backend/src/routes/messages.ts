@@ -3,9 +3,12 @@ import { MessagingService, MessageType } from '../services/messagingService';
 import { authenticateToken } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
+import { AllianceService } from '../services/allianceService';
+import { AlliancePermission } from '../types/alliance';
 
 const router = express.Router();
 const messagingService = new MessagingService(pool);
+const allianceService = new AllianceService();
 
 // Apply authentication middleware to all routes
 router.use(authenticateToken);
@@ -300,8 +303,18 @@ router.post('/alliance-circular', async (req: AuthRequest, res) => {
       });
     }
 
-    // Check if user has permission (leader/officer)
-    // In production, add proper role check here
+    const canSend = await allianceService.checkPermission(
+      allianceId,
+      userId,
+      AlliancePermission.SEND_ANNOUNCEMENTS
+    );
+
+    if (!canSend) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have permission to send alliance circulars',
+      });
+    }
 
     const sentCount = await messagingService.sendAllianceCircular(
       allianceId,

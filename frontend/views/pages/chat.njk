@@ -40,6 +40,8 @@
         </div>
       </div>
 
+      <div id="chat-announcements" class="chat-announcements" style="display:none;"></div>
+      <div id="chat-pinned" class="chat-pinned" style="display:none;"></div>
       <div id="chat-messages" class="chat-messages">
         <!-- Messages appear here -->
         <div class="chat-welcome">
@@ -61,6 +63,21 @@
         <button id="send-btn" class="btn btn-primary" disabled>
           Send
         </button>
+      </div>
+
+      <div id="chat-admin-controls" class="chat-admin-controls" style="display:none;">
+        <label class="control-pill">
+          <input type="checkbox" id="send-pin">
+          <span>Pin message</span>
+        </label>
+        <label class="control-pill" data-role="announcement">
+          <input type="checkbox" id="send-announcement">
+          <span>Announcement (world chat)</span>
+        </label>
+        <label class="control-pill small">
+          <span>Expires</span>
+          <input type="datetime-local" id="announcement-expiry" class="control-input">
+        </label>
       </div>
     </div>
 
@@ -296,6 +313,172 @@
   background: rgba(241, 196, 15, 0.1);
   border-left: 3px solid var(--warning-color);
   font-style: italic;
+}
+
+.chat-message.announcement-message {
+  border-left: 3px solid #fcd34d;
+  background: rgba(252, 211, 77, 0.08);
+}
+
+.chat-message.pinned-message {
+  border-left: 3px solid #7dd3fc;
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.message-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.message-badge.announcement {
+  background: rgba(252, 211, 77, 0.2);
+  color: #fcd34d;
+}
+
+.message-badge.pinned {
+  background: rgba(125, 211, 252, 0.2);
+  color: #7dd3fc;
+}
+
+.message-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.message-action-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.message-action-btn:hover {
+  border-color: rgba(125, 211, 252, 0.8);
+}
+
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.reaction-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.reaction-btn.active {
+  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.1);
+}
+
+.reaction-emoji {
+  font-size: 12px;
+}
+
+.chat-announcements,
+.chat-pinned {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.announcement-card,
+.pinned-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.announcement-card:hover,
+.pinned-card:hover {
+  border-color: rgba(74, 158, 255, 0.4);
+}
+
+.announcement-meta,
+.pinned-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+.announcement-body,
+.pinned-body {
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.chat-admin-controls {
+  display: none;
+  gap: 12px;
+  padding: 10px 20px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  flex-wrap: wrap;
+}
+
+.control-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+
+.control-pill input[type="checkbox"],
+.control-pill input[type="datetime-local"] {
+  accent-color: #4a9eff;
+}
+
+.control-pill.small {
+  border-radius: 8px;
+}
+
+.control-pill.disabled {
+  opacity: 0.4;
+}
+
+.control-input {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.message-highlight {
+  animation: highlightPulse 1.2s ease;
+}
+
+@keyframes highlightPulse {
+  0% { box-shadow: 0 0 0 rgba(74, 158, 255, 0); }
+  50% { box-shadow: 0 0 12px rgba(74, 158, 255, 0.6); }
+  100% { box-shadow: 0 0 0 rgba(74, 158, 255, 0); }
 }
 
 .chat-input-area {

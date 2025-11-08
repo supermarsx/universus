@@ -11,6 +11,9 @@
     let currentAlliance = null;
     let currentMember = null;
     let socket = null;
+    let playerPlanets = [];
+    let depotSessions = [];
+    let acsGroups = [];
 
     // API endpoints
     const API_BASE = '/api/alliances';
@@ -23,7 +26,10 @@
         
         // Load alliance data
         await loadAllianceData();
-        
+        await loadPlayerPlanets();
+        await loadDepotSessions();
+        await loadAcsGroups();
+
         // Setup event listeners
         setupEventListeners();
         
@@ -52,20 +58,41 @@
                 }
             });
 
-            if (response.ok) {
-                currentAlliance = await response.json();
+            const payload = await response.json();
+
+            if (response.ok && payload.success) {
+                currentAlliance = payload.data;
                 console.log('[Alliance Dashboard] Alliance data loaded:', currentAlliance);
-                updateUI();
             } else if (response.status === 404) {
                 console.log('[Alliance Dashboard] User is not in an alliance');
                 currentAlliance = null;
-                updateUI();
             } else {
-                console.error('[Alliance Dashboard] Failed to load alliance data:', response.statusText);
+                console.error('[Alliance Dashboard] Failed to load alliance data:', payload?.error || response.statusText);
+                currentAlliance = null;
+                showNotification(payload?.error || 'Failed to load alliance data', 'error');
             }
+
+            updateUI();
         } catch (error) {
             console.error('[Alliance Dashboard] Error loading alliance data:', error);
             showNotification('Failed to load alliance data', 'error');
+        }
+    }
+
+    async function loadPlayerPlanets() {
+        try {
+            const response = await fetch('/api/planets', {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+
+            if (!response.ok) throw new Error('Failed to load planets');
+
+            const data = await response.json();
+            playerPlanets = Array.isArray(data) ? data : data.planets || [];
+            populatePlanetSelects();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Error loading planets:', error);
+            playerPlanets = [];
         }
     }
 
@@ -74,7 +101,17 @@
      */
     function updateUI() {
         if (!currentAlliance) {
-            console.log('[Alliance Dashboard] No alliance data to display');
+            const emptyState = document.getElementById('membersList');
+            if (emptyState) {
+                emptyState.innerHTML = `
+                    <div class="empty-state">
+                        <p>You are not currently a member of an alliance.</p>
+                        <button class="btn btn-primary" onclick="window.location.href='/alliance/manage'">
+                            Manage Alliances
+                        </button>
+                    </div>
+                `;
+            }
             return;
         }
 
@@ -104,9 +141,9 @@
         }
 
         // Update announcements
-        if (currentAlliance.announcements && currentAlliance.announcements.length > 0) {
-            renderAnnouncements(currentAlliance.announcements);
-        }
+        renderAnnouncements(currentAlliance.announcements || []);
+
+        populatePlanetSelects();
 
         // Update action buttons visibility based on permissions
         updateActionButtons();
@@ -172,6 +209,53 @@
         return card;
     }
 
+    function populatePlanetSelects() {
+        const depotHostSelect = document.getElementById('hostPlanetSelect');
+        const depotGuestSelect = document.getElementById('guestPlanetSelect');
+        const transportSelect = document.getElementById('transportPlanetSelect');
+
+        if (!depotHostSelect && !depotGuestSelect && !transportSelect) {
+            return;
+        }
+
+        if (!playerPlanets || playerPlanets.length === 0) {
+            [depotHostSelect, depotGuestSelect, transportSelect].forEach((select) => {
+                if (select) {
+                    select.innerHTML = '<option value="">No planets available</option>';
+                    select.disabled = true;
+                }
+            });
+            return;
+        }
+
+        if (depotHostSelect) {
+            const hostOptions = playerPlanets
+                .filter((planet) => (planet.alliance_depot || 0) > 0)
+                .map(
+                    (planet) =>
+                        `<option value="${planet.id}">${escapeHtml(planet.name)} — Depot Lv ${planet.alliance_depot || 0}</option>`
+                )
+                .join('');
+            depotHostSelect.innerHTML =
+                hostOptions || '<option value="">No depot-enabled planets</option>';
+            depotHostSelect.disabled = !hostOptions;
+        }
+
+        const defaultOptions = playerPlanets
+            .map(
+                (planet) =>
+                    `<option value="${planet.id}">${escapeHtml(planet.name)} [${planet.galaxy}:${planet.system}:${planet.position}]</option>`
+            )
+            .join('');
+
+        [depotGuestSelect, transportSelect].forEach((select) => {
+            if (select) {
+                select.innerHTML = defaultOptions;
+                select.disabled = false;
+            }
+        });
+    }
+
     /**
      * Render activity feed
      */
@@ -216,10 +300,164 @@
 
         announcementsList.innerHTML = '';
 
+        if (!announcements || announcements.length === 0) {
+            announcementsList.innerHTML = `
+                <div class="empty-state">
+                    <span class="css-icon icon-broadcast"></span>
+                    <p>No announcements yet</p>
+                </div>
+            `;
+            return;
+        }
+
         announcements.forEach(announcement => {
             const announcementCard = createAnnouncementCard(announcement);
             announcementsList.appendChild(announcementCard);
         });
+    }
+
+    async function loadDepotSessions() {
+        if (!currentAlliance || !currentAlliance.alliance_id) {
+            return;
+        }
+        try {
+            const response = await fetch(
+                `${API_BASE}/${currentAlliance.alliance_id}/depot/sessions`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error('Failed to load depot sessions');
+            }
+
+            const payload = await response.json();
+            depotSessions = payload.data || [];
+            renderDepotSessions();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Error loading depot sessions:', error);
+        }
+    }
+
+    function renderDepotSessions() {
+        const container = document.getElementById('depotSessionsList');
+        if (!container) return;
+
+        if (!depotSessions || depotSessions.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="css-icon icon-fuel"></span>
+                    <p>No depot requests yet</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = depotSessions
+            .map((session) => {
+                const metadata = session.metadata || {};
+                const requested = metadata.requestedDeuterium || metadata.requested_deuterium || 0;
+                const statusClass = session.status?.toLowerCase() || 'pending';
+                const canApprove = hasAlliancePermission('manage_resources');
+
+                const actions =
+                    statusClass === 'pending' && canApprove
+                        ? `
+                            <div class="logistics-session-actions">
+                                <button class="btn btn-sm btn-success" onclick="approveDepotSession(${session.id})">Approve</button>
+                                <button class="btn btn-sm btn-danger" onclick="cancelDepotSession(${session.id})">Cancel</button>
+                            </div>
+                        `
+                        : '';
+
+                return `
+                    <div class="logistics-session ${statusClass}">
+                        <div class="logistics-session-header">
+                            <div>
+                                <strong>${escapeHtml(session.guest_username || 'Member')}</strong>
+                                <span class="logistics-session-meta">needs ${formatNumber(requested)} deut</span>
+                            </div>
+                            <span class="status-badge status-${statusClass}">${statusClass}</span>
+                        </div>
+                        <div class="logistics-session-meta">
+                            Host: ${escapeHtml(session.host_username || 'N/A')} (${session.host_galaxy}:${session.host_system}:${session.host_position})
+                        </div>
+                        ${actions}
+                    </div>
+                `;
+            })
+            .join('');
+    }
+
+    async function loadAcsGroups() {
+        try {
+            const response = await fetch('/api/acs', {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load ACS groups');
+            }
+
+            const payload = await response.json();
+            acsGroups = payload.groups || [];
+            renderAcsGroups();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Error loading ACS groups:', error);
+            acsGroups = [];
+            renderAcsGroups();
+        }
+    }
+
+    function renderAcsGroups() {
+        const container = document.getElementById('acsGroupList');
+        if (!container) return;
+
+        if (!acsGroups || acsGroups.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <span class="css-icon icon-target"></span>
+                    <p>No active ACS groups</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = acsGroups
+            .map((group) => {
+                const coord = `[${group.target_galaxy}:${group.target_system}:${group.target_position}]`;
+                const windowStart = group.departure_window_start
+                    ? new Date(group.departure_window_start).toLocaleString()
+                    : '';
+                const windowEnd = group.departure_window_end
+                    ? new Date(group.departure_window_end).toLocaleString()
+                    : '';
+                return `
+                    <div class="acs-group-card">
+                        <div class="acs-group-header">
+                            <div>
+                                <strong>${group.mission_type?.toUpperCase() || 'ATTACK'}</strong>
+                                <span class="acs-group-meta">${coord}</span>
+                            </div>
+                            <span class="status-badge">${group.member_count || 0} members</span>
+                        </div>
+                        <div class="acs-group-meta">
+                            <span>Window: ${windowStart || 'now'} - ${windowEnd || 'soon'}</span>
+                        </div>
+                        ${group.notes ? `<div class="acs-group-notes">${escapeHtml(group.notes)}</div>` : ''}
+                        <div class="acs-group-actions">
+                            <button class="btn btn-sm btn-primary" onclick="joinAcsGroup(${group.id})">Join</button>
+                            <button class="btn btn-sm btn-secondary" onclick="leaveAcsGroup(${group.id})">Leave</button>
+                        </div>
+                    </div>
+                `;
+            })
+            .join('');
     }
 
     /**
@@ -232,14 +470,14 @@
         card.innerHTML = `
             <div class="announcement-header">
                 <div class="announcement-author">
-                    <strong>${escapeHtml(announcement.author_name)}</strong>
-                    <span class="announcement-role">${announcement.author_role}</span>
+                    <strong>${escapeHtml(announcement.author_name || announcement.created_by_username || 'Alliance Command')}</strong>
+                    ${announcement.author_role ? `<span class="announcement-role">${escapeHtml(announcement.author_role)}</span>` : ''}
                 </div>
                 <div class="announcement-time">${formatTimeAgo(announcement.created_at)}</div>
             </div>
             <div class="announcement-content">
                 <h3 class="announcement-title">${escapeHtml(announcement.title)}</h3>
-                <div class="announcement-message">${escapeHtml(announcement.message)}</div>
+                <div class="announcement-message">${escapeHtml(announcement.content || announcement.message || '')}</div>
             </div>
             ${announcement.is_pinned ? `
             <div class="announcement-pinned-badge">
@@ -275,6 +513,27 @@
                 }
             });
         });
+
+        const depotRequestForm = document.getElementById('depotRequestForm');
+        if (depotRequestForm) {
+            depotRequestForm.addEventListener('submit', handleDepotRequest);
+        }
+
+        const sharedTransportForm = document.getElementById('sharedTransportForm');
+        if (sharedTransportForm) {
+            sharedTransportForm.addEventListener('submit', handleSharedTransport);
+        }
+
+        const targetTypeSelect = document.getElementById('transportTargetType');
+        if (targetTypeSelect) {
+            targetTypeSelect.addEventListener('change', toggleSharedTransportTarget);
+            toggleSharedTransportTarget(targetTypeSelect.value);
+        }
+
+        const acsForm = document.getElementById('acsCreateForm');
+        if (acsForm) {
+            acsForm.addEventListener('submit', handleCreateAcsGroup);
+        }
     }
 
     /**
@@ -447,8 +706,9 @@
         const formData = new FormData(form);
         const data = {
             title: formData.get('title'),
-            message: formData.get('message'),
-            is_pinned: formData.get('is_pinned') === 'on'
+            content: formData.get('message'),
+            is_pinned: formData.get('is_pinned') === 'on',
+            broadcast: true
         };
 
         try {
@@ -503,6 +763,13 @@
         showNotification('Activity refreshed', 'success');
     };
 
+    window.loadDepotSessions = loadDepotSessions;
+    window.approveDepotSession = approveDepotSession;
+    window.cancelDepotSession = cancelDepotSession;
+    window.joinAcsGroup = joinAcsGroup;
+    window.leaveAcsGroup = leaveAcsGroup;
+    window.loadAcsGroups = loadAcsGroups;
+
     /**
      * Update action buttons based on permissions
      */
@@ -529,6 +796,278 @@
     function canManageMembers() {
         if (!currentAlliance || !currentAlliance.current_member_role) return false;
         return ['FOUNDER', 'LEADER', 'OFFICER'].includes(currentAlliance.current_member_role);
+    }
+
+    function hasAlliancePermission(permission) {
+        if (!currentAlliance || !currentAlliance.user_permissions) return false;
+        return currentAlliance.user_permissions.includes(permission);
+    }
+
+    async function handleDepotRequest(event) {
+        event.preventDefault();
+        if (!currentAlliance || !currentAlliance.alliance_id) return;
+
+        const hostPlanetId = parseInt(document.getElementById('hostPlanetSelect')?.value || '0', 10);
+        const guestPlanetId = parseInt(document.getElementById('guestPlanetSelect')?.value || '0', 10);
+        const requestedDeuterium = parseInt(document.getElementById('depotRequestAmount')?.value || '0', 10);
+        const notes = document.getElementById('depotRequestNotes')?.value || '';
+
+        if (!hostPlanetId || !guestPlanetId || requestedDeuterium <= 0) {
+            showNotification('Please complete all depot fields', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/${currentAlliance.alliance_id}/depot/request`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({
+                    hostPlanetId,
+                    guestPlanetId,
+                    requestedDeuterium,
+                    notes,
+                }),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.error?.message || error?.message || 'Failed to submit request');
+            }
+
+            showNotification('Depot request submitted', 'success');
+            (event.target as HTMLFormElement).reset();
+            populatePlanetSelects();
+            await loadDepotSessions();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Depot request failed:', error);
+            showNotification(error.message || 'Failed to submit depot request', 'error');
+        }
+    }
+
+    async function handleSharedTransport(event) {
+        event.preventDefault();
+        if (!currentAlliance || !currentAlliance.alliance_id) return;
+
+        const originPlanetId = parseInt(document.getElementById('transportPlanetSelect')?.value || '0', 10);
+        const targetType = (document.getElementById('transportTargetType') as HTMLSelectElement)?.value || 'treasury';
+        const resourceType = (document.getElementById('transportResourceType') as HTMLSelectElement)?.value || 'metal';
+        const amount = parseInt(document.getElementById('transportAmount')?.value || '0', 10);
+        const notes = document.getElementById('transportNotes')?.value || '';
+        const targetPlanetId =
+            targetType === 'member'
+                ? parseInt(document.getElementById('transportTargetPlanet')?.value || '0', 10)
+                : null;
+
+        if (!originPlanetId || amount <= 0) {
+            showNotification('Please provide origin planet and amount', 'error');
+            return;
+        }
+
+        if (targetType === 'member' && !targetPlanetId) {
+            showNotification('Please provide member planet ID', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/${currentAlliance.alliance_id}/shared-transport`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({
+                    fromPlanetId: originPlanetId,
+                    targetType,
+                    targetPlanetId,
+                    resourceType,
+                    amount,
+                    notes,
+                }),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.error?.message || error?.message || 'Failed to send transport');
+            }
+
+            showNotification('Shared transport dispatched', 'success');
+            (event.target as HTMLFormElement).reset();
+            populatePlanetSelects();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Shared transport failed:', error);
+            showNotification(error.message || 'Failed to send shared transport', 'error');
+        }
+    }
+
+    function toggleSharedTransportTarget(eventOrValue) {
+        const container = document.getElementById('transportTargetPlanetGroup');
+        if (!container) return;
+        const value =
+            typeof eventOrValue === 'string'
+                ? eventOrValue
+                : eventOrValue?.target?.value || 'treasury';
+        container.style.display = value === 'member' ? 'block' : 'none';
+    }
+
+    async function approveDepotSession(sessionId) {
+        if (!currentAlliance || !currentAlliance.alliance_id) return;
+        const session = depotSessions.find((s) => s.id === sessionId);
+        const defaultAmount =
+            session?.metadata?.approved_amount ||
+            session?.metadata?.requestedDeuterium ||
+            session?.metadata?.requested_deuterium ||
+            '';
+        const input = prompt('Approve amount of deuterium to transfer', defaultAmount);
+        if (input === null) return;
+        const amount = Number(input);
+        if (!amount || amount <= 0) {
+            showNotification('Please enter a valid amount', 'error');
+            return;
+        }
+        try {
+            const response = await fetch(
+                `${API_BASE}/${currentAlliance.alliance_id}/depot/${sessionId}/approve`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    },
+                    body: JSON.stringify({ amount }),
+                }
+            );
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.error?.message || error?.message || 'Failed to approve request');
+            }
+
+            showNotification('Depot request approved', 'success');
+            await loadDepotSessions();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Approve depot failed:', error);
+            showNotification(error.message || 'Failed to approve request', 'error');
+        }
+    }
+
+    async function cancelDepotSession(sessionId) {
+        if (!currentAlliance || !currentAlliance.alliance_id) return;
+        try {
+            const response = await fetch(
+                `${API_BASE}/${currentAlliance.alliance_id}/depot/${sessionId}/cancel`,
+                {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.error?.message || error?.message || 'Failed to cancel request');
+            }
+
+            showNotification('Depot request cancelled', 'info');
+            await loadDepotSessions();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Cancel depot failed:', error);
+            showNotification(error.message || 'Failed to cancel request', 'error');
+        }
+    }
+
+    async function handleCreateAcsGroup(event) {
+        event.preventDefault();
+        try {
+            const payload = {
+                missionType: (document.getElementById('acsMissionType') as HTMLSelectElement)?.value || 'attack',
+                targetGalaxy: parseInt(document.getElementById('acsGalaxy')?.value || '1', 10),
+                targetSystem: parseInt(document.getElementById('acsSystem')?.value || '1', 10),
+                targetPosition: parseInt(document.getElementById('acsPosition')?.value || '1', 10),
+                departureWindowStart: (document.getElementById('acsWindowStart') as HTMLInputElement)?.value || undefined,
+                departureWindowEnd: (document.getElementById('acsWindowEnd') as HTMLInputElement)?.value || undefined,
+                notes: document.getElementById('acsNotes')?.value || '',
+            };
+
+            const response = await fetch('/api/acs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.message || 'Failed to create ACS group');
+            }
+
+            showNotification('ACS group created', 'success');
+            (event.target as HTMLFormElement).reset();
+            loadAcsGroups();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Create ACS failed:', error);
+            showNotification(error.message || 'Failed to create ACS group', 'error');
+        }
+    }
+
+    async function joinAcsGroup(groupId) {
+        try {
+            const defaultPlanetId = playerPlanets[0]?.id || '';
+            const planetInput = prompt('Enter planet ID to dispatch from', defaultPlanetId);
+            if (planetInput === null) return;
+            const planetId = Number(planetInput);
+            if (!planetId) {
+                showNotification('Invalid planet ID', 'error');
+                return;
+            }
+
+            const response = await fetch(`/api/acs/${groupId}/join`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({ planetId }),
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.message || 'Failed to join ACS group');
+            }
+
+            showNotification('Joined ACS group', 'success');
+            loadAcsGroups();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Join ACS failed:', error);
+            showNotification(error.message || 'Failed to join ACS group', 'error');
+        }
+    }
+
+    async function leaveAcsGroup(groupId) {
+        try {
+            const response = await fetch(`/api/acs/${groupId}/leave`, {
+                method: 'DELETE',
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error?.message || 'Failed to leave ACS group');
+            }
+
+            showNotification('Left ACS group', 'info');
+            loadAcsGroups();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Leave ACS failed:', error);
+            showNotification(error.message || 'Failed to leave ACS group', 'error');
+        }
     }
 
     /**

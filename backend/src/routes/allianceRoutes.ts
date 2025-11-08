@@ -4,6 +4,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { AllianceService } from '../services/allianceService';
+import allianceLogisticsService from '../services/allianceLogisticsService';
 import { AllianceWarService } from '../services/allianceWarService';
 import { AllianceDiplomacyService } from '../services/allianceDiplomacyService';
 
@@ -28,6 +29,20 @@ router.post('/create', async (req: Request, res: Response) => {
         const alliance = await allianceService.createAlliance(userId, req.body);
         res.json({ success: true, data: alliance });
     } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+// Get current user's alliance dashboard
+router.get('/my-alliance', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const dashboard = await allianceService.getMyAllianceDashboard(userId);
+        res.json({ success: true, data: dashboard });
+    } catch (error: any) {
+        if (error.message === 'NOT_IN_ALLIANCE') {
+            return res.status(404).json({ success: false, error: { message: 'You are not part of an alliance' } });
+        }
         res.status(400).json({ success: false, error: { message: error.message } });
     }
 });
@@ -150,6 +165,18 @@ router.post('/:allianceId/applications/:applicationId/process', async (req: Requ
     }
 });
 
+// List applications
+router.get('/:allianceId/applications', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        const applications = await allianceService.getAllianceApplications(allianceId, userId);
+        res.json({ success: true, data: applications });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
 // Leave alliance
 router.post('/:allianceId/leave', async (req: Request, res: Response) => {
     try {
@@ -169,6 +196,32 @@ router.post('/:allianceId/members/manage', async (req: Request, res: Response) =
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.manageMember(allianceId, userId, req.body);
         res.json({ success: true, message: 'Member managed successfully' });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+// ============================================================================
+// ANNOUNCEMENTS & COMMUNICATION
+// ============================================================================
+
+router.get('/:allianceId/announcements', async (req: Request, res: Response) => {
+    try {
+        const allianceId = parseInt(req.params.allianceId);
+        const limit = parseInt(req.query.limit as string) || 10;
+        const announcements = await allianceService.getAnnouncements(allianceId, limit);
+        res.json({ success: true, data: announcements });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+router.post('/:allianceId/announcements', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        const announcement = await allianceService.createAnnouncement(allianceId, userId, req.body);
+        res.json({ success: true, data: announcement });
     } catch (error: any) {
         res.status(400).json({ success: false, error: { message: error.message } });
     }
@@ -197,6 +250,71 @@ router.post('/:allianceId/resources/withdraw', async (req: Request, res: Respons
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.withdrawResources(allianceId, userId, req.body);
         res.json({ success: true, message: 'Resources withdrawn successfully' });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+// ============================================================================
+// LOGISTICS ROUTES (Depot & Shared Transport)
+// ============================================================================
+
+router.post('/:allianceId/depot/request', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        const session = await allianceLogisticsService.requestDepotDock(allianceId, userId, req.body);
+        res.json({ success: true, data: session });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+router.post('/:allianceId/depot/:sessionId/approve', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        const sessionId = parseInt(req.params.sessionId);
+        const result = await allianceLogisticsService.approveDepotDock(allianceId, userId, {
+            sessionId,
+            approvedAmount: Number(req.body.amount),
+        });
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+router.post('/:allianceId/depot/:sessionId/cancel', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        const sessionId = parseInt(req.params.sessionId);
+        await allianceLogisticsService.cancelDepotSession(allianceId, userId, sessionId);
+        res.json({ success: true, message: 'Depot request cancelled' });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+router.post('/:allianceId/shared-transport', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        await allianceLogisticsService.createSharedTransport(allianceId, userId, req.body);
+        res.json({ success: true, message: 'Shared transport completed' });
+    } catch (error: any) {
+        res.status(400).json({ success: false, error: { message: error.message } });
+    }
+});
+
+router.get('/:allianceId/depot/sessions', async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.id;
+        const allianceId = parseInt(req.params.allianceId);
+        const status = req.query.status as string | undefined;
+        const sessions = await allianceLogisticsService.getDepotSessions(allianceId, userId, status);
+        res.json({ success: true, data: sessions });
     } catch (error: any) {
         res.status(400).json({ success: false, error: { message: error.message } });
     }

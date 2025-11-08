@@ -82,6 +82,14 @@ export interface Alliance {
     is_open: boolean;
     is_recruiting: boolean;
     min_score_requirement: number;
+    auto_accept_min_score?: number | null;
+    auto_reject_below_score?: number | null;
+    auto_application_notes?: string | null;
+    depot_settings?: {
+        refuel_rate: number;
+        max_docked_fleets: number;
+        allow_allies: boolean;
+    };
     
     // Statistics
     total_members: number;
@@ -528,6 +536,9 @@ export interface CreateAllianceRequest {
     is_open?: boolean;
     is_recruiting?: boolean;
     min_score_requirement?: number;
+    auto_accept_min_score?: number;
+    auto_reject_below_score?: number;
+    auto_application_notes?: string;
     color_primary?: string;
     color_secondary?: string;
 }
@@ -538,6 +549,9 @@ export interface UpdateAllianceRequest {
     is_open?: boolean;
     is_recruiting?: boolean;
     min_score_requirement?: number;
+    auto_accept_min_score?: number | null;
+    auto_reject_below_score?: number | null;
+    auto_application_notes?: string | null;
     logo_url?: string;
     banner_url?: string;
     color_primary?: string;
@@ -649,6 +663,9 @@ export interface AllianceDashboardResponse {
     user_rank: AllianceRank;
     user_permissions: AlliancePermission[];
     recent_members: AllianceMember[];
+    announcements: AllianceAnnouncement[];
+    members: AllianceMember[];
+    recent_activity: any[];
     treasury: {
         metal: number;
         crystal: number;
@@ -658,6 +675,13 @@ export interface AllianceDashboardResponse {
     recent_messages: AllianceMessage[];
     territories: AllianceTerritory[];
     leaderboard_position: number;
+    current_member_role: string;
+    war_points?: number;
+    territories_count?: number;
+    diplomatic_relations_count?: number;
+    tag?: string;
+    name?: string;
+    description?: string;
 }
 
 export interface AllianceLeaderboardResponse {
@@ -681,4 +705,19 @@ export interface AllianceStatistics {
     };
     territories_controlled: number;
     diplomatic_relations_count: number;
+}
+
+export interface AllianceAnnouncement {
+    id: number;
+    alliance_id: number;
+    title: string;
+    content: string;
+    is_pinned: boolean;
+    created_by?: number;
+    author_name?: string;
+    author_role?: string;
+    created_by_username?: string;
+    created_at: Date;
+    pinned_at?: Date;
+    metadata?: any;
 }

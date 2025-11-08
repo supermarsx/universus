@@ -13,6 +13,7 @@ let alliancePage = 0;
 const PAGE_SIZE = 50;
 let socket = null;
 let currentUserId = null;
+let sparklineIdCounter = 0;
 
 /**
  * Initialize the leaderboard page
@@ -202,11 +203,12 @@ async function loadPlayersLeaderboard() {
             throw new Error('Failed to fetch players leaderboard');
         }
 
-        const players = await response.json();
+        const payload = await response.json();
+        const players = Array.isArray(payload) ? payload : payload.data || [];
 
         loadingEl.style.display = 'none';
 
-        if (players.length === 0) {
+        if (!players.length) {
             emptyEl.style.display = 'block';
             return;
         }
@@ -215,6 +217,8 @@ async function loadPlayersLeaderboard() {
         tbody.innerHTML = players.map(player => {
             const isCurrentPlayer = player.userId === currentUserId;
             const rankBadgeClass = getRankBadgeClass(player.rank);
+            const sparkline = renderSparkline(player.scoreTrend);
+            const rankDelta = renderRankDelta(player.weeklyRankChange);
 
             return `
                 <tr class="${isCurrentPlayer ? 'current-player' : ''}">
@@ -234,6 +238,8 @@ async function loadPlayersLeaderboard() {
                     <td>${formatNumber(player.researchScore || 0)}</td>
                     <td>${formatNumber(player.fleetScore || 0)}</td>
                     <td>${formatNumber(player.defenseScore || 0)}</td>
+                    <td>${sparkline}</td>
+                    <td>${rankDelta}</td>
                 </tr>
             `;
         }).join('');
@@ -288,11 +294,12 @@ async function loadAlliancesLeaderboard() {
             throw new Error('Failed to fetch alliances leaderboard');
         }
 
-        const alliances = await response.json();
+        const alliancePayload = await response.json();
+        const alliances = Array.isArray(alliancePayload) ? alliancePayload : alliancePayload.data || [];
 
         loadingEl.style.display = 'none';
 
-        if (alliances.length === 0) {
+        if (!alliances.length) {
             emptyEl.style.display = 'block';
             return;
         }
@@ -300,6 +307,8 @@ async function loadAlliancesLeaderboard() {
         // Render table
         tbody.innerHTML = alliances.map(alliance => {
             const rankBadgeClass = getRankBadgeClass(alliance.rank);
+            const sparkline = renderSparkline(alliance.scoreTrend);
+            const rankDelta = renderRankDelta(alliance.weeklyRankChange);
 
             return `
                 <tr>
@@ -317,6 +326,8 @@ async function loadAlliancesLeaderboard() {
                     </td>
                     <td>${alliance.memberCount}</td>
                     <td>${formatNumber(alliance.averageScore)}</td>
+                    <td>${sparkline}</td>
+                    <td>${rankDelta}</td>
                 </tr>
             `;
         }).join('');
@@ -435,8 +446,63 @@ function getRankBadgeClass(rank) {
  * Format number with commas
  */
 function formatNumber(num) {
-    if (typeof num !== 'number') return '0';
+    if (typeof num !== 'number') num = Number(num) || 0;
     return num.toLocaleString();
+}
+
+function renderSparkline(trend = []) {
+    if (!trend || trend.length === 0) {
+        return '<div class="sparkline sparkline-empty">–</div>';
+    }
+
+    const width = 80;
+    const height = 24;
+    const scores = trend.map(point => Number(point.score) || 0);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const range = max - min || 1;
+    const steps = trend.length - 1 || 1;
+    const sparkId = `spark-${sparklineIdCounter++}`;
+
+    const pointPairs = scores
+        .map((score, idx) => {
+            const x = (idx / steps) * width;
+            const y = height - ((score - min) / range) * height;
+            return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
+        })
+        .map(point => `${point.x},${point.y}`);
+
+    const linePoints = pointPairs.join(' ');
+
+    const areaPathPoints = [...pointPairs, `${width},${height}`, `0,${height}`].join(' ');
+
+    return `
+        <div class="sparkline">
+            <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="${sparkId}-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#4a9eff" stop-opacity="0.35" />
+                        <stop offset="100%" stop-color="#4a9eff" stop-opacity="0" />
+                    </linearGradient>
+                </defs>
+                <polygon class="sparkline-area" points="${areaPathPoints}" fill="url(#${sparkId}-gradient)" />
+                <polyline class="sparkline-line" points="${linePoints}" />
+            </svg>
+        </div>
+    `;
+}
+
+function renderRankDelta(delta) {
+    if (delta === null || delta === undefined) {
+        return '<span class="rank-delta neutral">–</span>';
+    }
+    if (delta > 0) {
+        return `<span class="rank-delta up">▲ ${delta}</span>`;
+    }
+    if (delta < 0) {
+        return `<span class="rank-delta down">▼ ${Math.abs(delta)}</span>`;
+    }
+    return '<span class="rank-delta neutral">0</span>';
 }
 
 /**

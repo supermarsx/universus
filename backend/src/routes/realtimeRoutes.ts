@@ -8,9 +8,11 @@ import { authenticateToken } from '../middleware/auth';
 import chatService from '../services/chatService';
 import notificationService from '../services/notificationService';
 import { pool } from '../config/database';
+import { getRealtimeHandler } from '../socket';
 import {
   ChatMessageType,
   ChatRestrictionType,
+  ChatReactionType,
   NotificationCategory,
   PlayerStatus,
   TradeOfferType,
@@ -22,6 +24,19 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticateToken);
+
+const resolveAuthUser = (req: any) => {
+  const user = req.user || {};
+  const adminLevel = user.admin_level ?? user.adminLevel ?? null;
+  return {
+    id: user.id ?? user.userId,
+    isAdmin: user.is_admin ?? user.isAdmin ?? false,
+    isModerator:
+      user.is_moderator ??
+      user.isModerator ??
+      (adminLevel ? ['moderator', 'game_admin', 'super_admin'].includes(adminLevel) : false),
+  };
+};
 
 // =====================================================
 // CHAT ROUTES
@@ -40,11 +55,17 @@ router.get('/chat/channels', async (req, res) => {
 // Get chat history for a channel
 router.get('/chat/channels/:channelId/messages', async (req, res) => {
   try {
+    const { id: userId } = resolveAuthUser(req);
     const channelId = parseInt(req.params.channelId);
     const limit = parseInt(req.query.limit as string) || 50;
     const before = req.query.before ? new Date(req.query.before as string) : undefined;
 
-    const history = await chatService.getChatHistory({ channelId, limit, before });
+    const history = await chatService.getChatHistory({
+      channelId,
+      limit,
+      before,
+      viewerUserId: userId,
+    });
     res.json(history);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -54,14 +75,17 @@ router.get('/chat/channels/:channelId/messages', async (req, res) => {
 // Send chat message (REST endpoint - WebSocket is preferred)
 router.post('/chat/channels/:channelId/messages', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const channelId = parseInt(req.params.channelId);
-    const { message, messageType } = req.body;
+    const { message, messageType, isAnnouncement, announcementExpiresAt, pinMessage } = req.body;
 
     const chatMessage = await chatService.sendMessage(userId, {
       channelId,
       message,
       messageType: messageType || ChatMessageType.TEXT,
+      isAnnouncement,
+      announcementExpiresAt: announcementExpiresAt ? new Date(announcementExpiresAt) : undefined,
+      pinMessage,
     });
 
     res.json({ message: chatMessage });
@@ -73,7 +97,7 @@ router.post('/chat/channels/:channelId/messages', async (req, res) => {
 // Edit chat message
 router.put('/chat/messages/:messageId', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const messageId = parseInt(req.params.messageId);
     const { message } = req.body;
 
@@ -87,8 +111,7 @@ router.put('/chat/messages/:messageId', async (req, res) => {
 // Delete chat message
 router.delete('/chat/messages/:messageId', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
-    const isAdmin = (req as any).user.isAdmin;
+    const { id: userId, isAdmin } = resolveAuthUser(req);
     const messageId = parseInt(req.params.messageId);
 
     await chatService.deleteMessage(messageId, userId, isAdmin);
@@ -101,7 +124,7 @@ router.delete('/chat/messages/:messageId', async (req, res) => {
 // Flag message (report)
 router.post('/chat/messages/:messageId/flag', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const messageId = parseInt(req.params.messageId);
     const { reason } = req.body;
 
@@ -112,10 +135,73 @@ router.post('/chat/messages/:messageId/flag', async (req, res) => {
   }
 });
 
+router.post('/chat/messages/:messageId/pin', async (req, res) => {
+  try {
+    const { id: userId, isAdmin, isModerator } = resolveAuthUser(req);
+    if (!(isAdmin || isModerator)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    const messageId = parseInt(req.params.messageId);
+    const shouldPin = req.body?.pinned !== false;
+
+    const message = await chatService.pinMessage(messageId, userId, shouldPin);
+    const handler = getRealtimeHandler();
+    handler?.broadcastChatPinUpdate(message.channel_id, message);
+
+    res.json({ message });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/chat/messages/:messageId/announcement', async (req, res) => {
+  try {
+    const { id: userId, isAdmin, isModerator } = resolveAuthUser(req);
+    if (!(isAdmin || isModerator)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    const messageId = parseInt(req.params.messageId);
+    const { isAnnouncement, expiresAt } = req.body || {};
+
+    const message = await chatService.markAnnouncement(
+      messageId,
+      userId,
+      Boolean(isAnnouncement),
+      expiresAt ? new Date(expiresAt) : null
+    );
+    const handler = getRealtimeHandler();
+    handler?.broadcastChatAnnouncementUpdate(message.channel_id, message);
+
+    res.json({ message });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/chat/messages/:messageId/reactions', async (req, res) => {
+  try {
+    const { id: userId } = resolveAuthUser(req);
+    const messageId = parseInt(req.params.messageId);
+    const { reactionType } = req.body;
+    const result = await chatService.toggleReaction(
+      messageId,
+      userId,
+      reactionType as ChatReactionType
+    );
+
+    const handler = getRealtimeHandler();
+    handler?.broadcastChatReactionUpdate(result.channelId, result.messageId, result.reactions);
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Get chat activity stats (admin only)
 router.get('/chat/stats', async (req, res) => {
   try {
-    const isAdmin = (req as any).user.isAdmin;
+    const { isAdmin } = resolveAuthUser(req);
     if (!isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
@@ -134,7 +220,7 @@ router.get('/chat/stats', async (req, res) => {
 // Get user's private conversations
 router.get('/chat/conversations', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
 
@@ -148,7 +234,7 @@ router.get('/chat/conversations', async (req, res) => {
 // Get messages from a conversation
 router.get('/chat/conversations/:conversationId/messages', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const conversationId = parseInt(req.params.conversationId);
     const limit = parseInt(req.query.limit as string) || 50;
     const before = req.query.before ? new Date(req.query.before as string) : undefined;
@@ -163,7 +249,7 @@ router.get('/chat/conversations/:conversationId/messages', async (req, res) => {
 // Send private message (REST endpoint - WebSocket is preferred)
 router.post('/chat/private', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const { receiverId, message } = req.body;
 
     const privateMessage = await chatService.sendPrivateMessage(userId, {
@@ -184,7 +270,7 @@ router.post('/chat/private', async (req, res) => {
 // Get user notifications
 router.get('/notifications', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const unreadOnly = req.query.unreadOnly === 'true';
     const category = req.query.category as NotificationCategory | undefined;
     const limit = parseInt(req.query.limit as string) || 50;
@@ -207,7 +293,7 @@ router.get('/notifications', async (req, res) => {
 // Get notification by ID
 router.get('/notifications/:notificationId', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const notificationId = parseInt(req.params.notificationId);
 
     const notification = await notificationService.getNotificationById(notificationId, userId);
@@ -224,7 +310,7 @@ router.get('/notifications/:notificationId', async (req, res) => {
 // Mark notification as read
 router.put('/notifications/:notificationId/read', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const notificationId = parseInt(req.params.notificationId);
 
     await notificationService.markAsRead(notificationId, userId);
@@ -237,7 +323,7 @@ router.put('/notifications/:notificationId/read', async (req, res) => {
 // Mark all notifications as read
 router.put('/notifications/read/all', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const count = await notificationService.markAllAsRead(userId);
     res.json({ success: true, count });
   } catch (error: any) {
@@ -248,7 +334,7 @@ router.put('/notifications/read/all', async (req, res) => {
 // Archive notification
 router.put('/notifications/:notificationId/archive', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const notificationId = parseInt(req.params.notificationId);
 
     await notificationService.archiveNotification(notificationId, userId);
@@ -261,7 +347,7 @@ router.put('/notifications/:notificationId/archive', async (req, res) => {
 // Delete notification
 router.delete('/notifications/:notificationId', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const notificationId = parseInt(req.params.notificationId);
 
     await notificationService.deleteNotification(notificationId, userId);
@@ -274,7 +360,7 @@ router.delete('/notifications/:notificationId', async (req, res) => {
 // Get unread count
 router.get('/notifications/unread/count', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const count = await notificationService.getUnreadCount(userId);
     res.json({ count });
   } catch (error: any) {
@@ -285,7 +371,7 @@ router.get('/notifications/unread/count', async (req, res) => {
 // Get notification preferences
 router.get('/notifications/preferences', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const preferences = await notificationService.getUserPreferences(userId);
     res.json({ preferences });
   } catch (error: any) {
@@ -296,7 +382,7 @@ router.get('/notifications/preferences', async (req, res) => {
 // Update notification preference
 router.put('/notifications/preferences/:typeId', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const typeId = parseInt(req.params.typeId);
     const updates = req.body;
 
@@ -440,7 +526,7 @@ router.get('/trade/offers', async (req, res) => {
 // Create trade offer
 router.post('/trade/offers', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const {
       offerType,
       resourceOffered,
@@ -494,7 +580,7 @@ router.post('/trade/offers', async (req, res) => {
 // Accept trade offer
 router.post('/trade/offers/:offerId/accept', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const offerId = parseInt(req.params.offerId);
 
     // Get trade offer
@@ -552,7 +638,7 @@ router.post('/trade/offers/:offerId/accept', async (req, res) => {
 // Cancel trade offer
 router.delete('/trade/offers/:offerId', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const offerId = parseInt(req.params.offerId);
 
     const result = await pool.query(
@@ -576,7 +662,7 @@ router.delete('/trade/offers/:offerId', async (req, res) => {
 // Get user's trade history
 router.get('/trade/history', async (req, res) => {
   try {
-    const userId = (req as any).user.userId;
+    const { id: userId } = resolveAuthUser(req);
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 

@@ -221,9 +221,156 @@
                         <p>No recent activity</p>
                     </div>
                 {% endif %}
+        </div>
+
+        <!-- Logistics Section -->
+        <div class="alliance-section card-enhanced logistics-section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span class="css-icon icon-fuel"></span>
+                    Alliance Logistics
+                </h2>
+                <div class="section-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="loadDepotSessions()">
+                        <span class="css-icon icon-refresh"></span> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="logistics-grid">
+                <div class="logistics-card">
+                    <h3>Request Depot Refuel</h3>
+                    <form id="depotRequestForm">
+                        <div class="form-group">
+                            <label for="hostPlanetSelect">Host Planet</label>
+                            <select id="hostPlanetSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="guestPlanetSelect">Your Planet</label>
+                            <select id="guestPlanetSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="depotRequestAmount">Deuterium Needed</label>
+                            <input type="number" id="depotRequestAmount" min="1" required placeholder="e.g. 5000">
+                        </div>
+                        <div class="form-group">
+                            <label for="depotRequestNotes">Notes</label>
+                            <textarea id="depotRequestNotes" rows="2" placeholder="Optional instructions"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            Submit Request
+                        </button>
+                    </form>
+                </div>
+                <div class="logistics-card">
+                    <h3>Shared Transport</h3>
+                    <form id="sharedTransportForm">
+                        <div class="form-group">
+                            <label for="transportPlanetSelect">Origin Planet</label>
+                            <select id="transportPlanetSelect" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="transportTargetType">Target</label>
+                            <select id="transportTargetType">
+                                <option value="treasury">Alliance Treasury</option>
+                                <option value="member">Member Planet</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="transportTargetPlanetGroup" style="display:none;">
+                            <label for="transportTargetPlanet">Member Planet ID</label>
+                            <input type="number" id="transportTargetPlanet" placeholder="Planet ID">
+                        </div>
+                        <div class="form-group">
+                            <label for="transportResourceType">Resource</label>
+                            <select id="transportResourceType">
+                                <option value="metal">Metal</option>
+                                <option value="crystal">Crystal</option>
+                                <option value="deuterium">Deuterium</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="transportAmount">Amount</label>
+                            <input type="number" id="transportAmount" min="1" required placeholder="e.g. 10000">
+                        </div>
+                        <div class="form-group">
+                            <label for="transportNotes">Notes</label>
+                            <textarea id="transportNotes" rows="2" placeholder="Optional notes"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-accent btn-block">
+                            Send Transport
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="logistics-session-list" id="depotSessionsList">
+                <div class="empty-state">
+                    <span class="css-icon icon-fuel"></span>
+                    <p>No depot requests yet</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ACS Coordination Section -->
+        <div class="alliance-section card-enhanced acs-section">
+            <div class="section-header">
+                <h2 class="section-title">
+                    <span class="css-icon icon-target"></span>
+                    ACS Coordination
+                </h2>
+                <div class="section-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="loadAcsGroups()">
+                        <span class="css-icon icon-refresh"></span> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="acs-grid">
+                <div class="acs-card">
+                    <h3>Create ACS Group</h3>
+                    <form id="acsCreateForm">
+                        <div class="form-group">
+                            <label for="acsMissionType">Mission</label>
+                            <select id="acsMissionType">
+                                <option value="attack">Attack</option>
+                                <option value="defend">Defend</option>
+                            </select>
+                        </div>
+                        <div class="form-group coordinate-group">
+                            <label>Target Coordinates</label>
+                            <div class="coord-inputs">
+                                <input type="number" id="acsGalaxy" min="1" max="9" placeholder="G">
+                                <input type="number" id="acsSystem" min="1" max="499" placeholder="S">
+                                <input type="number" id="acsPosition" min="1" max="15" placeholder="P">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="acsWindowStart">Departure Window</label>
+                            <input type="datetime-local" id="acsWindowStart">
+                        </div>
+                        <div class="form-group">
+                            <label for="acsWindowEnd">Window End</label>
+                            <input type="datetime-local" id="acsWindowEnd">
+                        </div>
+                        <div class="form-group">
+                            <label for="acsNotes">Notes</label>
+                            <textarea id="acsNotes" rows="2" placeholder="Optional instructions"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            Create ACS
+                        </button>
+                    </form>
+                </div>
+                <div class="acs-card">
+                    <h3>Active Groups</h3>
+                    <div id="acsGroupList" class="acs-group-list">
+                        <div class="empty-state">
+                            <span class="css-icon icon-target"></span>
+                            <p>No active ACS groups</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
+</div>
 
     <!-- Announcements Section -->
     <div class="alliance-section card-enhanced announcements-section">

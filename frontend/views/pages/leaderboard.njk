@@ -5,70 +5,136 @@
 {% set bodyClass = "game-body" %}
 
 {% block content %}
-<h2>Galactic Leaderboard</h2>
-
-<div class="leaderboard-tabs">
-    <button class="tab-button active" data-tab="players">Top Commanders</button>
-    <button class="tab-button" data-tab="alliances">Top Alliances</button>
-</div>
-
-<!-- Players Leaderboard -->
-<div id="playersTab" class="tab-content active">
-    <div class="leaderboard-container">
-        <table class="leaderboard-table">
-            <thead>
-                <tr>
-                    <th>Rank</th>
-                    <th>Commander</th>
-                    <th>Alliance</th>
-                    <th>Total Score</th>
-                    <th>Economy</th>
-                    <th>Military</th>
-                    <th>Research</th>
-                </tr>
-            </thead>
-            <tbody id="playersLeaderboard">
-                <tr>
-                    <td colspan="7" class="text-center">
-                        <div class="spinner"></div>
-                        <p>Loading leaderboard...</p>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-        
-        <div class="pagination">
-            <button id="prevPage" class="btn-secondary">Previous</button>
-            <span id="pageInfo">Page 1</span>
-            <button id="nextPage" class="btn-secondary">Next</button>
+<div class="leaderboard-page">
+    <div class="leaderboard-header">
+        <div>
+            <h2>Galactic Leaderboards</h2>
+            <div class="leaderboard-meta">
+                <span>Logged in as <strong id="username">Commander</strong></span>
+                <span>Tracking <strong id="totalPlayers">0</strong> commanders</span>
+            </div>
         </div>
+        <button id="logoutBtn" class="btn-secondary">Log Out</button>
     </div>
-</div>
 
-<!-- Alliances Leaderboard -->
-<div id="alliancesTab" class="tab-content">
-    <div class="leaderboard-container">
-        <table class="leaderboard-table">
-            <thead>
-                <tr>
-                    <th>Rank</th>
-                    <th>Alliance</th>
-                    <th>Tag</th>
-                    <th>Members</th>
-                    <th>Total Score</th>
-                    <th>Average Score</th>
-                </tr>
-            </thead>
-            <tbody id="alliancesLeaderboard">
-                <tr>
-                    <td colspan="6" class="text-center">
-                        <div class="spinner"></div>
-                        <p>Loading alliances...</p>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="leaderboard-tabs">
+        <button class="tab-button active" data-tab="players">Top Commanders</button>
+        <button class="tab-button" data-tab="alliances">Top Alliances</button>
+        <button class="tab-button" data-tab="myrank">My Rank</button>
     </div>
+
+    <!-- Players Leaderboard -->
+    <section id="playersTab" class="tab-content active">
+        <div class="table-card">
+            <div id="playersLoading" class="table-loading">
+                <div class="spinner"></div>
+                <p>Compiling fleet telemetry…</p>
+            </div>
+            <div id="playersEmpty" class="empty-state" style="display:none;">
+                No commanders available yet.
+            </div>
+            <table id="playersTable" class="leaderboard-table" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Commander</th>
+                        <th>Alliance</th>
+                        <th>Total</th>
+                        <th>Economy</th>
+                        <th>Research</th>
+                        <th>Fleet</th>
+                        <th>Defense</th>
+                        <th>Trend</th>
+                        <th>Δ 7d</th>
+                    </tr>
+                </thead>
+                <tbody id="playersTableBody"></tbody>
+            </table>
+            <div id="playersPagination" class="table-pagination" style="display:none;">
+                <button id="playersPrevBtn" class="btn-secondary">Previous</button>
+                <span>Page <strong id="playersCurrentPage">1</strong></span>
+                <button id="playersNextBtn" class="btn-secondary">Next</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Alliances Leaderboard -->
+    <section id="alliancesTab" class="tab-content">
+        <div class="table-card">
+            <div id="alliancesLoading" class="table-loading">
+                <div class="spinner"></div>
+                <p>Syncing alliance intel…</p>
+            </div>
+            <div id="alliancesEmpty" class="empty-state" style="display:none;">
+                No alliance data available.
+            </div>
+            <table id="alliancesTable" class="leaderboard-table" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Alliance</th>
+                        <th>Tag</th>
+                        <th>Total</th>
+                        <th>Members</th>
+                        <th>Average</th>
+                        <th>Trend</th>
+                        <th>Δ 7d</th>
+                    </tr>
+                </thead>
+                <tbody id="alliancesTableBody"></tbody>
+            </table>
+            <div id="alliancesPagination" class="table-pagination" style="display:none;">
+                <button id="alliancesPrevBtn" class="btn-secondary">Previous</button>
+                <span>Page <strong id="alliancesCurrentPage">1</strong></span>
+                <button id="alliancesNextBtn" class="btn-secondary">Next</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- My Rank Detail -->
+    <section id="myrankTab" class="tab-content">
+        <div class="table-card">
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <h4>Rank</h4>
+                    <div class="stat-value" id="detailMyRank">-</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Total Score</h4>
+                    <div class="stat-value" id="detailTotalScore">0</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Economy</h4>
+                    <div class="stat-value" id="detailBuildingScore">0</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Research</h4>
+                    <div class="stat-value" id="detailResearchScore">0</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Fleet</h4>
+                    <div class="stat-value" id="detailFleetScore">0</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Defense</h4>
+                    <div class="stat-value" id="detailDefenseScore">0</div>
+                </div>
+            </div>
+
+            <h3>Nearby Commanders</h3>
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Commander</th>
+                        <th>Alliance</th>
+                        <th>Total Score</th>
+                    </tr>
+                </thead>
+                <tbody id="nearbyPlayersTableBody"></tbody>
+            </table>
+        </div>
+    </section>
 </div>
 {% endblock %}
 

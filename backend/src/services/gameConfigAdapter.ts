@@ -224,6 +224,16 @@ export class GameConfigAdapter {
         return this.getConfigValue('gameplay.vacation_mode_max_days', 30);
     }
 
+    async getGameplayDifficultyFactor(): Promise<number> {
+        const rawValue = await this.getConfigValue('gameplay.difficulty_factor', 1.0);
+        if (typeof rawValue !== 'number' || isNaN(rawValue)) {
+            return 1.0;
+        }
+        // Clamp to supported bounds to avoid runaway difficulty changes
+        const clamped = Math.min(5, Math.max(0.1, rawValue));
+        return Math.round(clamped * 100) / 100;
+    }
+
     // ============================================
     // HELPER METHODS FOR COMPLEX CALCULATIONS
     // ============================================
@@ -258,7 +268,10 @@ export class GameConfigAdapter {
 
         // Calculate with multipliers
         const production = baseProduction * buildingLevel * Math.pow(building.productionMultiplier || 1.1, buildingLevel);
-        return production * gameSpeed * productionMultiplier;
+        const difficultyFactor = await this.getGameplayDifficultyFactor();
+        const adjustedProduction = production * gameSpeed * productionMultiplier;
+
+        return adjustedProduction / Math.max(difficultyFactor, 0.1);
     }
 
     /**
@@ -288,7 +301,9 @@ export class GameConfigAdapter {
         const roboticsBonus = 1 - (roboticsLevel * 0.06);
         const naniteBonus = naniteLevel > 0 ? 1 / (2 ** naniteLevel) : 1;
 
-        return baseTime * roboticsBonus * naniteBonus * timeMultiplier;
+        const difficultyFactor = await this.getGameplayDifficultyFactor();
+
+        return baseTime * roboticsBonus * naniteBonus * timeMultiplier * Math.max(difficultyFactor, 0.1);
     }
 
     /**
@@ -306,6 +321,7 @@ export class GameConfigAdapter {
 
         // Get configuration multipliers
         const timeMultiplier = await this.getFleetConstructionTimeMultiplier();
+        const difficultyFactor = await this.getGameplayDifficultyFactor();
 
         // Base time from ship config
         let baseTime = ship.buildTime;
@@ -316,7 +332,7 @@ export class GameConfigAdapter {
         // Apply nanite bonus
         const naniteBonus = naniteLevel > 0 ? 1 / (2 ** naniteLevel) : 1;
 
-        return baseTime * shipyardBonus * naniteBonus * timeMultiplier;
+        return baseTime * shipyardBonus * naniteBonus * timeMultiplier * Math.max(difficultyFactor, 0.1);
     }
 
     /**
@@ -335,6 +351,7 @@ export class GameConfigAdapter {
         // Get configuration multipliers
         const timeMultiplier = await this.getResearchTimeMultiplier();
         const speedMultiplier = await this.getResearchSpeedMultiplier();
+        const difficultyFactor = await this.getGameplayDifficultyFactor();
 
         // Base time calculation
         const baseCost = research.baseCost.metal + research.baseCost.crystal;
@@ -344,7 +361,7 @@ export class GameConfigAdapter {
         // Apply lab level bonus
         const labBonus = 1 / (1 + labLevel);
 
-        return baseTime * labBonus * timeMultiplier;
+        return baseTime * labBonus * timeMultiplier * Math.max(difficultyFactor, 0.1);
     }
 
     /**

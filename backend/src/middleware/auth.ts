@@ -21,7 +21,25 @@ export const authenticateToken = async (
 
     // Fetch user from database
     const result = await pool.query(
-      'SELECT id, username, email, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id FROM users WHERE id = $1',
+      `SELECT 
+        u.id,
+        u.username,
+        u.email,
+        u.dark_matter,
+        u.created_at,
+        u.last_login,
+        u.is_admin,
+        u.is_banned,
+        u.alliance_id,
+        au.admin_level,
+        CASE 
+          WHEN u.is_admin THEN TRUE
+          WHEN au.admin_level IN ('super_admin', 'game_admin', 'moderator') THEN TRUE
+          ELSE FALSE
+        END AS is_moderator
+       FROM users u
+       LEFT JOIN admin_users au ON au.user_id = u.id AND au.is_active = TRUE
+       WHERE u.id = $1`,
       [decoded.userId]
     );
 
@@ -35,7 +53,11 @@ export const authenticateToken = async (
       return res.status(403).json({ error: 'Account banned' });
     }
 
-    (req as AuthRequest).user = user;
+    (req as AuthRequest).user = {
+      ...user,
+      admin_level: result.rows[0].admin_level || null,
+      is_moderator: result.rows[0].is_moderator || user.is_admin || false,
+    };
     next();
   } catch (error) {
     console.error('Authentication error:', error);

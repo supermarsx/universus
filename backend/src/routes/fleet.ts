@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { FleetService } from '../services/fleetService';
+import allianceLogisticsService from '../services/allianceLogisticsService';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
@@ -73,6 +74,8 @@ router.post('/:id/recall', async (req: Request, res: Response) => {
     const fleetId = parseInt(req.params.id);
 
     await FleetService.recallFleet(authReq.user!.id, fleetId);
+    await allianceLogisticsService.cancelDepotSessionByFleet(fleetId);
+
     res.status(200).json({ message: 'Fleet recalled' });
   } catch (error: any) {
     console.error('Error recalling fleet:', error);
@@ -89,6 +92,21 @@ router.get('/history', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching mission history:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthRequest;
+    const fleetId = parseInt(req.params.id);
+
+    const result = await FleetService.cancelFleet(authReq.user!.id, fleetId);
+    await allianceLogisticsService.cancelDepotSessionByFleet(fleetId);
+
+    res.json({ success: true, message: 'Fleet cancelled', data: result });
+  } catch (error: any) {
+    console.error('Error cancelling fleet:', error);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 

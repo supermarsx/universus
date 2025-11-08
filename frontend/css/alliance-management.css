@@ -542,6 +542,87 @@
     gap: var(--spacing-2);
 }
 
+/* === APPLICATIONS === */
+
+.applications-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+}
+
+.application-card {
+    border: 1px solid var(--color-border-primary);
+    border-left: 4px solid var(--color-border-accent);
+    padding: var(--spacing-4);
+    background: rgba(15, 23, 42, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+}
+
+.application-card.status-accepted {
+    border-left-color: var(--color-success);
+}
+
+.application-card.status-rejected {
+    border-left-color: var(--color-danger);
+}
+
+.application-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-3);
+}
+
+.applicant-name {
+    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-lg);
+    color: var(--color-text-primary);
+}
+
+.application-meta {
+    display: flex;
+    gap: var(--spacing-4);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    flex-wrap: wrap;
+}
+
+.application-message {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-3);
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+}
+
+.application-actions {
+    display: flex;
+    gap: var(--spacing-3);
+}
+
+.status-badge {
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    font-size: var(--font-size-xs);
+    letter-spacing: 0.05em;
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--color-text-secondary);
+}
+
+.status-badge.status-accepted {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.status-badge.status-rejected {
+    background: rgba(248, 113, 113, 0.15);
+    color: #f87171;
+}
+
 /* === MODALS === */
 
 .modal {

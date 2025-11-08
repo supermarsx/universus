@@ -10,6 +10,7 @@ import {
   ChatChannel,
   ChatMessage,
   ChatMessageType,
+  ChatReactionType,
   PrivateConversation,
   PrivateMessage,
   ChatRestriction,
@@ -23,6 +24,15 @@ import {
   ChatActivityStats,
   RateLimitInfo,
 } from '../types/realtime';
+
+const ALLOWED_REACTIONS: ChatReactionType[] = [
+  ChatReactionType.THUMBS_UP,
+  ChatReactionType.THUMBS_DOWN,
+  ChatReactionType.ROFL,
+  ChatReactionType.CLAP,
+  ChatReactionType.ANGRY,
+  ChatReactionType.CRY,
+];
 
 class ChatService {
   // =====================================================
@@ -60,7 +70,14 @@ class ChatService {
     userId: number,
     request: SendChatMessageRequest
   ): Promise<ChatMessage> {
-    const { channelId, message, messageType = ChatMessageType.TEXT } = request;
+    const {
+      channelId,
+      message,
+      messageType = ChatMessageType.TEXT,
+      isAnnouncement = false,
+      announcementExpiresAt,
+      pinMessage = false,
+    } = request;
 
     // Check rate limiting
     const canSend = await this.checkRateLimit(userId, channelId);
@@ -84,13 +101,31 @@ class ChatService {
       throw new Error(`Message exceeds maximum length of ${channel.max_message_length} characters`);
     }
 
+    if ((isAnnouncement || pinMessage) && !(await this.isUserModeratorOrAdmin(userId))) {
+      throw new Error('Admin privileges are required for announcements or pinned messages.');
+    }
+
+    if (isAnnouncement && channel.channel_type !== 'global') {
+      throw new Error('Announcements are restricted to the world chat.');
+    }
+
     // Insert message
     const result = await pool.query(
       `INSERT INTO chat_messages 
-       (channel_id, user_id, message, message_type)
-       VALUES ($1, $2, $3, $4)
+       (channel_id, user_id, message, message_type, is_announcement, announcement_expires_at, is_pinned, pinned_by, pinned_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
-      [channelId, userId, message, messageType]
+      [
+        channelId,
+        userId,
+        message,
+        messageType,
+        isAnnouncement,
+        announcementExpiresAt ? new Date(announcementExpiresAt) : null,
+        pinMessage,
+        pinMessage ? userId : null,
+        pinMessage ? new Date() : null,
+      ]
     );
 
     const chatMessage = result.rows[0];
@@ -101,24 +136,15 @@ class ChatService {
     // Update rate limit in Redis
     await this.updateRateLimit(userId, channelId);
 
-    // Get user info for broadcast
-    const userInfo = await pool.query(
-      `SELECT u.username, a.tag as alliance_tag
-       FROM users u
-       LEFT JOIN alliances a ON u.alliance_id = a.id
-       WHERE u.id = $1`,
-      [userId]
-    );
-
-    return {
-      ...chatMessage,
-      username: userInfo.rows[0]?.username,
-      alliance_tag: userInfo.rows[0]?.alliance_tag,
-    };
+    const hydrated = await this.getMessageById(chatMessage.id, userId);
+    if (!hydrated) {
+      throw new Error('Failed to load chat message');
+    }
+    return hydrated;
   }
 
   async getChatHistory(request: GetChatHistoryRequest): Promise<ChatHistoryResponse> {
-    const { channelId, limit = 50, before } = request;
+    const { channelId, limit = 50, before, viewerUserId } = request;
 
     let query = `
       SELECT 
@@ -148,6 +174,15 @@ class ChatService {
       messages.pop(); // Remove the extra message
     }
 
+    const chronological = messages.reverse().map((row) => this.normalizeChatRow(row));
+    const pinnedMessages = await this.getPinnedMessages(channelId);
+    const announcements = await this.getActiveAnnouncements(channelId);
+
+    await this.attachReactionSummaries(
+      [...chronological, ...pinnedMessages, ...announcements],
+      viewerUserId
+    );
+
     // Get total count
     const countResult = await pool.query(
       `SELECT COUNT(*) FROM chat_messages WHERE channel_id = $1 AND is_deleted = FALSE`,
@@ -156,7 +191,9 @@ class ChatService {
     const total = parseInt(countResult.rows[0]?.count || '0');
 
     return {
-      messages: messages.reverse(), // Reverse to get chronological order
+      messages: chronological,
+      pinnedMessages,
+      announcements,
       hasMore,
       total,
     };
@@ -210,6 +247,131 @@ class ChatService {
        WHERE id = $3`,
       [reason, flaggedBy, messageId]
     );
+  }
+
+  async pinMessage(
+    messageId: number,
+    userId: number,
+    shouldPin: boolean
+  ): Promise<ChatMessage> {
+    if (!(await this.isUserModeratorOrAdmin(userId))) {
+      throw new Error('Admin access required to pin messages.');
+    }
+
+    const result = await pool.query(
+      `UPDATE chat_messages
+       SET is_pinned = $1,
+           pinned_by = CASE WHEN $1 THEN $2 ELSE NULL END,
+           pinned_at = CASE WHEN $1 THEN CURRENT_TIMESTAMP ELSE NULL END
+       WHERE id = $3 AND is_deleted = FALSE
+       RETURNING *`,
+      [shouldPin, userId, messageId]
+    );
+
+    if (!result.rows.length) {
+      throw new Error('Message not found');
+    }
+
+    const hydrated = await this.getMessageById(messageId, userId);
+    if (!hydrated) {
+      throw new Error('Failed to load pinned message');
+    }
+    return hydrated;
+  }
+
+  async markAnnouncement(
+    messageId: number,
+    userId: number,
+    isAnnouncement: boolean,
+    expiresAt?: Date | null
+  ): Promise<ChatMessage> {
+    if (!(await this.isUserModeratorOrAdmin(userId))) {
+      throw new Error('Admin access required to manage announcements.');
+    }
+
+    const messageRow = await pool.query(
+      `SELECT cm.channel_id, cc.channel_type
+       FROM chat_messages cm
+       JOIN chat_channels cc ON cc.id = cm.channel_id
+       WHERE cm.id = $1 AND cm.is_deleted = FALSE`,
+      [messageId]
+    );
+
+    if (!messageRow.rows.length) {
+      throw new Error('Message not found');
+    }
+
+    if (isAnnouncement && messageRow.rows[0].channel_type !== 'global') {
+      throw new Error('Announcements are limited to the world chat.');
+    }
+
+    await pool.query(
+      `UPDATE chat_messages
+       SET is_announcement = $1,
+           announcement_expires_at = $2
+       WHERE id = $3`,
+      [isAnnouncement, expiresAt ? new Date(expiresAt) : null, messageId]
+    );
+
+    const hydrated = await this.getMessageById(messageId, userId);
+    if (!hydrated) {
+      throw new Error('Failed to load announcement state');
+    }
+    return hydrated;
+  }
+
+  async toggleReaction(
+    messageId: number,
+    userId: number,
+    reaction: ChatReactionType
+  ): Promise<{
+    messageId: number;
+    channelId: number;
+    reactions: Partial<Record<ChatReactionType, number>>;
+    viewerReactions: ChatReactionType[];
+  }> {
+    if (!ALLOWED_REACTIONS.includes(reaction)) {
+      throw new Error('Unsupported reaction type.');
+    }
+
+    const messageRow = await pool.query(
+      `SELECT channel_id FROM chat_messages WHERE id = $1 AND is_deleted = FALSE`,
+      [messageId]
+    );
+
+    if (!messageRow.rows.length) {
+      throw new Error('Message not found');
+    }
+
+    const existing = await pool.query(
+      `SELECT id FROM chat_message_reactions 
+       WHERE message_id = $1 AND user_id = $2 AND reaction_type = $3`,
+      [messageId, userId, reaction]
+    );
+
+    if (existing.rows.length) {
+      await pool.query(
+        `DELETE FROM chat_message_reactions WHERE id = $1`,
+        [existing.rows[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO chat_message_reactions (message_id, user_id, reaction_type)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING`,
+        [messageId, userId, reaction]
+      );
+    }
+
+    const reactions = await this.getReactionSummary(messageId);
+    const viewerReactions = await this.getViewerReactionsForMessage(messageId, userId);
+
+    return {
+      messageId,
+      channelId: messageRow.rows[0].channel_id,
+      reactions,
+      viewerReactions,
+    };
   }
 
   // =====================================================
@@ -505,6 +667,171 @@ class ChatService {
       [userId, channelId]
     );
     return result.rows.length > 0;
+  }
+
+  private normalizeChatRow(row: any): ChatMessage {
+    return {
+      ...row,
+      is_announcement: Boolean(row.is_announcement),
+      is_pinned: Boolean(row.is_pinned),
+      reactions: row.reactions ?? {},
+      viewerReactions: row.viewerReactions ?? [],
+    };
+  }
+
+  private async getPinnedMessages(channelId: number, limit: number = 5): Promise<ChatMessage[]> {
+    const result = await pool.query(
+      `SELECT 
+         cm.*,
+         u.username,
+         a.tag as alliance_tag
+       FROM chat_messages cm
+       JOIN users u ON cm.user_id = u.id
+       LEFT JOIN alliances a ON u.alliance_id = a.id
+       WHERE cm.channel_id = $1
+         AND cm.is_deleted = FALSE
+         AND cm.is_pinned = TRUE
+       ORDER BY cm.pinned_at DESC NULLS LAST, cm.created_at DESC
+       LIMIT $2`,
+      [channelId, limit]
+    );
+    return result.rows.map((row) => this.normalizeChatRow(row));
+  }
+
+  private async getActiveAnnouncements(channelId: number, limit: number = 3): Promise<ChatMessage[]> {
+    const result = await pool.query(
+      `SELECT 
+         cm.*,
+         u.username,
+         a.tag as alliance_tag
+       FROM chat_messages cm
+       JOIN users u ON cm.user_id = u.id
+       LEFT JOIN alliances a ON u.alliance_id = a.id
+       WHERE cm.channel_id = $1
+         AND cm.is_deleted = FALSE
+         AND cm.is_announcement = TRUE
+         AND (cm.announcement_expires_at IS NULL OR cm.announcement_expires_at > CURRENT_TIMESTAMP)
+       ORDER BY cm.created_at DESC
+       LIMIT $2`,
+      [channelId, limit]
+    );
+    return result.rows.map((row) => this.normalizeChatRow(row));
+  }
+
+  private async attachReactionSummaries(
+    messages: ChatMessage[],
+    viewerUserId?: number
+  ): Promise<void> {
+    if (!messages.length) return;
+    const ids = Array.from(new Set(messages.map((msg) => msg.id))).filter(Boolean);
+    if (!ids.length) return;
+
+    const reactionResult = await pool.query(
+      `SELECT message_id, reaction_type, COUNT(*) as count
+       FROM chat_message_reactions
+       WHERE message_id = ANY($1::int[])
+       GROUP BY message_id, reaction_type`,
+      [ids]
+    );
+
+    const reactionMap = new Map<number, Partial<Record<ChatReactionType, number>>>();
+    reactionResult.rows.forEach((row) => {
+      const existing = reactionMap.get(row.message_id) || {};
+      existing[row.reaction_type as ChatReactionType] = Number(row.count);
+      reactionMap.set(row.message_id, existing);
+    });
+
+    const viewerMap = new Map<number, ChatReactionType[]>();
+    if (viewerUserId) {
+      const viewerResult = await pool.query(
+        `SELECT message_id, reaction_type
+         FROM chat_message_reactions
+         WHERE message_id = ANY($1::int[]) AND user_id = $2`,
+        [ids, viewerUserId]
+      );
+      viewerResult.rows.forEach((row) => {
+        const entries = viewerMap.get(row.message_id) || [];
+        entries.push(row.reaction_type as ChatReactionType);
+        viewerMap.set(row.message_id, entries);
+      });
+    }
+
+    messages.forEach((message) => {
+      message.reactions = reactionMap.get(message.id) || {};
+      message.viewerReactions = viewerMap.get(message.id) || [];
+    });
+  }
+
+  private async getReactionSummary(
+    messageId: number
+  ): Promise<Partial<Record<ChatReactionType, number>>> {
+    const result = await pool.query(
+      `SELECT reaction_type, COUNT(*) as count
+       FROM chat_message_reactions
+       WHERE message_id = $1
+       GROUP BY reaction_type`,
+      [messageId]
+    );
+
+    const summary: Partial<Record<ChatReactionType, number>> = {};
+    result.rows.forEach((row) => {
+      summary[row.reaction_type as ChatReactionType] = Number(row.count);
+    });
+    return summary;
+  }
+
+  private async getViewerReactionsForMessage(
+    messageId: number,
+    userId: number
+  ): Promise<ChatReactionType[]> {
+    const result = await pool.query(
+      `SELECT reaction_type
+       FROM chat_message_reactions
+       WHERE message_id = $1 AND user_id = $2`,
+      [messageId, userId]
+    );
+    return result.rows.map((row) => row.reaction_type as ChatReactionType);
+  }
+
+  private async isUserModeratorOrAdmin(userId: number): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 
+         u.is_admin,
+         au.admin_level
+       FROM users u
+       LEFT JOIN admin_users au ON au.user_id = u.id AND au.is_active = TRUE
+       WHERE u.id = $1`,
+      [userId]
+    );
+    if (!result.rows.length) return false;
+    if (result.rows[0].is_admin) return true;
+    const level = result.rows[0].admin_level;
+    return ['super_admin', 'game_admin', 'moderator'].includes(level);
+  }
+
+  private async getMessageById(
+    messageId: number,
+    viewerUserId?: number
+  ): Promise<ChatMessage | null> {
+    const result = await pool.query(
+      `SELECT 
+         cm.*,
+         u.username,
+         a.tag as alliance_tag
+       FROM chat_messages cm
+       JOIN users u ON cm.user_id = u.id
+       LEFT JOIN alliances a ON u.alliance_id = a.id
+       WHERE cm.id = $1`,
+      [messageId]
+    );
+
+    if (!result.rows.length) {
+      return null;
+    }
+
+    const message = this.normalizeChatRow(result.rows[0]);
+    await this.attachReactionSummaries([message], viewerUserId);
+    return message;
   }
 
   // =====================================================

@@ -5,7 +5,10 @@
 
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import {
+  ChatMessage,
   ChatMessageEvent,
+  ChatMessageType,
+  ChatReactionType,
   PrivateMessageEvent,
   NotificationEvent,
   PlayerStatusEvent,
@@ -87,8 +90,12 @@ export class RealtimeSocketHandler {
         console.log(`[Chat] ${username} joined channel ${channel.channel_name}`);
 
         // Send recent history
-        const history = await chatService.getChatHistory({ channelId, limit: 50 });
-        socket.emit('chat:history', { channelId, messages: history.messages });
+        const history = await chatService.getChatHistory({
+          channelId,
+          limit: 50,
+          viewerUserId: userId,
+        });
+        socket.emit('chat:history', { channelId, ...history });
       } catch (error: any) {
         socket.emit('error', { message: error.message });
       }
@@ -101,38 +108,48 @@ export class RealtimeSocketHandler {
     });
 
     // Send chat message
-    socket.on('chat:message', async (data: { channelId: number; message: string }) => {
-      try {
-        const chatMessage = await chatService.sendMessage(userId, {
-          channelId: data.channelId,
-          message: data.message,
-        });
+    socket.on(
+      'chat:message',
+      async (data: {
+        channelId: number;
+        message: string;
+        messageType?: ChatMessageType;
+        isAnnouncement?: boolean;
+        announcementExpiresAt?: string;
+        pinMessage?: boolean;
+      }) => {
+        try {
+          const chatMessage = await chatService.sendMessage(userId, {
+            channelId: data.channelId,
+            message: data.message,
+            messageType: data.messageType,
+            isAnnouncement: data.isAnnouncement,
+            announcementExpiresAt: data.announcementExpiresAt
+              ? new Date(data.announcementExpiresAt)
+              : undefined,
+            pinMessage: data.pinMessage,
+          });
 
-        const event: ChatMessageEvent = {
-          channelId: data.channelId,
-          channelName: '',
-          userId,
-          username,
-          message: data.message,
-          messageType: chatMessage.message_type,
-          timestamp: chatMessage.created_at,
-          messageId: chatMessage.id,
-        };
+          const event: ChatMessageEvent = {
+            channelId: data.channelId,
+            message: chatMessage,
+          };
 
-        // Broadcast to all users in channel
-        const shadowed = await chatService.isShadowBanned(userId, data.channelId);
-        if (shadowed) {
-          socket.emit('chat:new_message', event);
-        } else {
-          this.io.to(`chat:${data.channelId}`).emit('chat:new_message', event);
+          // Broadcast to all users in channel
+          const shadowed = await chatService.isShadowBanned(userId, data.channelId);
+          if (shadowed) {
+            socket.emit('chat:new_message', event);
+          } else {
+            this.io.to(`chat:${data.channelId}`).emit('chat:new_message', event);
+          }
+
+          // Log activity
+          await this.logPlayerActivity(userId, 'chat_message', { channelId: data.channelId });
+        } catch (error: any) {
+          socket.emit('error', { message: error.message });
         }
-
-        // Log activity
-        await this.logPlayerActivity(userId, 'chat_message', { channelId: data.channelId });
-      } catch (error: any) {
-        socket.emit('error', { message: error.message });
       }
-    });
+    );
 
     // Edit message
     socket.on('chat:edit', async (data: { messageId: number; newMessage: string }) => {
@@ -156,6 +173,32 @@ export class RealtimeSocketHandler {
       } catch (error: any) {
         socket.emit('error', { message: error.message });
       }
+    });
+  }
+
+  public broadcastChatPinUpdate(channelId: number, message: ChatMessage): void {
+    this.io.to(`chat:${channelId}`).emit('chat:message_pinned', {
+      channelId,
+      message,
+    });
+  }
+
+  public broadcastChatAnnouncementUpdate(channelId: number, message: ChatMessage): void {
+    this.io.to(`chat:${channelId}`).emit('chat:announcement_changed', {
+      channelId,
+      message,
+    });
+  }
+
+  public broadcastChatReactionUpdate(
+    channelId: number,
+    messageId: number,
+    reactions: Partial<Record<ChatReactionType, number>>
+  ): void {
+    this.io.to(`chat:${channelId}`).emit('chat:reaction_update', {
+      channelId,
+      messageId,
+      reactions,
     });
   }
 

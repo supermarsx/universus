@@ -25,6 +25,15 @@ export enum ChatMessageType {
   FLEET = 'fleet',
 }
 
+export enum ChatReactionType {
+  THUMBS_UP = 'thumbs_up',
+  THUMBS_DOWN = 'thumbs_down',
+  ROFL = 'rofl',
+  CLAP = 'clap',
+  ANGRY = 'angry',
+  CRY = 'cry',
+}
+
 export interface ChatChannel {
   id: number;
   channel_name: string;
@@ -53,6 +62,13 @@ export interface ChatMessage {
   reference_type?: string;
   reference_id?: number;
   created_at: Date;
+  is_announcement?: boolean;
+  announcement_expires_at?: Date;
+  is_pinned?: boolean;
+  pinned_by?: number;
+  pinned_at?: Date;
+  reactions?: Partial<Record<ChatReactionType, number>>;
+  viewerReactions?: ChatReactionType[];
   
   // Joined fields
   username?: string;
@@ -369,13 +385,7 @@ export interface SocketUser {
 // Chat Events
 export interface ChatMessageEvent {
   channelId: number;
-  channelName: string;
-  userId: number;
-  username: string;
-  message: string;
-  messageType: ChatMessageType;
-  timestamp: Date;
-  messageId?: number;
+  message: ChatMessage;
 }
 
 export interface PrivateMessageEvent {
@@ -461,6 +471,9 @@ export interface SendChatMessageRequest {
   channelId: number;
   message: string;
   messageType?: ChatMessageType;
+  isAnnouncement?: boolean;
+  announcementExpiresAt?: Date;
+  pinMessage?: boolean;
 }
 
 export interface SendPrivateMessageRequest {
@@ -472,6 +485,7 @@ export interface GetChatHistoryRequest {
   channelId: number;
   limit?: number;
   before?: Date;
+  viewerUserId?: number;
 }
 
 export interface GetPrivateConversationsRequest {
@@ -559,6 +573,8 @@ export interface GetTradeOffersRequest {
 
 export interface ChatHistoryResponse {
   messages: ChatMessage[];
+  pinnedMessages: ChatMessage[];
+  announcements: ChatMessage[];
   hasMore: boolean;
   total: number;
 }

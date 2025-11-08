@@ -1458,6 +1458,376 @@
     color: white;
 }
 
+.sparkline {
+    width: 90px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sparkline svg {
+    width: 90px;
+    height: 28px;
+}
+
+.sparkline-line {
+    fill: none;
+    stroke: #4a9eff;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.sparkline-area {
+    stroke: none;
+}
+
+.sparkline sparkline-empty,
+.sparkline-empty {
+    font-size: 0.8rem;
+    color: #8a9db5;
+}
+
+.rank-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 600;
+}
+
+.rank-delta.up {
+    color: #4ade80;
+}
+
+.rank-delta.down {
+    color: #f87171;
+}
+
+.rank-delta.neutral {
+    color: #9ca3af;
+}
+
+/* Alliance Logistics */
+.logistics-section .logistics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.logistics-card {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.logistics-card h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 1rem;
+}
+
+.logistics-card form .form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 12px;
+}
+
+.logistics-card form label {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin-bottom: 4px;
+}
+
+.logistics-card form input,
+.logistics-card form select,
+.logistics-card form textarea {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 8px;
+    color: #e2e8f0;
+    padding: 8px 12px;
+    font-size: 0.95rem;
+}
+
+.logistics-card form textarea {
+    resize: vertical;
+}
+
+.coordinate-group .coord-inputs {
+    display: flex;
+    gap: 8px;
+}
+
+.coordinate-group .coord-inputs input {
+    flex: 1;
+    min-width: 60px;
+}
+
+.logistics-session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.logistics-session {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgba(15, 23, 42, 0.6);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.logistics-session.pending {
+    border-left: 4px solid #fbbf24;
+}
+
+.logistics-session.fulfilled {
+    border-left: 4px solid #34d399;
+}
+
+.logistics-session.cancelled,
+.logistics-session.rejected {
+    border-left: 4px solid #f87171;
+}
+
+.logistics-session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.logistics-session-meta {
+    font-size: 0.85rem;
+    color: #9ca3af;
+}
+
+.logistics-session-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.acs-section .acs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.acs-card {
+    background: rgba(9, 12, 28, 0.7);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.acs-card h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.acs-card .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.acs-card input,
+.acs-card select,
+.acs-card textarea {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 8px;
+    color: #e2e8f0;
+    padding: 8px 10px;
+    font-size: 0.95rem;
+}
+
+.acs-group-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.acs-group-card {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+    background: rgba(17, 24, 39, 0.7);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.acs-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.acs-group-meta {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.acs-group-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.leaderboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.leaderboard-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 0.9rem;
+    color: #9ca3af;
+}
+
+.leaderboard-meta strong {
+    color: #f1f5f9;
+    font-weight: 600;
+}
+
+.leaderboard-tabs {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5f5;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 18px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-button.active {
+    background: #4a9eff;
+    border-color: #4a9eff;
+    color: #0b1120;
+    box-shadow: 0 8px 24px rgba(74, 158, 255, 0.35);
+}
+
+.tab-button:not(.active):hover {
+    border-color: rgba(74, 158, 255, 0.5);
+    color: #f1f5f9;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.table-card {
+    background: rgba(11, 17, 32, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.table-loading,
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 10px;
+    color: #9ca3af;
+    gap: 12px;
+}
+
+.leaderboard-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.leaderboard-table th {
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    color: #9ca3af;
+    font-weight: 700;
+    padding: 12px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.leaderboard-table td {
+    padding: 14px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.table-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 18px;
+}
+
+.table-pagination button {
+    min-width: 110px;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: rgba(74, 158, 255, 0.08);
+    border: 1px solid rgba(74, 158, 255, 0.3);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.stat-card h4 {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.stat-card .stat-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #f8fafc;
+    margin-top: 6px;
+}
+
 /* Construction queue + moon UI shared styles */
 .construction-queue-display {
     background: rgba(20, 25, 45, 0.95);
@@ -1631,4 +2001,8 @@
 .modal .modal-content.large {
     width: 640px;
     max-width: 90vw;
+}
+.leaderboard-page {
+    width: 100%;
+    padding: 10px 0 40px;
 }

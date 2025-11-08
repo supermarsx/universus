@@ -315,13 +315,26 @@ export class ConfigurationService {
                 throw new Error('Parameter data is invalid');
             }
             const oldValue = this.parseConfigValue(param.current_value, param.data_type);
-            const stringValue = this.stringifyConfigValue(value, param.data_type);
+
+            let normalizedValue = value;
+            if (param.data_type === ConfigDataType.NUMBER) {
+                normalizedValue = Number(value);
+                if (isNaN(normalizedValue)) {
+                    throw new Error('Value must be a valid number');
+                }
+
+                if (key === 'gameplay.difficulty_factor') {
+                    normalizedValue = Number(normalizedValue.toFixed(2));
+                }
+            }
 
             // Validate value
-            const validation = await this.validateValue(key, value, param);
+            const validation = await this.validateValue(key, normalizedValue, param);
             if (!validation.is_valid) {
                 throw new Error(`Validation failed: ${validation.errors.map(e => e.message).join(', ')}`);
             }
+
+            const stringValue = this.stringifyConfigValue(normalizedValue, param.data_type);
 
             // Record change history
             await client.query(
@@ -349,7 +362,7 @@ export class ConfigurationService {
             await this.redis.publish('config:changed', JSON.stringify({
                 key,
                 oldValue,
-                newValue: value,
+                newValue: normalizedValue,
                 requires_restart: param.requires_restart,
                 userId,
                 timestamp: new Date()
@@ -364,7 +377,7 @@ export class ConfigurationService {
                 this.io.to('config:updates').emit('config:changed', {
                     key,
                     oldValue,
-                    newValue: value,
+                    newValue: normalizedValue,
                     changedBy: userId,
                     changedByUsername: username,
                     requiresRestart: param.requires_restart,
@@ -376,7 +389,7 @@ export class ConfigurationService {
                 success: true,
                 parameter_key: key,
                 old_value: oldValue,
-                new_value: value,
+                new_value: normalizedValue,
                 requires_restart: param.requires_restart
             };
 

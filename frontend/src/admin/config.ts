@@ -362,7 +362,8 @@ class ConfigurationManager {
         item.className = 'parameter-item';
         item.dataset.key = param.parameter_key;
 
-        const currentValue = this.pendingChanges.get(param.parameter_key) ?? param.current_value;
+        const rawValue = this.pendingChanges.get(param.parameter_key) ?? param.current_value;
+        const currentValue = this.formatParameterValue(param, rawValue);
         const isModified = param.current_value !== param.default_value;
         const hasPendingChange = this.pendingChanges.has(param.parameter_key);
 
@@ -392,14 +393,50 @@ class ConfigurationManager {
             ` : ''}
         `;
 
-        const input = item.querySelector('.parameter-input');
-        if (input) {
-            input.addEventListener('change', () => {
-                this.handleParameterChange(param.parameter_key, input.value, param.data_type);
+        const inputs = item.querySelectorAll('.parameter-input');
+        if (inputs.length > 0) {
+            const syncAndHandle = (event) => {
+                const target = event.target;
+                if (!target) return;
+                inputs.forEach((inputEl) => {
+                    if (inputEl !== target) {
+                        inputEl.value = target.value;
+                    }
+                });
+                this.handleParameterChange(param, target.value);
+            };
+
+            inputs.forEach((inputEl) => {
+                inputEl.addEventListener('input', syncAndHandle);
+                inputEl.addEventListener('change', syncAndHandle);
             });
         }
 
         return item;
+    }
+
+    formatParameterValue(param, value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+
+        if (param.data_type === 'number') {
+            const numericValue = typeof value === 'number' ? value : parseFloat(value);
+            if (isNaN(numericValue)) {
+                return '';
+            }
+            if (param.parameter_key === 'gameplay.difficulty_factor') {
+                return numericValue.toFixed(2);
+            }
+            return numericValue.toString();
+        }
+
+        if (param.data_type === 'boolean') {
+            if (value === true) return 'true';
+            if (value === false) return 'false';
+        }
+
+        return value;
     }
 
     createInput(param, value) {
@@ -435,6 +472,9 @@ class ConfigurationManager {
 
     getStep(param) {
         if (param.data_type !== 'number') return 'any';
+        if (param.parameter_key === 'gameplay.difficulty_factor') {
+            return '0.01';
+        }
         const range = param.max_value - param.min_value;
         if (range <= 1) return '0.01';
         if (range <= 10) return '0.1';
@@ -442,11 +482,27 @@ class ConfigurationManager {
         return '10';
     }
 
-    handleParameterChange(key, value, dataType) {
+    handleParameterChange(param, value) {
+        const key = param.parameter_key;
+        const dataType = param.data_type;
         // Parse value based on data type
         let parsedValue = value;
         if (dataType === 'number') {
             parsedValue = parseFloat(value);
+            if (isNaN(parsedValue)) {
+                this.pendingChanges.delete(key);
+                this.updateSaveButtonState();
+                return;
+            }
+            if (param.min_value !== null && !isNaN(param.min_value)) {
+                parsedValue = Math.max(param.min_value, parsedValue);
+            }
+            if (param.max_value !== null && !isNaN(param.max_value)) {
+                parsedValue = Math.min(param.max_value, parsedValue);
+            }
+            if (param.parameter_key === 'gameplay.difficulty_factor') {
+                parsedValue = Math.round(parsedValue * 100) / 100;
+            }
         } else if (dataType === 'boolean') {
             parsedValue = value === 'true';
         }

@@ -41,6 +41,9 @@
         <button class="tab-btn" data-tab="members" onclick="switchTab('members')">
             <span class="css-icon icon-user"></span> Member Administration
         </button>
+        <button class="tab-btn" data-tab="applications" onclick="switchTab('applications')">
+            <span class="css-icon icon-inbox"></span> Applications
+        </button>
     </div>
 
     <!-- Settings Tab -->
@@ -91,6 +94,27 @@
                             <label for="minRankInput">Minimum Rank to Join</label>
                             <input type="number" id="minRankInput" name="min_rank" min="0"
                                    placeholder="0 (no minimum)" value="{{ alliance.min_rank_requirement }}">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="autoAcceptInput">Auto-Accept Score</label>
+                            <input type="number" id="autoAcceptInput" name="auto_accept_min_score" min="0"
+                                   placeholder="e.g. 5000" value="{{ alliance.auto_accept_min_score }}">
+                            <small>Applications at or above this score are accepted automatically</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="autoRejectInput">Auto-Reject Score</label>
+                            <input type="number" id="autoRejectInput" name="auto_reject_below_score" min="0"
+                                   placeholder="e.g. 1000" value="{{ alliance.auto_reject_below_score }}">
+                            <small>Applications below this score are automatically declined</small>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="autoNoteInput">Application Instructions</label>
+                            <textarea id="autoNoteInput" name="auto_application_notes" rows="3" maxlength="500"
+                                      placeholder="Message shown to applicants">{{ alliance.auto_application_notes }}</textarea>
+                            <small>Displayed to applicants before they apply. Use to set expectations.</small>
                         </div>
 
                         <div class="form-group full-width">
@@ -207,6 +231,29 @@
             </div>
         </div>
     </div>
+
+    <!-- Applications Tab -->
+    <div class="tab-content" id="applications-tab">
+        <div class="management-section card-enhanced">
+            <div class="section-header">
+                <h2 class="section-title">Pending Applications</h2>
+                <div class="section-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="loadApplications()">
+                        <span class="css-icon icon-refresh"></span> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="section-body">
+                <div class="applications-list" id="applicationsList">
+                    <div class="empty-state">
+                        <span class="css-icon icon-inbox"></span>
+                        <p>No applications pending review</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 </div>
 
 <!-- Create/Edit Rank Modal -->

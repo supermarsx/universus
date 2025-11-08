@@ -10,6 +10,8 @@ export interface User {
   is_admin: boolean;
   is_banned: boolean;
   alliance_id?: number;
+  admin_level?: string | null;
+  is_moderator?: boolean;
 }
 
 export interface Planet {

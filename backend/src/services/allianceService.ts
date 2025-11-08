@@ -11,6 +11,7 @@ import {
     ApplicationStatus,
     AllianceDetailsResponse,
     AllianceDashboardResponse,
+    AllianceAnnouncement,
     CreateAllianceRequest,
     UpdateAllianceRequest,
     JoinAllianceRequest,
@@ -20,6 +21,9 @@ import {
     AllianceStatistics,
     AllianceLeaderboard
 } from '../types/alliance';
+import { MessagingService } from './messagingService';
+
+const messagingService = new MessagingService(pool);
 
 export class AllianceService {
     
@@ -53,6 +57,7 @@ export class AllianceService {
                 `INSERT INTO alliances (
                     tag, name, description, founder_id,
                     is_open, is_recruiting, min_score_requirement,
+                    auto_accept_min_score, auto_reject_below_score, auto_application_notes,
                     color_primary, color_secondary
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING *`,
@@ -64,6 +69,9 @@ export class AllianceService {
                     data.is_open !== undefined ? data.is_open : false,
                     data.is_recruiting !== undefined ? data.is_recruiting : true,
                     data.min_score_requirement || 0,
+                    data.auto_accept_min_score || null,
+                    data.auto_reject_below_score || null,
+                    data.auto_application_notes || null,
                     data.color_primary || '#00ff41',
                     data.color_secondary || '#008f11'
                 ]
@@ -163,6 +171,18 @@ export class AllianceService {
         if (data.min_score_requirement !== undefined) {
             updateFields.push(`min_score_requirement = $${paramIndex++}`);
             values.push(data.min_score_requirement);
+        }
+        if (data.auto_accept_min_score !== undefined) {
+            updateFields.push(`auto_accept_min_score = $${paramIndex++}`);
+            values.push(data.auto_accept_min_score);
+        }
+        if (data.auto_reject_below_score !== undefined) {
+            updateFields.push(`auto_reject_below_score = $${paramIndex++}`);
+            values.push(data.auto_reject_below_score);
+        }
+        if (data.auto_application_notes !== undefined) {
+            updateFields.push(`auto_application_notes = $${paramIndex++}`);
+            values.push(data.auto_application_notes);
         }
         if (data.logo_url !== undefined) {
             updateFields.push(`logo_url = $${paramIndex++}`);
@@ -266,16 +286,30 @@ export class AllianceService {
         if (!alliance) {
             throw new Error('Alliance not found');
         }
+        const applicantScore = await this.getPlayerScore(userId);
+
+        if (alliance.auto_reject_below_score !== null && alliance.auto_reject_below_score !== undefined) {
+            if (applicantScore < alliance.auto_reject_below_score) {
+                throw new Error('Your score is below this alliance\'s requirements');
+            }
+        }
         
-        // If alliance is open, join immediately
-        if (alliance.is_open) {
-            const member = await this.addMember(data.alliance_id, userId, AllianceRank.RECRUIT);
+        const autoAccept =
+            alliance.is_open ||
+            (alliance.auto_accept_min_score !== null &&
+                alliance.auto_accept_min_score !== undefined &&
+                applicantScore >= alliance.auto_accept_min_score);
+
+        if (autoAccept) {
+            await this.addMember(data.alliance_id, userId, AllianceRank.RECRUIT);
             return {
                 id: 0,
                 alliance_id: data.alliance_id,
                 user_id: userId,
                 status: ApplicationStatus.ACCEPTED,
-                created_at: new Date()
+                created_at: new Date(),
+                username: undefined,
+                user_score: applicantScore
             };
         }
         
@@ -360,6 +394,40 @@ export class AllianceService {
         } finally {
             client.release();
         }
+    }
+
+    async getAllianceApplications(allianceId: number, reviewerId: number): Promise<AllianceApplication[]> {
+        const hasPermission = await this.checkPermission(
+            allianceId,
+            reviewerId,
+            AlliancePermission.MANAGE_MEMBERS
+        );
+        if (!hasPermission) {
+            throw new Error('You do not have permission to view applications');
+        }
+
+        const result = await pool.query(
+            `SELECT aa.*, u.username, COALESCE(ps.total_score, 0) as user_score
+             FROM alliance_applications aa
+             JOIN users u ON u.id = aa.user_id
+             LEFT JOIN player_scores ps ON ps.user_id = u.id
+             WHERE aa.alliance_id = $1
+             ORDER BY aa.status, aa.created_at ASC`,
+            [allianceId]
+        );
+
+        return result.rows.map((row) => ({
+            id: row.id,
+            alliance_id: row.alliance_id,
+            user_id: row.user_id,
+            message: row.message,
+            status: row.status,
+            reviewed_by: row.reviewed_by,
+            reviewed_at: row.reviewed_at,
+            created_at: row.created_at,
+            username: row.username,
+            user_score: Number(row.user_score || 0)
+        }));
     }
     
     async leaveAlliance(allianceId: number, userId: number): Promise<void> {
@@ -588,6 +656,324 @@ export class AllianceService {
         } finally {
             client.release();
         }
+    }
+
+    async getMyAllianceDashboard(userId: number): Promise<AllianceDashboardResponse & { 
+        alliance_id: number;
+        tag: string;
+        name: string;
+        description?: string;
+        founder_name?: string;
+        founded_at?: Date;
+        total_members: number;
+        total_power: number;
+        rank?: number | null;
+        war_points?: number;
+        territories_count?: number;
+        diplomatic_relations_count?: number;
+        members: any[];
+        announcements: any[];
+        recent_activity: any[];
+        current_member_role: string;
+    }> {
+        const membershipResult = await pool.query(
+            `SELECT alliance_id, rank FROM alliance_members WHERE user_id = $1`,
+            [userId]
+        );
+
+        if (!membershipResult.rows.length) {
+            throw new Error('NOT_IN_ALLIANCE');
+        }
+
+        const membership = membershipResult.rows[0];
+        const allianceId = membership.alliance_id;
+
+        const allianceResult = await pool.query(
+            `SELECT a.*, u.username as founder_name
+             FROM alliances a
+             LEFT JOIN users u ON u.id = a.founder_id
+             WHERE a.id = $1`,
+            [allianceId]
+        );
+
+        if (!allianceResult.rows.length) {
+            throw new Error('Alliance not found');
+        }
+
+        const allianceRow = allianceResult.rows[0];
+
+        const rankResult = await pool.query(
+            `SELECT rank_position FROM (
+                SELECT id, RANK() OVER (ORDER BY total_score DESC) as rank_position
+                FROM alliances
+            ) ranked WHERE id = $1`,
+            [allianceId]
+        );
+
+        const membersResult = await pool.query(
+            `SELECT 
+                am.user_id,
+                am.rank,
+                am.joined_at,
+                am.metal_contributed,
+                am.crystal_contributed,
+                am.deuterium_contributed,
+                COALESCE(ps.total_score, 0) as power,
+                u.username,
+                NULL::text as avatar_url,
+                s.status = 'online' AS is_online
+            FROM alliance_members am
+            JOIN users u ON u.id = am.user_id
+            LEFT JOIN player_scores ps ON ps.user_id = am.user_id
+            LEFT JOIN player_status s ON s.user_id = am.user_id
+            WHERE am.alliance_id = $1
+            ORDER BY 
+                CASE am.rank
+                    WHEN 'founder' THEN 1
+                    WHEN 'leader' THEN 2
+                    WHEN 'officer' THEN 3
+                    WHEN 'member' THEN 4
+                    ELSE 5
+                END,
+                am.joined_at ASC`,
+            [allianceId]
+        );
+
+        const historyResult = await pool.query(
+            `SELECT id, event_type, description, related_user_id, created_at
+             FROM alliance_history
+             WHERE alliance_id = $1
+             ORDER BY created_at DESC
+             LIMIT 10`,
+            [allianceId]
+        );
+
+        const diplomacyCountResult = await pool.query(
+            `SELECT COUNT(*) as count FROM diplomatic_relations
+             WHERE alliance_id = $1 AND terminated_at IS NULL`,
+            [allianceId]
+        );
+
+        const territoryCountResult = await pool.query(
+            `SELECT COUNT(*) as count FROM alliance_territories
+             WHERE alliance_id = $1`,
+            [allianceId]
+        );
+
+        const announcements = await this.getAnnouncements(allianceId, 10);
+
+        const members = membersResult.rows.map((row) => ({
+            user_id: row.user_id,
+            username: row.username,
+            alliance_role: (row.rank || '').toUpperCase(),
+            joined_at: row.joined_at,
+            power: Number(row.power || 0),
+            contribution_points: Number(
+                (row.metal_contributed || 0) +
+                (row.crystal_contributed || 0) +
+                (row.deuterium_contributed || 0)
+            ),
+            avatar_url: row.avatar_url,
+            is_online: Boolean(row.is_online)
+        }));
+
+        const recentActivity = historyResult.rows.map((row) => ({
+            id: row.id,
+            type: row.event_type,
+            message: row.description,
+            related_user_id: row.related_user_id,
+            timestamp: row.created_at,
+            icon: this.getActivityIcon(row.event_type)
+        }));
+
+        const dashboard = {
+            alliance: allianceRow,
+            alliance_id: allianceRow.id,
+            tag: allianceRow.tag,
+            name: allianceRow.name,
+            description: allianceRow.description,
+            founder_name: allianceRow.founder_name || 'Unknown',
+            founded_at: allianceRow.created_at,
+            total_members: Number(allianceRow.total_members || members.length),
+            total_power: Number(allianceRow.total_score || 0),
+            rank: rankResult.rows[0]?.rank_position || null,
+            war_points: Number(allianceRow.war_points || 0),
+            territories_count: Number(territoryCountResult.rows[0]?.count || 0),
+            diplomatic_relations_count: Number(diplomacyCountResult.rows[0]?.count || 0),
+            treasury: {
+                metal: Number(allianceRow.metal_treasury || 0),
+                crystal: Number(allianceRow.crystal_treasury || 0),
+                deuterium: Number(allianceRow.deuterium_treasury || 0)
+            },
+            depot_settings: {
+                refuel_rate: 1,
+                max_docked_fleets: Math.max(1, Math.floor(members.length / 5) || 1),
+                allow_allies: true,
+            },
+            members,
+            recent_members: members.slice(0, 5),
+            announcements: announcements.map((announcement) => ({
+                ...announcement,
+                message: announcement.content
+            })),
+            recent_activity: recentActivity,
+            active_wars: [],
+            recent_messages: [],
+            territories: [],
+            current_member_role: (membership.rank || '').toUpperCase(),
+            user_rank: membership.rank,
+            user_permissions: await this.getUserPermissions(allianceId, userId)
+        };
+
+        return dashboard;
+    }
+
+    async getAnnouncements(allianceId: number, limit: number = 10): Promise<AllianceAnnouncement[]> {
+        const result = await pool.query(
+            `SELECT 
+                aa.*,
+                u.username as creator_username,
+                am.rank as creator_rank
+             FROM alliance_announcements aa
+             LEFT JOIN users u ON u.id = aa.created_by
+             LEFT JOIN alliance_members am ON am.user_id = aa.created_by AND am.alliance_id = aa.alliance_id
+             WHERE aa.alliance_id = $1
+             ORDER BY aa.is_pinned DESC, aa.created_at DESC
+             LIMIT $2`,
+            [allianceId, limit]
+        );
+
+        return result.rows.map((row) => this.mapAnnouncementRow(row));
+    }
+
+    async createAnnouncement(
+        allianceId: number,
+        userId: number,
+        data: { title: string; content: string; is_pinned?: boolean; broadcast?: boolean; metadata?: any }
+    ): Promise<AllianceAnnouncement> {
+        const title = (data.title || '').trim();
+        const content = (data.content || '').trim();
+
+        if (!title || !content) {
+            throw new Error('Announcement title and content are required');
+        }
+
+        const hasPermission = await this.checkPermission(allianceId, userId, AlliancePermission.SEND_ANNOUNCEMENTS);
+        if (!hasPermission) {
+            throw new Error('You do not have permission to send alliance announcements');
+        }
+
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+
+            const result = await client.query(
+                `INSERT INTO alliance_announcements (
+                    alliance_id, title, content, is_pinned, created_by, metadata, pinned_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 THEN CURRENT_TIMESTAMP ELSE NULL END)
+                RETURNING *`,
+                [
+                    allianceId,
+                    title,
+                    content,
+                    data.is_pinned ?? false,
+                    userId,
+                    data.metadata ? JSON.stringify(data.metadata) : null
+                ]
+            );
+
+            await client.query(
+                `INSERT INTO alliance_history (alliance_id, event_type, description, related_user_id)
+                 VALUES ($1, $2, $3, $4)`,
+                [allianceId, 'announcement_posted', `New announcement: ${data.title}`, userId]
+            );
+
+            await client.query('COMMIT');
+
+            const announcement = await this.getAnnouncementById(result.rows[0].id);
+
+            if (announcement && data.broadcast !== false) {
+                try {
+                    await messagingService.sendAllianceCircular(allianceId, userId, title, content);
+                } catch (err) {
+                    console.error('Failed to broadcast alliance circular:', err);
+                }
+            }
+
+            return announcement!;
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    private async getAnnouncementById(announcementId: number): Promise<AllianceAnnouncement | null> {
+        const result = await pool.query(
+            `SELECT 
+                aa.*,
+                u.username as creator_username,
+                am.rank as creator_rank
+             FROM alliance_announcements aa
+             LEFT JOIN users u ON u.id = aa.created_by
+             LEFT JOIN alliance_members am ON am.user_id = aa.created_by AND am.alliance_id = aa.alliance_id
+             WHERE aa.id = $1`,
+            [announcementId]
+        );
+
+        if (!result.rows.length) {
+            return null;
+        }
+
+        return this.mapAnnouncementRow(result.rows[0]);
+    }
+
+    private mapAnnouncementRow(row: any): AllianceAnnouncement {
+        return {
+            id: row.id,
+            alliance_id: row.alliance_id,
+            title: row.title,
+            content: row.content,
+            is_pinned: row.is_pinned,
+            created_by: row.created_by,
+            author_name: row.creator_username || null,
+            author_role: row.creator_rank ? row.creator_rank.toUpperCase() : undefined,
+            created_by_username: row.creator_username || null,
+            created_at: row.created_at,
+            pinned_at: row.pinned_at,
+            metadata: row.metadata,
+        };
+    }
+
+    private getActivityIcon(eventType: string): string {
+        switch (eventType) {
+            case 'member_joined':
+                return 'user-add';
+            case 'member_left':
+                return 'user-remove';
+            case 'announcement_posted':
+                return 'broadcast';
+            case 'resource_contribution':
+                return 'crystal';
+            case 'war_declared':
+                return 'combat';
+            default:
+                return 'activity';
+        }
+    }
+
+    private async getPlayerScore(userId: number): Promise<number> {
+        const result = await pool.query(
+            'SELECT total_score FROM player_scores WHERE user_id = $1',
+            [userId]
+        );
+        if (result.rows.length) {
+            return Number(result.rows[0].total_score || 0);
+        }
+
+        return 0;
     }
     
     // ========================================================================
