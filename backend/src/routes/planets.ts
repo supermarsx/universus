@@ -31,7 +31,10 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     const production = await PlanetService.getResourceProduction(planet);
-    const constructionQueue = await BuildingService.getConstructionQueue(planetId);
+    const constructionQueue = await BuildingService.getConstructionQueue({
+      planetId,
+      locationType: 'planet',
+    });
 
     res.json({
       planet,
@@ -48,17 +51,18 @@ router.post('/:id/build', async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
     const planetId = parseInt(req.params.id);
-    const { buildingType } = req.body;
+    const { buildingType, locationType, moonId } = req.body;
 
     if (!buildingType) {
       return res.status(400).json({ error: 'Building type required' });
     }
 
-    const construction = await BuildingService.startConstruction(
-      authReq.user!.id,
+    const construction = await BuildingService.startConstruction(authReq.user!.id, buildingType, {
       planetId,
-      buildingType
-    );
+      locationType,
+      moonId: moonId ? parseInt(moonId, 10) : undefined,
+      expectedPlanetId: planetId,
+    });
 
     res.status(201).json(construction);
   } catch (error: any) {

@@ -206,6 +206,34 @@ class NotificationService {
     });
   }
 
+  async notifyColonizationResult(
+    userId: number,
+    location: string,
+    success: boolean,
+    planetId?: number
+  ): Promise<void> {
+    const typeName = success ? 'colonization_success' : 'colonization_failed';
+    const fallbackType = await this.getNotificationTypeByName(typeName);
+    const defaultType =
+      fallbackType || (await this.getNotificationTypeByName(success ? 'fleet_arrived' : 'fleet_returned'));
+
+    if (!defaultType) return;
+
+    await this.createNotification({
+      userId,
+      notificationTypeId: defaultType.id,
+      title: success ? 'Colonization Successful' : 'Colonization Failed',
+      message: success
+        ? `A new colony has been established at ${location}.`
+        : `Colonization attempt at ${location} failed.`,
+      priority: 2,
+      actionUrl: success ? '/overview' : '/fleet',
+      actionLabel: success ? 'View Colony' : 'Review Fleet',
+      referenceType: success ? 'planet' : 'fleet',
+      referenceId: success ? planetId : undefined,
+    });
+  }
+
   async notifyUnderAttack(
     userId: number,
     attackerName: string,

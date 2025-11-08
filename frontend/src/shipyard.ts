@@ -27,10 +27,16 @@ const DEFENSE_BLUEPRINTS = {
 class ShipyardManager {
   constructor() {
     this.planet = null;
+    this.moon = null;
     this.activeTab = 'ships';
     this.queue = [];
     this.queueTimers = [];
+    this.locationType = 'planet';
+    this.locationSelect = document.getElementById('shipyardLocationSelect');
+    this.locationStatus = document.getElementById('shipyardLocationStatus');
+    this.locationResources = document.getElementById('shipyardLocationResources');
     this.initTabs();
+    this.initLocationControls();
     this.startQueuePolling();
   }
 
@@ -54,6 +60,101 @@ class ShipyardManager {
     });
   }
 
+  initLocationControls() {
+    if (!this.locationSelect) return;
+    this.locationSelect.addEventListener('change', () => {
+      this.locationType = this.locationSelect.value === 'moon' ? 'moon' : 'planet';
+      this.updateLocationStatus();
+      this.updateLocationResources();
+      this.renderShips();
+      this.renderDefense();
+      this.loadQueue();
+    });
+  }
+
+  refreshLocationControls() {
+    if (!this.locationSelect) return;
+    this.locationSelect.innerHTML = '';
+
+    if (this.planet) {
+      const planetOption = document.createElement('option');
+      planetOption.value = 'planet';
+      planetOption.textContent = `${this.planet.name} Shipyard`;
+      this.locationSelect.appendChild(planetOption);
+    }
+
+    if (this.moon) {
+      const moonOption = document.createElement('option');
+      moonOption.value = 'moon';
+      moonOption.textContent = `${this.moon.name} Shipyard`;
+      this.locationSelect.appendChild(moonOption);
+      this.locationSelect.disabled = false;
+    } else {
+      this.locationSelect.disabled = true;
+    }
+
+    if (this.locationType === 'moon' && !this.moon) {
+      this.locationType = 'planet';
+    }
+
+    this.locationSelect.value = this.locationType;
+    this.updateLocationStatus();
+    this.updateLocationResources();
+  }
+
+  updateLocationStatus() {
+    if (!this.locationStatus) return;
+
+    if (this.locationType === 'moon') {
+      if (!this.moon) {
+        this.locationStatus.textContent = 'No moon available.';
+      } else if ((this.moon.moon_shipyard || 0) === 0) {
+        this.locationStatus.textContent = 'Build a Moon Shipyard to produce fleets here.';
+      } else {
+        this.locationStatus.textContent = `Moon shipyard level ${this.moon.moon_shipyard}.`;
+      }
+    } else {
+      const level = this.planet?.shipyard || 0;
+      this.locationStatus.textContent = level
+        ? `Planetary shipyard level ${level}.`
+        : 'Build a shipyard on this planet to unlock production.';
+    }
+  }
+
+  updateLocationResources() {
+    if (!this.locationResources) return;
+    const context = this.getActiveLocation();
+
+    if (!context || !context.source) {
+      this.locationResources.classList.add('hidden');
+      return;
+    }
+
+    this.locationResources.classList.remove('hidden');
+    const { source } = context;
+    this.locationResources.innerHTML = `
+      <div class="resource-chip"><img src="/assets/ui/resource-metal.png" alt="Metal">${this.formatNumber(source.metal || 0)}</div>
+      <div class="resource-chip"><img src="/assets/ui/resource-crystal.png" alt="Crystal">${this.formatNumber(source.crystal || 0)}</div>
+      <div class="resource-chip"><img src="/assets/ui/resource-deuterium.png" alt="Deuterium">${this.formatNumber(source.deuterium || 0)}</div>
+    `;
+  }
+
+  getActiveLocation() {
+    if (this.locationType === 'moon' && this.moon) {
+      return {
+        type: 'moon',
+        source: this.moon,
+        shipyardLevel: this.moon.moon_shipyard || 0,
+      };
+    }
+
+    return {
+      type: 'planet',
+      source: this.planet,
+      shipyardLevel: this.planet?.shipyard || 0,
+    };
+  }
+
   startQueuePolling() {
     setInterval(() => {
       if (this.planet) {
@@ -64,6 +165,8 @@ class ShipyardManager {
 
   updatePlanet(data) {
     this.planet = data.planet;
+    this.moon = data.moonData?.moon || null;
+    this.refreshLocationControls();
     this.renderShips();
     this.renderDefense();
     this.loadQueue();
@@ -71,17 +174,27 @@ class ShipyardManager {
 
   renderShips() {
     const grid = document.getElementById('shipsGrid');
-    if (!grid || !this.planet) return;
+    if (!grid) return;
 
-    if (this.planet.shipyard === 0) {
-      grid.innerHTML = '<p class="text-muted">Build a shipyard to construct ships.</p>';
+    const context = this.getActiveLocation();
+    if (!context || !context.source) {
+      grid.innerHTML = '<p class="text-muted">Select a production location.</p>';
       return;
     }
 
+    if ((context.shipyardLevel || 0) === 0) {
+      grid.innerHTML =
+        this.locationType === 'moon'
+          ? '<p class="text-muted">Build a Moon Shipyard to construct fleets here.</p>'
+          : '<p class="text-muted">Build a shipyard on this planet to construct ships.</p>';
+      return;
+    }
+
+    const resources = context.source;
     grid.innerHTML = '';
     Object.entries(SHIP_BLUEPRINTS).forEach(([key, blueprint]) => {
-      const available = this.planet[key] || 0;
-      const canAfford = this.canAfford(blueprint.cost);
+      const available = resources[key] || 0;
+      const canAfford = this.canAfford(blueprint.cost, resources);
 
       const card = document.createElement('div');
       card.className = 'ship-card card-enhanced';
@@ -94,7 +207,7 @@ class ShipyardManager {
           <img src="/assets/ships/${blueprint.image}.png" alt="${blueprint.name}" onerror="this.src='/assets/ships/fighter-interceptor.png'">
         </div>
         <p class="ship-description">${blueprint.description}</p>
-        ${this.renderCost(blueprint.cost)}
+        ${this.renderCost(blueprint.cost, resources)}
         <div class="build-controls">
           <input type="number" class="quantity-input" min="1" value="1" aria-label="quantity">
           <button class="btn btn-primary" ${canAfford ? '' : 'disabled'}>
@@ -116,17 +229,27 @@ class ShipyardManager {
 
   renderDefense() {
     const grid = document.getElementById('defenseGrid');
-    if (!grid || !this.planet) return;
+    if (!grid) return;
 
-    if (this.planet.shipyard === 0) {
-      grid.innerHTML = '<p class="text-muted">Build a shipyard to construct defenses.</p>';
+    const context = this.getActiveLocation();
+    if (!context || !context.source) {
+      grid.innerHTML = '<p class="text-muted">Select a production location.</p>';
       return;
     }
 
+    if ((context.shipyardLevel || 0) === 0) {
+      grid.innerHTML =
+        this.locationType === 'moon'
+          ? '<p class="text-muted">Build a Moon Shipyard to construct defenses here.</p>'
+          : '<p class="text-muted">Build a shipyard on this planet to unlock defenses.</p>';
+      return;
+    }
+
+    const resources = context.source;
     grid.innerHTML = '';
     Object.entries(DEFENSE_BLUEPRINTS).forEach(([key, blueprint]) => {
-      const available = this.planet[key] || 0;
-      const canAfford = this.canAfford(blueprint.cost);
+      const available = resources[key] || 0;
+      const canAfford = this.canAfford(blueprint.cost, resources);
 
       const card = document.createElement('div');
       card.className = 'ship-card card-enhanced';
@@ -139,7 +262,7 @@ class ShipyardManager {
           <img src="/assets/buildings/${blueprint.image}.png" alt="${blueprint.name}" onerror="this.src='/assets/buildings/defense-turret.png'">
         </div>
         <p class="ship-description">${blueprint.description}</p>
-        ${this.renderCost(blueprint.cost)}
+        ${this.renderCost(blueprint.cost, resources)}
         <div class="build-controls">
           <input type="number" class="quantity-input" min="1" value="1" aria-label="quantity">
           <button class="btn btn-primary" ${canAfford ? '' : 'disabled'}>
@@ -159,41 +282,43 @@ class ShipyardManager {
     });
   }
 
-  renderCost(cost) {
+  renderCost(cost, resources = {}) {
     return `
       <div class="building-cost">
         <div class="cost-item">
           <img src="/assets/ui/resource-metal.png" alt="Metal">
-          <span class="${this.planet.metal < cost.metal ? 'insufficient' : ''}">${this.formatNumber(cost.metal)}</span>
+          <span class="${(resources.metal || 0) < cost.metal ? 'insufficient' : ''}">${this.formatNumber(cost.metal)}</span>
         </div>
         <div class="cost-item">
           <img src="/assets/ui/resource-crystal.png" alt="Crystal">
-          <span class="${this.planet.crystal < cost.crystal ? 'insufficient' : ''}">${this.formatNumber(cost.crystal)}</span>
+          <span class="${(resources.crystal || 0) < cost.crystal ? 'insufficient' : ''}">${this.formatNumber(cost.crystal)}</span>
         </div>
         <div class="cost-item">
           <img src="/assets/ui/resource-deuterium.png" alt="Deuterium">
-          <span class="${this.planet.deuterium < cost.deuterium ? 'insufficient' : ''}">${this.formatNumber(cost.deuterium)}</span>
+          <span class="${(resources.deuterium || 0) < cost.deuterium ? 'insufficient' : ''}">${this.formatNumber(cost.deuterium)}</span>
         </div>
       </div>
     `;
   }
 
-  canAfford(cost) {
-    if (!this.planet) return false;
+  canAfford(cost, resources = {}) {
     return (
-      this.planet.metal >= cost.metal &&
-      this.planet.crystal >= cost.crystal &&
-      this.planet.deuterium >= cost.deuterium
+      (resources.metal || 0) >= cost.metal &&
+      (resources.crystal || 0) >= cost.crystal &&
+      (resources.deuterium || 0) >= cost.deuterium
     );
   }
 
   async startProduction(unitType, quantity) {
     if (!this.planet) return;
+    if (this.locationType === 'moon' && !this.moon) return;
 
     try {
       await api.post(`/shipyard/${this.planet.id}/build`, {
         unitType,
         quantity,
+        locationType: this.locationType,
+        moonId: this.locationType === 'moon' ? this.moon?.id : undefined,
       });
 
       showNotification('Shipyard', `Production started: ${quantity}x ${this.formatName(unitType)}`, 'success');
@@ -207,7 +332,11 @@ class ShipyardManager {
     if (!this.planet) return;
 
     try {
-      const queue = await api.get(`/shipyard/${this.planet.id}/queue`);
+      const params =
+        this.locationType === 'moon' && this.moon
+          ? `?locationType=moon&moonId=${this.moon.id}`
+          : '?locationType=planet';
+      const queue = await api.get(`/shipyard/${this.planet.id}/queue${params}`);
       this.queue = Array.isArray(queue) ? queue : [];
       this.renderQueue();
     } catch (error) {
@@ -230,6 +359,11 @@ class ShipyardManager {
     }
 
     wrapper.style.display = 'block';
+    const header = wrapper.querySelector('h3');
+    if (header) {
+      header.textContent =
+        this.locationType === 'moon' ? 'Moon Production Queue' : 'Ship Production Queue';
+    }
 
     this.queue.forEach((item) => {
       const percent = Math.round((item.progress || 0) * 100);

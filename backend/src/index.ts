@@ -33,6 +33,7 @@ import acsRoutes from './routes/acs';
 import accountRoutes from './routes/accountRoutes';
 import enhancedShopRoutes from './routes/enhancedShopRoutes';
 import allianceRoutes from './routes/allianceRoutes';
+import moonRoutes from './routes/moons';
 import playerBlockRoutes from './routes/playerBlocks';
 import LeaderboardScheduler from './services/leaderboardScheduler';
 
@@ -47,6 +48,7 @@ import globalLeaderboardService from './services/globalLeaderboardService';
 import chatService from './services/chatService';
 import notificationService from './services/notificationService';
 import { themeScheduler } from './services/themeScheduler';
+import fleetScheduler from './services/fleetScheduler';
 
 // Initialize Express app
 const app = express();
@@ -88,6 +90,7 @@ app.use('/api/acs', acsRoutes); // ACS coordination
 app.use('/api/account', accountRoutes); // Phase 9: Advanced Account Management System
 app.use('/api/shop-enhanced', enhancedShopRoutes); // Phase 10: Enhanced Shop & Matrix Theme
 app.use('/api/alliances', allianceRoutes); // Phase 11: Enhanced Alliance Management System
+app.use('/api/moons', moonRoutes);
 app.use('/api/player-blocks', playerBlockRoutes);
 
 // Health check endpoint
@@ -121,6 +124,7 @@ const io = initializeSocket(server);
 
 // Start game loop
 GameLoopService.start();
+fleetScheduler.start().catch((error) => console.error('Fleet scheduler failed to start', error));
 
 // Start admin monitoring service (collect metrics every minute)
 startMonitoring(60000);

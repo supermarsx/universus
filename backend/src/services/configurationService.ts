@@ -35,6 +35,20 @@ import {
     ConfigDiffResult
 } from '../types/configuration';
 
+const GAME_CONFIG_SNAPSHOT_KEY = 'config:game_snapshot';
+const CATEGORY_MAP: Record<string, keyof GameConfiguration> = {
+    combat: 'combat',
+    resources: 'resources',
+    buildings: 'buildings',
+    research: 'research',
+    ships: 'fleet',
+    fleet: 'fleet',
+    universe: 'universe',
+    alliances: 'alliance',
+    alliance: 'alliance',
+    gameplay: 'gameplay',
+};
+
 export class ConfigurationService {
     private pool: Pool;
     private redis: Redis;
@@ -71,6 +85,8 @@ export class ConfigurationService {
                 );
             }
 
+            await this.refreshGameConfigSnapshot();
+
             console.log(`Configuration cache initialized with ${result.rowCount} parameters`);
         } catch (error) {
             console.error('Failed to initialize configuration cache:', error);
@@ -79,8 +95,79 @@ export class ConfigurationService {
 
     async refreshCache(): Promise<void> {
         this.configCache.clear();
-        await this.redis.del('config:*');
+        await this.clearRedisConfigEntries();
         await this.initializeCache();
+    }
+
+    private async fetchCategoryFromDb(category: string): Promise<Record<string, any>> {
+        const result = await this.pool.query(
+            `SELECT cp.parameter_key, cp.current_value, cp.data_type
+             FROM config_parameters cp
+             JOIN config_categories cc ON cp.category_id = cc.category_id
+             WHERE cc.category_name = $1 AND cp.is_editable = TRUE`,
+            [category]
+        );
+
+        const config: Record<string, any> = {};
+        for (const row of result.rows) {
+            const key = row.parameter_key.split('.')[1];
+            config[key] = this.parseConfigValue(row.current_value, row.data_type);
+        }
+
+        return config;
+    }
+
+    private async loadGameConfigFromDb(): Promise<GameConfiguration> {
+        const [combat, resources, buildings, research, fleet, universe, alliance, gameplay] =
+            await Promise.all([
+                this.fetchCategoryFromDb('combat'),
+                this.fetchCategoryFromDb('resources'),
+                this.fetchCategoryFromDb('buildings'),
+                this.fetchCategoryFromDb('research'),
+                this.fetchCategoryFromDb('ships'),
+                this.fetchCategoryFromDb('universe'),
+                this.fetchCategoryFromDb('alliances'),
+                this.fetchCategoryFromDb('gameplay'),
+            ]);
+
+        return {
+            combat,
+            resources,
+            buildings,
+            research,
+            fleet,
+            universe,
+            alliance,
+            gameplay,
+        };
+    }
+
+    async getGameConfigSnapshot(force = false): Promise<GameConfiguration> {
+        if (!force) {
+            const cached = await this.redis.get(GAME_CONFIG_SNAPSHOT_KEY);
+            if (cached) {
+                return JSON.parse(cached);
+            }
+        }
+
+        return this.refreshGameConfigSnapshot();
+    }
+
+    async refreshGameConfigSnapshot(): Promise<GameConfiguration> {
+        const snapshot = await this.loadGameConfigFromDb();
+        await this.redis.set(GAME_CONFIG_SNAPSHOT_KEY, JSON.stringify(snapshot));
+        return snapshot;
+    }
+
+    private async invalidateGameConfigSnapshot(): Promise<void> {
+        await this.redis.del(GAME_CONFIG_SNAPSHOT_KEY);
+    }
+
+    private async clearRedisConfigEntries(): Promise<void> {
+        const keys = await this.redis.keys('config:*');
+        if (keys.length) {
+            await this.redis.del(...keys);
+        }
     }
 
     // ============================================
@@ -121,53 +208,55 @@ export class ConfigurationService {
     }
 
     async getCategory(category: string): Promise<Record<string, any>> {
-        const result = await this.pool.query(
-            `SELECT cp.parameter_key, cp.current_value, cp.data_type
-             FROM config_parameters cp
-             JOIN config_categories cc ON cp.category_id = cc.category_id
-             WHERE cc.category_name = $1 AND cp.is_editable = TRUE`,
-            [category]
-        );
-
-        const config: Record<string, any> = {};
-        for (const row of result.rows) {
-            const key = row.parameter_key.split('.')[1]; // Remove category prefix
-            config[key] = this.parseConfigValue(row.current_value, row.data_type);
+        const mapped = CATEGORY_MAP[category];
+        if (mapped) {
+            const snapshot = await this.getGameConfigSnapshot();
+            const segment = snapshot[mapped];
+            if (segment) {
+                return { ...segment };
+            }
         }
-
-        return config;
+        return this.fetchCategoryFromDb(category);
     }
 
     async getCombatConfig(): Promise<CombatConfig> {
-        return await this.getCategory('combat') as CombatConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.combat;
     }
 
     async getResourceConfig(): Promise<ResourceConfig> {
-        return await this.getCategory('resources') as ResourceConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.resources;
     }
 
     async getBuildingConfig(): Promise<BuildingConfig> {
-        return await this.getCategory('buildings') as BuildingConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.buildings;
     }
 
     async getResearchConfig(): Promise<ResearchConfig> {
-        return await this.getCategory('research') as ResearchConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.research;
     }
 
     async getFleetConfig(): Promise<FleetConfig> {
-        return await this.getCategory('ships') as FleetConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.fleet;
     }
 
     async getUniverseConfig(): Promise<UniverseConfig> {
-        return await this.getCategory('universe') as UniverseConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.universe;
     }
 
     async getAllianceConfig(): Promise<AllianceConfig> {
-        return await this.getCategory('alliances') as AllianceConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.alliance;
     }
 
     async getGameplayConfig(): Promise<GameplayConfig> {
-        return await this.getCategory('gameplay') as GameplayConfig;
+        const snapshot = await this.getGameConfigSnapshot();
+        return snapshot.gameplay;
     }
 
     async getAllConfig(): Promise<GameConfiguration> {
@@ -203,7 +292,8 @@ export class ConfigurationService {
         key: string,
         value: any,
         userId: number,
-        reason?: string
+        reason?: string,
+        options?: { suppressSnapshotRefresh?: boolean }
     ): Promise<ConfigUpdateResult> {
         const client = await this.pool.connect();
         
@@ -250,6 +340,10 @@ export class ConfigurationService {
             // Invalidate caches
             this.configCache.delete(key);
             await this.redis.del(`config:${key}`);
+            await this.invalidateGameConfigSnapshot();
+            if (!options?.suppressSnapshotRefresh) {
+                await this.refreshGameConfigSnapshot();
+            }
             
             // Broadcast change event via Redis pub/sub
             await this.redis.publish('config:changed', JSON.stringify({
@@ -307,7 +401,8 @@ export class ConfigurationService {
                     update.parameter_key,
                     update.value,
                     userId,
-                    updates.change_reason
+                    updates.change_reason,
+                    { suppressSnapshotRefresh: true }
                 );
                 results.push(result);
                 if (result.requires_restart) {
@@ -348,6 +443,10 @@ export class ConfigurationService {
                 requiresRestart,
                 timestamp: new Date()
             });
+        }
+
+        if (successCount > 0) {
+            await this.refreshGameConfigSnapshot();
         }
 
         return {

@@ -87,18 +87,68 @@ const BUILDINGS = {
     },
 };
 
+const MOON_BUILDINGS = {
+    lunar_base: {
+        name: 'Lunar Base',
+        description: 'Expands available fields on the moon.',
+        baseCost: { metal: 20000, crystal: 40000, deuterium: 0 },
+        costMultiplier: 2.0,
+        image: 'lunar-base',
+    },
+    moon_robotics_factory: {
+        name: 'Moon Robotics Factory',
+        description: 'Reduces construction time for moon buildings.',
+        baseCost: { metal: 400, crystal: 120, deuterium: 200 },
+        costMultiplier: 2.0,
+        image: 'robotics-factory',
+    },
+    moon_shipyard: {
+        name: 'Moon Shipyard',
+        description: 'Required before defenses or jump gates can be assembled from the moon.',
+        baseCost: { metal: 200, crystal: 400, deuterium: 200 },
+        costMultiplier: 2.0,
+        image: 'shipyard-1',
+    },
+    moon_nanite_factory: {
+        name: 'Moon Nanite Factory',
+        description: 'Provides additional speed bonuses for lunar construction.',
+        baseCost: { metal: 1000000, crystal: 500000, deuterium: 100000 },
+        costMultiplier: 2.0,
+        image: 'nanite-factory',
+    },
+    sensor_phalanx: {
+        name: 'Sensor Phalanx',
+        description: 'Allows scanning of nearby systems for fleet activity.',
+        baseCost: { metal: 20000, crystal: 40000, deuterium: 20000 },
+        costMultiplier: 2.0,
+        image: 'sensor-phalanx',
+    },
+    jump_gate: {
+        name: 'Jump Gate',
+        description: 'Instantly transfers ships between owned moons.',
+        baseCost: { metal: 2000000, crystal: 4000000, deuterium: 2000000 },
+        costMultiplier: 2.0,
+        image: 'jump-gate',
+    },
+};
+
 let currentPlanetData = null;
+
+function getBuildingConfig(buildingType) {
+    return BUILDINGS[buildingType] || MOON_BUILDINGS[buildingType];
+}
 
 // Update page with planet data
 function updatePageData(data) {
     currentPlanetData = data;
     renderBuildings();
     updateConstructionQueue(data.constructionQueue);
+    renderMoonSection();
 }
 
 // Calculate building cost for next level
-function calculateCost(buildingType, currentLevel) {
-    const config = BUILDINGS[buildingType];
+function calculateCost(configMap, buildingType, currentLevel) {
+    const config = configMap[buildingType];
     if (!config) return null;
 
     const factor = Math.pow(config.costMultiplier, currentLevel);
@@ -126,7 +176,7 @@ function renderBuildings() {
 
     for (const [buildingType, config] of Object.entries(BUILDINGS)) {
         const currentLevel = planet[buildingType] || 0;
-        const cost = calculateCost(buildingType, currentLevel);
+        const cost = calculateCost(BUILDINGS, buildingType, currentLevel);
         
         const canAfford = 
             resources.metal >= cost.metal &&
@@ -184,8 +234,111 @@ function renderBuildings() {
     }
 }
 
+function renderMoonSection() {
+    const section = document.getElementById('moonBuildSection');
+    const statusEl = document.getElementById('moonStatus');
+    const resourceSummary = document.getElementById('moonResourceSummary');
+    const grid = document.getElementById('moonBuildingsGrid');
+    const moonQueue = document.getElementById('moonConstructionQueue');
+
+    if (!section || !statusEl || !grid || !moonQueue || !resourceSummary) {
+        return;
+    }
+
+    const moonData = currentPlanetData?.moonData;
+    if (!moonData || !moonData.moon) {
+        statusEl.textContent = 'No moon detected in orbit.';
+        resourceSummary.classList.add('hidden');
+        grid.innerHTML = '<div class="moon-empty card-compact">Generate enough debris in battle to roll for a moon.</div>';
+        moonQueue.style.display = 'none';
+        return;
+    }
+
+    const moon = moonData.moon;
+    statusEl.textContent = `${moon.name} • ${moon.diameter} km • Fields ${moon.used_fields}/${moon.total_fields}`;
+    resourceSummary.classList.remove('hidden');
+    resourceSummary.innerHTML = `
+        <div class="resource-chip"><img src="/assets/ui/resource-metal.png" alt="Metal">${formatNumber(moon.metal)}</div>
+        <div class="resource-chip"><img src="/assets/ui/resource-crystal.png" alt="Crystal">${formatNumber(moon.crystal)}</div>
+        <div class="resource-chip"><img src="/assets/ui/resource-deuterium.png" alt="Deuterium">${formatNumber(moon.deuterium)}</div>
+    `;
+
+    renderMoonBuildingsGrid(moon, moonData);
+    updateMoonConstructionQueue(moonData.constructionQueue);
+}
+
+function renderMoonBuildingsGrid(moon, moonData) {
+    const grid = document.getElementById('moonBuildingsGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+    const resources = {
+        metal: moon.metal,
+        crystal: moon.crystal,
+        deuterium: moon.deuterium,
+    };
+    const isBuilding = moonData.constructionQueue && moonData.constructionQueue.length > 0;
+
+    for (const [buildingType, config] of Object.entries(MOON_BUILDINGS)) {
+        const currentLevel = moon[buildingType] || 0;
+        const cost = calculateCost(MOON_BUILDINGS, buildingType, currentLevel);
+        if (!cost) continue;
+
+        const canAfford =
+            resources.metal >= cost.metal &&
+            resources.crystal >= cost.crystal &&
+            resources.deuterium >= cost.deuterium;
+
+        const card = document.createElement('div');
+        card.className = 'building-card';
+        card.innerHTML = `
+            <img src="/assets/buildings/${config.image}.png" alt="${config.name}" class="building-image" onerror="this.src='/assets/buildings/metal-mine-1.png'">
+            <div class="building-card-body">
+                <div class="building-header">
+                    <span class="building-name">${config.name}</span>
+                    <span class="building-level">Level ${currentLevel}</span>
+                </div>
+                <p class="building-description">${config.description}</p>
+                <div class="building-cost">
+                    <div class="cost-item">
+                        <img src="/assets/ui/resource-metal.png" alt="Metal" class="cost-icon">
+                        <span class="cost-value ${resources.metal < cost.metal ? 'insufficient' : ''}">
+                            ${formatNumber(cost.metal)}
+                        </span>
+                    </div>
+                    <div class="cost-item">
+                        <img src="/assets/ui/resource-crystal.png" alt="Crystal" class="cost-icon">
+                        <span class="cost-value ${resources.crystal < cost.crystal ? 'insufficient' : ''}">
+                            ${formatNumber(cost.crystal)}
+                        </span>
+                    </div>
+                    <div class="cost-item">
+                        <img src="/assets/ui/resource-deuterium.png" alt="Deuterium" class="cost-icon">
+                        <span class="cost-value ${resources.deuterium < cost.deuterium ? 'insufficient' : ''}">
+                            ${formatNumber(cost.deuterium)}
+                        </span>
+                    </div>
+                </div>
+                <button
+                    class="btn-build"
+                    data-building="${buildingType}"
+                    ${!canAfford || isBuilding ? 'disabled' : ''}
+                >
+                    ${isBuilding ? 'Moon Queue Busy' : canAfford ? `Upgrade to Level ${currentLevel + 1}` : 'Insufficient Resources'}
+                </button>
+            </div>
+        `;
+
+        grid.appendChild(card);
+        const buildBtn = card.querySelector('.btn-build');
+        buildBtn.addEventListener('click', () =>
+            startBuilding(buildingType, { locationType: 'moon', moonId: moon.id })
+        );
+    }
+}
+
 // Start building construction
-async function startBuilding(buildingType) {
+async function startBuilding(buildingType, options = {}) {
     if (!GameState.currentPlanet) return;
 
     try {
@@ -195,7 +348,11 @@ async function startBuilding(buildingType) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${localStorage.getItem('token')}`
             },
-            body: JSON.stringify({ buildingType })
+            body: JSON.stringify({
+                buildingType,
+                locationType: options.locationType,
+                moonId: options.moonId,
+            })
         });
 
         const data = await response.json();
@@ -204,7 +361,9 @@ async function startBuilding(buildingType) {
             throw new Error(data.error || 'Failed to start construction');
         }
 
-        showNotification('Success', `${BUILDINGS[buildingType].name} construction started`, 'success');
+        const config = getBuildingConfig(buildingType);
+        const locationLabel = options.locationType === 'moon' ? 'Moon' : 'Planet';
+        showNotification('Success', `${config?.name || buildingType} construction started on ${locationLabel}`, 'success');
         
         // Reload planet data
         await loadPlanetData(GameState.currentPlanet.id);
@@ -224,27 +383,58 @@ function updateConstructionQueue(queue) {
         const item = queue[0];
         const endTime = new Date(item.end_time);
         const timeRemaining = calculateTimeRemaining(endTime);
+        const config = getBuildingConfig(item.building_type);
 
         activeConstruction.innerHTML = `
             <div class="active-construction-card">
-                <h4>${BUILDINGS[item.building_type].name} (Level ${item.level})</h4>
+                <h4>${config?.name || item.building_type} (Level ${item.level})</h4>
                 <p class="construction-timer">Completes in: <span id="constructionTimer">${formatTime(timeRemaining)}</span></p>
                 <button class="btn-secondary" onclick="cancelConstruction(${item.id})">Cancel Construction</button>
             </div>
         `;
 
         // Start countdown
-        startConstructionTimer(endTime);
+        startConstructionTimer(endTime, 'constructionTimer');
+    } else {
+        queueDisplay.style.display = 'none';
+    }
+}
+
+function updateMoonConstructionQueue(queue) {
+    const queueDisplay = document.getElementById('moonConstructionQueue');
+    const activeConstruction = document.getElementById('activeMoonConstruction');
+
+    if (!queueDisplay || !activeConstruction) {
+        return;
+    }
+
+    if (queue && queue.length > 0) {
+        queueDisplay.style.display = 'block';
+
+        const item = queue[0];
+        const endTime = new Date(item.end_time);
+        const timeRemaining = calculateTimeRemaining(endTime);
+        const config = getBuildingConfig(item.building_type);
+
+        activeConstruction.innerHTML = `
+            <div class="active-construction-card">
+                <h4>${config?.name || item.building_type} (Level ${item.level})</h4>
+                <p class="construction-timer">Completes in: <span id="moonConstructionTimer">${formatTime(timeRemaining)}</span></p>
+                <button class="btn-secondary" onclick="cancelConstruction(${item.id})">Cancel Construction</button>
+            </div>
+        `;
+
+        startConstructionTimer(endTime, 'moonConstructionTimer');
     } else {
         queueDisplay.style.display = 'none';
     }
 }
 
 // Start construction timer
-function startConstructionTimer(endTime) {
+function startConstructionTimer(endTime, timerElementId) {
     const timerInterval = setInterval(() => {
         const remaining = calculateTimeRemaining(endTime);
-        const timerElement = document.getElementById('constructionTimer');
+        const timerElement = document.getElementById(timerElementId);
         
         if (!timerElement) {
             clearInterval(timerInterval);
@@ -292,45 +482,4 @@ async function cancelConstruction(constructionId) {
     }
 }
 
-// Add CSS for construction queue display
-const style = document.createElement('style');
-style.textContent = `
-    .construction-queue-display {
-        background: rgba(20, 25, 45, 0.95);
-        border: 2px solid #4a9eff;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 30px;
-    }
-
-    .construction-queue-display h3 {
-        color: #4a9eff;
-        margin-bottom: 15px;
-    }
-
-    .active-construction-card {
-        background: rgba(15, 19, 34, 0.7);
-        padding: 15px;
-        border-radius: 5px;
-    }
-
-    .active-construction-card h4 {
-        color: #4a9eff;
-        margin-bottom: 10px;
-    }
-
-    .construction-timer {
-        font-size: 18px;
-        font-weight: bold;
-        color: #22c55e;
-        margin: 10px 0;
-    }
-
-    .building-description {
-        color: #8a9db5;
-        font-size: 14px;
-        margin: 10px 0;
-        line-height: 1.5;
-    }
-`;
-document.head.appendChild(style);
+// Styles moved to global stylesheet

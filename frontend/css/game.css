@@ -1079,6 +1079,18 @@
     color: #e0e0e0;
 }
 
+.moon-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    background: rgba(147, 197, 253, 0.18);
+    color: #93c5fd;
+    border-radius: 999px;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
 .slot-owner {
     display: flex;
     flex-direction: column;
@@ -1444,4 +1456,179 @@
 .notification.info {
     background: #4a9eff;
     color: white;
+}
+
+/* Construction queue + moon UI shared styles */
+.construction-queue-display {
+    background: rgba(20, 25, 45, 0.95);
+    border: 2px solid #4a9eff;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.construction-queue-display h3 {
+    color: #4a9eff;
+    margin-bottom: 15px;
+}
+
+.active-construction-card {
+    background: rgba(15, 19, 34, 0.7);
+    padding: 15px;
+    border-radius: 5px;
+}
+
+.active-construction-card h4 {
+    color: #4a9eff;
+    margin-bottom: 10px;
+}
+
+.construction-timer {
+    font-size: 18px;
+    font-weight: bold;
+    color: #22c55e;
+    margin: 10px 0;
+}
+
+.building-description {
+    color: #8a9db5;
+    font-size: 14px;
+    margin: 10px 0;
+    line-height: 1.5;
+}
+
+.moon-build {
+    margin-top: 30px;
+    padding: 20px;
+    background: rgba(10, 14, 28, 0.85);
+    border: 2px solid rgba(74, 158, 255, 0.4);
+}
+
+.moon-build__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.moon-status {
+    font-size: 14px;
+    color: #9db8f5;
+}
+
+.moon-resource-summary {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.moon-resource-summary.hidden {
+    display: none;
+}
+
+.resource-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(28, 36, 66, 0.9);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+}
+
+.resource-chip img {
+    width: 18px;
+    height: 18px;
+}
+
+.moon-empty {
+    text-align: center;
+    color: #8a9db5;
+    padding: 20px;
+}
+
+.shipyard-location {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: rgba(10, 14, 28, 0.85);
+    border: 2px solid rgba(74, 158, 255, 0.4);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.shipyard-location label {
+    font-weight: 600;
+    color: #9db8f5;
+    font-size: 14px;
+}
+
+.location-select {
+    background: #0f1322;
+    border: 2px solid #2a3f5f;
+    border-radius: 6px;
+    color: #e0e0e0;
+    padding: 10px;
+    font-size: 14px;
+}
+
+.location-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.location-status {
+    font-size: 13px;
+    color: #8a9db5;
+}
+
+.phalanx-controls {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.phalanx-status {
+    font-size: 13px;
+    color: #8a9db5;
+}
+
+#phalanxResults {
+    margin-top: 10px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.phalanx-section {
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(9, 12, 20, 0.85);
+}
+
+.phalanx-section h4 {
+    margin-bottom: 8px;
+    color: #4a9eff;
+}
+
+.phalanx-fleet {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 6px 0;
+    font-size: 13px;
+}
+
+.phalanx-fleet:last-child {
+    border-bottom: none;
+}
+
+.modal .modal-content.large {
+    width: 640px;
+    max-width: 90vw;
 }

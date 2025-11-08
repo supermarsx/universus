@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { ShipyardService } from '../services/shipyardService';
+import { LocationType } from '../services/locationService';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
@@ -9,8 +10,18 @@ router.use(authenticateToken);
 
 router.get('/:planetId/queue', async (req: Request, res: Response) => {
   try {
-    const planetId = parseInt(req.params.planetId);
-    const queue = await ShipyardService.getQueue(planetId);
+    const planetId = parseInt(req.params.planetId, 10);
+    const locationType = (req.query.locationType as LocationType) || 'planet';
+    const moonId =
+      req.query.moonId !== undefined
+        ? parseInt(req.query.moonId as string, 10)
+        : undefined;
+
+    const queue = await ShipyardService.getQueue({
+      planetId,
+      locationType,
+      moonId,
+    });
     res.json(queue);
   } catch (error: any) {
     console.error('Error fetching shipyard queue:', error);
@@ -21,8 +32,8 @@ router.get('/:planetId/queue', async (req: Request, res: Response) => {
 router.post('/:planetId/build', async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const planetId = parseInt(req.params.planetId);
-    const { unitType, quantity } = req.body;
+    const planetId = parseInt(req.params.planetId, 10);
+    const { unitType, quantity, locationType, moonId } = req.body;
 
     if (!unitType || !quantity) {
       return res.status(400).json({ error: 'Unit type and quantity required' });
@@ -30,9 +41,14 @@ router.post('/:planetId/build', async (req: Request, res: Response) => {
 
     const result = await ShipyardService.startProduction(
       authReq.user!.id,
-      planetId,
       unitType,
-      parseInt(quantity)
+      parseInt(quantity, 10),
+      {
+        planetId,
+        locationType,
+        moonId: moonId ? parseInt(moonId, 10) : undefined,
+        expectedPlanetId: planetId,
+      }
     );
 
     res.status(201).json(result);

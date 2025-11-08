@@ -31,6 +31,8 @@ const MISSION_SHIPS: Record<MissionType, string[]> = {
   harvest: ['recycler'],
 };
 
+const PHALANX_SCAN_COST = 5000;
+
 class GalaxyCanvasRenderer {
   controller: GalaxyController;
   canvas: HTMLCanvasElement | null;
@@ -235,9 +237,12 @@ class GalaxyController {
 
   elements: Record<string, HTMLElement | null> = {};
   canvasRenderer: GalaxyCanvasRenderer | null = null;
+  originMoon: any = null;
+  isPhalanxLoading = false;
 
   constructor() {
     this.cacheDom();
+    this.updatePhalanxState();
     this.canvasRenderer = new GalaxyCanvasRenderer(this);
     this.bindEvents();
     this.bootstrapFromGlobals();
@@ -282,6 +287,11 @@ class GalaxyController {
       inlineTargetMission: document.getElementById('inlineMissionSelect'),
       inlineTargetBtn: document.getElementById('inlineTargetBtn'),
       originPlanetLabel: document.getElementById('originPlanetLabel'),
+      phalanxScanBtn: document.getElementById('phalanxScanBtn'),
+      phalanxStatus: document.getElementById('phalanxStatus'),
+      phalanxModal: document.getElementById('phalanxModal'),
+      phalanxResults: document.getElementById('phalanxResults'),
+      closePhalanxModal: document.getElementById('closePhalanxModal'),
     };
   }
 
@@ -344,6 +354,14 @@ class GalaxyController {
       if (event.key === 'Enter') {
         event.preventDefault();
         this.handleInlineTargeting();
+      }
+    });
+
+    this.elements.phalanxScanBtn?.addEventListener('click', () => this.handlePhalanxScan());
+    this.elements.closePhalanxModal?.addEventListener('click', () => this.togglePhalanxModal(false));
+    this.elements.phalanxModal?.addEventListener('click', (event) => {
+      if (event.target === this.elements.phalanxModal) {
+        this.togglePhalanxModal(false);
       }
     });
   }
@@ -725,6 +743,9 @@ class GalaxyController {
       ? `[${slot.owner.alliance.tag}]`
       : '';
     const activityLabel = slot.owner?.activity?.label || 'unknown';
+    const moonBadge = slot.moon
+      ? `<span class="moon-pill" title="Diameter ${this.formatNumber(slot.moon.diameter)} km">Moon</span>`
+      : '';
     const relationBadge = this.renderRelationBadge(slot.owner?.relation);
 
     const actions = this.renderActionButtons(slot);
@@ -738,6 +759,7 @@ class GalaxyController {
       <div class="slot-planet">
         ${slot.hasPlanet ? slot.planet?.name || 'Unknown World' : '<span class="slot-empty">Vacant Orbit</span>'}
         <div class="coords">${this.currentGalaxy}:${this.currentSystem}:${slot.position}</div>
+        ${moonBadge}
         <div class="slot-markers">${this.renderMarkers(slot)}</div>
       </div>
       <div class="slot-owner">
@@ -1150,6 +1172,9 @@ class GalaxyController {
 
     this.renderOriginSummary();
     this.scanSystem({ silent: true });
+    if (!this.originMoon || this.originMoon.planet_id !== planet.id) {
+      this.loadOriginMoon(planet.id);
+    }
   }
 
   extractShips(planet: any) {
@@ -1161,6 +1186,9 @@ class GalaxyController {
   }
 
   handlePageData(data: any) {
+    if (data?.moonData) {
+      this.setOriginMoon(data.moonData?.moon || null);
+    }
     if (data?.planet) {
       this.syncOwnedPlanet(data.planet);
       this.applyOriginPlanet(data.planet);
@@ -1169,6 +1197,167 @@ class GalaxyController {
 
   formatNumber(value: number) {
     return new Intl.NumberFormat().format(Math.floor(value || 0));
+  }
+
+  formatCountdown(seconds: number | null) {
+    if (seconds == null) return '—';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  getMissionLabel(mission: string) {
+    switch (mission) {
+      case 'attack':
+        return 'Attack';
+      case 'transport':
+        return 'Transport';
+      case 'deploy':
+        return 'Deploy';
+      case 'colonize':
+        return 'Colonize';
+      case 'harvest':
+        return 'Harvest';
+      case 'espionage':
+        return 'Espionage';
+      default:
+        return mission;
+    }
+  }
+
+  setOriginMoon(moon: any | null) {
+    this.originMoon = moon;
+    this.updatePhalanxState();
+  }
+
+  async loadOriginMoon(planetId: number) {
+    try {
+      const response = await api.get(`/moons/${planetId}`);
+      const moon = response?.data?.moon || response?.data || null;
+      this.setOriginMoon(moon);
+    } catch (error) {
+      this.setOriginMoon(null);
+    }
+  }
+
+  updatePhalanxState() {
+    const button = this.elements.phalanxScanBtn as HTMLButtonElement | null;
+    const status = this.elements.phalanxStatus;
+    if (!button || !status) return;
+
+    if (!this.originMoon || (this.originMoon.sensor_phalanx || 0) === 0) {
+      button.disabled = true;
+      status.textContent = 'Requires a moon with Sensor Phalanx.';
+      return;
+    }
+
+    const level = this.originMoon.sensor_phalanx || 0;
+    const range = Math.max(0, level * level - 1);
+    button.disabled = this.isPhalanxLoading;
+    status.textContent = `Level ${level} • Range ±${range} systems • Cost ${this.formatNumber(
+      PHALANX_SCAN_COST
+    )} deut.`;
+  }
+
+  async handlePhalanxScan() {
+    if (!this.originMoon || (this.originMoon.sensor_phalanx || 0) === 0) {
+      this.showToast('This planet has no Sensor Phalanx.', 'error');
+      return;
+    }
+
+    const coords =
+      this.parseCoordinates(
+        ((this.elements.inlineTargetInput as HTMLInputElement | null)?.value || '').trim()
+      ) || {
+        galaxy: this.currentGalaxy,
+        system: this.currentSystem,
+        position: this.focusPosition || 1,
+      };
+
+    try {
+      this.setPhalanxLoading(true);
+      const response = await api.post(`/moons/${this.originMoon.id}/phalanx`, {
+        targetGalaxy: coords.galaxy,
+        targetSystem: coords.system,
+        targetPosition: coords.position,
+      });
+      const result = response?.data || response;
+      this.renderPhalanxResults(result);
+      this.togglePhalanxModal(true);
+      this.showToast('Sensor scan complete.', 'success');
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error || error?.message || 'Sensor Phalanx scan failed';
+      this.showToast(message, 'error');
+    } finally {
+      this.setPhalanxLoading(false);
+    }
+  }
+
+  setPhalanxLoading(state: boolean) {
+    this.isPhalanxLoading = state;
+    const button = this.elements.phalanxScanBtn as HTMLButtonElement | null;
+    if (button) {
+      button.disabled = state || !this.originMoon || (this.originMoon.sensor_phalanx || 0) === 0;
+    }
+  }
+
+  renderPhalanxResults(result: any) {
+    const container = this.elements.phalanxResults;
+    if (!container) return;
+
+    const target = result?.target || {};
+    const inbound = result?.fleets?.inbound || [];
+    const outbound = result?.fleets?.outbound || [];
+    const targetLabel = `${target.galaxy}:${target.system}:${target.position}`;
+
+    const buildFleetList = (fleets: any[], emptyText: string) => {
+      if (!fleets.length) {
+        return `<p class="text-muted">${emptyText}</p>`;
+      }
+      return fleets.map((fleet) => this.renderPhalanxFleet(fleet)).join('');
+    };
+
+    container.innerHTML = `
+      <p class="text-muted">
+        Target ${targetLabel}
+        ${target.planetName ? `• ${target.planetName}` : ''}
+      </p>
+      <div class="phalanx-section">
+        <h4>Inbound Fleets</h4>
+        ${buildFleetList(inbound, 'No inbound fleets detected.')}
+      </div>
+      <div class="phalanx-section">
+        <h4>Outbound Fleets</h4>
+        ${buildFleetList(outbound, 'No outbound fleets detected.')}
+      </div>
+    `;
+  }
+
+  renderPhalanxFleet(fleet: any) {
+    const eta = this.formatCountdown(fleet.etaSeconds ?? null);
+    const origin = fleet.origin
+      ? `[${fleet.origin.galaxy}:${fleet.origin.system}:${fleet.origin.position}]`
+      : 'Unknown origin';
+    const mission = this.getMissionLabel(fleet.mission);
+    return `
+      <div class="phalanx-fleet">
+        <div>
+          <strong>${fleet.owner || 'Unknown Commander'}</strong> · ${mission}
+          <div class="text-muted">${origin}</div>
+        </div>
+        <div>${eta}</div>
+      </div>
+    `;
+  }
+
+  togglePhalanxModal(show: boolean) {
+    const modal = this.elements.phalanxModal as HTMLElement | null;
+    if (!modal) return;
+    modal.style.display = show ? 'block' : 'none';
   }
 }
 

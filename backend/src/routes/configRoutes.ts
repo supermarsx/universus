@@ -199,6 +199,30 @@ router.post('/parameters/:key/reset', async (req: Request, res: Response) => {
 });
 
 // ============================================
+// GAME CONFIG SNAPSHOT
+// ============================================
+
+router.get('/game-config', async (req: Request, res: Response) => {
+    try {
+        const snapshot = await configService.getGameConfigSnapshot();
+        res.json({ success: true, config: snapshot });
+    } catch (error: any) {
+        console.error('Failed to fetch game config snapshot:', error);
+        res.status(500).json({ success: false, error: 'Failed to load game configuration' });
+    }
+});
+
+router.post('/game-config/refresh', async (req: Request, res: Response) => {
+    try {
+        const snapshot = await configService.refreshGameConfigSnapshot();
+        res.json({ success: true, config: snapshot });
+    } catch (error: any) {
+        console.error('Failed to refresh game config snapshot:', error);
+        res.status(500).json({ success: false, error: 'Failed to refresh configuration snapshot' });
+    }
+});
+
+// ============================================
 // HISTORY
 // ============================================
 

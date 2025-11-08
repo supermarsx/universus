@@ -61,8 +61,24 @@ export interface Research {
 export interface ConstructionQueue {
   id: number;
   planet_id: number;
+  moon_id?: number | null;
+  location_type: 'planet' | 'moon';
   building_type: string;
   level: number;
+  start_time: Date;
+  end_time: Date;
+  metal_cost: number;
+  crystal_cost: number;
+  deuterium_cost: number;
+}
+
+export interface ShipyardQueue {
+  id: number;
+  planet_id: number;
+  moon_id?: number | null;
+  location_type: 'planet' | 'moon';
+  unit_type: string;
+  quantity: number;
   start_time: Date;
   end_time: Date;
   metal_cost: number;

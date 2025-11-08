@@ -3,15 +3,61 @@ import { PlanetService } from './planetService';
 import { CombatService } from './combatService';
 import { SHIPS } from '../config/gameConfig';
 import { PoolClient } from 'pg';
-import { Fleet } from '../types';
+import { Fleet, Planet } from '../types';
 import { getRealtimeHandler } from '../socket';
 import notificationService from './notificationService';
+import fleetScheduler from './fleetScheduler';
 import { CombatResult } from '../services/combatService';
+import moonService from './moonService';
+import { ResearchService } from './researchService';
+import { MessagingService } from './messagingService';
+import { gameConfig } from './gameConfigAdapter';
 
 interface FleetParticipant {
   fleet: Fleet;
   ships: { [key: string]: number };
 }
+
+const PLANET_SHIP_KEYS = [
+  'small_cargo',
+  'large_cargo',
+  'light_fighter',
+  'heavy_fighter',
+  'cruiser',
+  'battleship',
+  'bomber',
+  'destroyer',
+  'colony_ship',
+  'recycler',
+  'espionage_probe',
+  'deathstar',
+];
+
+const PLANET_DEFENSE_KEYS = [
+  'rocket_launcher',
+  'light_laser',
+  'heavy_laser',
+  'gauss_cannon',
+  'ion_cannon',
+  'plasma_turret',
+  'small_shield_dome',
+  'large_shield_dome',
+];
+
+const PLANET_BUILDING_KEYS = [
+  'metal_mine',
+  'crystal_mine',
+  'deuterium_synthesizer',
+  'solar_plant',
+  'fusion_reactor',
+  'shipyard',
+  'robotics_factory',
+  'nanite_factory',
+  'research_lab',
+  'missile_silo',
+];
+
+const messagingService = new MessagingService(pool);
 
 export class FleetService {
   static async dispatchFleet(
@@ -41,6 +87,15 @@ export class FleetService {
       }
 
       const originPlanet = originResult.rows[0];
+
+      await this.validateMissionRequest({
+        userId,
+        missionType,
+        ships,
+        targetGalaxy,
+        targetSystem,
+        targetPosition,
+      });
 
       // Verify ships are available
       for (const [shipType, count] of Object.entries(ships)) {
@@ -143,6 +198,7 @@ export class FleetService {
           action: 'dispatch',
           fleet: fleetRecord,
         });
+        this.scheduleArrivalEvent(fleetRecord.id, fleetRecord.arrival_time);
       }
 
       return fleetRecord;
@@ -204,14 +260,20 @@ export class FleetService {
     const now = Date.now();
 
     return result.rows.map((row) => {
-      const arrival = new Date(row.arrival_time).getTime();
+      const arrival = row.arrival_time ? new Date(row.arrival_time).getTime() : null;
       const returnTime = row.return_time ? new Date(row.return_time).getTime() : null;
+      const etaMs = arrival ? Math.max(0, arrival - now) : null;
+      const returnEtaMs = returnTime ? Math.max(0, returnTime - now) : null;
 
       return {
         ...row,
         ships: typeof row.ships === 'string' ? JSON.parse(row.ships) : row.ships,
-        secondsUntilArrival: Math.max(0, Math.ceil((arrival - now) / 1000)),
-        secondsUntilReturn: returnTime ? Math.max(0, Math.ceil((returnTime - now) / 1000)) : null,
+        arrivalTimestamp: arrival,
+        returnTimestamp: returnTime,
+        etaMs,
+        returnEtaMs,
+        secondsUntilArrival: etaMs !== null ? Math.max(0, Math.ceil(etaMs / 1000)) : null,
+        secondsUntilReturn: returnEtaMs !== null ? Math.max(0, Math.ceil(returnEtaMs / 1000)) : null,
       };
     });
   }
@@ -293,6 +355,13 @@ export class FleetService {
       }
 
       const fleet = fleetResult.rows[0];
+      const targetLocation = this.formatLocation(
+        fleet.target_galaxy,
+        fleet.target_system,
+        fleet.target_position
+      );
+
+      let missionResult: MissionOutcome | null = null;
 
       switch (fleet.mission_type) {
         case 'attack':
@@ -304,25 +373,78 @@ export class FleetService {
         case 'deploy':
           await this.handleDeployMission(fleet, client);
           break;
+        case 'colonize':
+          missionResult = await this.handleColonizeMission(fleet, client);
+          break;
+        case 'espionage':
+          missionResult = await this.handleEspionageMission(fleet, client);
+          break;
+        case 'harvest':
+          missionResult = await this.handleHarvestMission(fleet, client);
+          break;
       }
 
       await client.query('COMMIT');
 
-      this.emitFleetEvent(fleet.user_id, {
-        action: 'arrival',
-        fleetId: fleet.id,
-      });
-
-      await notificationService.notifyFleetArrived(
-        fleet.user_id,
-        fleet.id,
-        this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position)
-      );
+      this.handleMissionOutcome(fleet, missionResult, targetLocation);
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  private static async handleMissionOutcome(
+    fleet: Fleet,
+    outcome: MissionOutcome | null,
+    targetLocation: string
+  ): Promise<void> {
+    if (!outcome) {
+      this.emitFleetEvent(fleet.user_id, {
+        action: 'arrival',
+        fleetId: fleet.id,
+      });
+
+      await notificationService.notifyFleetArrived(fleet.user_id, fleet.id, targetLocation);
+      return;
+    }
+
+    switch (outcome.type) {
+      case 'colonize':
+        this.emitFleetEvent(fleet.user_id, {
+          action: 'colonize',
+          status: outcome.success ? 'success' : 'failed',
+          fleetId: fleet.id,
+          planetId: outcome.newPlanet?.id ?? null,
+          planet: outcome.newPlanet ?? null,
+        });
+
+        await notificationService.notifyColonizationResult(
+          fleet.user_id,
+          targetLocation,
+          outcome.success,
+          outcome.newPlanet?.id
+        );
+        break;
+      case 'espionage':
+        this.emitFleetEvent(fleet.user_id, {
+          action: 'espionage',
+          success: outcome.success,
+          detected: outcome.detected,
+          intelLevel: outcome.intelLevel,
+        });
+        break;
+      case 'harvest':
+        this.emitFleetEvent(fleet.user_id, {
+          action: 'harvest',
+          fleetId: fleet.id,
+          collected: outcome.collected,
+          empty: outcome.empty ?? false,
+        });
+
+        await notificationService.notifyFleetArrived(fleet.user_id, fleet.id, targetLocation);
+        break;
     }
   }
 
@@ -398,6 +520,13 @@ export class FleetService {
         ]
       );
     }
+
+    await moonService.tryCreateMoonFromDebris(
+      targetPlanet.id,
+      targetPlanet.user_id,
+      combatResult.debris.metal,
+      combatResult.debris.crystal
+    );
 
     await this.updateAttackerFleetsAfterCombat(participants, combatResult, client);
 
@@ -506,6 +635,8 @@ export class FleetService {
       `UPDATE fleets SET status = 'returning', cargo_metal = 0, cargo_crystal = 0, cargo_deuterium = 0 WHERE id = $1`,
       [fleet.id]
     );
+
+    this.scheduleReturnEvent(fleet.id, fleet.return_time);
   }
 
   private static async handleDeployMission(fleet: Fleet, client: PoolClient): Promise<void> {
@@ -532,18 +663,261 @@ export class FleetService {
     }
   }
 
+  private static async handleColonizeMission(fleet: Fleet, client: PoolClient): Promise<ColonizeMissionResult> {
+    const ships = this.safeParse(fleet.ships);
+    const colonyShips = ships.colony_ship || 0;
+
+    if (colonyShips <= 0) {
+      await this.returnFleet(fleet, client);
+      return { type: 'colonize', success: false, failureReason: 'invalid' };
+    }
+
+    const [planetCount, limit] = await Promise.all([
+      PlanetService.getPlanetCountByUserId(fleet.user_id),
+      gameConfig.getColonizationLimit(),
+    ]);
+
+    if (planetCount >= limit) {
+      await this.returnFleet(fleet, client);
+      return { type: 'colonize', success: false, failureReason: 'limit_reached' };
+    }
+
+    const targetPlanet = await PlanetService.getPlanetByCoordinates(
+      fleet.target_galaxy,
+      fleet.target_system,
+      fleet.target_position
+    );
+
+    if (targetPlanet) {
+      await this.returnFleet(fleet, client);
+      return { type: 'colonize', success: false, failureReason: 'slot_taken' };
+    }
+
+    const newPlanet = await PlanetService.createColonizedPlanet(
+      {
+        userId: fleet.user_id,
+        galaxy: fleet.target_galaxy,
+        system: fleet.target_system,
+        position: fleet.target_position,
+        initialMetal: 500 + (fleet.cargo_metal || 0),
+        initialCrystal: 300 + (fleet.cargo_crystal || 0),
+        initialDeuterium: 100 + (fleet.cargo_deuterium || 0),
+      },
+      client
+    );
+
+    await client.query('DELETE FROM fleets WHERE id = $1', [fleet.id]);
+
+    return { type: 'colonize', success: true, newPlanet };
+  }
+
+  private static async handleEspionageMission(
+    fleet: Fleet,
+    client: PoolClient
+  ): Promise<EspionageMissionResult> {
+    const ships = this.safeParse(fleet.ships);
+    const probes = ships.espionage_probe || 0;
+
+    if (probes <= 0) {
+      await this.returnFleet(fleet, client);
+      return { type: 'espionage', success: false, detected: false, intelLevel: 'none' };
+    }
+
+    const targetResult = await client.query(
+      `SELECT p.*, u.username AS owner_username
+       FROM planets p
+       LEFT JOIN users u ON u.id = p.user_id
+       WHERE p.galaxy = $1 AND p.system = $2 AND p.position = $3
+       FOR UPDATE`,
+      [fleet.target_galaxy, fleet.target_system, fleet.target_position]
+    );
+
+    if (targetResult.rows.length === 0) {
+      await client.query('DELETE FROM fleets WHERE id = $1', [fleet.id]);
+      return { type: 'espionage', success: false, detected: false, intelLevel: 'none' };
+    }
+
+    const targetPlanet = targetResult.rows[0];
+    const [spyResearch, defenderResearch] = await Promise.all([
+      ResearchService.getUserResearch(fleet.user_id),
+      targetPlanet.user_id ? ResearchService.getUserResearch(targetPlanet.user_id) : null,
+    ]);
+
+    const attackerEspionage = spyResearch?.espionage_technology || 0;
+    const defenderEspionage = defenderResearch?.espionage_technology || 0;
+
+    const detailScore = attackerEspionage + Math.log2(probes + 1);
+    const defenseScore = defenderEspionage;
+    const detailDelta = detailScore - defenseScore;
+
+    let intelLevel: EspionageIntelLevel = 'minimal';
+    if (detailDelta >= 3) {
+      intelLevel = 'full';
+    } else if (detailDelta >= 0) {
+      intelLevel = 'standard';
+    }
+
+    const detectionChance = Math.max(
+      0.05,
+      Math.min(0.95, 0.5 + (defenseScore - detailScore) * 0.05)
+    );
+    const detected = Math.random() < detectionChance;
+
+    const report = this.buildEspionageReport(targetPlanet, intelLevel);
+    report.detected = detected;
+    report.probes = probes;
+    report.intelLevel = intelLevel;
+
+    if (targetPlanet.user_id) {
+      await messagingService.sendEspionageReport(fleet.user_id, targetPlanet.user_id, report);
+    }
+
+    await client.query('DELETE FROM fleets WHERE id = $1', [fleet.id]);
+
+    return {
+      type: 'espionage',
+      success: true,
+      detected,
+      intelLevel,
+      reportSummary: {
+        resources: report.resources,
+        intelLevel,
+        detected,
+      },
+    };
+  }
+
+  private static async handleHarvestMission(
+    fleet: Fleet,
+    client: PoolClient
+  ): Promise<HarvestMissionResult> {
+    const ships = this.safeParse(fleet.ships);
+    const recyclerCount = ships.recycler || 0;
+
+    if (recyclerCount <= 0) {
+      await this.returnFleet(fleet, client);
+      return { type: 'harvest', collected: { metal: 0, crystal: 0 }, empty: true };
+    }
+
+    const debrisResult = await client.query(
+      `SELECT * FROM debris_fields
+       WHERE galaxy = $1 AND system = $2 AND position = $3
+       FOR UPDATE`,
+      [fleet.target_galaxy, fleet.target_system, fleet.target_position]
+    );
+
+    if (debrisResult.rows.length === 0) {
+      await this.returnFleet(fleet, client);
+      return { type: 'harvest', collected: { metal: 0, crystal: 0 }, empty: true };
+    }
+
+    const debris = debrisResult.rows[0];
+    const recyclerCapacity = (SHIPS.recycler?.cargo || 0) * recyclerCount;
+    let remainingCapacity = recyclerCapacity;
+
+    const collected = { metal: 0, crystal: 0 };
+
+    if (debris.metal > 0) {
+      collected.metal = Math.min(debris.metal, remainingCapacity);
+      remainingCapacity -= collected.metal;
+    }
+
+    if (remainingCapacity > 0 && debris.crystal > 0) {
+      collected.crystal = Math.min(debris.crystal, remainingCapacity);
+      remainingCapacity -= collected.crystal;
+    }
+
+    const updatedMetal = Math.max(0, debris.metal - collected.metal);
+    const updatedCrystal = Math.max(0, debris.crystal - collected.crystal);
+
+    if (updatedMetal === 0 && updatedCrystal === 0) {
+      await client.query('DELETE FROM debris_fields WHERE id = $1', [debris.id]);
+    } else {
+      await client.query(
+        'UPDATE debris_fields SET metal = $1, crystal = $2 WHERE id = $3',
+        [updatedMetal, updatedCrystal, debris.id]
+      );
+    }
+
+    await client.query(
+      `UPDATE fleets 
+         SET status = 'returning',
+             cargo_metal = cargo_metal + $1,
+             cargo_crystal = cargo_crystal + $2
+       WHERE id = $3`,
+      [collected.metal, collected.crystal, fleet.id]
+    );
+
+    this.scheduleReturnEvent(fleet.id, fleet.return_time);
+
+    return {
+      type: 'harvest',
+      collected,
+      empty: collected.metal === 0 && collected.crystal === 0,
+    };
+  }
+
+  private static buildEspionageReport(targetPlanet: any, intelLevel: EspionageIntelLevel) {
+    const report: any = {
+      coordinates: {
+        galaxy: targetPlanet.galaxy,
+        system: targetPlanet.system,
+        position: targetPlanet.position,
+      },
+      planetName: targetPlanet.name,
+      ownerId: targetPlanet.user_id,
+      ownerName: targetPlanet.owner_username,
+      resources: {
+        metal: targetPlanet.metal,
+        crystal: targetPlanet.crystal,
+        deuterium: targetPlanet.deuterium,
+        energy: targetPlanet.energy,
+      },
+    };
+
+    if (intelLevel !== 'minimal' && intelLevel !== 'none') {
+      report.ships = this.extractPlanetCounts(targetPlanet, PLANET_SHIP_KEYS);
+    }
+
+    if (intelLevel === 'full') {
+      report.defenses = this.extractPlanetCounts(targetPlanet, PLANET_DEFENSE_KEYS);
+      report.buildings = this.extractPlanetCounts(targetPlanet, PLANET_BUILDING_KEYS);
+    }
+
+    return report;
+  }
+
+  private static extractPlanetCounts(source: any, keys: string[]): Record<string, number> {
+    const result: Record<string, number> = {};
+    keys.forEach((key) => {
+      const value = Number(source[key] || 0);
+      if (value > 0) {
+        result[key] = value;
+      }
+    });
+    return result;
+  }
+
   private static async returnFleet(fleet: Fleet, client: PoolClient): Promise<void> {
     await client.query(
       `UPDATE fleets SET status = 'returning' WHERE id = $1`,
       [fleet.id]
     );
+    this.scheduleReturnEvent(fleet.id, fleet.return_time);
   }
 
   static async recallFleet(userId: number, fleetId: number): Promise<void> {
-    await pool.query(
-      `UPDATE fleets SET status = 'returning', arrival_time = NOW() WHERE id = $1 AND user_id = $2`,
+    const result = await pool.query(
+      `UPDATE fleets 
+       SET status = 'returning', return_time = NOW()
+       WHERE id = $1 AND user_id = $2
+       RETURNING return_time`,
       [fleetId, userId]
     );
+    if (result.rowCount > 0) {
+      this.unscheduleFleetEvents(fleetId, 'arrival');
+      this.scheduleReturnEvent(fleetId, result.rows[0].return_time);
+    }
 
     this.emitFleetEvent(userId, {
       action: 'recall',
@@ -556,6 +930,154 @@ export class FleetService {
     if (!handler) return;
 
     handler.emitFleetUpdate(userId, payload);
+  }
+
+  static async completeFleetReturn(fleetId: number): Promise<void> {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      const fleetResult = await client.query('SELECT * FROM fleets WHERE id = $1', [fleetId]);
+      if (fleetResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return;
+      }
+
+      const fleet = fleetResult.rows[0];
+      if (fleet.status !== 'returning') {
+        await client.query('ROLLBACK');
+        return;
+      }
+
+      const planetResult = await client.query(
+        'SELECT galaxy, system, position, name FROM planets WHERE id = $1',
+        [fleet.origin_planet_id]
+      );
+
+      const ships = this.safeParse(fleet.ships);
+      for (const [shipType, count] of Object.entries(ships)) {
+        if (!count) continue;
+        await client.query(
+          `UPDATE planets SET ${shipType} = ${shipType} + $1 WHERE id = $2`,
+          [count, fleet.origin_planet_id]
+        );
+      }
+
+      await client.query(
+        `UPDATE planets 
+         SET metal = metal + $1, crystal = crystal + $2, deuterium = deuterium + $3
+         WHERE id = $4`,
+        [fleet.cargo_metal, fleet.cargo_crystal, fleet.cargo_deuterium, fleet.origin_planet_id]
+      );
+
+      await client.query('DELETE FROM fleets WHERE id = $1', [fleetId]);
+      await client.query('COMMIT');
+
+      const planet = planetResult.rows[0];
+      const location = planet
+        ? `${planet.name || 'Planet'} (${planet.galaxy}:${planet.system}:${planet.position})`
+        : `Planet ${fleet.origin_planet_id}`;
+
+      await notificationService.notifyFleetReturned(fleet.user_id, fleet.id, location);
+      this.emitFleetEvent(fleet.user_id, {
+        action: 'return',
+        fleetId,
+        location,
+      });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private static async validateMissionRequest(params: MissionValidationParams): Promise<void> {
+    const mission = params.missionType;
+
+    switch (mission) {
+      case 'colonize': {
+        const colonyShips = Number(params.ships.colony_ship || 0);
+        if (colonyShips < 1) {
+          throw new Error('Colonize mission requires at least one Colony Ship');
+        }
+
+        const hasOtherShips = Object.entries(params.ships).some(
+          ([type, count]) => type !== 'colony_ship' && Number(count) > 0
+        );
+
+        if (hasOtherShips) {
+          throw new Error('Colonize missions can only include Colony Ships');
+        }
+
+        const [planetCount, limit] = await Promise.all([
+          PlanetService.getPlanetCountByUserId(params.userId),
+          gameConfig.getColonizationLimit(),
+        ]);
+
+        if (planetCount >= limit) {
+          throw new Error('Planet limit reached. Research Astrophysics to unlock more colonies.');
+        }
+
+        const existing = await PlanetService.getPlanetByCoordinates(
+          params.targetGalaxy,
+          params.targetSystem,
+          params.targetPosition
+        );
+
+        if (existing) {
+          throw new Error('Target coordinates already contain a planet');
+        }
+
+        break;
+      }
+      case 'espionage': {
+        const probes = Number(params.ships.espionage_probe || 0);
+        if (probes < 1) {
+          throw new Error('Espionage mission requires at least one Espionage Probe');
+        }
+
+        const hasOtherShips = Object.entries(params.ships).some(
+          ([type, count]) => type !== 'espionage_probe' && Number(count) > 0
+        );
+
+        if (hasOtherShips) {
+          throw new Error('Espionage missions only allow probes');
+        }
+
+        const target = await PlanetService.getPlanetByCoordinates(
+          params.targetGalaxy,
+          params.targetSystem,
+          params.targetPosition
+        );
+
+        if (!target) {
+          throw new Error('No planet at those coordinates to scout');
+        }
+
+        break;
+      }
+      case 'harvest': {
+        const recyclerCount = Number(params.ships.recycler || 0);
+        if (recyclerCount < 1) {
+          throw new Error('Harvest mission requires at least one Recycler');
+        }
+
+        const debrisResult = await pool.query(
+          'SELECT 1 FROM debris_fields WHERE galaxy = $1 AND system = $2 AND position = $3',
+          [params.targetGalaxy, params.targetSystem, params.targetPosition]
+        );
+
+        if (debrisResult.rows.length === 0) {
+          throw new Error('No debris field detected at those coordinates');
+        }
+
+        break;
+      }
+      default:
+        break;
+    }
   }
 
   private static safeParse(value: any): any {
@@ -689,6 +1211,8 @@ export class FleetService {
           participant.fleet.id,
         ]
       );
+
+      this.scheduleReturnEvent(participant.fleet.id, participant.fleet.return_time);
     }
   }
 
@@ -782,4 +1306,67 @@ export class FleetService {
   private static formatLocation(galaxy: number, system: number, position: number): string {
     return `${galaxy}:${system}:${position}`;
   }
+
+  private static scheduleArrivalEvent(fleetId: number, when?: Date | string | null): void {
+    if (!when) return;
+    fleetScheduler.scheduleArrival(fleetId, when).catch((err) => {
+      console.error('[FleetService] Failed to schedule fleet arrival', fleetId, err);
+    });
+  }
+
+  private static scheduleReturnEvent(fleetId: number, when?: Date | string | null): void {
+    if (!when) return;
+    fleetScheduler.scheduleReturn(fleetId, when).catch((err) => {
+      console.error('[FleetService] Failed to schedule fleet return', fleetId, err);
+    });
+  }
+
+  private static unscheduleFleetEvents(fleetId: number, type?: 'arrival' | 'return'): void {
+    fleetScheduler.unschedule(fleetId, type).catch((err) => {
+      console.error('[FleetService] Failed to unschedule fleet', fleetId, err);
+    });
+  }
 }
+
+interface MissionValidationParams {
+  userId: number;
+  missionType: string;
+  ships: { [key: string]: number };
+  targetGalaxy: number;
+  targetSystem: number;
+  targetPosition: number;
+}
+
+type MissionOutcome = ColonizeMissionResult | EspionageMissionResult | HarvestMissionResult | null;
+
+interface ColonizeMissionResult {
+  type: 'colonize';
+  success: boolean;
+  newPlanet?: Planet;
+  failureReason?: 'slot_taken' | 'limit_reached' | 'invalid';
+}
+
+type EspionageIntelLevel = 'none' | 'minimal' | 'standard' | 'full';
+
+interface EspionageMissionResult {
+  type: 'espionage';
+  success: boolean;
+  detected: boolean;
+  intelLevel: EspionageIntelLevel;
+  reportSummary?: {
+    resources?: Record<string, number>;
+    intelLevel: EspionageIntelLevel;
+    detected: boolean;
+  };
+}
+
+interface HarvestMissionResult {
+  type: 'harvest';
+  collected: { metal: number; crystal: number };
+  empty?: boolean;
+}
+
+fleetScheduler.registerCallbacks({
+  onArrival: (fleetId: number) => FleetService.processFleetArrival(fleetId),
+  onReturn: (fleetId: number) => FleetService.completeFleetReturn(fleetId),
+});

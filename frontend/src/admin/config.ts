@@ -9,6 +9,7 @@ class ConfigurationManager {
         this.parameters = {};
         this.pendingChanges = new Map();
         this.socket = null;
+        this.snapshot = null;
         
         this.init();
     }
@@ -16,6 +17,7 @@ class ConfigurationManager {
     async init() {
         await this.loadCategories();
         await this.loadStatistics();
+        await this.loadGameConfigSnapshot();
         this.setupEventListeners();
         this.initializeSocket();
         this.renderCategoryTabs();
@@ -63,6 +65,68 @@ class ConfigurationManager {
         } catch (error) {
             console.error('Failed to load statistics:', error);
         }
+    }
+
+    async loadGameConfigSnapshot(force = false) {
+        try {
+            const endpoint = force ? '/game-config/refresh' : '/game-config';
+            const options = force ? { method: 'POST' } : {};
+            const data = await this.apiCall(endpoint, options);
+            this.snapshot = data.config || data;
+            this.renderSnapshotSummary();
+            if (force) {
+                this.showToast('Runtime snapshot refreshed', 'success');
+            }
+        } catch (error) {
+            this.showToast('Failed to load runtime snapshot: ' + error.message, 'error');
+        }
+    }
+
+    renderSnapshotSummary() {
+        const container = document.getElementById('snapshotSummary');
+        if (!container) return;
+
+        if (!this.snapshot) {
+            container.innerHTML = '<div class="snapshot-placeholder">Snapshot unavailable.</div>';
+            return;
+        }
+
+        const sections = [
+            { key: 'combat', label: 'Combat' },
+            { key: 'resources', label: 'Resources' },
+            { key: 'buildings', label: 'Buildings' },
+            { key: 'research', label: 'Research' },
+            { key: 'fleet', label: 'Fleet' },
+            { key: 'universe', label: 'Universe' },
+            { key: 'alliance', label: 'Alliance' },
+            { key: 'gameplay', label: 'Gameplay' },
+        ];
+
+        container.innerHTML = sections
+            .map((section) => {
+                const segment = this.snapshot[section.key] || {};
+                const count = Object.keys(segment).length;
+                return `
+                    <div class="snapshot-card">
+                        <h4>${section.label}</h4>
+                        <div class="snapshot-count">${count}</div>
+                        <div class="snapshot-desc">parameters</div>
+                    </div>
+                `;
+            })
+            .join('');
+    }
+
+    showSnapshotModal() {
+        if (!this.snapshot) {
+            this.showToast('Snapshot unavailable.', 'error');
+            return;
+        }
+        const pre = document.getElementById('snapshotJson');
+        if (pre) {
+            pre.textContent = JSON.stringify(this.snapshot, null, 2);
+        }
+        this.showModal('snapshotModal');
     }
 
     async loadCategoryParameters(category) {
@@ -472,16 +536,32 @@ class ConfigurationManager {
 
     // Event Listeners
     setupEventListeners() {
-        document.getElementById('saveChanges').addEventListener('click', () => this.bulkSave());
-        document.getElementById('discardChanges').addEventListener('click', () => this.discardChanges());
-        document.getElementById('resetCategory').addEventListener('click', () => this.resetCategory());
-        document.getElementById('refreshCache').addEventListener('click', () => this.refreshCache());
-        document.getElementById('exportConfig').addEventListener('click', () => this.exportConfiguration());
-        document.getElementById('importConfig').addEventListener('click', () => this.showModal('importModal'));
-        document.getElementById('viewHistory').addEventListener('click', () => this.loadHistory());
+        document.getElementById('saveChanges')?.addEventListener('click', () => this.bulkSave());
+        document.getElementById('discardChanges')?.addEventListener('click', () => this.discardChanges());
+        document.getElementById('resetCategory')?.addEventListener('click', () => this.resetCategory());
+        document.getElementById('refreshCache')?.addEventListener('click', () => this.refreshCache());
+        document.getElementById('exportConfig')?.addEventListener('click', () => this.exportConfiguration());
+        document.getElementById('importConfig')?.addEventListener('click', () => this.showModal('importModal'));
+        document.getElementById('viewHistory')?.addEventListener('click', () => this.loadHistory());
+
+        const refreshSnapshotButtons = [
+            document.getElementById('refreshSnapshot'),
+            document.getElementById('snapshotRefreshInline'),
+        ].filter(Boolean);
+        refreshSnapshotButtons.forEach((btn) =>
+            btn.addEventListener('click', () => this.loadGameConfigSnapshot(true))
+        );
+
+        const viewSnapshotButtons = [
+            document.getElementById('viewSnapshot'),
+            document.getElementById('snapshotViewJson'),
+        ].filter(Boolean);
+        viewSnapshotButtons.forEach((btn) =>
+            btn.addEventListener('click', () => this.showSnapshotModal())
+        );
 
         // Search
-        document.getElementById('searchParams').addEventListener('input', (e) => {
+        document.getElementById('searchParams')?.addEventListener('input', (e) => {
             this.filterParameters(e.target.value);
         });
 
@@ -513,11 +593,11 @@ class ConfigurationManager {
         });
 
         // Import validation
-        document.getElementById('validateImport').addEventListener('click', () => this.validateImport());
-        document.getElementById('performImport').addEventListener('click', () => this.performImport());
+        document.getElementById('validateImport')?.addEventListener('click', () => this.validateImport());
+        document.getElementById('performImport')?.addEventListener('click', () => this.performImport());
 
         // Import file upload
-        document.getElementById('importFile').addEventListener('change', (e) => {
+        document.getElementById('importFile')?.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
                 const reader = new FileReader();

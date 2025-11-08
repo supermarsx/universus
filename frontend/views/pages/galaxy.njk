@@ -69,6 +69,10 @@
             <button class="btn-secondary" id="inlineTargetBtn">Lock</button>
         </div>
         <small class="text-muted">Jump directly to coordinates and open the mission drawer without leaving this view.</small>
+        <div class="phalanx-controls">
+            <button class="btn-primary" id="phalanxScanBtn" disabled>Sensor Phalanx Scan</button>
+            <p id="phalanxStatus" class="phalanx-status text-muted">Requires a moon with Sensor Phalanx.</p>
+        </div>
     </div>
 </section>
 
@@ -150,6 +154,14 @@
         <span class="close">&times;</span>
         <h3>Planet Details</h3>
         <div id="planetDetailsContent"></div>
+    </div>
+</div>
+
+<div id="phalanxModal" class="modal" style="display:none;">
+    <div class="modal-content large">
+        <button class="close" id="closePhalanxModal" aria-label="Close phalanx modal">&times;</button>
+        <h3>Sensor Phalanx Results</h3>
+        <div id="phalanxResults">Initiate a scan to see fleet movement.</div>
     </div>
 </div>
 {% endblock %}

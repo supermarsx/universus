@@ -1,70 +1,87 @@
 import { pool } from '../config/database';
-import { PlanetService } from './planetService';
-import {
-  calculateBuildingCost,
-  BUILDINGS,
-} from '../config/gameConfig';
+import { calculateBuildingCost, BUILDINGS } from '../config/gameConfig';
 import { gameConfig } from './gameConfigAdapter';
+import { resolveLocation, LocationType } from './locationService';
+import { MoonFieldService } from './moonFieldService';
+
+interface ConstructionQueueParams {
+  planetId: number;
+  locationType?: LocationType;
+  moonId?: number;
+}
 
 export class BuildingService {
   static async startConstruction(
     userId: number,
-    planetId: number,
-    buildingType: string
+    buildingType: string,
+    options: {
+      planetId?: number;
+      moonId?: number;
+      locationType?: LocationType;
+      expectedPlanetId?: number;
+    }
   ): Promise<any> {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
-      // Verify planet ownership
-      const planetResult = await client.query(
-        'SELECT * FROM planets WHERE id = $1 AND user_id = $2',
-        [planetId, userId]
-      );
-      
-      if (planetResult.rows.length === 0) {
-        throw new Error('Planet not found or access denied');
-      }
-
-      const planet = planetResult.rows[0];
-
-      // Check if building exists in config
       if (!BUILDINGS[buildingType]) {
         throw new Error('Invalid building type');
       }
 
-      // Check if already building something
+      const location = await resolveLocation(client, userId, {
+        planetId: options.planetId,
+        moonId: options.moonId,
+        locationType: options.locationType,
+        expectedPlanetId: options.expectedPlanetId ?? options.planetId,
+      });
+
+      const queueFilters = this.buildQueueFilter(location);
       const queueResult = await client.query(
-        'SELECT COUNT(*) FROM construction_queue WHERE planet_id = $1',
-        [planetId]
+        `SELECT COUNT(*) FROM construction_queue WHERE ${queueFilters.whereClause}`,
+        queueFilters.values
       );
-      
-      if (parseInt(queueResult.rows[0].count) > 0) {
-        throw new Error('Already constructing a building on this planet');
+
+      if (parseInt(queueResult.rows[0].count, 10) > 0) {
+        throw new Error('This location is already constructing a building');
       }
 
-      const currentLevel = planet[buildingType] || 0;
+      const currentLevel = location.record[buildingType] || 0;
+      const targetLevel = currentLevel + 1;
 
-      // Check requirements
+      if (location.type === 'moon') {
+        MoonFieldService.assertBuildingAllowed(buildingType);
+        MoonFieldService.assertFieldAvailability({
+          buildingType,
+          nextLevel: targetLevel,
+          totalFields: location.totalFields,
+          usedFields: location.usedFields,
+        });
+      }
       const config = BUILDINGS[buildingType];
+
       if (config.requirements) {
         if (config.requirements.buildings) {
-          for (const [reqBuilding, reqLevel] of Object.entries(config.requirements.buildings)) {
-            if ((planet[reqBuilding] || 0) < reqLevel) {
+          for (const [reqBuilding, reqLevel] of Object.entries(
+            config.requirements.buildings
+          )) {
+            if ((location.record[reqBuilding] || 0) < reqLevel) {
               throw new Error(`Requires ${reqBuilding} level ${reqLevel}`);
             }
           }
         }
-        
+
         if (config.requirements.research) {
           const researchResult = await client.query(
             'SELECT * FROM research WHERE user_id = $1',
             [userId]
           );
           const research = researchResult.rows[0] || {};
-          
-          for (const [reqResearch, reqLevel] of Object.entries(config.requirements.research)) {
+
+          for (const [reqResearch, reqLevel] of Object.entries(
+            config.requirements.research
+          )) {
             if ((research[reqResearch] || 0) < reqLevel) {
               throw new Error(`Requires ${reqResearch} level ${reqLevel}`);
             }
@@ -72,55 +89,56 @@ export class BuildingService {
         }
       }
 
-      // Calculate cost
       const cost = calculateBuildingCost(buildingType, currentLevel);
 
-      // Check if can afford
-      await PlanetService.updateResources(planetId);
-      const updatedPlanet = await PlanetService.getPlanetById(planetId);
-      if (!updatedPlanet) throw new Error('Planet not found');
-
       if (
-        updatedPlanet.metal < cost.metal ||
-        updatedPlanet.crystal < cost.crystal ||
-        updatedPlanet.deuterium < cost.deuterium
+        location.record.metal < cost.metal ||
+        location.record.crystal < cost.crystal ||
+        location.record.deuterium < cost.deuterium
       ) {
         throw new Error('Insufficient resources');
       }
 
-      // Deduct resources
       await client.query(
-        `UPDATE planets 
-         SET metal = metal - $1, crystal = crystal - $2, deuterium = deuterium - $3
+        `UPDATE ${location.resourceTable}
+         SET metal = metal - $1,
+             crystal = crystal - $2,
+             deuterium = deuterium - $3
          WHERE id = $4`,
-        [cost.metal, cost.crystal, cost.deuterium, planetId]
+        [cost.metal, cost.crystal, cost.deuterium, location.primaryId]
       );
 
-      // Calculate build time using configuration
       const buildTime = await gameConfig.calculateBuildingTime(
         buildingType,
-        currentLevel + 1,
-        planet.robotics_factory || 0,
-        planet.nanite_factory || 0
+        targetLevel,
+        location.roboticsLevel,
+        location.naniteLevel
       );
-      
       const gameSpeed = parseFloat(process.env.GAME_SPEED || '1');
       const buildTimeSeconds = buildTime / gameSpeed;
-
       const endTime = new Date(Date.now() + buildTimeSeconds * 1000);
 
-      // Add to construction queue
-      const result = await client.query(
-        `INSERT INTO construction_queue 
-         (planet_id, building_type, level, start_time, end_time, metal_cost, crystal_cost, deuterium_cost)
-         VALUES ($1, $2, $3, NOW(), $4, $5, $6, $7)
+      const insertResult = await client.query(
+        `INSERT INTO construction_queue
+           (planet_id, moon_id, location_type, building_type, level,
+            start_time, end_time, metal_cost, crystal_cost, deuterium_cost)
+         VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8, $9)
          RETURNING *`,
-        [planetId, buildingType, currentLevel + 1, endTime, cost.metal, cost.crystal, cost.deuterium]
+        [
+          location.planetId,
+          location.moonId,
+          location.type,
+          buildingType,
+          targetLevel,
+          endTime,
+          cost.metal,
+          cost.crystal,
+          cost.deuterium,
+        ]
       );
 
       await client.query('COMMIT');
-
-      return result.rows[0] || null;
+      return insertResult.rows[0] || null;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -131,11 +149,10 @@ export class BuildingService {
 
   static async finishConstruction(constructionId: number): Promise<void> {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
-      // Get construction details
       const result = await client.query(
         'SELECT * FROM construction_queue WHERE id = $1',
         [constructionId]
@@ -147,22 +164,36 @@ export class BuildingService {
 
       const construction = result.rows[0];
 
-      // Check if finished
       if (new Date(construction.end_time) > new Date()) {
         throw new Error('Construction not yet finished');
       }
 
-      // Update building level
+      const target = this.resolveQueueTarget(construction);
+
       await client.query(
-        `UPDATE planets SET ${construction.building_type} = $1 WHERE id = $2`,
-        [construction.level, construction.planet_id]
+        `UPDATE ${target.table} SET ${construction.building_type} = $1 WHERE id = $2`,
+        [construction.level, target.id]
       );
 
-      // Remove from queue
-      await client.query(
-        'DELETE FROM construction_queue WHERE id = $1',
-        [constructionId]
-      );
+      if (construction.location_type === 'moon') {
+        const { usedFields, totalFields } = MoonFieldService.calculateFieldAdjustments(
+          construction.building_type,
+          construction.level
+        );
+        if (usedFields !== 0 || totalFields !== 0) {
+          await client.query(
+            `UPDATE moons
+             SET used_fields = used_fields + $1,
+                 total_fields = total_fields + $2
+             WHERE id = $3`,
+            [usedFields, totalFields, target.id]
+          );
+        }
+      }
+
+      await client.query('DELETE FROM construction_queue WHERE id = $1', [
+        constructionId,
+      ]);
 
       await client.query('COMMIT');
     } catch (error) {
@@ -181,18 +212,38 @@ export class BuildingService {
     for (const construction of result.rows) {
       try {
         await this.finishConstruction(construction.id);
-        console.log(`Finished construction ${construction.id} on planet ${construction.planet_id}`);
+        console.log(
+          `Finished construction ${construction.id} on ${construction.location_type}`
+        );
       } catch (error) {
-        console.error(`Error finishing construction ${construction.id}:`, error);
+        console.error(
+          `Error finishing construction ${construction.id}:`,
+          error
+        );
       }
     }
   }
 
-  static async getConstructionQueue(planetId: number): Promise<any[]> {
+  static async getConstructionQueue(
+    params: ConstructionQueueParams
+  ): Promise<any[]> {
+    const locationType: LocationType = params.locationType ?? 'planet';
+    const values: Array<string | number> = [locationType, params.planetId];
+    let whereClause = 'location_type = $1 AND planet_id = $2';
+
+    if (locationType === 'moon') {
+      if (!params.moonId) {
+        throw new Error('moonId is required when requesting moon queues');
+      }
+      values.push(params.moonId);
+      whereClause += ' AND moon_id = $3';
+    }
+
     const result = await pool.query(
-      'SELECT * FROM construction_queue WHERE planet_id = $1 ORDER BY start_time',
-      [planetId]
+      `SELECT * FROM construction_queue WHERE ${whereClause} ORDER BY start_time`,
+      values
     );
+
     return result.rows;
   }
 
@@ -201,15 +252,12 @@ export class BuildingService {
     constructionId: number
   ): Promise<void> {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
 
       const result = await client.query(
-        `SELECT cq.*, p.user_id 
-         FROM construction_queue cq 
-         JOIN planets p ON cq.planet_id = p.id 
-         WHERE cq.id = $1`,
+        'SELECT * FROM construction_queue WHERE id = $1',
         [constructionId]
       );
 
@@ -218,12 +266,21 @@ export class BuildingService {
       }
 
       const construction = result.rows[0];
+      const target = this.resolveQueueTarget(construction);
 
-      if (construction.user_id !== userId) {
+      const ownerResult = await client.query(
+        `SELECT user_id FROM ${target.table} WHERE id = $1`,
+        [target.id]
+      );
+
+      if (ownerResult.rows.length === 0) {
+        throw new Error('Location not found for construction');
+      }
+
+      if (ownerResult.rows[0].user_id !== userId) {
         throw new Error('Access denied');
       }
 
-      // Refund 60% of resources
       const refund = {
         metal: Math.floor(construction.metal_cost * 0.6),
         crystal: Math.floor(construction.crystal_cost * 0.6),
@@ -231,16 +288,17 @@ export class BuildingService {
       };
 
       await client.query(
-        `UPDATE planets 
-         SET metal = metal + $1, crystal = crystal + $2, deuterium = deuterium + $3
+        `UPDATE ${target.table}
+         SET metal = metal + $1,
+             crystal = crystal + $2,
+             deuterium = deuterium + $3
          WHERE id = $4`,
-        [refund.metal, refund.crystal, refund.deuterium, construction.planet_id]
+        [refund.metal, refund.crystal, refund.deuterium, target.id]
       );
 
-      await client.query(
-        'DELETE FROM construction_queue WHERE id = $1',
-        [constructionId]
-      );
+      await client.query('DELETE FROM construction_queue WHERE id = $1', [
+        constructionId,
+      ]);
 
       await client.query('COMMIT');
     } catch (error) {
@@ -249,5 +307,50 @@ export class BuildingService {
     } finally {
       client.release();
     }
+  }
+
+  private static resolveQueueTarget(queueRow: any): {
+    table: 'planets' | 'moons';
+    id: number;
+  } {
+    const locationType: LocationType = queueRow.location_type;
+    if (locationType === 'moon') {
+      if (!queueRow.moon_id) {
+        throw new Error('Moon queue is missing moon reference');
+      }
+
+      return {
+        table: 'moons',
+        id: queueRow.moon_id,
+      };
+    }
+
+    if (!queueRow.planet_id) {
+      throw new Error('Planet queue is missing planet reference');
+    }
+
+    return {
+      table: 'planets',
+      id: queueRow.planet_id,
+    };
+  }
+
+  private static buildQueueFilter(location: {
+    type: LocationType;
+    planetId: number;
+    moonId: number | null;
+  }): { whereClause: string; values: Array<number | string> } {
+    const values: Array<number | string> = [location.type, location.planetId];
+    let whereClause = 'location_type = $1 AND planet_id = $2';
+
+    if (location.type === 'moon') {
+      if (!location.moonId) {
+        throw new Error('Moon queue requires moon id');
+      }
+      values.push(location.moonId);
+      whereClause += ' AND moon_id = $3';
+    }
+
+    return { whereClause, values };
   }
 }

@@ -140,6 +140,53 @@ export const BUILDINGS: { [key: string]: BuildingConfig } = {
       buildings: { shipyard: 1 },
     },
   },
+  lunar_base: {
+    baseCost: { metal: 20000, crystal: 40000, deuterium: 0 },
+    costMultiplier: 2.0,
+    baseTime: 240,
+  },
+  sensor_phalanx: {
+    baseCost: { metal: 20000, crystal: 40000, deuterium: 20000 },
+    costMultiplier: 2.0,
+    baseTime: 300,
+    requirements: {
+      buildings: { lunar_base: 1 },
+      research: { computer_technology: 8 },
+    },
+  },
+  jump_gate: {
+    baseCost: { metal: 2000000, crystal: 4000000, deuterium: 2000000 },
+    costMultiplier: 2.0,
+    baseTime: 600,
+    requirements: {
+      buildings: { lunar_base: 1, moon_shipyard: 1 },
+      research: { hyperspace_technology: 7 },
+    },
+  },
+  moon_shipyard: {
+    baseCost: { metal: 200, crystal: 400, deuterium: 200 },
+    costMultiplier: 2.0,
+    baseTime: 120,
+    requirements: {
+      buildings: { lunar_base: 1 },
+    },
+  },
+  moon_robotics_factory: {
+    baseCost: { metal: 400, crystal: 120, deuterium: 200 },
+    costMultiplier: 2.0,
+    baseTime: 120,
+    requirements: {
+      buildings: { lunar_base: 1 },
+    },
+  },
+  moon_nanite_factory: {
+    baseCost: { metal: 1000000, crystal: 500000, deuterium: 100000 },
+    costMultiplier: 2.0,
+    baseTime: 600,
+    requirements: {
+      buildings: { moon_robotics_factory: 10 },
+    },
+  },
 };
 
 // Ships configuration

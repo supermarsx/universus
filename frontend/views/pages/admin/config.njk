@@ -11,6 +11,12 @@
             <button id="refreshCache" class="btn btn-secondary">
                 <i class="icon-refresh"></i> Refresh Cache
             </button>
+            <button id="refreshSnapshot" class="btn btn-secondary">
+                <i class="icon-bolt"></i> Refresh Snapshot
+            </button>
+            <button id="viewSnapshot" class="btn btn-info">
+                <i class="icon-eye"></i> View Snapshot
+            </button>
             <button id="exportConfig" class="btn btn-primary">
                 <i class="icon-download"></i> Export
             </button>
@@ -60,6 +66,27 @@
                 <div class="stat-value" id="restartRequired">0</div>
                 <div class="stat-label">Restart Required</div>
             </div>
+        </div>
+</div>
+
+    <!-- Runtime Snapshot -->
+    <div class="config-runtime card">
+        <div class="config-runtime-header">
+            <div>
+                <h2>Runtime Game Configuration</h2>
+                <p class="text-muted">Live values served from Redis snapshot</p>
+            </div>
+            <div class="runtime-actions">
+                <button id="snapshotRefreshInline" class="btn btn-secondary">
+                    <i class="icon-refresh"></i> Refresh
+                </button>
+                <button id="snapshotViewJson" class="btn btn-info">
+                    <i class="icon-eye"></i> View JSON
+                </button>
+            </div>
+        </div>
+        <div class="snapshot-summary" id="snapshotSummary">
+            <div class="snapshot-placeholder">Loading runtime configuration…</div>
         </div>
     </div>
 
@@ -168,6 +195,19 @@
         </div>
     </div>
 
+    <!-- Snapshot Modal -->
+    <div id="snapshotModal" class="modal">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>Runtime Configuration Snapshot</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="snapshotJson" class="snapshot-json">Loading…</pre>
+            </div>
+        </div>
+    </div>
+
     <!-- Confirmation Modal -->
     <div id="confirmModal" class="modal">
         <div class="modal-content small">
@@ -215,6 +255,61 @@
 .config-actions {
     display: flex;
     gap: 10px;
+}
+
+.config-runtime {
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.config-runtime-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.snapshot-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.snapshot-card {
+    background: rgba(12, 16, 32, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 14px;
+}
+
+.snapshot-card h4 {
+    margin: 0 0 6px;
+    font-size: 0.95rem;
+    color: #8fb2ff;
+}
+
+.snapshot-card .snapshot-count {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.snapshot-card .snapshot-desc {
+    font-size: 0.85rem;
+    color: #8e8ea0;
+}
+
+.snapshot-placeholder {
+    text-align: center;
+    color: #8e8ea0;
+    padding: 20px;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
 }
 
 .config-stats {
@@ -300,6 +395,20 @@
     border: 1px solid #333;
     border-radius: 10px;
     padding: 20px;
+}
+
+.modal-content.wide {
+    max-width: 1000px;
+}
+
+.snapshot-json {
+    max-height: 70vh;
+    overflow: auto;
+    background: #0b0f1d;
+    color: #dce3f5;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    padding: 15px;
 }
 
 .editor-toolbar {

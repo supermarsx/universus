@@ -30,6 +30,7 @@ class FleetManager {
     this.explicitTarget = false;
     this.acsGroups = [];
     this.selectedAcsGroupId = null;
+    this.countdownInterval = null;
     this.init();
   }
 
@@ -44,6 +45,7 @@ class FleetManager {
     this.attachSocketListeners();
     this.prefillTargetFromQuery();
     this.loadAcsGroups();
+    this.startCountdownTicker();
   }
 
   bindTabs() {
@@ -556,6 +558,15 @@ class FleetManager {
 
     fleets.forEach((fleet) => {
       const ships = typeof fleet.ships === 'string' ? JSON.parse(fleet.ships) : fleet.ships;
+      const arrivalTs =
+        fleet.arrivalTimestamp ??
+        (fleet.arrival_time ? new Date(fleet.arrival_time).getTime() : null);
+      const returnTs =
+        fleet.returnTimestamp ??
+        (fleet.return_time ? new Date(fleet.return_time).getTime() : null);
+      const arrivalText = arrivalTs ? this.formatCountdownMs(arrivalTs - Date.now()) : '—';
+      const returnText = returnTs ? this.formatCountdownMs(returnTs - Date.now()) : 'Pending';
+
       const card = document.createElement('div');
       card.className = 'mission-card card-enhanced';
 
@@ -568,8 +579,12 @@ class FleetManager {
           <div class="mission-status">${fleet.status}</div>
         </div>
         <div class="mission-body">
-          <div><strong>Arrival:</strong> ${this.formatCountdown(fleet.secondsUntilArrival)}</div>
-          <div><strong>Return:</strong> ${fleet.secondsUntilReturn ? this.formatCountdown(fleet.secondsUntilReturn) : 'Pending'}</div>
+          <div><strong>Arrival:</strong> <span class="countdown" data-countdown="arrival" ${
+            arrivalTs ? `data-timestamp="${arrivalTs}"` : ''
+          }>${arrivalText}</span></div>
+          <div><strong>Return:</strong> <span class="countdown" data-countdown="return" ${
+            returnTs ? `data-timestamp="${returnTs}"` : ''
+          }>${returnText}</span></div>
           <div class="mission-ships">
             ${Object.entries(ships || {})
               .map(([key, count]) => `<span>${SHIP_STATS[key]?.name || this.formatName(key)}: ${count}</span>`)
@@ -586,6 +601,8 @@ class FleetManager {
 
       container.appendChild(card);
     });
+
+    this.updateCountdownNodes();
   }
 
   renderCombatReports() {
@@ -728,6 +745,37 @@ class FleetManager {
     return `${hrs}h ${mins}m ${secs}s`;
   }
 
+  startCountdownTicker() {
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+    this.countdownInterval = window.setInterval(() => this.updateCountdownNodes(), 200);
+  }
+
+  updateCountdownNodes() {
+    const nodes = document.querySelectorAll<HTMLElement>('[data-countdown]');
+    const now = Date.now();
+    nodes.forEach((node) => {
+      const timestamp = Number(node.dataset.timestamp);
+      if (!timestamp) {
+        node.textContent = '—';
+        return;
+      }
+      node.textContent = this.formatCountdownMs(timestamp - now);
+    });
+  }
+
+  formatCountdownMs(ms: number) {
+    if (ms <= 0) return '0.0s';
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    const tenths = Math.floor((ms % 1000) / 100);
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}.${tenths}s`;
+    return `${seconds}.${tenths}s`;
+  }
+
   getMissionLabel(mission) {
     const labels = {
       attack: 'Attack',
@@ -815,6 +863,39 @@ class FleetManager {
           timestamp: now,
         };
         break;
+      case 'colonize': {
+        const planetCoords = payload.planet
+          ? `${payload.planet.galaxy}:${payload.planet.system}:${payload.planet.position}`
+          : 'target coordinates';
+        entry = {
+          title: payload.status === 'success' ? 'Colony Established' : 'Colonization Failed',
+          message:
+            payload.status === 'success'
+              ? `New colony founded at ${planetCoords}`
+              : `Colony ship could not claim ${planetCoords}`,
+          timestamp: now,
+        };
+        break;
+      }
+      case 'espionage':
+        entry = {
+          title: 'Espionage Report',
+          message: `Intel ${payload.intelLevel || 'standard'}${payload.detected ? ' • Detected' : ''}`,
+          timestamp: now,
+        };
+        break;
+      case 'harvest': {
+        const metal = payload.collected?.metal || 0;
+        const crystal = payload.collected?.crystal || 0;
+        entry = {
+          title: payload.empty ? 'Harvest Attempt' : 'Harvest Complete',
+          message: payload.empty
+            ? 'No debris recovered.'
+            : `Recovered ${this.formatNumber(metal)} metal and ${this.formatNumber(crystal)} crystal.`,
+          timestamp: now,
+        };
+        break;
+      }
     }
 
     if (entry) {
@@ -851,6 +932,17 @@ class FleetManager {
       .slice(0, 4)
       .join(', ');
   }
+
+  destroy() {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+  }
 }
 
 let fleetManager;
@@ -863,4 +955,5 @@ function updatePageData(data) {
 document.addEventListener('DOMContentLoaded', () => {
   fleetManager = new FleetManager();
   window.updatePageData = updatePageData;
+  window.addEventListener('beforeunload', () => fleetManager?.destroy());
 });

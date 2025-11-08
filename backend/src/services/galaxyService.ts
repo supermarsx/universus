@@ -37,6 +37,14 @@ interface RawDebrisRow {
   expires_at: string | null;
 }
 
+interface RawMoonRow {
+  id: number;
+  planet_id: number;
+  diameter: number;
+  total_fields: number;
+  position: number;
+}
+
 interface GalaxySlotIntel {
   position: number;
   hasPlanet: boolean;
@@ -46,6 +54,10 @@ interface GalaxySlotIntel {
     name: string | null;
     type: string | null;
     temperature: number | null;
+  };
+  moon?: {
+    id: number;
+    diameter: number;
   };
   owner?: {
     id: number;
@@ -104,6 +116,7 @@ interface GalaxySnapshot {
 interface RawSystemData {
   planets: RawPlanetRow[];
   debris: RawDebrisRow[];
+  moons: RawMoonRow[];
 }
 
 const CACHE_TTL_SECONDS = 15;
@@ -186,7 +199,7 @@ export class GalaxyService {
       }
     }
 
-    const [planetsResult, debrisResult] = await Promise.all([
+    const [planetsResult, debrisResult, moonsResult] = await Promise.all([
       pool.query(
         `SELECT 
             p.id,
@@ -216,11 +229,24 @@ export class GalaxyService {
          ORDER BY position`,
         [galaxy, system]
       ),
+      pool.query(
+        `SELECT 
+            m.id,
+            m.planet_id,
+            m.diameter,
+            m.total_fields,
+            p.position
+         FROM moons m
+         JOIN planets p ON p.id = m.planet_id
+         WHERE p.galaxy = $1 AND p.system = $2`,
+        [galaxy, system]
+      ),
     ]);
 
     const payload: RawSystemData = {
       planets: planetsResult.rows as RawPlanetRow[],
       debris: debrisResult.rows as RawDebrisRow[],
+      moons: moonsResult.rows as RawMoonRow[],
     };
 
     if (redis) {
@@ -252,6 +278,8 @@ export class GalaxyService {
 
     const planetMap = new Map<number, RawPlanetRow>();
     params.rawData.planets.forEach((row) => planetMap.set(row.position, row));
+    const moonByPlanetId = new Map<number, RawMoonRow>();
+    (params.rawData.moons || []).forEach((row) => moonByPlanetId.set(row.planet_id, row));
 
     const slots: GalaxySlotIntel[] = [];
 
@@ -279,6 +307,12 @@ export class GalaxyService {
           : undefined,
         owner: planetRow
           ? this.decorateOwner(planetRow, params.userId, params.requesterAllianceId)
+          : undefined,
+        moon: planetRow && moonByPlanetId.has(planetRow.id)
+          ? {
+              id: moonByPlanetId.get(planetRow.id)!.id,
+              diameter: moonByPlanetId.get(planetRow.id)!.diameter,
+            }
           : undefined,
         debris: debrisRow
           ? {

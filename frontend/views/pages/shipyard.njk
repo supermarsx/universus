@@ -12,6 +12,15 @@
     <button class="btn btn-secondary" data-tab="defense">Defense</button>
 </div>
 
+<div class="shipyard-location card-enhanced">
+    <label for="shipyardLocationSelect">Production Location</label>
+    <select id="shipyardLocationSelect" class="location-select" aria-label="Production location">
+        <option value="planet">Planet Shipyard</option>
+    </select>
+    <div id="shipyardLocationResources" class="moon-resource-summary hidden"></div>
+    <p id="shipyardLocationStatus" class="location-status">Select a location for ship construction.</p>
+</div>
+
 <!-- Ships Tab -->
 <div id="shipsTab" class="tab-content active">
     <div id="shipProductionQueue" class="production-queue card-enhanced" style="display:none;">

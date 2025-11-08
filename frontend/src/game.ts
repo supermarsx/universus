@@ -141,6 +141,22 @@ async function loadPlanetData(planetId) {
         if (!response.ok) throw new Error('Failed to load planet data');
 
         const data = await response.json();
+        let moonData = null;
+
+        try {
+            const moonResponse = await fetch(`/api/moons/${planetId}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+
+            if (moonResponse.ok) {
+                const moonPayload = await moonResponse.json();
+                moonData = moonPayload.data;
+            }
+        } catch (moonError) {
+            console.warn('Moon data unavailable', moonError);
+        }
         GameState.currentPlanet = data.planet;
         window.currentPlanet = data.planet;
         window.currentPlanetId = data.planet.id;
@@ -165,7 +181,10 @@ async function loadPlanetData(planetId) {
 
         // Trigger page-specific updates
         if (typeof updatePageData === 'function') {
-            updatePageData(data);
+            updatePageData({
+                ...data,
+                moonData,
+            });
         }
     } catch (error) {
         console.error('Error loading planet data:', error);

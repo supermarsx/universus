@@ -1,4 +1,5 @@
 import { pool } from '../config/database';
+import { PoolClient } from 'pg';
 import { Planet } from '../types';
 import {
   calculateBuildingCost,
@@ -15,6 +16,11 @@ export class PlanetService {
       [userId]
     );
     return result.rows;
+  }
+
+  static async getPlanetCountByUserId(userId: number): Promise<number> {
+    const result = await pool.query('SELECT COUNT(*) FROM planets WHERE user_id = $1', [userId]);
+    return parseInt(result.rows[0]?.count || '0', 10);
   }
 
   static async getPlanetById(planetId: number): Promise<Planet | null> {
@@ -171,5 +177,52 @@ export class PlanetService {
       [galaxy, system, position]
     );
     return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  static async createColonizedPlanet(
+    params: {
+      userId: number;
+      galaxy: number;
+      system: number;
+      position: number;
+      name?: string;
+      initialMetal?: number;
+      initialCrystal?: number;
+      initialDeuterium?: number;
+    },
+    client?: PoolClient
+  ): Promise<Planet> {
+    const {
+      userId,
+      galaxy,
+      system,
+      position,
+      name,
+      initialMetal = 500,
+      initialCrystal = 300,
+      initialDeuterium = 100,
+    } = params;
+
+    const planetName = name || `Colony ${galaxy}:${system}:${position}`;
+
+    const executor = client ?? pool;
+
+    const result = await executor.query(
+      `INSERT INTO planets (
+        user_id,
+        name,
+        galaxy,
+        system,
+        position,
+        metal,
+        crystal,
+        deuterium,
+        last_resource_update
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING *`,
+      [userId, planetName, galaxy, system, position, initialMetal, initialCrystal, initialDeuterium]
+    );
+
+    return result.rows[0];
   }
 }

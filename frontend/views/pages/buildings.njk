@@ -7,16 +7,17 @@
 {% block content %}
 <h2>Buildings</h2>
 
-<!-- Construction Queue Display -->
-<div id="constructionQueueDisplay" class="construction-queue-display card-enhanced" style="display:none;">
-    <h3>Construction in Progress</h3>
-    <div id="activeConstruction" class="progress">
-        <div class="progress-bar"></div>
+<section class="planet-buildings">
+    <!-- Construction Queue Display -->
+    <div id="constructionQueueDisplay" class="construction-queue-display card-enhanced" style="display:none;">
+        <h3>Construction in Progress</h3>
+        <div id="activeConstruction" class="progress">
+            <div class="progress-bar"></div>
+        </div>
     </div>
-</div>
 
-<!-- Buildings Grid -->
-<div id="buildingsGrid" class="buildings-grid">
+    <!-- Buildings Grid -->
+    <div id="buildingsGrid" class="buildings-grid">
     {% if buildings and buildings.length > 0 %}
         {% for building in buildings %}
         <div class="building-card card-enhanced" data-building-id="{{ building.id }}">
@@ -55,7 +56,25 @@
             <p>Loading buildings...</p>
         </div>
     {% endif %}
-</div>
+    </div>
+</section>
+
+<section id="moonBuildSection" class="moon-build card-enhanced">
+    <div class="moon-build__header">
+        <h3>Moon Development</h3>
+        <div id="moonStatus" class="moon-status">No moon detected in orbit.</div>
+    </div>
+    <div id="moonResourceSummary" class="moon-resource-summary hidden"></div>
+
+    <div id="moonConstructionQueue" class="construction-queue-display" style="display:none;">
+        <h3>Moon Construction</h3>
+        <div id="activeMoonConstruction" class="progress">
+            <div class="progress-bar"></div>
+        </div>
+    </div>
+
+    <div id="moonBuildingsGrid" class="buildings-grid moon-buildings-grid"></div>
+</section>
 {% endblock %}
 
 {% block scripts %}
