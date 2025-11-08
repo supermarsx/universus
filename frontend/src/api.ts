@@ -45,17 +45,17 @@ async function apiRequest(endpoint, options = {}) {
 
 // Auth API
 const AuthAPI = {
-    async register(username, email, password) {
+    async register(username, email, password, botChallenge) {
         return apiRequest('/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ username, email, password }),
+            body: JSON.stringify({ username, email, password, bot_challenge: botChallenge }),
         });
     },
 
-    async login(username, password) {
+    async login(username, password, botChallenge) {
         return apiRequest('/auth/login', {
             method: 'POST',
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify({ username, password, bot_challenge: botChallenge }),
         });
     },
 };

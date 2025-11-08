@@ -270,6 +270,8 @@ export interface GameplayConfig {
     speed: number;
     server_name: string;
     maintenance_mode: boolean;
+    difficulty_factor: number;
+    bot_protection_enabled?: boolean;
 }
 
 // Complete typed configuration interface

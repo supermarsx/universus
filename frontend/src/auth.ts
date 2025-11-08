@@ -1,6 +1,97 @@
 // @ts-nocheck
 // Authentication Logic
 
+function createBotProtectionClient() {
+    let enabled = false;
+    let hasFetched = false;
+    let activeToken = null;
+    let activeAnswer = null;
+    let pendingFetch = null;
+
+    const fetchChallenge = async () => {
+        try {
+            pendingFetch = fetch('/api/auth/bot-challenge')
+                .then((res) => res.json())
+                .then((data) => {
+                    hasFetched = true;
+                    enabled = !!data.enabled;
+                    if (!enabled) {
+                        activeToken = null;
+                        activeAnswer = null;
+                        return;
+                    }
+
+                    if (!data.token || !Array.isArray(data.operands)) {
+                        throw new Error('Malformed bot challenge');
+                    }
+
+                    activeToken = data.token;
+                    activeAnswer = data.operands
+                        .map((value) => Number(value))
+                        .filter((value) => !Number.isNaN(value))
+                        .reduce((sum, value) => sum + value, 0);
+                })
+                .catch((error) => {
+                    console.warn('Bot challenge request failed:', error);
+                    enabled = false;
+                    activeToken = null;
+                    activeAnswer = null;
+                })
+                .finally(() => {
+                    pendingFetch = null;
+                });
+
+            return await pendingFetch;
+        } catch (error) {
+            console.warn('Bot challenge fetch failed:', error);
+            enabled = false;
+            activeToken = null;
+            activeAnswer = null;
+        }
+    };
+
+    const ensureChallengeReady = async () => {
+        if (pendingFetch) {
+            await pendingFetch;
+            return;
+        }
+
+        if (!hasFetched || (enabled && (!activeToken || activeAnswer === null))) {
+            await fetchChallenge();
+        }
+    };
+
+    const preparePayload = async () => {
+        await ensureChallengeReady();
+
+        if (!enabled) {
+            return undefined;
+        }
+
+        if (!activeToken || typeof activeAnswer !== 'number') {
+            throw new Error('Unable to initialize bot protection. Please refresh and try again.');
+        }
+
+        const payload = {
+            token: activeToken,
+            response: activeAnswer,
+        };
+
+        activeToken = null;
+        activeAnswer = null;
+
+        // Pre-fetch the next challenge without blocking the form submission
+        fetchChallenge();
+
+        return payload;
+    };
+
+    return {
+        init: () => fetchChallenge(),
+        preparePayload,
+    };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Check if already logged in
     const token = localStorage.getItem('token');
@@ -12,6 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginForm = document.getElementById('loginForm');
     const registerForm = document.getElementById('registerForm');
     const tabButtons = document.querySelectorAll('.tab-button');
+    const botProtection = createBotProtectionClient();
+    botProtection.init();
 
     // Tab switching
     tabButtons.forEach(button => {
@@ -45,12 +138,17 @@ document.addEventListener('DOMContentLoaded', () => {
         errorElement.textContent = '';
 
         try {
+            const botPayload = await botProtection.preparePayload();
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify({
+                    username,
+                    password,
+                    bot_challenge: botPayload,
+                }),
             });
 
             const data = await response.json();
@@ -92,12 +190,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            const botPayload = await botProtection.preparePayload();
             const response = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ username, email, password }),
+                body: JSON.stringify({
+                    username,
+                    email,
+                    password,
+                    bot_challenge: botPayload,
+                }),
             });
 
             const data = await response.json();
