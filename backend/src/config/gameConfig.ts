@@ -1,5 +1,29 @@
-// Game configuration constants and formulas
+/**
+ * @module backend/config/gameConfig
+ *
+ * Centralized game configuration for Universus. This module defines the
+ * canonical data shapes for buildings, ships, defenses and research along
+ * with constants containing the concrete game values. It also provides a set
+ * of helper functions to calculate derived values such as scaled costs,
+ * build times, production rates and storage capacity.
+ *
+ * The configuration objects use simple plain-objects for ease of serialization
+ * and editing. Helper functions accept human-readable keys (e.g. 'metal_mine')
+ * and perform validation, throwing on unknown types.
+ */
 
+/**
+ * BuildingCost
+ *
+ * Represents the resource costs for buildings, ships or research. All values
+ * are integer resource amounts. `energy` is optional because not all
+ * technologies require energy as a resource.
+ *
+ * @property {number} metal - Metal cost
+ * @property {number} crystal - Crystal cost
+ * @property {number} deuterium - Deuterium cost
+ * @property {number} [energy] - Optional energy cost
+ */
 export interface BuildingCost {
   metal: number;
   crystal: number;
@@ -7,6 +31,25 @@ export interface BuildingCost {
   energy?: number;
 }
 
+/**
+ * BuildingConfig
+ *
+ * Configuration for a single building type.
+ *
+ * - `baseCost`: resources required to build level 1.
+ * - `costMultiplier`: exponential growth factor per level.
+ * - `baseProduction`/`productionMultiplier`: optional fields for resource
+ *    producing buildings (per-level production formula).
+ * - `baseTime`: base build time (seconds) used as a multiplier by helpers.
+ * - `requirements`: optional prerequisites (other buildings or research levels).
+ *
+ * @property {BuildingCost} baseCost
+ * @property {number} costMultiplier
+ * @property {number} [baseProduction]
+ * @property {number} [productionMultiplier]
+ * @property {number} baseTime - Base construction time in seconds
+ * @property {Object} [requirements]
+ */
 export interface BuildingConfig {
   baseCost: BuildingCost;
   costMultiplier: number;
@@ -19,6 +62,22 @@ export interface BuildingConfig {
   };
 }
 
+/**
+ * ShipConfig
+ *
+ * Defines the properties for ships and defensive units. Many attributes are
+ * used by combat, movement and construction systems.
+ *
+ * @property {BuildingCost} cost
+ * @property {number} structurePoints - Hull/HP value
+ * @property {number} shieldPower - Shield strength
+ * @property {number} weaponPower - Offensive weapon strength
+ * @property {number} cargo - Cargo capacity
+ * @property {number} baseSpeed - Movement speed (units)
+ * @property {number} fuelConsumption - Fuel consumed per trip/unit
+ * @property {Object.<string, number>} [rapidFire] - Rapid-fire multipliers vs other unit types
+ * @property {number} buildTime - Time in seconds to build
+ */
 export interface ShipConfig {
   cost: BuildingCost;
   structurePoints: number;
@@ -31,6 +90,19 @@ export interface ShipConfig {
   buildTime: number;
 }
 
+/**
+ * ResearchConfig
+ *
+ * Holds metadata and cost information for research topics.
+ *
+ * @property {BuildingCost} baseCost
+ * @property {number} costMultiplier
+ * @property {number} baseTime - Research base time in seconds
+ * @property {string} [displayName]
+ * @property {string} [description]
+ * @property {string} [category]
+ * @property {Object} [requirements]
+ */
 export interface ResearchConfig {
   baseCost: BuildingCost;
   costMultiplier: number;
@@ -44,7 +116,17 @@ export interface ResearchConfig {
   };
 }
 
-// Buildings configuration
+/**
+ * BUILDINGS
+ *
+ * Mapping of building keys to their `BuildingConfig`. Keys are stable
+ * identifiers used throughout the game logic (snake_case). Values describe
+ * costs, time and production parameters.
+ *
+ * Read-only at runtime; treat as configuration data.
+ *
+ * @constant {Object.<string, BuildingConfig>}
+ */
 export const BUILDINGS: { [key: string]: BuildingConfig } = {
   metal_mine: {
     baseCost: { metal: 60, crystal: 15, deuterium: 0 },
@@ -189,7 +271,14 @@ export const BUILDINGS: { [key: string]: BuildingConfig } = {
   },
 };
 
-// Ships configuration
+/**
+ * SHIPS
+ *
+ * Mapping of ship keys to `ShipConfig`. These entries power construction,
+ * movement and combat simulation systems.
+ *
+ * @constant {Object.<string, ShipConfig>}
+ */
 export const SHIPS: { [key: string]: ShipConfig } = {
   small_cargo: {
     cost: { metal: 2000, crystal: 2000, deuterium: 0 },
@@ -344,7 +433,16 @@ export const SHIPS: { [key: string]: ShipConfig } = {
   },
 };
 
-// Defense configuration
+/**
+ * DEFENSES
+ *
+ * Mapping of defensive structures to their `ShipConfig`-like definitions.
+ * Although called `ShipConfig` for reuse, these entries represent stationary
+ * defenses (lasers, turrets, shield domes) and typically have zero speed and
+ * cargo.
+ *
+ * @constant {Object.<string, ShipConfig>}
+ */
 export const DEFENSES: { [key: string]: ShipConfig } = {
   rocket_launcher: {
     cost: { metal: 2000, crystal: 0, deuterium: 0 },
@@ -428,7 +526,14 @@ export const DEFENSES: { [key: string]: ShipConfig } = {
   },
 };
 
-// Research configuration
+/**
+ * RESEARCH
+ *
+ * Mapping of research keys to `ResearchConfig` containing cost, time,
+ * display metadata and prerequisites.
+ *
+ * @constant {Object.<string, ResearchConfig>}
+ */
 export const RESEARCH: { [key: string]: ResearchConfig } = {
   energy_technology: {
     displayName: 'Energy Technology',
@@ -606,7 +711,20 @@ export const RESEARCH: { [key: string]: ResearchConfig } = {
   },
 };
 
-// Helper functions
+/**
+ * calculateBuildingCost
+ *
+ * Calculate the resource cost for upgrading a building from level N to
+ * level N+1 using the building's configured `costMultiplier`.
+ *
+ * @param {string} buildingType - Key of the building in `BUILDINGS` (e.g. 'metal_mine')
+ * @param {number} currentLevel - Current level of the building (0-based)
+ * @returns {BuildingCost} Scaled cost for the next level
+ * @throws Will throw if `buildingType` is not defined in `BUILDINGS`.
+ *
+ * Notes:
+ * - Uses Math.floor to keep resource integers.
+ */
 export function calculateBuildingCost(
   buildingType: string,
   currentLevel: number
@@ -625,6 +743,20 @@ export function calculateBuildingCost(
   };
 }
 
+/**
+ * calculateBuildingTime
+ *
+ * Compute the build time (in seconds) for the next level of a building.
+ * The formula uses the summed metal+crystal cost scaled by the building's
+ * `baseTime` and is reduced by automation technologies like robotics and
+ * nanite factories.
+ *
+ * @param {string} buildingType - Building key from `BUILDINGS`
+ * @param {number} currentLevel - Current level to calculate next-level time for
+ * @param {number} [roboticsLevel=0] - Robotics factory level: reduces time linearly
+ * @param {number} [naniteLevel=0] - Nanite factory level: halves time per level (exponential)
+ * @returns {number} Build time in seconds (rounded down)
+ */
 export function calculateBuildingTime(
   buildingType: string,
   currentLevel: number,
@@ -647,6 +779,17 @@ export function calculateBuildingTime(
   return Math.floor(time);
 }
 
+/**
+ * calculateResourceProduction
+ *
+ * Calculate the per-hour (or per-tick depending on gameSpeed semantics) resource
+ * production for a resource-producing building.
+ *
+ * @param {string} buildingType - Building key from `BUILDINGS`
+ * @param {number} level - Building level
+ * @param {number} [gameSpeed=1] - Global game speed multiplier
+ * @returns {number} Production amount (integer)
+ */
 export function calculateResourceProduction(
   buildingType: string,
   level: number,
@@ -660,6 +803,16 @@ export function calculateResourceProduction(
   return Math.floor(production * gameSpeed);
 }
 
+/**
+ * calculateResearchCost
+ *
+ * Compute scaled resource costs for advancing a research topic. Uses the
+ * research `costMultiplier` to calculate exponential growth per level.
+ *
+ * @param {string} researchType - Research key from `RESEARCH`
+ * @param {number} currentLevel - Current research level
+ * @returns {BuildingCost} Scaled resource costs
+ */
 export function calculateResearchCost(
   researchType: string,
   currentLevel: number
@@ -678,6 +831,15 @@ export function calculateResearchCost(
   };
 }
 
+/**
+ * calculateStorageCapacity
+ *
+ * Compute the storage capacity for resource storage structures. Uses an
+ * exponential doubling formula based on level.
+ *
+ * @param {number} level - Storage level
+ * @returns {number} Capacity (integer)
+ */
 export function calculateStorageCapacity(level: number): number {
   const baseCapacity = 10000;
   return Math.floor(baseCapacity * Math.pow(2, level));

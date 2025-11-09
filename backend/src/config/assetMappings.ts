@@ -1,14 +1,46 @@
 /**
- * Asset Mappings for Universus
- * Maps game entities to their visual asset filenames
+ * @module backend/config/assetMappings
+ *
+ * Centralized mapping between game-visible entity names (ships, buildings,
+ * resources, and backgrounds) and their corresponding asset filenames. Helpers
+ * in this module return full, client-ready asset paths so callers don't need
+ * to know the on-disk layout or file extensions.
+ *
+ * Guidelines:
+ * - Keys in mapping objects are the human readable names used across the game
+ *   and UI (e.g. 'Light Fighter', 'Metal Mine'). Values are canonical
+ *   filenames without file extensions (e.g. 'fighter-interceptor').
+ * - Helper functions provide safe defaults to avoid missing-image UI states.
+ * - Random background functions use Math.random() (non-deterministic).
  */
 
+/**
+ * AssetMapping
+ *
+ * A simple dictionary mapping a human-readable game/entity name to the
+ * canonical asset filename (without extension).
+ *
+ * Example:
+ *   const mapping: AssetMapping = { 'Light Fighter': 'fighter-interceptor' };
+ *
+ * @typedef {Object.<string, string>} AssetMapping
+ */
 export interface AssetMapping {
+  /** Human-readable entity name -> canonical asset filename (no extension) */
   [key: string]: string;
 }
 
 /**
- * Ship type to asset filename mapping
+ * shipAssets
+ *
+ * Map of ship types (human readable) to their canonical asset filenames
+ * (without extensions). These values are intended to be stable identifiers
+ * for client-side image files located under `/assets/ships/`.
+ *
+ * Read-only semantics are assumed at runtime; mutate only if you know what
+ * you're doing.
+ *
+ * @constant {AssetMapping}
  */
 export const shipAssets: AssetMapping = {
   // Fighters
@@ -68,7 +100,13 @@ export const shipAssets: AssetMapping = {
 };
 
 /**
- * Building type to asset filename mapping
+ * buildingAssets
+ *
+ * Map of building types (human readable) to canonical asset filenames
+ * (without extensions). These correspond to files under
+ * `/assets/buildings/` on the client.
+ *
+ * @constant {AssetMapping}
  */
 export const buildingAssets: AssetMapping = {
   // Production
@@ -123,7 +161,15 @@ export const buildingAssets: AssetMapping = {
 };
 
 /**
- * Planet types for background images
+ * planetBackgrounds
+ *
+ * Array of available planet background base filenames (no extensions). Use
+ * with `getRandomPlanetBackground()` to obtain a full path to a PNG.
+ *
+ * Example:
+ *   planetBackgrounds.includes('planet-earth-like') === true
+ *
+ * @constant {string[]}
  */
 export const planetBackgrounds: string[] = [
   'planet-earth-like',
@@ -148,7 +194,12 @@ export const planetBackgrounds: string[] = [
 ];
 
 /**
- * Space backgrounds for various pages
+ * spaceBackgrounds
+ *
+ * Available deep-space / starfield background base filenames. Helpers will
+ * append path and extension.
+ *
+ * @constant {string[]}
  */
 export const spaceBackgrounds: string[] = [
   'deep-space-1',
@@ -159,7 +210,12 @@ export const spaceBackgrounds: string[] = [
 ];
 
 /**
- * Environment backgrounds
+ * environmentBackgrounds
+ *
+ * Environment-themed backgrounds (asteroid fields, nebulae, wormholes, etc.).
+ * Values are base filenames without extensions.
+ *
+ * @constant {string[]}
  */
 export const environmentBackgrounds: string[] = [
   'asteroid-field',
@@ -172,7 +228,20 @@ export const environmentBackgrounds: string[] = [
 ];
 
 /**
- * Get ship asset path
+ * getShipAsset
+ *
+ * Return the full client path to a ship asset for the provided ship type.
+ *
+ * @param {string} shipType - Human-readable ship type (case-sensitive, e.g. 'Light Fighter').
+ * @returns {string} Full path to the PNG asset (e.g. '/assets/ships/fighter-interceptor.png').
+ *
+ * Behavior:
+ * - If `shipType` is not found in `shipAssets`, returns a safe default
+ *   ('fighter-interceptor') to avoid a missing-image situation on the UI.
+ * - The function never returns null/undefined.
+ *
+ * @example
+ *   getShipAsset('Scout') // '/assets/ships/fighter-scout.png'
  */
 export function getShipAsset(shipType: string): string {
   const assetName = shipAssets[shipType] || 'fighter-interceptor';
@@ -180,7 +249,19 @@ export function getShipAsset(shipType: string): string {
 }
 
 /**
- * Get building asset path
+ * getBuildingAsset
+ *
+ * Return the full client path to a building asset for the provided building
+ * type.
+ *
+ * @param {string} buildingType - Human-readable building name (e.g. 'Metal Mine').
+ * @returns {string} Full path to the PNG asset (e.g. '/assets/buildings/metal-mine-1.png').
+ *
+ * Notes:
+ * - Unknown building types fall back to 'metal-mine-1'.
+ *
+ * @example
+ *   getBuildingAsset('Solar Plant') // '/assets/buildings/solar-plant.png'
  */
 export function getBuildingAsset(buildingType: string): string {
   const assetName = buildingAssets[buildingType] || 'metal-mine-1';
@@ -188,7 +269,16 @@ export function getBuildingAsset(buildingType: string): string {
 }
 
 /**
- * Get random planet background
+ * getRandomPlanetBackground
+ *
+ * Select a random planet background from `planetBackgrounds` and return the
+ * full asset path.
+ *
+ * @returns {string} Path to a randomly chosen planet background PNG.
+ *
+ * Notes on determinism:
+ * - This uses Math.random() and is therefore non-deterministic. For tests
+ *   requiring repeatable output, stub `Math.random` or implement a seeded RNG.
  */
 export function getRandomPlanetBackground(): string {
   const planet = planetBackgrounds[Math.floor(Math.random() * planetBackgrounds.length)];
@@ -196,7 +286,11 @@ export function getRandomPlanetBackground(): string {
 }
 
 /**
- * Get random space background
+ * getRandomSpaceBackground
+ *
+ * Select a random space/starfield background and return the full asset path.
+ *
+ * @returns {string} Full path to a starfield/deep-space background PNG.
  */
 export function getRandomSpaceBackground(): string {
   const space = spaceBackgrounds[Math.floor(Math.random() * spaceBackgrounds.length)];
@@ -204,7 +298,11 @@ export function getRandomSpaceBackground(): string {
 }
 
 /**
- * Get random environment background
+ * getRandomEnvironmentBackground
+ *
+ * Select a random environment-themed background and return the full asset path.
+ *
+ * @returns {string} Full path to an environment-themed PNG asset.
  */
 export function getRandomEnvironmentBackground(): string {
   const env = environmentBackgrounds[Math.floor(Math.random() * environmentBackgrounds.length)];
@@ -212,7 +310,16 @@ export function getRandomEnvironmentBackground(): string {
 }
 
 /**
- * Get resource icon path
+ * getResourceIcon
+ *
+ * Return the full UI icon path for a given resource type. The lookup is
+ * case-insensitive.
+ *
+ * @param {string} resourceType - Resource key (supported: 'metal', 'crystal', 'deuterium', 'energy').
+ * @returns {string} Full path to the resource icon PNG. Unknown types fall back to the metal icon.
+ *
+ * @example
+ *   getResourceIcon('Crystal') // '/assets/ui/resource-crystal.png'
  */
 export function getResourceIcon(resourceType: string): string {
   const resourceMap: AssetMapping = {
