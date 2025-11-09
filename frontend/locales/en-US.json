@@ -310,7 +310,22 @@
     "duration": "Duration: {{days}} days",
     "expiresIn": "Expires in: <strong>{{days}} days</strong>",
     "active": "Active",
-    "expired": "Expired"
+    "expired": "Expired",
+    "// aliases for code updates": "",
+    "noItems": "No items available",
+    "loadFailed": "Failed to load shop items",
+    "purchaseStartFailed": "Failed to start purchase process",
+    "paymentTotal": "Total: ${{price}} USD",
+    "resource": {
+      "metal": "Metal",
+      "crystal": "Crystal",
+      "deuterium": "Deuterium"
+    },
+    "days": "days",
+    "perk": {
+      "active": "Active",
+      "expired": "Expired"
+    }
   },
   "chat": {
     "announcement_world_chat": "Announcement to world chat",
@@ -364,11 +379,44 @@
     "noConstruction": "No construction in progress",
     "completesIn": "Completes in: {{time}}"
   },
-  "fleet": {
+"fleet": {
     "empty": "You have no fleets.",
     "validation": { "selectShip": "Please select a ship before sending." },
     "sendButton": "Send",
-    "shipName": { "UNKNOWN": "Unknown ship" }
+    "shipName": { "UNKNOWN": "Unknown ship" },
+    "noShips": "No ships available on this planet.",
+    "available": "Available:",
+    "quantity": "Quantity",
+    "fill": "Fill",
+    "noAcsGroups": "No ACS groups available. Create one to coordinate attacks.",
+    "flexibleWindow": "Flexible window",
+    "selected": "Selected",
+    "linkFleet": "Link Fleet",
+    "acsOnlyAttack": "ACS groups are only available for attack missions.",
+    "acsCreated": "ACS group created.",
+    "acsCreateFailed": "Unable to create ACS group.",
+    "selectAttackBeforeAcs": "Select an attack mission before joining an ACS group.",
+    "linkedToAcs": "Linked fleet to ACS group targeting {{label}}.",
+    "acsJoinFailed": "Unable to join ACS group.",
+    "selectAtLeastOneShip": "Please select at least one ship before proceeding.",
+    "provideValidCoords": "Provide valid target coordinates.",
+    "noShipsStationed": "No ships stationed on this planet.",
+    "noActiveMissions": "No active missions.",
+    "noArrival": "—",
+    "pending": "Pending",
+    "targetLabel": "Target:",
+    "arrivalLabel": "Arrival:",
+    "returnLabel": "Return:",
+    "recall": "Recall",
+    "replayUnavailable": "Replay unavailable for this report.",
+    "noMissionActivity": "No mission activity yet.",
+    "recallSent": "Recall order sent.",
+    "failedToRecall": "Failed to recall fleet",
+    "noShipsSelected": "No ships selected.",
+    "selectShipsForFleet": "Select ships for the fleet.",
+    "chooseMissionType": "Choose a mission type.",
+    "failedToDispatch": "Failed to dispatch fleet",
+    "dispatchedSuccess": "Fleet dispatched successfully!"
   },
   "galaxy": {
     "loading": "Loading galaxy map...",

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import i18n from './i18n';
 // Shop page functionality with Stripe integration
 class ShopManager {
     constructor() {
@@ -65,7 +66,7 @@ class ShopManager {
             const shopCatalogEl = document.getElementById('shopCatalog');
             if (shopCatalogEl) {
                 if (!this.catalog || this.catalog.length === 0) {
-                    shopCatalogEl.innerHTML = '<div class="empty-state">No items available</div>';
+                    shopCatalogEl.innerHTML = `<div class="empty-state">${i18n.t('shop.noItems', { defaultValue: 'No items available' })}</div>`;
                 } else {
                     shopCatalogEl.innerHTML = '';
                     this.renderShopItems();
@@ -75,7 +76,7 @@ class ShopManager {
             }
         } catch (error) {
             console.error('Failed to load shop catalog:', error);
-            this.showNotification('Failed to load shop items', 'error');
+            this.showNotification(i18n.t('shop.loadFailed', { defaultValue: 'Failed to load shop items' }), 'error');
         }
     }
 
@@ -129,7 +130,7 @@ class ShopManager {
             <div class="item-description">${item.description}</div>
             ${this.renderItemDetails(item)}
             <button class="btn btn-primary buy-btn" data-item-id="${item.id}">
-                Purchase
+                ${i18n.t('shop.purchase', { defaultValue: 'Purchase' })}
             </button>
         `;
         
@@ -148,15 +149,15 @@ class ShopManager {
             const { metal, crystal, deuterium } = item.resourceAmount;
             return `
                 <div class="item-resources">
-                    ${metal ? `<div>Metal: ${this.formatNumber(metal)}</div>` : ''}
-                    ${crystal ? `<div>Crystal: ${this.formatNumber(crystal)}</div>` : ''}
-                    ${deuterium ? `<div>Deuterium: ${this.formatNumber(deuterium)}</div>` : ''}
+                    ${metal ? `<div>${i18n.t('shop.resource.metal', { defaultValue: 'Metal' })}: ${this.formatNumber(metal)}</div>` : ''}
+                    ${crystal ? `<div>${i18n.t('shop.resource.crystal', { defaultValue: 'Crystal' })}: ${this.formatNumber(crystal)}</div>` : ''}
+                    ${deuterium ? `<div>${i18n.t('shop.resource.deuterium', { defaultValue: 'Deuterium' })}: ${this.formatNumber(deuterium)}</div>` : ''}
                 </div>
             `;
         }
         
         if (item.duration) {
-            return `<div class="item-duration">Duration: ${item.duration} days</div>`;
+            return `<div class="item-duration">${i18n.t('shop.duration', { days: item.duration, defaultValue: 'Duration: {{days}} days' })}</div>`;
         }
         
         return '';
@@ -181,7 +182,7 @@ class ShopManager {
             
         } catch (error) {
             console.error('Failed to initiate purchase:', error);
-            this.showNotification('Failed to start purchase process', 'error');
+            this.showNotification(i18n.t('shop.purchaseStartFailed', { defaultValue: 'Failed to start purchase process' }), 'error');
         }
     }
     
@@ -196,7 +197,7 @@ class ShopManager {
                 <div class="payment-item">
                     <h3>${item.name}</h3>
                     <p>${item.description}</p>
-                    <div class="payment-price">Total: $${priceUSD} USD</div>
+                    <div class="payment-price">${i18n.t('shop.paymentTotal', { price: priceUSD, defaultValue: 'Total: ${{price}} USD' })}</div>
                 </div>
             `;
         }
@@ -244,7 +245,7 @@ class ShopManager {
         const statusDiv = document.getElementById('payment-status');
         
         if (submitBtn) submitBtn.disabled = true;
-        if (statusDiv) statusDiv.innerHTML = '<div class="loading">Processing payment...</div>';
+        if (statusDiv) statusDiv.innerHTML = `<div class="loading">${i18n.t('shop.processingPayment', { defaultValue: 'Processing payment...' })}</div>`;
         
         try {
             if (!this.stripe) throw new Error('Stripe not initialized');
@@ -261,7 +262,7 @@ class ShopManager {
             }
         } catch (error) {
             console.error('Payment error:', error);
-            if (statusDiv) statusDiv.innerHTML = '<div class="error">Payment failed. Please try again.</div>';
+            if (statusDiv) statusDiv.innerHTML = `<div class="error">${i18n.t('shop.paymentFailed', { defaultValue: 'Payment failed. Please try again.' })}</div>`;
             if (submitBtn) submitBtn.disabled = false;
         }
     }
@@ -281,7 +282,7 @@ class ShopManager {
         if (!container) return;
         
         if (this.activePerks.length === 0) {
-            container.innerHTML = '<div class="empty-state">No active perks</div>';
+            container.innerHTML = `<div class="empty-state">${i18n.t('shop.noActivePerks', { defaultValue: 'No active perks' })}</div>`;
             return;
         }
         
@@ -301,10 +302,10 @@ class ShopManager {
                     <div class="perk-type">${perk.type}</div>
                 </div>
                 <div class="perk-expiry">
-                    Expires in: <strong>${daysLeft} days</strong>
+                    ${i18n.t('shop.expiresIn', { defaultValue: 'Expires in:' })} <strong>${daysLeft} ${i18n.t('shop.days', { defaultValue: 'days' })}</strong>
                 </div>
                 <div class="perk-status ${perk.isActive ? 'active' : 'inactive'}">
-                    ${perk.isActive ? 'Active' : 'Expired'}
+                    ${perk.isActive ? i18n.t('shop.perk.active', { defaultValue: 'Active' }) : i18n.t('shop.perk.expired', { defaultValue: 'Expired' })}
                 </div>
             `;
             
@@ -327,7 +328,7 @@ class ShopManager {
         if (!container) return;
         
         if (this.purchaseHistory.length === 0) {
-            container.innerHTML = '<div class="empty-state">No purchases yet</div>';
+            container.innerHTML = `<div class="empty-state">${i18n.t('shop.noPurchases', { defaultValue: 'No purchases yet' })}</div>`;
             return;
         }
         
@@ -407,7 +408,7 @@ if (typeof document !== 'undefined') {
         if (urlParams.get('payment') === 'success') {
             const notification = document.getElementById('notification');
             if (notification) {
-                notification.textContent = 'Payment successful! Your purchase has been processed.';
+                notification.textContent = i18n.t('shop.paymentSuccess', { defaultValue: 'Payment successful! Your purchase has been processed.' });
                 notification.className = 'notification success show';
                 
                 setTimeout(() => {

@@ -1,5 +1,8 @@
 // @ts-nocheck
 
+import i18n from './i18n';
+
+
 const SHIP_STATS = {
   small_cargo: { name: 'Small Cargo', cargo: 5000, fuel: 10 },
   large_cargo: { name: 'Large Cargo', cargo: 25000, fuel: 50 },
@@ -156,7 +159,7 @@ export class FleetManager {
 
   goToStep(step) {
     if (step === 2 && Object.keys(this.selectedShips).length === 0) {
-      this.notify('Please select at least one ship before proceeding.', 'error');
+      this.notify(i18n.t('fleet.selectAtLeastOneShip', { defaultValue: 'Please select at least one ship before proceeding.' }), 'error');
       return;
     }
 
@@ -165,7 +168,7 @@ export class FleetManager {
       const targetSystem = parseInt((document.getElementById('targetSystem') as HTMLInputElement)?.value) || 1;
       const targetPosition = parseInt((document.getElementById('targetPosition') as HTMLInputElement)?.value) || 1;
       if (!targetGalaxy || !targetSystem || !targetPosition) {
-        this.notify('Provide valid target coordinates.', 'error');
+        this.notify(i18n.t('fleet.provideValidCoords', { defaultValue: 'Provide valid target coordinates.' }), 'error');
         return;
       }
     }
@@ -195,7 +198,7 @@ export class FleetManager {
     const ships = this.extractPlanetShips();
 
     if (Object.keys(ships).length === 0) {
-      container.innerHTML = '<div class="empty-state card-compact">No ships available on this planet.</div>';
+      container.innerHTML = `<div class="empty-state card-compact">${i18n.t('fleet.noShips', { defaultValue: 'No ships available on this planet.' })}</div>`;
       return;
     }
 
@@ -203,17 +206,17 @@ export class FleetManager {
       if (!SHIP_STATS[key]) return;
       const card = document.createElement('div');
       card.className = 'fleet-card';
-      card.innerHTML = `
+card.innerHTML = `
         <div class="fleet-card-header">
           <h3>${SHIP_STATS[key].name}</h3>
-          <span>Available: ${this.formatNumber(amount)}</span>
+          <span>${i18n.t('fleet.available', { defaultValue: 'Available:' })} ${this.formatNumber(amount)}</span>
         </div>
         <div class="fleet-card-body">
           <label>
-            Quantity
+            ${i18n.t('fleet.quantity', { defaultValue: 'Quantity' })}
             <input type="number" min="0" max="${amount}" value="${this.selectedShips[key] || 0}" data-ship="${key}">
           </label>
-          <button class="btn btn-text" data-select-all="${key}">Fill</button>
+          <button class="btn btn-text" data-select-all="${key}">${i18n.t('fleet.fill', { defaultValue: 'Fill' })}</button>
         </div>
       `;
 
@@ -266,7 +269,7 @@ export class FleetManager {
     if (!container) return;
 
     if (!this.acsGroups.length) {
-      container.innerHTML = '<div class="empty-state card-compact">No ACS groups available. Create one to coordinate attacks.</div>';
+      container.innerHTML = `<div class="empty-state card-compact">${i18n.t('fleet.noAcsGroups', { defaultValue: 'No ACS groups available. Create one to coordinate attacks.' })}</div>`;
       this.updateAcsSelectionBadge();
       return;
     }
@@ -276,20 +279,20 @@ export class FleetManager {
       const card = document.createElement('div');
       card.className = 'acs-group-card';
       const coords = `${group.target_galaxy}:${group.target_system}:${group.target_position}`;
-      const windowLabel = group.departure_window_start
+const windowLabel = group.departure_window_start
         ? `${new Date(group.departure_window_start).toLocaleTimeString()} - ${new Date(
             group.departure_window_end
           ).toLocaleTimeString()}`
-        : 'Flexible window';
+        : i18n.t('fleet.flexibleWindow', { defaultValue: 'Flexible window' });
       const selected = this.selectedAcsGroupId === group.id;
-      card.innerHTML = `
+card.innerHTML = `
         <div>
           <p class="acs-group-title">${group.mission_type.toUpperCase()} • ${coords}</p>
           <p class="acs-group-window">${windowLabel}</p>
           ${group.notes ? `<p class="acs-group-notes">${group.notes}</p>` : ''}
         </div>
         <button class="btn ${selected ? 'btn-secondary' : 'btn-primary'} acs-join-btn" data-group="${group.id}">
-          ${selected ? 'Selected' : 'Link Fleet'}
+          ${selected ? i18n.t('fleet.selected', { defaultValue: 'Selected' }) : i18n.t('fleet.linkFleet', { defaultValue: 'Link Fleet' })}
         </button>
       `;
       card.querySelector('button')?.addEventListener('click', () => this.joinAcsGroup(group.id, coords));
@@ -315,8 +318,8 @@ export class FleetManager {
   }
 
   openAcsModal() {
-    if (this.selectedMission !== 'attack') {
-      this.notify('ACS groups are only available for attack missions.', 'info');
+if (this.selectedMission !== 'attack') {
+      this.notify(i18n.t('fleet.acsOnlyAttack', { defaultValue: 'ACS groups are only available for attack missions.' }), 'info');
       return;
     }
     const modal = document.getElementById('acsModal');
@@ -353,16 +356,16 @@ export class FleetManager {
       await api.post('/acs', payload);
       this.closeAcsModal();
       await this.loadAcsGroups();
-      this.notify('ACS group created.', 'success');
+      this.notify(i18n.t('fleet.acsCreated', { defaultValue: 'ACS group created.' }), 'success');
     } catch (error) {
       console.error('Failed to create ACS group:', error);
-      this.notify(error?.response?.data?.message || 'Unable to create ACS group.', 'error');
+      this.notify(error?.response?.data?.message || i18n.t('fleet.acsCreateFailed', { defaultValue: 'Unable to create ACS group.' }), 'error');
     }
   }
 
   async joinAcsGroup(groupId: number, label: string) {
-    if (this.selectedMission !== 'attack') {
-      this.notify('Select an attack mission before joining an ACS group.', 'info');
+if (this.selectedMission !== 'attack') {
+      this.notify(i18n.t('fleet.selectAttackBeforeAcs', { defaultValue: 'Select an attack mission before joining an ACS group.' }), 'info');
       return;
     }
     try {
@@ -370,10 +373,10 @@ export class FleetManager {
       this.selectedAcsGroupId = groupId;
       this.updateAcsSelectionBadge();
       await this.loadAcsGroups();
-      this.notify(`Linked fleet to ACS group targeting ${label}.`, 'success');
+      this.notify(i18n.t('fleet.linkedToAcs', { label, defaultValue: `Linked fleet to ACS group targeting ${label}.` }), 'success');
     } catch (error) {
       console.error('Failed to join ACS group:', error);
-      this.notify(error?.response?.data?.message || 'Unable to join ACS group.', 'error');
+      this.notify(error?.response?.data?.message || i18n.t('fleet.acsJoinFailed', { defaultValue: 'Unable to join ACS group.' }), 'error');
     }
   }
 
@@ -418,7 +421,7 @@ export class FleetManager {
     if (!summary || !cargoLabel || !fuelLabel) return;
 
     if (Object.keys(this.selectedShips).length === 0) {
-      summary.textContent = 'No ships selected.';
+      summary.textContent = i18n.t('fleet.noShipsSelected', { defaultValue: 'No ships selected.' });
       cargoLabel.textContent = '0';
       fuelLabel.textContent = '0';
       return;
@@ -448,12 +451,12 @@ export class FleetManager {
   async dispatchFleet() {
     if (!this.planet) return;
     if (Object.keys(this.selectedShips).length === 0) {
-      this.notify('Select ships for the fleet.', 'error');
+      this.notify(i18n.t('fleet.selectShipsForFleet', { defaultValue: 'Select ships for the fleet.' }), 'error');
       return;
     }
 
     if (!this.selectedMission) {
-      this.notify('Choose a mission type.', 'error');
+      this.notify(i18n.t('fleet.chooseMissionType', { defaultValue: 'Choose a mission type.' }), 'error');
       return;
     }
 
@@ -474,13 +477,13 @@ export class FleetManager {
 
     try {
       await api.post('/fleet/dispatch', payload);
-      this.notify('Fleet dispatched successfully!', 'success');
+      this.notify(i18n.t('fleet.dispatchedSuccess', { defaultValue: 'Fleet dispatched successfully!' }), 'success');
       this.resetForm();
       await loadPlanetData(this.planet.id);
       this.fetchActiveFleets();
       this.loadCombatReports();
     } catch (error) {
-      this.notify(error.message || 'Failed to dispatch fleet', 'error');
+      this.notify(error.message || i18n.t('fleet.failedToDispatch', { defaultValue: 'Failed to dispatch fleet' }), 'error');
     }
   }
 
@@ -523,7 +526,7 @@ export class FleetManager {
 
     const ships = this.extractPlanetShips();
     if (Object.keys(ships).length === 0) {
-      container.innerHTML = '<div class="empty-state card-compact">No ships stationed on this planet.</div>';
+      container.innerHTML = `<div class="empty-state card-compact">${i18n.t('fleet.noShipsStationed', { defaultValue: 'No ships stationed on this planet.' })}</div>`;
       return;
     }
 
@@ -550,7 +553,7 @@ export class FleetManager {
     const fleets = this.filterFleets();
 
     if (fleets.length === 0) {
-      container.innerHTML = '<div class="empty-state card-compact">No active missions.</div>';
+      container.innerHTML = `<div class="empty-state card-compact">${i18n.t('fleet.noActiveMissions', { defaultValue: 'No active missions.' })}</div>`;
       return;
     }
 
@@ -564,25 +567,25 @@ export class FleetManager {
       const returnTs =
         fleet.returnTimestamp ??
         (fleet.return_time ? new Date(fleet.return_time).getTime() : null);
-      const arrivalText = arrivalTs ? this.formatCountdownMs(arrivalTs - Date.now()) : '—';
-      const returnText = returnTs ? this.formatCountdownMs(returnTs - Date.now()) : 'Pending';
+const arrivalText = arrivalTs ? this.formatCountdownMs(arrivalTs - Date.now()) : i18n.t('fleet.noArrival', { defaultValue: '—' });
+       const returnText = returnTs ? this.formatCountdownMs(returnTs - Date.now()) : i18n.t('fleet.pending', { defaultValue: 'Pending' });
 
       const card = document.createElement('div');
       card.className = 'mission-card card-enhanced';
 
-      card.innerHTML = `
+card.innerHTML = `
         <div class="mission-header">
           <div>
             <h3>${this.getMissionLabel(fleet.mission_type)}</h3>
-            <p>Target: ${fleet.target_galaxy}:${fleet.target_system}:${fleet.target_position}</p>
+            <p>${i18n.t('fleet.targetLabel', { defaultValue: 'Target:' })} ${fleet.target_galaxy}:${fleet.target_system}:${fleet.target_position}</p>
           </div>
-          <div class="mission-status">${fleet.status}</div>
+          <div class="mission-status">${i18n.t(`fleet.status.${fleet.status}`, { defaultValue: fleet.status })}</div>
         </div>
         <div class="mission-body">
-          <div><strong>Arrival:</strong> <span class="countdown" data-countdown="arrival" ${
+          <div><strong>${i18n.t('fleet.arrivalLabel', { defaultValue: 'Arrival:' })}</strong> <span class="countdown" data-countdown="arrival" ${
             arrivalTs ? `data-timestamp="${arrivalTs}"` : ''
           }>${arrivalText}</span></div>
-          <div><strong>Return:</strong> <span class="countdown" data-countdown="return" ${
+          <div><strong>${i18n.t('fleet.returnLabel', { defaultValue: 'Return:' })}</strong> <span class="countdown" data-countdown="return" ${
             returnTs ? `data-timestamp="${returnTs}"` : ''
           }>${returnText}</span></div>
           <div class="mission-ships">
@@ -592,7 +595,7 @@ export class FleetManager {
           </div>
         </div>
         <div class="mission-actions">
-          ${fleet.status === 'outbound' ? `<button class="btn btn-secondary" data-recall="${fleet.id}">Recall</button>` : ''}
+          ${fleet.status === 'outbound' ? `<button class="btn btn-secondary" data-recall="${fleet.id}">${i18n.t('fleet.recall', { defaultValue: 'Recall' })}</button>` : ''}
         </div>
       `;
 
@@ -610,7 +613,7 @@ export class FleetManager {
     if (!container) return;
 
     if (!this.combatReports.length) {
-      container.innerHTML = '<div class="empty-state card-compact">No recent combat reports.</div>';
+      container.innerHTML = `<div class="empty-state card-compact">${i18n.t('fleet.noCombatReports', { defaultValue: 'No recent combat reports.' })}</div>`;
       return;
     }
 
@@ -651,7 +654,7 @@ export class FleetManager {
         if (window.combatVisualizer && report) {
           window.combatVisualizer.play(report);
         } else {
-          this.notify('Replay unavailable for this report.', 'info');
+          this.notify(i18n.t('fleet.replayUnavailable', { defaultValue: 'Replay unavailable for this report.' }), 'info');
         }
       });
     });
@@ -662,7 +665,7 @@ export class FleetManager {
     if (!container) return;
 
     if (!this.missionLog.length) {
-      container.innerHTML = '<div class="empty-state card-compact">No mission activity yet.</div>';
+      container.innerHTML = `<div class="empty-state card-compact">${i18n.t('fleet.noMissionActivity', { defaultValue: 'No mission activity yet.' })}</div>`;
       return;
     }
 
@@ -683,10 +686,10 @@ export class FleetManager {
   async recallFleet(fleetId) {
     try {
       await api.post(`/fleet/${fleetId}/recall`);
-      this.notify('Recall order sent.', 'info');
+      this.notify(i18n.t('fleet.recallSent', { defaultValue: 'Recall order sent.' }), 'info');
       this.fetchActiveFleets();
     } catch (error) {
-      this.notify(error.message || 'Failed to recall fleet', 'error');
+      this.notify(error.message || i18n.t('fleet.failedToRecall', { defaultValue: 'Failed to recall fleet' }), 'error');
     }
   }
 
