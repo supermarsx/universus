@@ -1,0 +1,37 @@
+{
+  "id": null,
+  "title": "Universus Overview",
+  "tags": ["universus"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "Prometheus Scrape Duration",
+      "targets": [
+        {
+          "expr": "prometheus_scrape_duration_seconds{job=\"prometheus\"}",
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus",
+      "id": 1
+    },
+    {
+      "type": "graph",
+      "title": "Node CPU Usage",
+      "targets": [
+        {
+          "expr": "100 - (avg by(instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{instance}}",
+          "refId": "B"
+        }
+      ],
+      "datasource": "Prometheus",
+      "id": 2
+    }
+  ]
+}

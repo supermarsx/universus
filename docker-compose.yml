@@ -153,6 +153,65 @@ services:
       - "8080:80"
     restart: unless-stopped
 
+  prometheus:
+    build:
+      context: ./observability-service
+      dockerfile: Dockerfile.prometheus
+    container_name: universus_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability-service/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - backend
+      - node-exporter
+      - blackbox-exporter
+
+  grafana:
+    build:
+      context: ./observability-service
+      dockerfile: Dockerfile.grafana
+    container_name: universus_grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: universus_alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability-service/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: universus_node_exporter
+    ports:
+      - "9100:9100"
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: universus_blackbox_exporter
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./observability-service/blackbox.yml:/etc/blackbox_exporter/config.yml
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: universus_otel_collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./observability-service/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+
 volumes:
   postgres_data:
   redis_data:

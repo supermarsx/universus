@@ -1,0 +1,3 @@
+FROM grafana/grafana:latest
+COPY grafana-provisioning/provisioning/dashboards.yaml /etc/grafana/provisioning/dashboards.yaml
+COPY grafana-provisioning/dashboards /etc/grafana/provisioning/dashboards
