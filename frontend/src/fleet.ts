@@ -4,18 +4,18 @@ import i18n from './i18n';
 
 
 const SHIP_STATS = {
-  small_cargo: { name: 'Small Cargo', cargo: 5000, fuel: 10 },
-  large_cargo: { name: 'Large Cargo', cargo: 25000, fuel: 50 },
-  light_fighter: { name: 'Light Fighter', cargo: 50, fuel: 20 },
-  heavy_fighter: { name: 'Heavy Fighter', cargo: 100, fuel: 75 },
-  cruiser: { name: 'Cruiser', cargo: 800, fuel: 300 },
-  battleship: { name: 'Battleship', cargo: 1500, fuel: 500 },
-  colony_ship: { name: 'Colony Ship', cargo: 7500, fuel: 1000 },
-  recycler: { name: 'Recycler', cargo: 20000, fuel: 300 },
-  espionage_probe: { name: 'Espionage Probe', cargo: 5, fuel: 1 },
-  bomber: { name: 'Bomber', cargo: 500, fuel: 1000 },
-  destroyer: { name: 'Destroyer', cargo: 2000, fuel: 1000 },
-  deathstar: { name: 'Deathstar', cargo: 1000000, fuel: 1 },
+  small_cargo: { cargo: 5000, fuel: 10 },
+  large_cargo: { cargo: 25000, fuel: 50 },
+  light_fighter: { cargo: 50, fuel: 20 },
+  heavy_fighter: { cargo: 100, fuel: 75 },
+  cruiser: { cargo: 800, fuel: 300 },
+  battleship: { cargo: 1500, fuel: 500 },
+  colony_ship: { cargo: 7500, fuel: 1000 },
+  recycler: { cargo: 20000, fuel: 300 },
+  espionage_probe: { cargo: 5, fuel: 1 },
+  bomber: { cargo: 500, fuel: 1000 },
+  destroyer: { cargo: 2000, fuel: 1000 },
+  deathstar: { cargo: 1000000, fuel: 1 },
 };
 
 export class FleetManager {
@@ -208,7 +208,7 @@ export class FleetManager {
       card.className = 'fleet-card';
 card.innerHTML = `
         <div class="fleet-card-header">
-          <h3>${SHIP_STATS[key].name}</h3>
+          <h3>${this.getShipLabel(key)}</h3>
           <span>${i18n.t('fleet.available', { defaultValue: 'Available:' })} ${this.formatNumber(amount)}</span>
         </div>
         <div class="fleet-card-body">
@@ -427,7 +427,7 @@ if (this.selectedMission !== 'attack') {
       return;
     }
 
-    const parts = Object.entries(this.selectedShips).map(([key, value]) => `${SHIP_STATS[key].name}: ${value}`);
+    const parts = Object.entries(this.selectedShips).map(([key, value]) => `${this.getShipLabel(key)}: ${value}`);
     summary.textContent = parts.join(', ');
 
     const totalCargo = Object.entries(this.selectedShips).reduce((sum, [key, value]) => {
@@ -576,7 +576,7 @@ const arrivalText = arrivalTs ? this.formatCountdownMs(arrivalTs - Date.now()) :
 card.innerHTML = `
         <div class="mission-header">
           <div>
-            <h3>${this.getMissionLabel(fleet.mission_type)}</h3>
+            <h3>${this.getLocalizedMissionLabel(fleet.mission_type)}</h3>
             <p>${i18n.t('fleet.targetLabel', { defaultValue: 'Target:' })} ${fleet.target_galaxy}:${fleet.target_system}:${fleet.target_position}</p>
           </div>
           <div class="mission-status">${i18n.t(`fleet.status.${fleet.status}`, { defaultValue: fleet.status })}</div>
@@ -711,6 +711,13 @@ card.innerHTML = `
     }, 0);
   }
 
+  getShipLabel(key) {
+    const i18nLabel = i18n.t(`shipyard.ships.${key}.name`, { defaultValue: '' });
+    if (i18nLabel) return i18nLabel;
+    if (SHIP_STATS[key] && SHIP_STATS[key].name) return SHIP_STATS[key].name;
+    return this.formatName(key);
+  }
+
   calculateDistance() {
     if (!this.planet) return 0;
 
@@ -791,6 +798,10 @@ card.innerHTML = `
     return labels[mission] || this.formatName(mission);
   }
 
+  getLocalizedMissionLabel(mission) {
+    return i18n.t(`galaxy.action.${mission}`, { defaultValue: this.getMissionLabel(mission) });
+  }
+
   formatName(key) {
     return key
       .split('_')
@@ -798,7 +809,7 @@ card.innerHTML = `
       .join(' ');
   }
   formatCoords(report) {
-    if (!report?.target) return 'Unknown coordinates';
+    if (!report?.target) return i18n.t('fleet.unknownCoordinates', { defaultValue: 'Unknown coordinates' });
     const { galaxy, system, position } = report.target;
     return `${galaxy}:${system}:${position}`;
   }
@@ -834,27 +845,27 @@ card.innerHTML = `
     switch (payload.action) {
       case 'dispatch':
         entry = {
-          title: 'Fleet Dispatched',
-          message: `${this.getMissionLabel(payload.fleet?.mission_type)} to ${this.formatCoords({
+          title: i18n.t('fleet.log.dispatched', { defaultValue: 'Fleet Dispatched' }),
+          message: this.getLocalizedMissionLabel(payload.fleet?.mission_type) + ' to ' + this.formatCoords({
             target: {
               galaxy: payload.fleet?.target_galaxy,
               system: payload.fleet?.target_system,
               position: payload.fleet?.target_position,
             },
-          })}`,
+          }),
           timestamp: now,
         };
         break;
       case 'arrival':
         entry = {
-          title: 'Fleet Arrived',
+          title: i18n.t('fleet.log.arrived', { defaultValue: 'Fleet Arrived' }),
           message: `Fleet #${payload.fleetId} reached its destination`,
           timestamp: now,
         };
         break;
       case 'recall':
         entry = {
-          title: 'Recall Issued',
+          title: i18n.t('fleet.log.recall', { defaultValue: 'Recall Issued' }),
           message: `Fleet #${payload.fleetId} is returning`,
           timestamp: now,
         };
@@ -871,7 +882,7 @@ card.innerHTML = `
           ? `${payload.planet.galaxy}:${payload.planet.system}:${payload.planet.position}`
           : 'target coordinates';
         entry = {
-          title: payload.status === 'success' ? 'Colony Established' : 'Colonization Failed',
+          title: payload.status === 'success' ? i18n.t('fleet.log.colonyEstablished', { defaultValue: 'Colony Established' }) : i18n.t('fleet.log.colonizationFailed', { defaultValue: 'Colonization Failed' }),
           message:
             payload.status === 'success'
               ? `New colony founded at ${planetCoords}`
@@ -882,7 +893,7 @@ card.innerHTML = `
       }
       case 'espionage':
         entry = {
-          title: 'Espionage Report',
+          title: i18n.t('fleet.log.espionage', { defaultValue: 'Espionage Report' }),
           message: `Intel ${payload.intelLevel || 'standard'}${payload.detected ? ' • Detected' : ''}`,
           timestamp: now,
         };
@@ -891,10 +902,10 @@ card.innerHTML = `
         const metal = payload.collected?.metal || 0;
         const crystal = payload.collected?.crystal || 0;
         entry = {
-          title: payload.empty ? 'Harvest Attempt' : 'Harvest Complete',
+          title: payload.empty ? i18n.t('fleet.log.harvestAttempt', { defaultValue: 'Harvest Attempt' }) : i18n.t('fleet.log.harvestComplete', { defaultValue: 'Harvest Complete' }),
           message: payload.empty
             ? 'No debris recovered.'
-            : `Recovered ${this.formatNumber(metal)} metal and ${this.formatNumber(crystal)} crystal.`,
+            : 'Recovered ' + this.formatNumber(metal) + ' metal and ' + this.formatNumber(crystal) + ' crystal.',
           timestamp: now,
         };
         break;
@@ -911,14 +922,14 @@ card.innerHTML = `
     try {
       const history = await api.get('/fleet/history?limit=25');
       this.missionLog = (history || []).map((fleet) => ({
-        title: `${this.getMissionLabel(fleet.mission_type)} (${fleet.status})`,
-        message: `${this.formatCoords({
+        title: this.getLocalizedMissionLabel(fleet.mission_type) + ' (' + fleet.status + ')',
+        message: this.formatCoords({
           target: {
             galaxy: fleet.target_galaxy,
             system: fleet.target_system,
             position: fleet.target_position,
           },
-        })} • Ships: ${this.formatShipsSummary(fleet.ships)}`,
+        }) + ' • Ships: ' + this.formatShipsSummary(fleet.ships),
         timestamp: fleet.departure_time || fleet.createdAt || new Date().toISOString(),
       }));
       this.renderMissionLog();
@@ -931,7 +942,7 @@ card.innerHTML = `
     const entries = Object.entries(ships);
     if (!entries.length) return 'No ships';
     return entries
-      .map(([key, count]) => `${SHIP_STATS[key]?.name || this.formatName(key)} ${count}`)
+      .map(([key, count]) => (SHIP_STATS[key]?.name || this.formatName(key)) + ' ' + count)
       .slice(0, 4)
       .join(', ');
   }

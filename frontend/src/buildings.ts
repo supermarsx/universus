@@ -1,4 +1,5 @@
 // @ts-nocheck
+import i18next from 'i18next';
 // Buildings configuration (matches backend)
 const BUILDINGS = {
     metal_mine: {
@@ -187,13 +188,13 @@ function renderBuildings() {
         card.className = 'building-card';
         
         card.innerHTML = `
-            <img src="/assets/buildings/${config.image}.png" alt="${config.name}" class="building-image" onerror="this.src='/assets/buildings/metal-mine-1.png'">
+            <img src="/assets/buildings/${config.image}.png" alt="${i18next.t(`buildings.list.${buildingType}.name`, { defaultValue: config.name || buildingType })}" class="building-image" onerror="this.src='/assets/buildings/metal-mine-1.png'">
             <div class="building-card-body">
                 <div class="building-header">
-                    <span class="building-name">${config.name}</span>
-                    <span class="building-level">Level ${currentLevel}</span>
+                    <span class="building-name">${i18next.t(`buildings.list.${buildingType}.name`, { defaultValue: config.name || buildingType })}</span>
+                    <span class="building-level">${i18next.t('buildings.level', { defaultValue: 'Level' })} ${currentLevel}</span>
                 </div>
-                <p class="building-description">${config.description}</p>
+                <p class="building-description">${i18next.t(`buildings.list.${buildingType}.description`, { defaultValue: config.description || '' })}</p>
                 
                 <div class="building-cost">
                     <div class="cost-item">
@@ -221,7 +222,7 @@ function renderBuildings() {
                     data-building="${buildingType}"
                     ${!canAfford || isBuilding ? 'disabled' : ''}
                 >
-                    ${isBuilding ? 'Building in Progress' : canAfford ? `Upgrade to Level ${currentLevel + 1}` : 'Insufficient Resources'}
+                    ${isBuilding ? i18next.t('buildings.buildingInProgress', { defaultValue: 'Building in Progress' }) : canAfford ? i18next.t('buildings.upgradeToLevel', { level: currentLevel + 1, defaultValue: `Upgrade to Level ${currentLevel + 1}` }) : i18next.t('buildings.insufficientResources', { defaultValue: 'Insufficient Resources' })}
                 </button>
             </div>
         `;
@@ -246,10 +247,10 @@ function renderMoonSection() {
     }
 
     const moonData = currentPlanetData?.moonData;
-    if (!moonData || !moonData.moon) {
-        statusEl.textContent = 'No moon detected in orbit.';
+        if (!moonData || !moonData.moon) {
+        statusEl.textContent = i18next.t('buildings.noMoonDetected', { defaultValue: 'No moon detected in orbit.' });
         resourceSummary.classList.add('hidden');
-        grid.innerHTML = '<div class="moon-empty card-compact">Generate enough debris in battle to roll for a moon.</div>';
+        grid.innerHTML = `<div class="moon-empty card-compact">${i18next.t('buildings.generateMoonHint', { defaultValue: 'Generate enough debris in battle to roll for a moon.' })}</div>`;
         moonQueue.style.display = 'none';
         return;
     }
@@ -292,13 +293,13 @@ function renderMoonBuildingsGrid(moon, moonData) {
         const card = document.createElement('div');
         card.className = 'building-card';
         card.innerHTML = `
-            <img src="/assets/buildings/${config.image}.png" alt="${config.name}" class="building-image" onerror="this.src='/assets/buildings/metal-mine-1.png'">
+            <img src="/assets/buildings/${config.image}.png" alt="${i18next.t(`buildings.list.${buildingType}.name`, { defaultValue: config.name || buildingType })}" class="building-image" onerror="this.src='/assets/buildings/metal-mine-1.png'">
             <div class="building-card-body">
                 <div class="building-header">
-                    <span class="building-name">${config.name}</span>
-                    <span class="building-level">Level ${currentLevel}</span>
+                    <span class="building-name">${i18next.t(`buildings.list.${buildingType}.name`, { defaultValue: config.name || buildingType })}</span>
+                    <span class="building-level">${i18next.t('buildings.level', { defaultValue: 'Level' })} ${currentLevel}</span>
                 </div>
-                <p class="building-description">${config.description}</p>
+                <p class="building-description">${i18next.t(`buildings.list.${buildingType}.description`, { defaultValue: config.description || '' })}</p>
                 <div class="building-cost">
                     <div class="cost-item">
                         <img src="/assets/ui/resource-metal.png" alt="Metal" class="cost-icon">
@@ -324,7 +325,7 @@ function renderMoonBuildingsGrid(moon, moonData) {
                     data-building="${buildingType}"
                     ${!canAfford || isBuilding ? 'disabled' : ''}
                 >
-                    ${isBuilding ? 'Moon Queue Busy' : canAfford ? `Upgrade to Level ${currentLevel + 1}` : 'Insufficient Resources'}
+                    ${isBuilding ? i18next.t('buildings.moonQueueBusy', { defaultValue: 'Moon Queue Busy' }) : canAfford ? i18next.t('buildings.upgradeToLevel', { level: currentLevel + 1, defaultValue: `Upgrade to Level ${currentLevel + 1}` }) : i18next.t('buildings.insufficientResources', { defaultValue: 'Insufficient Resources' })}
                 </button>
             </div>
         `;
@@ -362,8 +363,8 @@ async function startBuilding(buildingType, options = {}) {
         }
 
         const config = getBuildingConfig(buildingType);
-        const locationLabel = options.locationType === 'moon' ? 'Moon' : 'Planet';
-        showNotification('Success', `${config?.name || buildingType} construction started on ${locationLabel}`, 'success');
+        const locationLabel = options.locationType === 'moon' ? i18next.t('buildings.moon', { defaultValue: 'Moon' }) : i18next.t('buildings.planet', { defaultValue: 'Planet' });
+        showNotification(i18next.t('buildings.constructionStarted', { unit: i18next.t(`buildings.list.${buildingType}.name`, { defaultValue: config?.name || buildingType }), location: locationLabel }), i18next.t('general.success', { defaultValue: 'Success' }));
         
         // Reload planet data
         await loadPlanetData(GameState.currentPlanet.id);
@@ -387,9 +388,9 @@ function updateConstructionQueue(queue) {
 
         activeConstruction.innerHTML = `
             <div class="active-construction-card">
-                <h4>${config?.name || item.building_type} (Level ${item.level})</h4>
-                <p class="construction-timer">Completes in: <span id="constructionTimer">${formatTime(timeRemaining)}</span></p>
-                <button class="btn-secondary" onclick="cancelConstruction(${item.id})">Cancel Construction</button>
+                <h4>${i18next.t(`buildings.list.${item.building_type}.name`, { defaultValue: config?.name || item.building_type })} (${i18next.t('buildings.level', { defaultValue: 'Level' })} ${item.level})</h4>
+                <p class="construction-timer">${i18next.t('overview.completesIn', { time: formatTime(timeRemaining), defaultValue: `Completes in: ${formatTime(timeRemaining)}` })}</p>
+                <button class="btn-secondary" onclick="cancelConstruction(${item.id})">${i18next.t('buildings.cancelButton', { defaultValue: 'Cancel Construction' })}</button>
             </div>
         `;
 
@@ -418,9 +419,9 @@ function updateMoonConstructionQueue(queue) {
 
         activeConstruction.innerHTML = `
             <div class="active-construction-card">
-                <h4>${config?.name || item.building_type} (Level ${item.level})</h4>
-                <p class="construction-timer">Completes in: <span id="moonConstructionTimer">${formatTime(timeRemaining)}</span></p>
-                <button class="btn-secondary" onclick="cancelConstruction(${item.id})">Cancel Construction</button>
+                <h4>${i18next.t(`buildings.list.${item.building_type}.name`, { defaultValue: config?.name || item.building_type })} (${i18next.t('buildings.level', { defaultValue: 'Level' })} ${item.level})</h4>
+                <p class="construction-timer">${i18next.t('overview.completesIn', { time: formatTime(timeRemaining), defaultValue: `Completes in: ${formatTime(timeRemaining)}` })}</p>
+                <button class="btn-secondary" onclick="cancelConstruction(${item.id})">${i18next.t('buildings.cancelButton', { defaultValue: 'Cancel Construction' })}</button>
             </div>
         `;
 
@@ -443,7 +444,7 @@ function startConstructionTimer(endTime, timerElementId) {
 
         if (remaining <= 0) {
             clearInterval(timerInterval);
-            showNotification('Success', 'Construction completed!', 'success');
+            showNotification(i18next.t('buildings.constructionCompleted', { defaultValue: 'Construction completed!' }), i18next.t('general.success', { defaultValue: 'Success' }));
             if (GameState.currentPlanet) {
                 loadPlanetData(GameState.currentPlanet.id);
             }
@@ -455,7 +456,7 @@ function startConstructionTimer(endTime, timerElementId) {
 
 // Cancel construction
 async function cancelConstruction(constructionId) {
-    if (!confirm('Are you sure? You will only get 60% of resources back.')) {
+    if (!confirm(i18next.t('buildings.cancelConfirm', { defaultValue: 'Are you sure? You will only get 60% of resources back.' }))) {
         return;
     }
 
@@ -472,7 +473,7 @@ async function cancelConstruction(constructionId) {
             throw new Error(data.error || 'Failed to cancel construction');
         }
 
-        showNotification('Success', 'Construction cancelled', 'success');
+            showNotification(i18next.t('buildings.constructionCancelled', { defaultValue: 'Construction cancelled' }), i18next.t('general.success', { defaultValue: 'Success' }));
         
         if (GameState.currentPlanet) {
             await loadPlanetData(GameState.currentPlanet.id);

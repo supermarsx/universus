@@ -8,19 +8,14 @@ type MissionType =
   | 'colonize'
   | 'harvest';
 
-const SHIP_LABELS: Record<string, string> = {
-  small_cargo: 'Small Cargo',
-  large_cargo: 'Large Cargo',
-  light_fighter: 'Light Fighter',
-  heavy_fighter: 'Heavy Fighter',
-  cruiser: 'Cruiser',
-  battleship: 'Battleship',
-  destroyer: 'Destroyer',
-  bomber: 'Bomber',
-  colony_ship: 'Colony Ship',
-  recycler: 'Recycler',
-  espionage_probe: 'Espionage Probe',
-};
+// Ship labels are localized via i18n under `shipyard.ships.<key>.name`
+function getShipLabel(key: string) {
+  const localized = i18n.t(`shipyard.ships.${key}.name`, { defaultValue: undefined });
+  if (localized && typeof localized === 'string' && localized !== `shipyard.ships.${key}.name`) return localized;
+  // Fallback humanized key
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 
 const MISSION_SHIPS: Record<MissionType, string[]> = {
   attack: ['light_fighter', 'heavy_fighter', 'cruiser', 'battleship', 'destroyer', 'bomber'],
@@ -396,20 +391,21 @@ class GalaxyController {
     if (!select) return;
 
     if (this.ownedPlanets.length === 0) {
-      select.innerHTML = '<option value="">No planets available</option>';
+      select.innerHTML = `<option value="">${i18n.t('galaxy.noPlanets', { defaultValue: 'No planets available' })}</option>`;
       return;
     }
 
     select.innerHTML =
-      '<option value="">Select a planet…</option>' +
+      `${i18n.t('galaxy.selectPlanet', { defaultValue: 'Select a planet…' })}` +
       this.ownedPlanets
       .map(
         (planet) =>
           `<option value="${planet.id}">
-            ${planet.name || 'Unnamed'} [${planet.galaxy}:${planet.system}:${planet.position}]
+            ${planet.name || i18n.t('galaxy.unnamed', { defaultValue: 'Unnamed' })} [${planet.galaxy}:${planet.system}:${planet.position}]
           </option>`
       )
       .join('');
+
 
     if (this.originPlanetId) {
       select.value = String(this.originPlanetId);
@@ -445,7 +441,7 @@ class GalaxyController {
       }
     } catch (error) {
       console.warn('Failed to load origin planet', error);
-      this.showToast('Unable to load planet data.', 'error');
+      this.showToast(i18n.t('galaxy.errors.unableToLoadPlanetData', { defaultValue: 'Unable to load planet data.' }), 'error');
     }
   }
 
@@ -580,7 +576,7 @@ class GalaxyController {
       this.handleScanResponse(response);
     } catch (error) {
       console.error('Failed to scan galaxy', error);
-      this.showToast('Failed to scan system', 'error');
+      this.showToast(i18n.t('galaxy.errors.failedToScan', { defaultValue: 'Failed to scan system' }), 'error');
     } finally {
       this.isLoading = false;
       this.setLoadingState(false);
@@ -628,7 +624,7 @@ class GalaxyController {
       this.elements.systemDisplay.innerHTML = `
         <div class="loading">
           <div class="spinner"></div>
-          <p>Scanning system…</p>
+          <p>${i18n.t('galaxy.scanning', { defaultValue: 'Scanning system…' })}</p>
         </div>
       `;
     }
@@ -645,7 +641,7 @@ class GalaxyController {
 
     if (this.planets.length === 0) {
       this.elements.systemDisplay.innerHTML = `
-        <div class="empty-state card-compact">No intel for this system.</div>
+        <div class="empty-state card-compact">${i18n.t('galaxy.noIntel', { defaultValue: 'No intel for this system.' })}</div>
       `;
     }
 
@@ -664,17 +660,17 @@ class GalaxyController {
     if (!summary) return;
 
     if (!this.originPlanet) {
-      summary.textContent = 'Select an origin planet to enable missions.';
+      summary.textContent = i18n.t('galaxy.selectOrigin', { defaultValue: 'Select an origin planet to enable missions.' });
       const shipSummary = this.elements.shipSummary;
       if (shipSummary) {
-        shipSummary.innerHTML = '<span class="text-muted">No hangar data yet.</span>';
+        shipSummary.innerHTML = `<span class="text-muted">${i18n.t('galaxy.noHangarData', { defaultValue: 'No hangar data yet.' })}</span>`;
       }
       this.updateOriginLabel();
       return;
     }
 
     summary.innerHTML = `
-      <strong>${this.originPlanet.name || 'Unnamed World'}</strong>
+      <strong>${this.originPlanet.name || i18n.t('galaxy.unnamedWorld', { defaultValue: 'Unnamed World' })}</strong>
       <span class="coords">[${this.originPlanet.galaxy}:${this.originPlanet.system}:${this.originPlanet.position}]</span>
     `;
 
@@ -709,14 +705,14 @@ class GalaxyController {
       .slice(0, 6);
 
     if (entries.length === 0) {
-      container.innerHTML = '<span class="text-muted">Hangar is empty.</span>';
+      container.innerHTML = `<span class="text-muted">${i18n.t('galaxy.hangarEmpty', { defaultValue: 'Hangar is empty.' })}</span>`;
       return;
     }
 
-    container.innerHTML = entries
+container.innerHTML = entries
       .map(
         (entry) =>
-          `<span class="ship-pill">${SHIP_LABELS[entry.ship] || entry.ship}: ${this.formatNumber(entry.count)}</span>`
+          `<span class="ship-pill">${getShipLabel(entry.ship)}: ${this.formatNumber(entry.count)}</span>`
       )
       .join('');
   }
@@ -726,11 +722,11 @@ class GalaxyController {
     if (!label) return;
 
     if (!this.originPlanet) {
-      label.textContent = 'Origin: —';
+      label.textContent = i18n.t('galaxy.originNone', { defaultValue: 'Origin: —' });
       return;
     }
 
-    label.textContent = `Origin: ${this.originPlanet.name || 'Unnamed'} [${this.originPlanet.galaxy}:${this.originPlanet.system}:${this.originPlanet.position}]`;
+    label.textContent = i18n.t('galaxy.originLabel', { defaultValue: `Origin: ${this.originPlanet.name || 'Unnamed'} [${this.originPlanet.galaxy}:${this.originPlanet.system}:${this.originPlanet.position}]`, name: this.originPlanet.name || 'Unnamed', galaxy: this.originPlanet.galaxy, system: this.originPlanet.system, position: this.originPlanet.position });
   }
 
   renderSlotRow(slot: any) {
@@ -738,13 +734,13 @@ class GalaxyController {
     row.className = 'galaxy-row';
     row.dataset.position = String(slot.position);
 
-    const ownerName = slot.owner?.username || (slot.hasPlanet ? 'Unknown' : '—');
+    const ownerName = slot.owner?.username || (slot.hasPlanet ? i18n.t('galaxy.unknown', { defaultValue: 'Unknown' }) : i18n.t('galaxy.dash', { defaultValue: '—' }));
     const allianceTag = slot.owner?.alliance?.tag
       ? `[${slot.owner.alliance.tag}]`
       : '';
     const activityLabel = slot.owner?.activity?.label || 'unknown';
     const moonBadge = slot.moon
-      ? `<span class="moon-pill" title="Diameter ${this.formatNumber(slot.moon.diameter)} km">Moon</span>`
+      ? `<span class="moon-pill" title="${i18n.t('galaxy.moonDiameterTitle', { defaultValue: 'Diameter {km} km', km: this.formatNumber(slot.moon.diameter) }).replace('{km}', this.formatNumber(slot.moon.diameter))}">${i18n.t('galaxy.moon', { defaultValue: 'Moon' })}</span>`
       : '';
     const relationBadge = this.renderRelationBadge(slot.owner?.relation);
 
@@ -757,7 +753,7 @@ class GalaxyController {
         <span class="${intelTagClass}">${slot.intelQuality}</span>
       </div>
       <div class="slot-planet">
-        ${slot.hasPlanet ? slot.planet?.name || 'Unknown World' : '<span class="slot-empty">Vacant Orbit</span>'}
+        ${slot.hasPlanet ? slot.planet?.name || i18n.t('galaxy.unknownWorld', { defaultValue: 'Unknown World' }) : `<span class="slot-empty">${i18n.t('galaxy.vacantOrbit', { defaultValue: 'Vacant Orbit' })}</span>`}
         <div class="coords">${this.currentGalaxy}:${this.currentSystem}:${slot.position}</div>
         ${moonBadge}
         <div class="slot-markers">${this.renderMarkers(slot)}</div>
@@ -765,17 +761,17 @@ class GalaxyController {
       <div class="slot-owner">
         <strong>${ownerName}</strong>
         ${relationBadge}
-        ${slot.hasPlanet ? `<span>Intel: ${slot.intelQuality}</span>` : ''}
+        ${slot.hasPlanet ? `<span>${i18n.t('galaxy.intelLabel', { defaultValue: 'Intel:' })} ${slot.intelQuality}</span>` : ''}
       </div>
       <div class="slot-alliance">
-        ${allianceTag ? `<span class="alliance-tag">${allianceTag}</span>` : '<span>—</span>'}
+        ${allianceTag ? `<span class="alliance-tag">${allianceTag}</span>` : `<span>${i18n.t('galaxy.dash', { defaultValue: '—' })}</span>`}
         <span class="activity-indicator">
           <span class="activity-pill activity-${activityLabel}">${activityLabel}</span>
-          ${slot.owner?.activity?.minutesSince !== null ? `${slot.owner.activity.minutesSince}m ago` : ''}
+          ${slot.owner?.activity?.minutesSince !== null ? `${slot.owner.activity.minutesSince}${i18n.t('galaxy.minutesSuffix', { defaultValue: 'm ago' })}` : ''}
         </span>
       </div>
       <div class="slot-debris">
-        ${slot.debris ? `<strong>${this.formatNumber(slot.debris.metal)} M / ${this.formatNumber(slot.debris.crystal)} C</strong>` : '—'}
+        ${slot.debris ? `<strong>${this.formatNumber(slot.debris.metal)} M / ${this.formatNumber(slot.debris.crystal)} C</strong>` : i18n.t('galaxy.dash', { defaultValue: '—' })}
       </div>
       <div class="slot-actions">${actions}</div>
     `;
@@ -785,7 +781,7 @@ class GalaxyController {
 
   renderRelationBadge(relation?: 'self' | 'ally' | 'neutral') {
     if (!relation || relation === 'neutral') return '';
-    const label = relation === 'self' ? 'Self' : 'Ally';
+    const label = relation === 'self' ? i18n.t('galaxy.relation.self', { defaultValue: 'Self' }) : i18n.t('galaxy.relation.ally', { defaultValue: 'Ally' });
     return `<span class="relation-badge relation-${relation}">${label}</span>`;
   }
 
@@ -793,11 +789,11 @@ class GalaxyController {
     const badges: string[] = [];
 
     if (!slot.hasPlanet && slot.markers?.canColonize) {
-      badges.push('<span class="marker-badge colonize">Colonize</span>');
+      badges.push(`<span class="marker-badge colonize">${i18n.t('galaxy.marker.colonize', { defaultValue: 'Colonize' })}</span>`);
     }
 
     if (slot.debris) {
-      badges.push('<span class="marker-badge debris">Debris</span>');
+      badges.push(`<span class="marker-badge debris">${i18n.t('galaxy.marker.debris', { defaultValue: 'Debris' })}</span>`);
     }
 
     return badges.join('');
@@ -809,26 +805,26 @@ class GalaxyController {
 
     if (slot.hasPlanet) {
       if (slot.owner?.relation === 'self') {
-        buttons.push(this.buildActionButton('Deploy', 'deploy', slot.position, canTarget));
-        buttons.push(this.buildActionButton('Transport', 'transport', slot.position, canTarget));
+        buttons.push(this.buildActionButton(i18n.t('galaxy.action.deploy', { defaultValue: 'Deploy' }), 'deploy', slot.position, canTarget));
+        buttons.push(this.buildActionButton(i18n.t('galaxy.action.transport', { defaultValue: 'Transport' }), 'transport', slot.position, canTarget));
       } else if (slot.owner?.relation === 'ally') {
-        buttons.push(this.buildActionButton('Transport', 'transport', slot.position, canTarget));
+        buttons.push(this.buildActionButton(i18n.t('galaxy.action.transport', { defaultValue: 'Transport' }), 'transport', slot.position, canTarget));
         buttons.push(
           this.buildActionButton(
-            'Espionage',
+            i18n.t('galaxy.action.espionage', { defaultValue: 'Espionage' }),
             'espionage',
             slot.position,
             canTarget && this.intel.espionageLevel > 0
           )
         );
       } else {
-        buttons.push(this.buildActionButton('Attack', 'attack', slot.position, canTarget));
+        buttons.push(this.buildActionButton(i18n.t('galaxy.action.attack', { defaultValue: 'Attack' }), 'attack', slot.position, canTarget));
         buttons.push(
-          this.buildActionButton('Transport', 'transport', slot.position, canTarget)
+          this.buildActionButton(i18n.t('galaxy.action.transport', { defaultValue: 'Transport' }), 'transport', slot.position, canTarget)
         );
         buttons.push(
           this.buildActionButton(
-            'Espionage',
+            i18n.t('galaxy.action.espionage', { defaultValue: 'Espionage' }),
             'espionage',
             slot.position,
             canTarget && this.intel.espionageLevel > 0
@@ -838,7 +834,7 @@ class GalaxyController {
     } else if (!slot.hasPlanet) {
       buttons.push(
         this.buildActionButton(
-          'Colonize',
+          i18n.t('galaxy.action.colonize', { defaultValue: 'Colonize' }),
           'colonize',
           slot.position,
           canTarget && this.availableShips.colony_ship > 0
@@ -849,7 +845,7 @@ class GalaxyController {
     if (slot.debris) {
       buttons.push(
         this.buildActionButton(
-          'Harvest',
+          i18n.t('galaxy.action.harvest', { defaultValue: 'Harvest' }),
           'harvest',
           slot.position,
           canTarget && this.availableShips.recycler > 0
@@ -858,7 +854,7 @@ class GalaxyController {
     }
 
     buttons.push(
-      `<button class="btn-tertiary" data-action="details" data-position="${slot.position}">Details</button>`
+      `<button class="btn-tertiary" data-action="details" data-position="${slot.position}">${i18n.t('galaxy.details', { defaultValue: 'Details' })}</button>`
     );
 
     return buttons.join('');
@@ -881,7 +877,7 @@ class GalaxyController {
     const coords = this.parseCoordinates(input);
 
     if (!coords) {
-      this.showToast('Enter coordinates as G:S:P', 'error');
+      this.showToast(i18n.t('galaxy.errors.enterCoords', { defaultValue: 'Enter coordinates as G:S:P' }), 'error');
       return;
     }
 
@@ -933,7 +929,7 @@ class GalaxyController {
     if (slot) {
       this.openMissionDrawer(slot, pending.mission);
     } else {
-      this.showToast('No intel for that orbit yet.', 'info');
+      this.showToast(i18n.t('galaxy.noIntelOrbit', { defaultValue: 'No intel for that orbit yet.' }), 'info');
     }
 
     this.pendingTarget = null;
@@ -946,7 +942,7 @@ class GalaxyController {
     if (slot) {
       this.openPlanetDetails(slot);
     } else {
-      this.showToast(`Orbit ${position} is currently empty.`, 'info');
+      this.showToast(i18n.t('galaxy.orbitEmpty', { defaultValue: `Orbit ${position} is currently empty.`, position }), 'info');
     }
   }
 
@@ -971,10 +967,10 @@ class GalaxyController {
 
   updatePaginationSummary(pagination: any) {
     if (this.elements.galaxySummary) {
-      this.elements.galaxySummary.textContent = `Galaxy ${this.currentGalaxy} • System ${this.currentSystem}`;
+      this.elements.galaxySummary.textContent = i18n.t('galaxy.summary.galaxySystem', { defaultValue: `Galaxy ${this.currentGalaxy} • System ${this.currentSystem}`, galaxy: this.currentGalaxy, system: this.currentSystem });
     }
     if (this.elements.paginationSummary) {
-      this.elements.paginationSummary.textContent = `System ${this.currentSystem} of ${pagination.systemsPerGalaxy}`;
+      this.elements.paginationSummary.textContent = i18n.t('galaxy.summary.systemOf', { defaultValue: `System ${this.currentSystem} of ${pagination.systemsPerGalaxy}`, system: this.currentSystem, total: pagination.systemsPerGalaxy });
     }
   }
 
@@ -982,7 +978,7 @@ class GalaxyController {
     if (!this.elements.sensorSummary) return;
     const phalanx = this.intel.sensorSources?.phalanx || 0;
     const sensorArray = this.intel.sensorSources?.sensorArray || 0;
-    this.elements.sensorSummary.textContent = `±${this.intel.sensorRange} systems • Esp ${this.intel.espionageLevel} • Phalanx ${phalanx} • Array ${sensorArray}`;
+    this.elements.sensorSummary.textContent = i18n.t('galaxy.intelSummary', { defaultValue: `±${this.intel.sensorRange} systems • Esp ${this.intel.espionageLevel} • Phalanx ${phalanx} • Array ${sensorArray}`, range: this.intel.sensorRange, espionage: this.intel.espionageLevel, phalanx, array: sensorArray });
     this.updateOriginLabel();
   }
 
@@ -1001,11 +997,11 @@ class GalaxyController {
     };
 
     if (this.elements.missionDrawerTitle) {
-      this.elements.missionDrawerTitle.textContent = `Send ${mission.toUpperCase()} Mission`;
+      this.elements.missionDrawerTitle.textContent = i18n.t('galaxy.modal.sendMission', { defaultValue: `Send ${mission.toUpperCase()} Mission`, mission: mission.toUpperCase() });
     }
 
     if (this.elements.missionTargetSummary) {
-      this.elements.missionTargetSummary.textContent = `Target: ${this.currentGalaxy}:${this.currentSystem}:${slot.position}`;
+      this.elements.missionTargetSummary.textContent = i18n.t('galaxy.modal.target', { defaultValue: `Target: ${this.currentGalaxy}:${this.currentSystem}:${slot.position}`, coords: `${this.currentGalaxy}:${this.currentSystem}:${slot.position}` });
     }
 
     if (this.elements.missionTypeSelect) {
@@ -1033,8 +1029,8 @@ class GalaxyController {
       const defaultValue = this.getDefaultShipValue(ship, available);
       const wrapper = document.createElement('div');
       wrapper.className = 'ship-input';
-      wrapper.innerHTML = `
-        <label>${SHIP_LABELS[ship] || ship}</label>
+wrapper.innerHTML = `
+        <label>${getShipLabel(ship)}</label>
         <input type="number"
           min="0"
           max="${available}"
@@ -1068,13 +1064,13 @@ class GalaxyController {
 
   async dispatchMission() {
     if (!this.originPlanetId || !this.drawerState.target) {
-      this.showDrawerError('Select an origin planet before launching.');
+      this.showDrawerError(i18n.t('galaxy.errors.selectOriginBeforeLaunch', { defaultValue: 'Select an origin planet before launching.' }));
       return;
     }
 
     const ships = this.gatherShipsFromForm();
     if (Object.keys(ships).length === 0) {
-      this.showDrawerError('Select at least one ship.');
+      this.showDrawerError(i18n.t('galaxy.errors.selectAtLeastOneShip', { defaultValue: 'Select at least one ship.' }));
       return;
     }
 
@@ -1090,11 +1086,11 @@ class GalaxyController {
 
     try {
       await api.post('/fleet/dispatch', payload);
-      this.showToast('Fleet dispatched', 'success');
+      this.showToast(i18n.t('galaxy.toasts.fleetDispatched', { defaultValue: 'Fleet dispatched' }), 'success');
       this.closeMissionDrawer();
     } catch (error: any) {
       const message = error?.response?.data?.error || 'Failed to dispatch fleet';
-      this.showDrawerError(message);
+      this.showDrawerError(i18n.t('galaxy.errors.dispatchFailed', { defaultValue: message }));
     }
   }
 
@@ -1112,30 +1108,30 @@ class GalaxyController {
   openPlanetDetails(slot: any) {
     if (!this.elements.planetModal || !this.elements.planetModalContent) return;
 
-    const owner = slot.owner?.username || 'Unknown Commander';
-    const alliance = slot.owner?.alliance?.tag
+      const owner = slot.owner?.username || i18n.t('galaxy.unknownCommander', { defaultValue: 'Unknown Commander' });
+      const alliance = slot.owner?.alliance?.tag
       ? `[${slot.owner.alliance.tag}] ${slot.owner.alliance.name || ''}`
-      : '—';
-    const activity = slot.owner?.activity?.label || 'unknown';
-    const relation = slot.owner?.relation || 'unknown';
-    const lastSeen = slot.owner?.lastSeen
+      : i18n.t('galaxy.dash', { defaultValue: '—' });
+      const activity = slot.owner?.activity?.label || i18n.t('galaxy.unknown', { defaultValue: 'unknown' });
+      const relation = slot.owner?.relation || i18n.t('galaxy.unknown', { defaultValue: 'unknown' });
+      const lastSeen = slot.owner?.lastSeen
       ? new Date(slot.owner.lastSeen).toLocaleString()
-      : 'Unknown';
+      : i18n.t('galaxy.unknown', { defaultValue: 'Unknown' });
 
     this.elements.planetModalContent.innerHTML = `
-      <p><strong>Coordinates:</strong> ${this.currentGalaxy}:${this.currentSystem}:${slot.position}</p>
-      <p><strong>Planet:</strong> ${slot.planet?.name || 'Unknown'}</p>
-      <p><strong>Owner:</strong> ${owner}</p>
-      <p><strong>Alliance:</strong> ${alliance}</p>
-      <p><strong>Activity:</strong> ${activity}</p>
-      <p><strong>Relation:</strong> ${relation}</p>
-      <p><strong>Last Seen:</strong> ${lastSeen}</p>
-      <p><strong>Intel Quality:</strong> ${slot.intelQuality}</p>
+      <p><strong>${i18n.t('galaxy.modal.coordinates', { defaultValue: 'Coordinates:' })}</strong> ${this.currentGalaxy}:${this.currentSystem}:${slot.position}</p>
+      <p><strong>${i18n.t('galaxy.modal.planet', { defaultValue: 'Planet:' })}</strong> ${slot.planet?.name || i18n.t('galaxy.unknown', { defaultValue: 'Unknown' })}</p>
+      <p><strong>${i18n.t('galaxy.modal.owner', { defaultValue: 'Owner:' })}</strong> ${owner}</p>
+      <p><strong>${i18n.t('galaxy.modal.alliance', { defaultValue: 'Alliance:' })}</strong> ${alliance}</p>
+      <p><strong>${i18n.t('galaxy.modal.activity', { defaultValue: 'Activity:' })}</strong> ${activity}</p>
+      <p><strong>${i18n.t('galaxy.modal.relation', { defaultValue: 'Relation:' })}</strong> ${relation}</p>
+      <p><strong>${i18n.t('galaxy.modal.lastSeen', { defaultValue: 'Last Seen:' })}</strong> ${lastSeen}</p>
+      <p><strong>${i18n.t('galaxy.modal.intelQuality', { defaultValue: 'Intel Quality:' })}</strong> ${slot.intelQuality}</p>
       ${
         slot.debris
-          ? `<p><strong>Debris:</strong> ${this.formatNumber(slot.debris.metal)} Metal / ${this.formatNumber(
+          ? `<p><strong>${i18n.t('galaxy.modal.debris', { defaultValue: 'Debris:' })}</strong> ${this.formatNumber(slot.debris.metal)} ${i18n.t('galaxy.modal.metal', { defaultValue: 'Metal' })} / ${this.formatNumber(
               slot.debris.crystal
-            )} Crystal</p>`
+            )} ${i18n.t('galaxy.modal.crystal', { defaultValue: 'Crystal' })}</p>`
           : ''
       }
     `;
@@ -1177,9 +1173,22 @@ class GalaxyController {
     }
   }
 
-  extractShips(planet: any) {
+extractShips(planet: any) {
     const ships: Record<string, number> = {};
-    Object.keys(SHIP_LABELS).forEach((ship) => {
+    const allShips = [
+      'small_cargo',
+      'large_cargo',
+      'light_fighter',
+      'heavy_fighter',
+      'cruiser',
+      'battleship',
+      'bomber',
+      'destroyer',
+      'colony_ship',
+      'recycler',
+      'espionage_probe',
+    ];
+    allShips.forEach((ship) => {
       ships[ship] = planet[ship] || 0;
     });
     return ships;
@@ -1209,7 +1218,8 @@ class GalaxyController {
     return `${secs}s`;
   }
 
-  getMissionLabel(mission: string) {
+getMissionLabel(mission: string) {
+    // fallback for display in places where i18n key might be missing
     switch (mission) {
       case 'attack':
         return 'Attack';
@@ -1250,21 +1260,21 @@ class GalaxyController {
 
     if (!this.originMoon || (this.originMoon.sensor_phalanx || 0) === 0) {
       button.disabled = true;
-      status.textContent = 'Requires a moon with Sensor Phalanx.';
+      status.textContent = i18n.t('galaxy.phalanx.requiresMoon', { defaultValue: 'Requires a moon with Sensor Phalanx.' });
       return;
     }
 
     const level = this.originMoon.sensor_phalanx || 0;
     const range = Math.max(0, level * level - 1);
     button.disabled = this.isPhalanxLoading;
-    status.textContent = `Level ${level} • Range ±${range} systems • Cost ${this.formatNumber(
+    status.textContent = i18n.t('galaxy.phalanx.status', { defaultValue: `Level ${level} • Range ±${range} systems • Cost ${this.formatNumber(
       PHALANX_SCAN_COST
-    )} deut.`;
+    )} deut.`, level, range, cost: this.formatNumber(PHALANX_SCAN_COST) });
   }
 
   async handlePhalanxScan() {
     if (!this.originMoon || (this.originMoon.sensor_phalanx || 0) === 0) {
-      this.showToast('This planet has no Sensor Phalanx.', 'error');
+      this.showToast(i18n.t('galaxy.phalanx.noPhalanx', { defaultValue: 'This planet has no Sensor Phalanx.' }), 'error');
       return;
     }
 
@@ -1287,10 +1297,10 @@ class GalaxyController {
       const result = response?.data || response;
       this.renderPhalanxResults(result);
       this.togglePhalanxModal(true);
-      this.showToast('Sensor scan complete.', 'success');
+      this.showToast(i18n.t('galaxy.phalanx.scanComplete', { defaultValue: 'Sensor scan complete.' }), 'success');
     } catch (error: any) {
       const message =
-        error?.response?.data?.error || error?.message || 'Sensor Phalanx scan failed';
+        error?.response?.data?.error || error?.message || i18n.t('galaxy.phalanx.scanFailed', { defaultValue: 'Sensor Phalanx scan failed' });
       this.showToast(message, 'error');
     } finally {
       this.setPhalanxLoading(false);
@@ -1341,12 +1351,12 @@ class GalaxyController {
     const eta = this.formatCountdown(fleet.etaSeconds ?? null);
     const origin = fleet.origin
       ? `[${fleet.origin.galaxy}:${fleet.origin.system}:${fleet.origin.position}]`
-      : 'Unknown origin';
-    const mission = this.getMissionLabel(fleet.mission);
+      : i18n.t('galaxy.unknownOrigin', { defaultValue: 'Unknown origin' });
+    const mission = i18n.t(`galaxy.action.${fleet.mission}`, { defaultValue: this.getMissionLabel(fleet.mission) });
     return `
       <div class="phalanx-fleet">
         <div>
-          <strong>${fleet.owner || 'Unknown Commander'}</strong> · ${mission}
+          <strong>${fleet.owner || i18n.t('galaxy.unknownCommander', { defaultValue: 'Unknown Commander' })}</strong> · ${mission}
           <div class="text-muted">${origin}</div>
         </div>
         <div>${eta}</div>

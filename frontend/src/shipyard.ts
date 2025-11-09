@@ -2,27 +2,27 @@
 import i18next from 'i18next';
 
 const SHIP_BLUEPRINTS = {
-  small_cargo: { name: 'Small Cargo', description: 'Basic transporter for resources.', cost: { metal: 2000, crystal: 2000, deuterium: 0 }, image: 'support-cargo-freighter' },
-  large_cargo: { name: 'Large Cargo', description: 'Heavy duty transporter with expanded capacity.', cost: { metal: 6000, crystal: 6000, deuterium: 0 }, image: 'support-cargo-freighter' },
-  light_fighter: { name: 'Light Fighter', description: 'Fast attack craft ideal for raiding.', cost: { metal: 3000, crystal: 1000, deuterium: 0 }, image: 'fighter-interceptor' },
-  heavy_fighter: { name: 'Heavy Fighter', description: 'Armored strike craft with higher damage.', cost: { metal: 6000, crystal: 4000, deuterium: 0 }, image: 'fighter-assault' },
-  cruiser: { name: 'Cruiser', description: 'Balanced ship excelling at escort missions.', cost: { metal: 20000, crystal: 7000, deuterium: 2000 }, image: 'cruiser-medium' },
-  battleship: { name: 'Battleship', description: 'Heavy flagship-class combat vessel.', cost: { metal: 45000, crystal: 15000, deuterium: 0 }, image: 'battleship-dreadnought' },
-  colony_ship: { name: 'Colony Ship', description: 'Carries a full population ready to settle new worlds.', cost: { metal: 10000, crystal: 20000, deuterium: 10000 }, image: 'support-colony-ship' },
-  recycler: { name: 'Recycler', description: 'Harvests debris left behind after battles.', cost: { metal: 10000, crystal: 6000, deuterium: 2000 }, image: 'miner-industrial' },
-  espionage_probe: { name: 'Espionage Probe', description: 'Gather intel on enemy worlds.', cost: { metal: 1000, crystal: 0, deuterium: 0 }, image: 'probe' },
-  bomber: { name: 'Bomber', description: 'Specialized at destroying defenses.', cost: { metal: 50000, crystal: 25000, deuterium: 15000 }, image: 'bomber' },
-  destroyer: { name: 'Destroyer', description: 'Capital ship that counters most defenses.', cost: { metal: 60000, crystal: 50000, deuterium: 15000 }, image: 'destroyer' },
-  deathstar: { name: 'Deathstar', description: 'Planet buster with massive firepower.', cost: { metal: 5000000, crystal: 4000000, deuterium: 1000000 }, image: 'deathstar' },
+  small_cargo: { cost: { metal: 2000, crystal: 2000, deuterium: 0 }, image: 'support-cargo-freighter' },
+  large_cargo: { cost: { metal: 6000, crystal: 6000, deuterium: 0 }, image: 'support-cargo-freighter' },
+  light_fighter: { cost: { metal: 3000, crystal: 1000, deuterium: 0 }, image: 'fighter-interceptor' },
+  heavy_fighter: { cost: { metal: 6000, crystal: 4000, deuterium: 0 }, image: 'fighter-assault' },
+  cruiser: { cost: { metal: 20000, crystal: 7000, deuterium: 2000 }, image: 'cruiser-medium' },
+  battleship: { cost: { metal: 45000, crystal: 15000, deuterium: 0 }, image: 'battleship-dreadnought' },
+  colony_ship: { cost: { metal: 10000, crystal: 20000, deuterium: 10000 }, image: 'support-colony-ship' },
+  recycler: { cost: { metal: 10000, crystal: 6000, deuterium: 2000 }, image: 'miner-industrial' },
+  espionage_probe: { cost: { metal: 1000, crystal: 0, deuterium: 0 }, image: 'probe' },
+  bomber: { cost: { metal: 50000, crystal: 25000, deuterium: 15000 }, image: 'bomber' },
+  destroyer: { cost: { metal: 60000, crystal: 50000, deuterium: 15000 }, image: 'destroyer' },
+  deathstar: { cost: { metal: 5000000, crystal: 4000000, deuterium: 1000000 }, image: 'deathstar' },
 };
 
 const DEFENSE_BLUEPRINTS = {
-  rocket_launcher: { name: 'Rocket Launcher', description: 'Basic defensive battery.', cost: { metal: 2000, crystal: 0, deuterium: 0 }, image: 'missile-battery' },
-  light_laser: { name: 'Light Laser', description: 'Standard defensive laser.', cost: { metal: 1500, crystal: 500, deuterium: 0 }, image: 'defense-turret' },
-  heavy_laser: { name: 'Heavy Laser', description: 'Upgraded laser with enhanced output.', cost: { metal: 6000, crystal: 2000, deuterium: 0 }, image: 'plasma-turret' },
-  gauss_cannon: { name: 'Gauss Cannon', description: 'Magnetically accelerated slug launcher.', cost: { metal: 20000, crystal: 15000, deuterium: 2000 }, image: 'plasma-turret' },
-  ion_cannon: { name: 'Ion Cannon', description: 'Disrupts shields with ionized beams.', cost: { metal: 2000, crystal: 6000, deuterium: 0 }, image: 'ion-cannon' },
-  plasma_turret: { name: 'Plasma Turret', description: 'End-game defense platform.', cost: { metal: 50000, crystal: 50000, deuterium: 30000 }, image: 'plasma-turret' },
+  rocket_launcher: { cost: { metal: 2000, crystal: 0, deuterium: 0 }, image: 'missile-battery' },
+  light_laser: { cost: { metal: 1500, crystal: 500, deuterium: 0 }, image: 'defense-turret' },
+  heavy_laser: { cost: { metal: 6000, crystal: 2000, deuterium: 0 }, image: 'plasma-turret' },
+  gauss_cannon: { cost: { metal: 20000, crystal: 15000, deuterium: 2000 }, image: 'plasma-turret' },
+  ion_cannon: { cost: { metal: 2000, crystal: 6000, deuterium: 0 }, image: 'ion-cannon' },
+  plasma_turret: { cost: { metal: 50000, crystal: 50000, deuterium: 30000 }, image: 'plasma-turret' },
 };
 
 export class ShipyardManager {

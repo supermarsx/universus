@@ -70,5 +70,81 @@
     "unableUpdateAnnouncement": "Incapaz de atualizar estado do anúncio.",
     "pmWithLabel": "MP com {{username}}",
     "newPmFromLabel": "De {{sender}}"
+  },
+  "galaxy": {
+    "loading": "A carregar mapa da galáxia...",
+    "noSystems": "Nenhum sistema encontrado.",
+    "unreachable": "Sistema inacessível.",
+    "noPlanets": "Nenhum planeta encontrado.",
+    "selectOrigin": "Selecione um planeta de origem",
+    "selectPlanet": "Selecione um planeta…",
+    "unnamed": "Sem nome",
+    "noHangarData": "Sem dados de hangar disponíveis",
+    "originNone": "Nenhum",
+    "originLabel": "Origem:",
+    "unknownWorld": "Mundo desconhecido",
+    "unnamedWorld": "Mundo sem nome",
+    "vacantOrbit": "Órbita vaga",
+    "intelLabel": "Informações",
+    "dash": "—",
+    "minutesSuffix": "m",
+    "scanning": "A digitalizar sistema…",
+    "noIntel": "Sem informações disponíveis.",
+    "hangarEmpty": "Hangar está vazio.",
+    "noIntelOrbit": "Sem informações para esta órbita.",
+    "orbitEmpty": "Órbita vazia.",
+    "modal": {
+      "sendMission": "Enviar missão {{mission}}",
+      "target": "Alvo: {{coords}}",
+      "coordinates": "Coordenadas:",
+      "planet": "Planeta:",
+      "owner": "Dono:",
+      "alliance": "Aliança:",
+      "activity": "Atividade:",
+      "relation": "Relação:",
+      "lastSeen": "Última vez visto:",
+      "intelQuality": "Qualidade das informações:",
+      "debris": "Destroços:",
+      "metal": "Metal",
+      "crystal": "Cristal"
+    },
+    "phalanx": {
+      "requiresMoon": "Requer uma lua com Sensor Phalanx.",
+      "status": "Nível {{level}} • Alcance ±{{range}} sistemas • Custo {{cost}} deut.",
+      "noPhalanx": "Este planeta não tem Sensor Phalanx.",
+      "scanComplete": "Digitalização do sensor completa.",
+      "scanFailed": "Falha na digitalização do Sensor Phalanx"
+    },
+    "toasts": {
+      "fleetDispatched": "Frota enviada"
+    },
+    "errors": {
+      "enterCoords": "Introduza coordenadas como G:S:P",
+      "loadPlanet": "Não foi possível carregar dados do planeta.",
+      "unableToLoadPlanetData": "Não foi possível carregar dados do planeta.",
+      "failedToScan": "Falha ao digitalizar sistema",
+      "selectOriginBeforeLaunch": "Selecione um planeta de origem antes do lançamento.",
+      "selectAtLeastOneShip": "Selecione pelo menos uma nave.",
+      "dispatchFailed": "Falha ao enviar frota"
+    },
+    "summary": { "galaxySystem": "Galáxia {{galaxy}} • Sistema {{system}}", "systemOf": "Sistema {{system}} de {{total}}" },
+    "intelSummary": "±{{range}} sistemas • Esp {{espionage}} • Phalanx {{phalanx}} • Array {{array}}"
+  },
+  "shipyard": {
+    "ships": {
+      "small_cargo": { "name": "Small Cargo" },
+      "large_cargo": { "name": "Large Cargo" },
+      "light_fighter": { "name": "Light Fighter" },
+      "heavy_fighter": { "name": "Heavy Fighter" },
+      "cruiser": { "name": "Cruiser" },
+      "battleship": { "name": "Battleship" },
+      "colony_ship": { "name": "Colony Ship" },
+      "recycler": { "name": "Recycler" },
+      "espionage_probe": { "name": "Espionage Probe" },
+      "bomber": { "name": "Bomber" },
+      "destroyer": { "name": "Destroyer" },
+      "deathstar": { "name": "Deathstar" }
+    }
   }
 }
+
