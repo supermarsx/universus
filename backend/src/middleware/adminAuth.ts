@@ -9,6 +9,7 @@
 import { Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { AdminAuthRequest } from '../types/admin';
+import * as speakeasy from 'speakeasy';
 /**
  * Ensure the current request is performed by an active admin user.
  *
@@ -35,7 +36,7 @@ export const requireAdmin = async (
       return;
     }
 
-    // Query admin user data, role, and permissions
+// Query admin user data, role, permissions, and 2FA status
     const adminResult = await pool.query(
       `SELECT 
          au.*, 
@@ -43,14 +44,16 @@ export const requireAdmin = async (
          u.email, 
          r.id as role_id, 
          r.name as role_name, 
-         ARRAY_REMOVE(ARRAY_AGG(p.name), NULL) as permissions
+         ARRAY_REMOVE(ARRAY_AGG(p.name), NULL) as permissions,
+         COALESCE(tfa.is_enabled, FALSE) as two_factor_enabled
        FROM admin_users au
        JOIN users u ON au.user_id = u.id
        JOIN roles r ON au.role_id = r.id
        LEFT JOIN role_permissions rp ON r.id = rp.role_id
        LEFT JOIN permissions p ON rp.permission_id = p.id
+       LEFT JOIN two_factor_auth tfa ON tfa.user_id = u.id
        WHERE au.user_id = $1 AND au.is_active = TRUE
-       GROUP BY au.id, u.username, u.email, r.id, r.name`,
+       GROUP BY au.id, u.username, u.email, r.id, r.name, tfa.is_enabled`,
       [req.user.id]
     );
 
@@ -59,7 +62,16 @@ export const requireAdmin = async (
       return;
     }
 
-    const admin = adminResult.rows[0];
+const admin = adminResult.rows[0];
+
+    // Enforce 2FA for admin accounts
+    if (!admin.two_factor_enabled) {
+      res.status(403).json({ 
+        error: 'Two-factor authentication is required for admin access',
+        require2FA: true
+      });
+      return;
+    }
 
     // Check IP whitelist if configured
     if (admin.ip_whitelist && admin.ip_whitelist.length > 0) {
@@ -95,6 +107,63 @@ export const requireAdmin = async (
     next();
   } catch (error) {
     console.error('Admin authentication error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+/**
+ * Verify 2FA token for admin access
+ * 
+ * This middleware should be used after authenticateToken but before requireAdmin
+ * for admin login endpoints that need to verify 2FA tokens.
+ */
+export const verifyAdmin2FA = async (
+  req: AdminAuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const { token } = req.body;
+
+    if (!token) {
+      res.status(400).json({ error: '2FA token is required' });
+      return;
+    }
+
+    // Get user's 2FA secret
+    const tfaResult = await pool.query(
+      'SELECT secret FROM two_factor_auth WHERE user_id = $1 AND is_enabled = TRUE',
+      [req.user.id]
+    );
+
+    if (tfaResult.rows.length === 0) {
+      res.status(403).json({ error: '2FA not enabled for this account' });
+      return;
+    }
+
+    // Verify the token
+    const verified = speakeasy.totp.verify({
+      secret: tfaResult.rows[0].secret,
+      encoding: 'base32',
+      token: token,
+      window: 2 // Allow 2 steps (30 seconds each) of clock skew
+    });
+
+    if (!verified) {
+      res.status(401).json({ error: 'Invalid 2FA token' });
+      return;
+    }
+
+    // Mark 2FA as verified in session
+    req.twoFactorVerified = true;
+    next();
+  } catch (error) {
+    console.error('2FA verification error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

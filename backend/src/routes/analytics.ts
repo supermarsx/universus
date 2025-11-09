@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { analyticsService } from '../services/analyticsService';
-import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { requirePermission } from '../middleware/adminAuth';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
@@ -52,7 +53,7 @@ router.post('/events', async (req: Request, res: Response) => {
 router.get(
   '/usage',
   authenticateToken,
-  requireAdmin,
+  requirePermission('analytics:view'),
   async (req: Request, res: Response) => {
     try {
       const days = parseInt((req.query.days as string) || '7', 10);

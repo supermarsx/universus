@@ -11,38 +11,15 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authenticateToken, requireAdmin } from '../middleware/auth';
-import { AuthRequest } from '../types';
+import { authenticateToken } from '../middleware/auth';
+import { requirePermission } from '../middleware/adminAuth';
+import { AuthRequest, AdminAuthRequest } from '../types';
 import { pool } from '../config/database';
 import os from 'os';
 
 const router = Router();
 
-/**
- * Middleware to verify admin status
- * Must be used after authenticateToken middleware
- */
-const verifyAdminRole = async (req: AuthRequest, res: Response, next: NextFunction) => {
-    try {
-        if (!req.user || !req.user.id) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
 
-        const result = await pool.query(
-            'SELECT is_admin FROM users WHERE id = $1',
-            [req.user.id]
-        );
-
-        if (!result.rows[0] || !result.rows[0].is_admin) {
-            return res.status(403).json({ error: 'Admin access required' });
-        }
-
-        next();
-    } catch (error) {
-        console.error('Error verifying admin role:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-};
 
 /**
  * Log admin action for audit trail
@@ -67,7 +44,7 @@ async function logAdminAction(
  * GET /api/admin/stats
  * Get dashboard statistics
  */
-router.get('/stats', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/stats', authenticateToken, requirePermission('monitoring:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         // User statistics
         const userStats = await pool.query(`
@@ -127,7 +104,7 @@ router.get('/stats', authenticateToken, verifyAdminRole, async (req: AuthRequest
  * GET /api/admin/users
  * Get users list with optional filtering
  */
-router.get('/users', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/users', authenticateToken, requirePermission('user:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const { filter, search, limit = 100, offset = 0 } = req.query;
 
@@ -195,7 +172,7 @@ router.get('/users', authenticateToken, verifyAdminRole, async (req: AuthRequest
  * GET /api/admin/users/:id
  * Get detailed user information
  */
-router.get('/users/:id', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/users/:id', authenticateToken, requirePermission('user:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
 
@@ -260,7 +237,7 @@ router.get('/users/:id', authenticateToken, verifyAdminRole, async (req: AuthReq
  * POST /api/admin/users/:id/ban
  * Ban a user
  */
-router.post('/users/:id/ban', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.post('/users/:id/ban', authenticateToken, requirePermission('user:ban'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
         const { reason } = req.body;
@@ -302,7 +279,7 @@ router.post('/users/:id/ban', authenticateToken, verifyAdminRole, async (req: Au
  * POST /api/admin/users/:id/unban
  * Unban a user
  */
-router.post('/users/:id/unban', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.post('/users/:id/unban', authenticateToken, requirePermission('user:ban'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const userId = parseInt(req.params.id);
 
@@ -328,7 +305,7 @@ router.post('/users/:id/unban', authenticateToken, verifyAdminRole, async (req: 
  * GET /api/admin/server-status
  * Get server health and performance metrics
  */
-router.get('/server-status', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/server-status', authenticateToken, requirePermission('monitoring:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const memoryUsage = process.memoryUsage();
         const cpuUsage = os.loadavg();
@@ -377,7 +354,7 @@ router.get('/server-status', authenticateToken, verifyAdminRole, async (req: Aut
  * GET /api/admin/logs
  * Get system logs
  */
-router.get('/logs', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/logs', authenticateToken, requirePermission('audit:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const { level, limit = 100 } = req.query;
 
@@ -411,7 +388,7 @@ router.get('/logs', authenticateToken, verifyAdminRole, async (req: AuthRequest,
  * GET /api/admin/database-stats
  * Get database table statistics
  */
-router.get('/database-stats', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/database-stats', authenticateToken, requirePermission('monitoring:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const stats = await pool.query(`
             SELECT 
@@ -461,7 +438,7 @@ router.get('/database-stats', authenticateToken, verifyAdminRole, async (req: Au
  * GET /api/admin/settings
  * Get game settings
  */
-router.get('/settings', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/settings', authenticateToken, requirePermission('game:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const settings = await pool.query(
             'SELECT * FROM game_settings ORDER BY key'
@@ -489,7 +466,7 @@ router.get('/settings', authenticateToken, verifyAdminRole, async (req: AuthRequ
  * PUT /api/admin/settings
  * Update game settings
  */
-router.put('/settings', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.put('/settings', authenticateToken, requirePermission('game:write'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const settings = req.body;
 
@@ -516,7 +493,7 @@ router.put('/settings', authenticateToken, verifyAdminRole, async (req: AuthRequ
  * GET /api/admin/audit-log
  * Get admin action audit log
  */
-router.get('/audit-log', authenticateToken, verifyAdminRole, async (req: AuthRequest, res: Response) => {
+router.get('/audit-log', authenticateToken, requirePermission('audit:read'), async (req: AdminAuthRequest, res: Response) => {
     try {
         const { limit = 100 } = req.query;
 

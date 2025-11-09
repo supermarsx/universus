@@ -3,7 +3,8 @@
 
 import { Router, Request, Response } from 'express';
 import { ConfigurationService } from '../services/configurationService';
-import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { requirePermission } from '../middleware/adminAuth';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import { io } from '../index';
@@ -12,7 +13,7 @@ const router = Router();
 const configService = new ConfigurationService(pool, redis, io);
 
 // All routes require admin authentication
-router.use(authenticateToken, requireAdmin);
+router.use(authenticateToken, requirePermission('config:read'));
 
 // ============================================
 // CATEGORIES
@@ -132,7 +133,7 @@ router.get('/parameters/:key', async (req: Request, res: Response) => {
 });
 
 // PUT /api/config/parameters/:key - Update parameter value
-router.put('/parameters/:key', async (req: Request, res: Response) => {
+router.put('/parameters/:key', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { key } = req.params;
         const { value, reason } = req.body;
@@ -150,7 +151,7 @@ router.put('/parameters/:key', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/parameters/bulk-update - Bulk update parameters
-router.post('/parameters/bulk-update', async (req: Request, res: Response) => {
+router.post('/parameters/bulk-update', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { updates, change_reason } = req.body;
         const userId = (req as any).user.userId;
@@ -167,7 +168,7 @@ router.post('/parameters/bulk-update', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/parameters/:key/reset - Reset parameter to default
-router.post('/parameters/:key/reset', async (req: Request, res: Response) => {
+router.post('/parameters/:key/reset', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { key } = req.params;
         const userId = (req as any).user.userId;
@@ -212,7 +213,7 @@ router.get('/game-config', async (req: Request, res: Response) => {
     }
 });
 
-router.post('/game-config/refresh', async (req: Request, res: Response) => {
+router.post('/game-config/refresh', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const snapshot = await configService.refreshGameConfigSnapshot();
         res.json({ success: true, config: snapshot });
@@ -246,7 +247,7 @@ router.get('/history', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/history/:changeId/rollback - Rollback a change
-router.post('/history/:changeId/rollback', async (req: Request, res: Response) => {
+router.post('/history/:changeId/rollback', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { changeId } = req.params;
         const userId = (req as any).user.userId;
@@ -292,7 +293,7 @@ router.get('/templates', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/templates - Create new template
-router.post('/templates', async (req: Request, res: Response) => {
+router.post('/templates', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { name, description, categories } = req.body;
         const userId = (req as any).user.userId;
@@ -309,7 +310,7 @@ router.post('/templates', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/templates/:templateId/apply - Apply template
-router.post('/templates/:templateId/apply', async (req: Request, res: Response) => {
+router.post('/templates/:templateId/apply', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { templateId } = req.params;
         const userId = (req as any).user.userId;
@@ -326,7 +327,7 @@ router.post('/templates/:templateId/apply', async (req: Request, res: Response) 
 });
 
 // DELETE /api/config/templates/:templateId - Delete template
-router.delete('/templates/:templateId', async (req: Request, res: Response) => {
+router.delete('/templates/:templateId', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { templateId } = req.params;
 
@@ -377,7 +378,7 @@ router.get('/export', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/import - Import configuration
-router.post('/import', async (req: Request, res: Response) => {
+router.post('/import', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { config, validate_only = false } = req.body;
         const userId = (req as any).user.userId;
@@ -414,7 +415,7 @@ router.post('/compare', async (req: Request, res: Response) => {
 // ============================================
 
 // POST /api/config/reset - Reset configuration
-router.post('/reset', async (req: Request, res: Response) => {
+router.post('/reset', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         const { category, confirm } = req.body;
         const userId = (req as any).user.userId;
@@ -439,7 +440,7 @@ router.post('/reset', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/cache/refresh - Refresh configuration cache
-router.post('/cache/refresh', async (req: Request, res: Response) => {
+router.post('/cache/refresh', requirePermission('config:write'), async (req: Request, res: Response) => {
     try {
         await configService.refreshCache();
 

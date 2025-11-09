@@ -5,6 +5,7 @@ import express, { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
 import { EnhancedShopService } from '../services/enhancedShopService';
 import { authenticateToken } from '../middleware/auth';
+import { requirePermission } from '../middleware/adminAuth';
 import { redis } from '../config/redis';
 
 const router = Router();
@@ -270,9 +271,8 @@ router.get('/recommendations', authenticateToken, async (req: Request, res: Resp
 // =====================================================
 
 // GET /api/shop/analytics/dashboard - Get shop analytics dashboard
-router.get('/analytics/dashboard', authenticateToken, async (req: Request, res: Response) => {
+router.get('/analytics/dashboard', authenticateToken, requirePermission('shop:analytics'), async (req: Request, res: Response) => {
     try {
-        // TODO: Add admin check
         const dashboard = await shopService.getShopAnalyticsDashboard();
         res.json({ success: true, data: dashboard });
     } catch (error: any) {

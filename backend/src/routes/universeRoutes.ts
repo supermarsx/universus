@@ -15,7 +15,8 @@ import express, { Request, Response } from 'express';
 import universeSeedingService from '../services/universeSeedingService';
 import playerPlacementService from '../services/playerPlacementService';
 import universeMaintenanceService from '../services/universeMaintenanceService';
-import { authenticateToken, requireAdmin } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { requirePermission } from '../middleware/adminAuth';
 
 const BOT_SERVICE_URL = process.env.BOT_SERVICE_URL || 'http://bot-service:4001';
 
@@ -257,7 +258,7 @@ router.get('/:id/my-placement', async (req: Request, res: Response) => {
  * POST /api/universe/:id/generate-bots
  * Generate bots for the universe
  */
-router.post('/:id/generate-bots', requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/generate-bots', requirePermission('universe:generate_bots'), async (req: Request, res: Response) => {
   try {
     const universeId = parseInt(req.params.id, 10);
     const targetUrl = `${BOT_SERVICE_URL}/api/admin/bots/universe/${universeId}/generate`;
