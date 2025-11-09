@@ -1,3 +1,11 @@
+/**
+ * @module backend/routes/universeRoutes
+ *
+ * Universe management and seeding endpoints. Includes admin-only routes for
+ * generating and managing universes and utility endpoints used during
+ * server bootstrap and testing.
+ */
+
 // =====================================================
 // UNIVERSE SEEDING ROUTES
 // REST API endpoints for universe management

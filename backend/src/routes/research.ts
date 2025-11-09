@@ -1,3 +1,10 @@
+/**
+ * @module backend/routes/research
+ *
+ * Research endpoints for starting, cancelling and querying the player's
+ * research queue and overview.
+ */
+
 import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { ResearchService } from '../services/researchService';

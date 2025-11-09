@@ -1,3 +1,12 @@
+/**
+ * @module backend/services/themeService
+ *
+ * Theme management for seasonal and custom themes. Provides creation,
+ * updates, scheduling and activation helpers for theme assets and
+ * configuration. Intended to be used by the theme admin UI and scheduled
+ * activation tasks.
+ */
+
 // =====================================================
 // Phase 8: Seasonal Theme System - Theme Service
 // =====================================================

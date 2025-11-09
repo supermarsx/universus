@@ -1,3 +1,11 @@
+/**
+ * @module backend/routes/shipyard
+ *
+ * Routes for ship production and shipyard management. Requires authenticated
+ * access. Provides endpoints to view production queues, start production and
+ * cancel queued production items.
+ */
+
 import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { ShipyardService } from '../services/shipyardService';

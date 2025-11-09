@@ -1,3 +1,11 @@
+/**
+ * @module backend/routes/themeRoutes
+ *
+ * API endpoints for the Seasonal Theme System. Provides public endpoints for
+ * retrieving themes and admin endpoints for creating, updating and scheduling
+ * seasonal themes and assets.
+ */
+
 // =====================================================
 // Phase 8: Seasonal Theme System - API Routes
 // =====================================================

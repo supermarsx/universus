@@ -1,6 +1,10 @@
 /**
+ * @module backend/services/notificationService
+ *
  * PHASE 6: NOTIFICATION SERVICE
- * Comprehensive notification system for all game events
+ * Comprehensive notification system for all game events. Handles creation,
+ * batching and delivery of notifications and integrates with the realtime
+ * system to push notifications to clients.
  */
 
 import { pool } from '../config/database';

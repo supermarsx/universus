@@ -7,7 +7,7 @@
  * - Admin role verification middleware enforced
  * - Audit logging for all administrative actions
  * 
- * @module routes/admin
+ * @module backend/routes/admin
  */
 
 import { Router, Request, Response, NextFunction } from 'express';

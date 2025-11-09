@@ -1,3 +1,12 @@
+/**
+ * @module backend/services/leaderboardService
+ *
+ * Leaderboard calculations and cache management. Provides APIs to rebuild
+ * leaderboards, calculate player/alliance scores and interact with cached
+ * ranking data in Redis. Designed for periodic rebuild jobs as well as
+ * on-demand score retrieval.
+ */
+
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 

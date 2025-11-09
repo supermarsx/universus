@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/accountTransferService
+ *
+ * Handles account ownership transfer workflow: initiation, token-based
+ * verification, and completion. Performs validation, rate limiting and
+ * emits security audit logs related to account transfers.
+ */
+
 // Phase 9: Account Transfer Service
 // Handles account ownership transfer with verification
 

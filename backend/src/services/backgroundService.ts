@@ -1,4 +1,12 @@
 /**
+ * @module backend/services/backgroundService
+ *
+ * Background selection helpers used by the template layer to provide
+ * context-appropriate imagery (planet, galaxy, shipyard, etc.). This
+ * service centralizes background selection logic and asset lists.
+ */
+
+/**
  * Background Service for Universus
  * Provides dynamic background selection for pages
  */

@@ -1,3 +1,10 @@
+/**
+ * @module backend/services/planetService
+ *
+ * Planet service: reading and updating planet state, resource production
+ * calculations, and utility helpers used throughout gameplay services.
+ */
+
 import { pool } from '../config/database';
 import { PoolClient } from 'pg';
 import { Planet } from '../types';

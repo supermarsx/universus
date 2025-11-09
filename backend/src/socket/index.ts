@@ -1,3 +1,11 @@
+/**
+ * @module backend/socket/index
+ *
+ * Socket.io initialization and adapter wiring. Exposes helper to initialize
+ * the Socket.IO server with Redis adapter, authentication middleware and the
+ * realtime handler.
+ */
+
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import jwt from 'jsonwebtoken';

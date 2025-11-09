@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/authThrottleService
+ *
+ * Simple IP-based authentication throttling backed by Redis. Tracks attempts
+ * and failure counts to enforce rate limits and captcha thresholds for
+ * authentication and registration flows.
+ */
+
 import { Redis } from 'ioredis';
 import { redis } from '../config/redis';
 import { gameConfig } from './gameConfigAdapter';

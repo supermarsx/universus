@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/acsService
+ *
+ * ACS (Alliance Combat System) service — creates and manages ACS groups,
+ * membership and basic validation. Uses database transactions to ensure
+ * consistent group creation and membership updates.
+ */
+
 import { PoolClient } from 'pg';
 import { pool } from '../config/database';
 

@@ -1,3 +1,10 @@
+/**
+ * @module backend/routes/bots
+ *
+ * Proxy routes for the external bot-service. Requires admin privileges and
+ * forwards requests to the configured BOT_SERVICE_URL.
+ */
+
 import express, { Router } from 'express';
 import { authenticateToken, requireAdmin } from '../middleware/auth';
 

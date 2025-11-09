@@ -1,7 +1,11 @@
-// =====================================================
-// DEBRIS SERVICE
-// Handles debris field generation, decay, and cleanup
-// =====================================================
+/**
+ * @module backend/services/debrisService
+ *
+ * Debris management for combat outcomes: generation of debris fields,
+ * scheduled decay/cleanup, salvage calculations and event logging.
+ * The service exposes generators and helpers used by combat resolution
+ * routines and background cleanup jobs.
+ */
 
 import pool from '../config/database';
 import { 

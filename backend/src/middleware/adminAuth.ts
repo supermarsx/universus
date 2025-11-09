@@ -1,11 +1,14 @@
+/**
+ * @module backend/middleware/adminAuth
+ *
+ * Admin authentication middleware utilities. Verifies admin status,
+ * enforces admin-level permissions and provides helpers for admin role
+ * and permission checks. Injects admin metadata into the request object.
+ */
+
 import { Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { AdminAuthRequest, AdminLevel, ADMIN_PERMISSIONS } from '../types/admin';
-
-/**
- * Admin Authentication Middleware
- * Verifies that the user is an admin and injects admin data into request
- */
 export const requireAdmin = async (
   req: AdminAuthRequest,
   res: Response,

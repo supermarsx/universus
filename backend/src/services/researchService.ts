@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/researchService
+ *
+ * Research management: starting, cancelling and querying research queues.
+ * This service coordinates planet resource checks, queue insertion, and
+ * emits realtime events when research state changes.
+ */
+
 import { pool } from '../config/database';
 import { PlanetService } from './planetService';
 import { calculateResearchCost, RESEARCH, ResearchConfig } from '../config/gameConfig';

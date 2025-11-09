@@ -1,4 +1,14 @@
 /**
+ * @module backend/socket/realtimeHandler
+ *
+ * Phase 6 realtime socket handler. Implements the enhanced Socket.IO
+ * integration for chat, notifications, player status, fleet updates and
+ * other realtime features. This class encapsulates the event wiring and
+ * handlers for authenticated sockets and emits application-level events
+ * to connected clients.
+ */
+
+/**
  * PHASE 6: REALTIME SOCKET HANDLER
  * Enhanced Socket.io integration for comprehensive real-time features
  */

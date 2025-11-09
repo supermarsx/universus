@@ -1,3 +1,10 @@
+/**
+ * @module backend/routes/users
+ *
+ * User-related API routes: profile retrieval, simple leaderboard proxy
+ * endpoints and user-specific data access for authenticated clients.
+ */
+
 import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { pool } from '../config/database';

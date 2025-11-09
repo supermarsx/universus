@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/phalanxService
+ *
+ * Phalanx scanning service: verifies ownership and sensor ranges, calculates
+ * scan costs, and returns scan results including inbound/outbound fleet
+ * information. Intended to be used by moon-phalanx scanning endpoints.
+ */
+
 import { pool } from '../config/database';
 import moonService from './moonService';
 import { moonConfig } from '../config/moonConfig';

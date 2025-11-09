@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/buildingService
+ *
+ * Building construction service. Handles building queue management,
+ * requirement checks, field availability (for moons), and resource
+ * consumption for construction actions.
+ */
+
 import { pool } from '../config/database';
 import { calculateBuildingCost, BUILDINGS } from '../config/gameConfig';
 import { gameConfig } from './gameConfigAdapter';

@@ -1,3 +1,10 @@
+/**
+ * @module backend/routes/messages
+ *
+ * Messaging API routes. Handles inbox, sending, unread counts and message
+ * retrieval for authenticated users.
+ */
+
 import express from 'express';
 import { MessagingService, MessageType } from '../services/messagingService';
 import { authenticateToken } from '../middleware/auth';

@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/playerBlockService
+ *
+ * Player block management: list, add, remove and query player block
+ * relationships. Provides helpers to check mutual blocks and scope-specific
+ * blocking behavior used by the chat and messaging subsystems.
+ */
+
 import { pool } from '../config/database';
 
 export type BlockScope = 'all' | 'chat' | 'messages';

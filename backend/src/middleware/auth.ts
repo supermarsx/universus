@@ -1,3 +1,12 @@
+/**
+ * @module backend/middleware/auth
+ *
+ * Authentication middleware used across API routes. Exposes helpers to
+ * authenticate incoming requests by verifying JWT tokens and injecting the
+ * authenticated user into the request object. Also provides `requireAdmin`
+ * middleware to gate admin-only endpoints.
+ */
+
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/database';

@@ -1,3 +1,11 @@
+/**
+ * @module backend/routes/auth
+ *
+ * Authentication and account-related routes (login, register, bot-challenges,
+ * session handling). This module integrates bot protection, throttling and
+ * analytics instrumentation.
+ */
+
 import express, { Request, Response } from 'express';
 import { AuthService } from '../services/authService';
 import { botProtectionService } from '../services/botProtectionService';
@@ -218,6 +226,11 @@ router.post('/resend-verification', async (req: Request, res: Response) => {
         'SELECT id, email, email_verified FROM users WHERE username = $1 LIMIT 1',
         [username]
       );
+    } else {
+      // Defensive guard: earlier we validate that either email or username exists,
+      // but TypeScript may not narrow `userResult` statically. Return a 400 here
+      // to ensure `userResult` is always defined below.
+      return res.status(400).json({ error: 'Email or username is required' });
     }
 
     if (userResult.rows.length === 0) {

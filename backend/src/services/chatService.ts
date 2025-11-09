@@ -1,6 +1,11 @@
 /**
+ * @module backend/services/chatService
+ *
  * PHASE 6: CHAT SERVICE
- * Comprehensive chat system for global, alliance, sector, and private messaging
+ * Comprehensive chat system for global, alliance, sector, and private messaging.
+ * Responsible for channel management, message persistence, moderation tools,
+ * rate limiting, and history retrieval. Integrates with Redis for rate
+ * limiting and shadow-banning checks.
  */
 
 import { pool } from '../config/database';

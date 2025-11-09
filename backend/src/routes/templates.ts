@@ -1,3 +1,11 @@
+/**
+ * @module backend/routes/templates
+ *
+ * Template rendering routes for server-side pages used by the client.
+ * Includes public pages (landing/login) and protected pages that render
+ * the in-game client templates.
+ */
+
 import { Router, Request, Response } from 'express';
 import { TemplateService } from '../services/templateService';
 import { authenticateToken } from '../middleware/auth';

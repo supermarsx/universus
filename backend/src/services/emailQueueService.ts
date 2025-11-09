@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/emailQueueService
+ *
+ * Lightweight queue abstraction for sending email tasks. Jobs are pushed to
+ * Redis for worker consumption. This module exposes an `EmailQueueService`
+ * instance which provides a small API to enqueue email payloads.
+ */
+
 import { redis } from '../config/redis';
 
 export interface EmailJobPayload {

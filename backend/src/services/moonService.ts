@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/moonService
+ *
+ * Handles moon data access and creation. Includes helpers to attempt moon
+ * creation from debris fields, fetch moon details and manage moon
+ * resources. Relies on `moonConfig` for gameplay constants.
+ */
+
 import { pool } from '../config/database';
 import {
   moonConfig,

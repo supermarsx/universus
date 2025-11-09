@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/shipyardService
+ *
+ * Shipyard production service. Manages starting and cancelling production
+ * queues for ships and defenses, deducting resources, and calculating
+ * build times using game configuration.
+ */
+
 import { pool } from '../config/database';
 import { SHIPS, DEFENSES } from '../config/gameConfig';
 import { gameConfig } from './gameConfigAdapter';

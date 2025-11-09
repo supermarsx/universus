@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/twoFactorAuthService
+ *
+ * Two-Factor Authentication service (TOTP & backup codes). Handles 2FA
+ * setup, verification and backup code management. Integrates with QR code
+ * generation and persistent storage of 2FA state for users.
+ */
+
 // Phase 9: Two-Factor Authentication Service
 // Handles TOTP-based 2FA setup, verification, and backup codes
 

@@ -1,3 +1,11 @@
+/**
+ * @module backend/index
+ *
+ * Application entrypoint: configures Express, attaches routes, initializes
+ * background services and starts HTTP / realtime servers. This file wires
+ * together route modules, socket initialization and high-level schedulers.
+ */
+
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
