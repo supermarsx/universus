@@ -1,3 +1,12 @@
+/**
+ * Messaging service: in-game messaging and reports
+ * @module backend/services/messagingService
+ *
+ * Responsible for player messages, combat and espionage reports, system
+ * notifications, and alliance-wide circulars. Includes convenience
+ * helpers for mapping DB rows to message DTOs.
+ */
+
 import { Pool } from 'pg';
 import playerBlockService from './playerBlockService';
 

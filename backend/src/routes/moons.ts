@@ -5,6 +5,7 @@ import moonService from '../services/moonService';
 import { BuildingService } from '../services/buildingService';
 import { ShipyardService } from '../services/shipyardService';
 import phalanxService from '../services/phalanxService';
+import jumpGateService from '../services/jumpGateService';
 
 const router = express.Router();
 
@@ -86,6 +87,45 @@ router.post('/:moonId/phalanx', async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Phalanx scan error:', error);
     res.status(400).json({ success: false, error: error.message || 'Phalanx scan failed' });
+  }
+});
+
+// POST /api/moons/:moonId/jump-gate
+router.post('/:moonId/jump-gate', async (req: AuthRequest, res: Response) => {
+  try {
+    const fromMoonId = parseInt(req.params.moonId, 10);
+    const { toMoonId, fleetIds } = req.body;
+    if (!Number.isFinite(toMoonId) || !Array.isArray(fleetIds) || fleetIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'Invalid request' });
+    }
+    const result = await jumpGateService.jumpFleet(req.user!.id, fromMoonId, toMoonId, fleetIds);
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Jump Gate error:', error);
+    res.status(500).json({ success: false, error: 'Jump Gate failed' });
+  }
+});
+
+// POST /api/moons/:moonId/destroy
+router.post('/:moonId/destroy', async (req: AuthRequest, res: Response) => {
+  try {
+    const moonId = parseInt(req.params.moonId, 10);
+    const { numDeathstars } = req.body;
+    if (!Number.isFinite(numDeathstars) || numDeathstars < 1) {
+      return res.status(400).json({ success: false, error: 'Invalid number of Deathstars' });
+    }
+    // TODO: Validate attacker owns the Deathstars and they are present at the moon
+    const result = await (await import('../services/destroyMoonService')).default.attemptDestruction(req.user!.id, moonId, numDeathstars);
+    if (result.error) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Destroy Moon error:', error);
+    res.status(500).json({ success: false, error: 'Moon destruction failed' });
   }
 });
 

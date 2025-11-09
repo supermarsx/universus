@@ -1,5 +1,12 @@
-// Phase 9: Account Security Service
-// Handles account suspension, deletion, locking, and security operations
+/**
+ * Account Security Service
+ * @module backend/services/accountSecurityService
+ *
+ * High-privilege account security operations: suspensions, deletions,
+ * locking/unlocking, and security audit logging. These APIs update
+ * user state and emit audit events intended for administrative workflows
+ * and security analysis.
+ */
 
 import { pool } from '../config/database';
 import { redisClient } from '../config/redis';
@@ -21,7 +28,7 @@ export class AccountSecurityService {
      * security audit logging. Methods here are high-privilege and will
      * update user status and emit security audit events.
      */
-    
+
     /**
      * Suspend a user's account. Deactivates any existing suspensions, creates
      * a new suspension record, updates the user's account status and logs a security event.
@@ -522,6 +529,15 @@ export class AccountSecurityService {
     // CACHE MANAGEMENT
     // =====================================================
 
+    /**
+     * Invalidate all cached user data used by account/security subsystems.
+     *
+     * This silently swallows Redis errors to avoid failing high-level
+     * account operations; failures are logged for post-mortem.
+     *
+     * @private
+     * @param userId - The user id whose cache entries will be removed.
+     */
     private static async invalidateUserCache(userId: number): Promise<void> {
         try {
             await redisClient.del(`user:${userId}`);

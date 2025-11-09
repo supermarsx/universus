@@ -53,6 +53,7 @@ export interface Moon {
   bomber: number;
   destroyer: number;
   deathstar: number;
+  last_jump_time: Date | null;
 }
 
 class MoonService {

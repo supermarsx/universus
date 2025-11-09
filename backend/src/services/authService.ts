@@ -1,3 +1,12 @@
+/**
+ * Authentication service utilities
+ * @module backend/services/authService
+ *
+ * Exposes registration, login, and token utilities used by the HTTP
+ * authentication routes and administrative tooling. Functions here wrap
+ * DB transactions, password hashing (bcrypt) and JWT generation.
+ */
+
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { pool } from '../config/database';
@@ -15,6 +24,21 @@ export class AuthService {
     email: string,
     password: string
   ): Promise<{ user: User; token: string }> {
+    /**
+     * Register a new user.
+     *
+     * Validates input, creates the user record, initializes related
+     * resources (research, home planet, player_scores) within a DB
+     * transaction, and returns a freshly minted JWT for immediate use.
+     *
+     * @param username - Desired username (minimum length 3).
+     * @param email - User email address.
+     * @param password - Plaintext password (minimum length 6).
+     * @returns An object containing the created `user` (sensitive fields
+     * removed) and a signed `token` string.
+     * @throws Error when validation fails or the database rejects the insert
+     *               (e.g., unique constraint on username/email).
+     */
     // Validate input
     if (username.length < 3) {
       throw new Error('Username must be at least 3 characters');
