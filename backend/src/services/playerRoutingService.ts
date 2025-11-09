@@ -497,10 +497,18 @@ export class PlayerRoutingService {
     };
   }
 
-  // =====================================================
-  // UTILITY METHODS
-  // =====================================================
-
+  /**
+   * Build a PlayerRoutingResult from a ShardServer record.
+   *
+   * This composes the minimal routing payload returned to callers and
+   * normalizes fields used by the client to connect (host/ports) and for
+   * diagnostics (estimated latency, chosen algorithm).
+   *
+   * @private
+   * @param {ShardServer} server - Server record returned from discovery
+   * @param {LoadBalancingAlgorithm} algorithm - Algorithm used to pick this server
+   * @returns {PlayerRoutingResult} Normalized routing payload
+   */
   private buildRoutingResult(server: ShardServer, algorithm: LoadBalancingAlgorithm): PlayerRoutingResult {
     return {
       server_id: server.server_id,
@@ -514,6 +522,16 @@ export class PlayerRoutingService {
     };
   }
 
+  /**
+   * Read the persisted round-robin index used for round-robin selection.
+   *
+   * The implementation stores a small index in the `metadata` JSONB column
+   * of a representative `shard_servers` row. Returns -1 when no persisted
+   * index is found.
+   *
+   * @private
+   * @returns {Promise<number>} Persisted index or -1 when unset
+   */
   private async getLastRoundRobinIndex(): Promise<number> {
     const result = await pool.query(
       `SELECT metadata->>'round_robin_index' as idx FROM shard_servers WHERE server_type = 'game' LIMIT 1`
@@ -526,6 +544,12 @@ export class PlayerRoutingService {
     return -1;
   }
 
+  /**
+   * Persist the round-robin index back into the database.
+   *
+   * @private
+   * @param {number} index - Index to persist
+   */
   private async setLastRoundRobinIndex(index: number): Promise<void> {
     await pool.query(
       `UPDATE shard_servers 
@@ -536,6 +560,13 @@ export class PlayerRoutingService {
     );
   }
 
+  /**
+   * Map a raw DB row from `shard_players` into the `ShardPlayer` DTO.
+   *
+   * @private
+   * @param {any} row - Raw database row
+   * @returns {ShardPlayer} Normalized player assignment object
+   */
   private mapPlayerRow(row: any): ShardPlayer {
     return {
       id: row.id,
