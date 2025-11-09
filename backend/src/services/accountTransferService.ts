@@ -24,10 +24,14 @@ export class AccountTransferService {
     private static readonly TRANSFER_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
     private static readonly MAX_TRANSFERS_PER_MONTH = 3;
 
-    // =====================================================
-    // INITIATE TRANSFER
-    // =====================================================
-
+    /**
+     * Initiate an account transfer flow. Validates the target email, enforces
+     * rate limits, creates a transfer record and sends verification emails.
+     *
+     * @param request - InitiateTransferRequest containing user_id, to_email, ip_address and user_agent.
+     * @returns The created AccountTransfer record.
+     * @throws Error when validations fail or DB insertion fails.
+     */
     static async initiateTransfer(request: InitiateTransferRequest): Promise<AccountTransfer> {
         // Get current user email
         const userResult = await pool.query(
@@ -129,10 +133,15 @@ export class AccountTransferService {
         return transfer;
     }
 
-    // =====================================================
-    // VERIFY TRANSFER
-    // =====================================================
-
+    /**
+     * Verify a transfer token previously issued during initiation. Marks the
+     * transfer as VERIFIED and logs the verification event.
+     *
+     * @param verificationToken - Token string sent to the user.
+     * @param ipAddress - Optional IP address performing the verification.
+     * @param userAgent - Optional user agent string.
+     * @returns The AccountTransfer record after verification.
+     */
     static async verifyTransfer(
         verificationToken: string,
         ipAddress?: string,
@@ -198,10 +207,14 @@ export class AccountTransferService {
         }
     }
 
-    // =====================================================
-    // COMPLETE TRANSFER
-    // =====================================================
-
+    /**
+     * Complete a verified transfer by changing the user's email and terminating
+     * active sessions for security. Confirmation code must match a portion of the token.
+     *
+     * @param transferId - Transfer record id to complete.
+     * @param userId - Owner user id confirming the transfer.
+     * @param confirmationCode - Short confirmation code derived from the token.
+     */
     static async completeTransfer(
         transferId: number,
         userId: number,
@@ -278,10 +291,13 @@ export class AccountTransferService {
         }
     }
 
-    // =====================================================
-    // CANCEL TRANSFER
-    // =====================================================
-
+    /**
+     * Cancel a pending or verified transfer. Marks transfer as cancelled and
+     * logs the cancellation event.
+     *
+     * @param transferId - Transfer id to cancel.
+     * @param userId - Owner user id performing cancellation.
+     */
     static async cancelTransfer(transferId: number, userId: number): Promise<void> {
         const result = await pool.query(
             `UPDATE account_transfers 
@@ -311,10 +327,12 @@ export class AccountTransferService {
         }
     }
 
-    // =====================================================
-    // GET TRANSFER STATUS
-    // =====================================================
-
+    /**
+     * Retrieve the latest pending or verified transfer for a user.
+     *
+     * @param userId - User id to query transfers for.
+     * @returns AccountTransfer or null when none exists.
+     */
     static async getTransferStatus(
         userId: number
     ): Promise<AccountTransfer | null> {
@@ -330,10 +348,13 @@ export class AccountTransferService {
         return result.rows[0] || null;
     }
 
-    // =====================================================
-    // GET TRANSFER HISTORY
-    // =====================================================
-
+    /**
+     * Return historical account transfer records for a user.
+     *
+     * @param userId - Owner user id.
+     * @param limit - Maximum number of history rows to return (default 10).
+     * @returns Array of AccountTransfer rows.
+     */
     static async getTransferHistory(
         userId: number,
         limit: number = 10
@@ -349,10 +370,11 @@ export class AccountTransferService {
         return result.rows;
     }
 
-    // =====================================================
-    // CLEANUP EXPIRED TRANSFERS
-    // =====================================================
-
+    /**
+     * Mark expired pending or verified transfers as EXPIRED.
+     *
+     * @returns Number of transfers updated.
+     */
     static async cleanupExpiredTransfers(): Promise<number> {
         const result = await pool.query(
             `UPDATE account_transfers 

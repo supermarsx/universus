@@ -40,7 +40,10 @@ export class ThemeService {
     private static readonly MAX_CUSTOM_CSS_LENGTH = 8000;
 
     /**
-     * Get all themes with optional filtering
+     * Get all themes with optional filtering.
+     *
+     * @param filters - Optional filters for category, is_active and is_available.
+     * @returns Array of Theme objects.
      */
     static async getAllThemes(filters?: {
         category?: ThemeCategory;
@@ -73,7 +76,10 @@ export class ThemeService {
     }
 
     /**
-     * Get theme by ID
+     * Get a single theme by its database id.
+     *
+     * @param themeId - Theme id to load.
+     * @returns Theme or null if not found.
      */
     static async getThemeById(themeId: number): Promise<Theme | null> {
         const result = await pool.query(
@@ -84,7 +90,10 @@ export class ThemeService {
     }
 
     /**
-     * Get theme by key
+     * Get a single theme by its unique theme key.
+     *
+     * @param themeKey - Unique string key of the theme.
+     * @returns Theme or null when not found.
      */
     static async getThemeByKey(themeKey: string): Promise<Theme | null> {
         const result = await pool.query(
@@ -95,7 +104,11 @@ export class ThemeService {
     }
 
     /**
-     * Create new theme
+     * Create a new theme record.
+     *
+     * @param data - CreateThemeRequest payload containing theme fields.
+     * @param userId - Optional id of the user creating the theme.
+     * @returns The created Theme row.
      */
     static async createTheme(data: CreateThemeRequest, userId?: number): Promise<Theme> {
         const result = await pool.query(
@@ -130,7 +143,13 @@ export class ThemeService {
     }
 
     /**
-     * Update theme
+     * Update an existing theme with partial data. Returns the updated theme.
+     * If no fields are provided the current theme is returned.
+     *
+     * @param themeId - ID of the theme to update.
+     * @param data - Partial update payload.
+     * @param userId - Optional id of the user performing the update.
+     * @returns Updated Theme or null when not found.
      */
     static async updateTheme(themeId: number, data: UpdateThemeRequest, userId?: number): Promise<Theme | null> {
         const updates: string[] = [];
@@ -186,7 +205,10 @@ export class ThemeService {
     }
 
     /**
-     * Delete theme
+     * Delete a theme by id.
+     *
+     * @param themeId - ID of the theme to delete.
+     * @returns True when a row was deleted, false otherwise.
      */
     static async deleteTheme(themeId: number): Promise<boolean> {
         const result = await pool.query(
@@ -197,7 +219,9 @@ export class ThemeService {
     }
 
     /**
-     * Get current active theme
+     * Return the currently active theme (if any).
+     *
+     * @returns The currently active Theme or null when none is active.
      */
     static async getCurrentTheme(): Promise<Theme | null> {
         const result = await pool.query(
@@ -207,7 +231,9 @@ export class ThemeService {
     }
 
     /**
-     * Get active theme with full details (assets, configurations)
+     * Return active theme data including assets and configuration for the current theme.
+     *
+     * @returns ActiveThemeData or null when no theme is active.
      */
     static async getActiveThemeData(): Promise<ActiveThemeData | null> {
         const theme = await this.getCurrentTheme();
@@ -224,7 +250,14 @@ export class ThemeService {
     }
 
     /**
-     * Activate theme manually
+     * Activate a theme manually. Deactivates any currently active theme, marks
+     * the requested theme as active and logs the activation.
+     *
+     * @param themeId - ID of the theme to activate.
+     * @param userId - Optional id of the user performing the activation.
+     * @param activationType - The activation type (manual, scheduled, preview, etc.).
+     * @param reason - Optional reason for activation.
+     * @returns The ThemeActivation row created for this activation.
      */
     static async activateTheme(
         themeId: number,
@@ -253,7 +286,9 @@ export class ThemeService {
     }
 
     /**
-     * Deactivate theme
+     * Deactivate a theme and update its activation record with deactivation time.
+     *
+     * @param themeId - ID of the theme to deactivate.
      */
     static async deactivateTheme(themeId: number): Promise<void> {
         await pool.query(
@@ -272,7 +307,10 @@ export class ThemeService {
     }
 
     /**
-     * Check and activate scheduled themes (called by scheduler)
+     * Check for scheduled themes that should be activated and activate them when found.
+     * Intended for invocation by a scheduler task.
+     *
+     * @returns Object indicating whether an activation occurred and the activated theme when applicable.
      */
     static async checkScheduledThemes(): Promise<{ activated: boolean; theme?: Theme }> {
         const result = await pool.query<{ activate_scheduled_theme: number | null }>(
@@ -290,9 +328,11 @@ export class ThemeService {
     }
 
     /**
-     * Theme Schedules
+     * Return theme schedules optionally filtered by theme id.
+     *
+     * @param themeId - Optional theme id to filter schedules.
+     * @returns Array of ThemeSchedule rows.
      */
-
     static async getAllSchedules(themeId?: number): Promise<ThemeSchedule[]> {
         let query = 'SELECT * FROM theme_schedules WHERE 1=1';
         const params: any[] = [];
@@ -308,6 +348,12 @@ export class ThemeService {
         return result.rows;
     }
 
+    /**
+     * Load a theme schedule by id.
+     *
+     * @param scheduleId - Schedule id to load.
+     * @returns ThemeSchedule or null when not found.
+     */
     static async getScheduleById(scheduleId: number): Promise<ThemeSchedule | null> {
         const result = await pool.query(
             'SELECT * FROM theme_schedules WHERE id = $1',
@@ -316,6 +362,13 @@ export class ThemeService {
         return result.rows[0] || null;
     }
 
+    /**
+     * Create a new theme schedule.
+     *
+     * @param data - CreateThemeScheduleRequest payload.
+     * @param userId - Optional id of the creator.
+     * @returns The created ThemeSchedule row.
+     */
     static async createSchedule(data: CreateThemeScheduleRequest, userId?: number): Promise<ThemeSchedule> {
         const result = await pool.query(
             `INSERT INTO theme_schedules (
@@ -340,6 +393,13 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    /**
+     * Update a theme schedule with partial data.
+     *
+     * @param scheduleId - Schedule id to update.
+     * @param data - Partial update payload.
+     * @returns Updated ThemeSchedule or null when not found.
+     */
     static async updateSchedule(
         scheduleId: number,
         data: UpdateThemeScheduleRequest
@@ -376,6 +436,12 @@ export class ThemeService {
         return result.rows[0] || null;
     }
 
+    /**
+     * Delete a theme schedule by id.
+     *
+     * @param scheduleId - Schedule id to delete.
+     * @returns True when deleted, false otherwise.
+     */
     static async deleteSchedule(scheduleId: number): Promise<boolean> {
         const result = await pool.query(
             'DELETE FROM theme_schedules WHERE id = $1',
@@ -384,6 +450,11 @@ export class ThemeService {
         return (result.rowCount ?? 0) > 0;
     }
 
+    /**
+     * Return currently active theme schedules.
+     *
+     * @returns Array of ThemeSchedule rows.
+     */
     static async getActiveSchedules(): Promise<ThemeSchedule[]> {
         const result = await pool.query(
             'SELECT * FROM v_active_theme_schedules'
@@ -392,9 +463,12 @@ export class ThemeService {
     }
 
     /**
-     * Theme Assets
+     * Retrieve active theme assets for a theme with optional usage context filtering.
+     *
+     * @param themeId - Theme id to load assets for.
+     * @param usageContext - Optional usage context string to filter assets.
+     * @returns Array of ThemeAsset rows.
      */
-
     static async getThemeAssets(themeId: number, usageContext?: string): Promise<ThemeAsset[]> {
         let query = 'SELECT * FROM theme_assets WHERE theme_id = $1 AND is_active = true';
         const params: any[] = [themeId];
@@ -410,6 +484,12 @@ export class ThemeService {
         return result.rows;
     }
 
+    /**
+     * Load a theme asset by id.
+     *
+     * @param assetId - Asset id to load.
+     * @returns ThemeAsset or null when not found.
+     */
     static async getAssetById(assetId: number): Promise<ThemeAsset | null> {
         const result = await pool.query(
             'SELECT * FROM theme_assets WHERE id = $1',
@@ -418,6 +498,12 @@ export class ThemeService {
         return result.rows[0] || null;
     }
 
+    /**
+     * Create a new theme asset record.
+     *
+     * @param data - CreateThemeAssetRequest payload describing the asset.
+     * @returns The created ThemeAsset row.
+     */
     static async createAsset(data: CreateThemeAssetRequest): Promise<ThemeAsset> {
         const result = await pool.query(
             `INSERT INTO theme_assets (
@@ -439,6 +525,13 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    /**
+     * Update an existing theme asset partially.
+     *
+     * @param assetId - Asset id to update.
+     * @param data - Partial update payload.
+     * @returns Updated ThemeAsset or null when not found.
+     */
     static async updateAsset(assetId: number, data: UpdateThemeAssetRequest): Promise<ThemeAsset | null> {
         const updates: string[] = [];
         const params: any[] = [];
@@ -472,6 +565,12 @@ export class ThemeService {
         return result.rows[0] || null;
     }
 
+    /**
+     * Delete a theme asset by id.
+     *
+     * @param assetId - Asset id to delete.
+     * @returns True when deleted, false otherwise.
+     */
     static async deleteAsset(assetId: number): Promise<boolean> {
         const result = await pool.query(
             'DELETE FROM theme_assets WHERE id = $1',
@@ -481,9 +580,11 @@ export class ThemeService {
     }
 
     /**
-     * Theme Configurations
+     * Return active theme configuration key/value rows for a theme.
+     *
+     * @param themeId - Theme id to fetch configurations for.
+     * @returns Array of ThemeConfiguration rows.
      */
-
     static async getThemeConfigurations(themeId: number): Promise<ThemeConfiguration[]> {
         const result = await pool.query(
             'SELECT * FROM theme_configurations WHERE theme_id = $1 AND is_active = true ORDER BY category, config_key',
@@ -493,9 +594,12 @@ export class ThemeService {
     }
 
     /**
-     * Theme Activations & Analytics
+     * Get activation history for a theme.
+     *
+     * @param themeId - Theme id to query.
+     * @param limit - Maximum number of activation rows to return.
+     * @returns Array of ThemeActivation rows.
      */
-
     static async getThemeActivations(themeId: number, limit: number = 50): Promise<ThemeActivation[]> {
         const result = await pool.query(
             'SELECT * FROM theme_activations WHERE theme_id = $1 ORDER BY activated_at DESC LIMIT $2',
@@ -504,6 +608,12 @@ export class ThemeService {
         return result.rows;
     }
 
+    /**
+     * Retrieve aggregated analytics for a theme.
+     *
+     * @param themeId - Theme id to compute analytics for.
+     * @returns Analytics object (shape depends on DB view).
+     */
     static async getThemeAnalytics(themeId: number): Promise<any> {
         const result = await pool.query(
             'SELECT * FROM calculate_theme_stats($1)',
@@ -512,6 +622,11 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    /**
+     * Retrieve analytics across all themes.
+     *
+     * @returns Array of analytics rows.
+     */
     static async getAllThemeAnalytics(): Promise<any[]> {
         const result = await pool.query(
             'SELECT * FROM v_theme_analytics ORDER BY activation_count DESC'
@@ -520,9 +635,11 @@ export class ThemeService {
     }
 
     /**
-     * User Preferences
+     * Get or create theme preferences for a user.
+     *
+     * @param userId - User id to load preferences for.
+     * @returns ThemePreferences row.
      */
-
     static async getUserPreferences(userId: number): Promise<ThemePreferences | null> {
         const result = await pool.query(
             'SELECT * FROM theme_preferences WHERE user_id = $1',
@@ -537,6 +654,12 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    /**
+     * Create default preferences for a user (idempotent).
+     *
+     * @param userId - User id to create preferences for.
+     * @returns The created or existing ThemePreferences row.
+     */
     static async createUserPreferences(userId: number): Promise<ThemePreferences> {
         const result = await pool.query(
             `INSERT INTO theme_preferences (user_id)
@@ -548,6 +671,13 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    /**
+     * Update a user's theme preferences with partial data.
+     *
+     * @param userId - User id to update.
+     * @param data - Partial preference updates.
+     * @returns Updated ThemePreferences row.
+     */
     static async updateUserPreferences(
         userId: number,
         data: UpdateThemePreferencesRequest
@@ -591,6 +721,12 @@ export class ThemeService {
         return result.rows[0];
     }
 
+    /**
+     * Return a user's custom CSS and last update timestamp.
+     *
+     * @param userId - User id to query.
+     * @returns Object with custom_css and custom_css_updated_at fields.
+     */
     static async getUserCustomCSS(userId: number): Promise<{
         custom_css: string | null;
         custom_css_updated_at: Date | null;
@@ -602,6 +738,13 @@ export class ThemeService {
         };
     }
 
+    /**
+     * Update a user's custom CSS after sanitization and set the updated timestamp.
+     *
+     * @param userId - User id to update.
+     * @param css - CSS string or null to clear custom CSS.
+     * @returns Object with the stored custom_css and custom_css_updated_at.
+     */
     static async updateUserCustomCSS(
         userId: number,
         css: string | null
@@ -623,9 +766,12 @@ export class ThemeService {
     }
 
     /**
-     * Preview Mode
+     * Enable preview mode for a theme and log the preview activation.
+     *
+     * @param themeId - Theme id to preview.
+     * @param userId - User id requesting the preview.
+     * @returns The theme that was set to preview mode.
      */
-
     static async enablePreviewMode(themeId: number, userId: number): Promise<Theme> {
         // Set preview mode for this theme
         await pool.query(
@@ -646,6 +792,11 @@ export class ThemeService {
         return theme;
     }
 
+    /**
+     * Disable preview mode for a theme.
+     *
+     * @param themeId - Theme id to disable preview for.
+     */
     static async disablePreviewMode(themeId: number): Promise<void> {
         await pool.query(
             'UPDATE themes SET preview_mode = false WHERE id = $1',
@@ -654,9 +805,11 @@ export class ThemeService {
     }
 
     /**
-     * Utility Methods
+     * Get available themes by category.
+     *
+     * @param category - ThemeCategory enum value.
+     * @returns Array of Theme rows.
      */
-
     static async getThemesByCategory(category: ThemeCategory): Promise<Theme[]> {
         const result = await pool.query(
             'SELECT * FROM themes WHERE category = $1 AND is_available = true ORDER BY name',
@@ -665,6 +818,12 @@ export class ThemeService {
         return result.rows;
     }
 
+    /**
+     * Search themes by name, description or key (case-insensitive).
+     *
+     * @param searchTerm - Term used for ILIKE search.
+     * @returns Array of matching Theme rows.
+     */
     static async searchThemes(searchTerm: string): Promise<Theme[]> {
         const result = await pool.query(
             `SELECT * FROM themes 
@@ -677,7 +836,11 @@ export class ThemeService {
     }
 
     /**
-     * Update activation analytics
+     * Update analytics counters for a theme activation.
+     * Only provided fields will be updated.
+     *
+     * @param activationId - Activation id to update.
+     * @param data - Partial analytics data to update.
      */
     static async updateActivationAnalytics(
         activationId: number,
@@ -711,6 +874,14 @@ export class ThemeService {
         );
     }
 
+    /**
+     * Sanitize custom CSS input using the project's CustomCssSanitizer utility.
+     * Truncates or rejects content exceeding MAX_CUSTOM_CSS_LENGTH.
+     *
+     * @private
+     * @param css - Raw CSS string or null.
+     * @returns Sanitized CSS string or null.
+     */
     private static sanitizeCustomCSS(css?: string | null): string | null {
         return CustomCssSanitizer.sanitize(css, this.MAX_CUSTOM_CSS_LENGTH);
     }

@@ -5,6 +5,11 @@ import { User } from '../types';
 import { PoolClient } from 'pg';
 
 export class AuthService {
+  /**
+   * Authentication service: registration, login and token generation helpers.
+   * All methods are static convenience helpers wrapping DB operations and
+   * security primitives (bcrypt, JWT).
+   */
   static async register(
     username: string,
     email: string,
@@ -79,6 +84,14 @@ export class AuthService {
     }
   }
 
+  /**
+   * Authenticate a user by username or email and password.
+   *
+   * @param identifier - Username or email used to lookup the account.
+   * @param password - Plaintext password to validate.
+   * @returns Object containing the user row (password hash removed) and a JWT token.
+   * @throws Error when credentials are invalid or account banned.
+   */
   static async login(
     identifier: string,
     password: string
@@ -123,6 +136,13 @@ export class AuthService {
     return { user, token };
   }
 
+  /**
+   * Generate a signed JWT for a user id.
+   *
+   * @private
+   * @param userId - The user id to embed in the token payload.
+   * @returns Signed JWT string.
+   */
   private static generateToken(userId: number): string {
     const secret = process.env.JWT_SECRET || 'your_super_secret_jwt_key';
     const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
@@ -130,6 +150,15 @@ export class AuthService {
     return jwt.sign({ userId }, secret, options);
   }
 
+  /**
+   * Find an empty planet coordinate by sampling random coordinates up to 100 attempts.
+   * Uses the provided PG client to run queries inside a registration transaction.
+   *
+   * @private
+   * @param client - Active PoolClient to query with.
+   * @returns Object with galaxy, system and position for a new planet.
+   * @throws Error when no empty coordinate could be found after attempts.
+   */
   private static async findEmptyCoordinates(
     client: PoolClient
   ): Promise<{ galaxy: number; system: number; position: number }> {

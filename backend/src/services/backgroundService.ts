@@ -22,21 +22,27 @@ import {
 
 export class BackgroundService {
   /**
-   * Get background for overview page (planet surface)
+   * Get background for overview page (planet surface).
+   *
+   * @returns Path to an asset image used for planet overview backgrounds.
    */
   getOverviewBackground(): string {
     return getRandomPlanetBackground();
   }
 
   /**
-   * Get background for galaxy page (deep space)
+   * Get background image for the galaxy view.
+   *
+   * @returns Path to a space environment background image.
    */
   getGalaxyBackground(): string {
     return getRandomEnvironmentBackground();
   }
 
   /**
-   * Get background for fleet page (space station/hangar)
+   * Get a random background appropriate for the fleet page (station/hangar).
+   *
+   * @returns Asset path string.
    */
   getFleetBackground(): string {
     const backgrounds = [
@@ -48,7 +54,9 @@ export class BackgroundService {
   }
 
   /**
-   * Get background for shipyard page (construction facility)
+   * Select a shipyard-related background image.
+   *
+   * @returns Asset path string selected from a shipyard palette.
    */
   getShipyardBackground(): string {
     const backgrounds = [
@@ -60,14 +68,18 @@ export class BackgroundService {
   }
 
   /**
-   * Get background for buildings page (planet surface)
+   * Get a buildings/planet-surface background.
+   *
+   * @returns Asset path string.
    */
   getBuildingsBackground(): string {
     return getRandomPlanetBackground();
   }
 
   /**
-   * Get background for research page (research facility)
+   * Choose a background suitable for the research page.
+   *
+   * @returns Asset path string.
    */
   getResearchBackground(): string {
     const backgrounds = [
@@ -79,21 +91,27 @@ export class BackgroundService {
   }
 
   /**
-   * Get background for messages page (command center)
+   * Background for messaging/command center pages.
+   *
+   * @returns Asset path string.
    */
   getMessagesBackground(): string {
     return '/assets/backgrounds/command-room.png';
   }
 
   /**
-   * Get background for leaderboard page (space backdrop)
+   * Get a space background appropriate for the leaderboard view.
+   *
+   * @returns Asset path string.
    */
   getLeaderboardBackground(): string {
     return getRandomSpaceBackground();
   }
 
   /**
-   * Get background for shop page (trading hub)
+   * Select a shop/trading hub background image.
+   *
+   * @returns Asset path string.
    */
   getShopBackground(): string {
     const backgrounds = [
@@ -105,21 +123,27 @@ export class BackgroundService {
   }
 
   /**
-   * Get background for admin page (command center)
+   * Background for the admin UI.
+   *
+   * @returns Asset path string.
    */
   getAdminBackground(): string {
     return '/assets/backgrounds/command-room.png';
   }
 
   /**
-   * Get all planet backgrounds
+   * Return the full list of planet background image paths.
+   *
+   * @returns Array of asset path strings for planet backgrounds.
    */
   getAllPlanetBackgrounds(): string[] {
     return planetBackgrounds.map(name => `/assets/planets/${name}.png`);
   }
 
   /**
-   * Get all space backgrounds
+   * Return the full list of space/background image paths.
+   *
+   * @returns Array of asset path strings for space backgrounds.
    */
   getAllSpaceBackgrounds(): string[] {
     return spaceBackgrounds.map(name => `/assets/backgrounds/${name}.png`);

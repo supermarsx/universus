@@ -23,11 +23,21 @@ const EMAIL_QUEUE_KEY = process.env.EMAIL_QUEUE_KEY || 'email:queue';
 
 class EmailQueueService {
     private queueKey: string;
-
+    /**
+     * Create a new EmailQueueService instance.
+     *
+     * @param queueKey - Redis list key used for the email queue.
+     */
     constructor(queueKey: string) {
         this.queueKey = queueKey;
     }
 
+    /**
+     * Enqueue an email job payload onto the Redis-backed queue for worker consumption.
+     * The job payload will be JSON-serialized and appended to the configured list.
+     *
+     * @param job - EmailJobPayload describing recipient, subject, body and optional template/context.
+     */
     async enqueue(job: EmailJobPayload): Promise<void> {
         const payload = {
             ...job,

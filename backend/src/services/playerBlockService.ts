@@ -22,6 +22,12 @@ interface PlayerBlockRow {
 }
 
 class PlayerBlockService {
+  /**
+   * List all blocks created by a user.
+   *
+   * @param userId - The id of the user whose blocks will be returned.
+   * @returns Array of PlayerBlockRow objects.
+   */
   async listBlocks(userId: number): Promise<PlayerBlockRow[]> {
     const result = await pool.query(
       `SELECT pb.*, u.username 
@@ -35,6 +41,17 @@ class PlayerBlockService {
     return result.rows;
   }
 
+  /**
+   * Block a user with an optional scope and expiration.
+   * If a block already exists for the same scope it will be updated.
+   *
+   * @param userId - The user creating the block.
+   * @param blockedUserId - The user being blocked.
+   * @param blockScope - Scope of the block (all/chat/messages).
+   * @param reason - Optional reason for the block.
+   * @param expiresAt - Optional expiration date for the block.
+   * @returns The created or updated PlayerBlockRow.
+   */
   async blockUser(
     userId: number,
     blockedUserId: number,
@@ -58,6 +75,14 @@ class PlayerBlockService {
     return result.rows[0];
   }
 
+  /**
+   * Remove a block between two users optionally restricting by scope.
+   *
+   * @param userId - The user who created the block.
+   * @param blockedUserId - The user that was blocked.
+   * @param blockScope - Optional scope filter; when provided only blocks matching the scope are removed.
+   * @returns True when a block was removed, false otherwise.
+   */
   async unblockUser(
     userId: number,
     blockedUserId: number,
@@ -74,6 +99,14 @@ class PlayerBlockService {
     return (result.rowCount || 0) > 0;
   }
 
+  /**
+   * Check whether a user has blocked another user within a particular scope.
+   *
+   * @param userId - The user who may have created the block.
+   * @param blockedUserId - The potentially blocked user.
+   * @param scope - Block scope to check (defaults to 'all').
+   * @returns True when an active block exists, false otherwise.
+   */
   async isBlocked(
     userId: number,
     blockedUserId: number,
@@ -91,6 +124,16 @@ class PlayerBlockService {
     return result.rows.length > 0;
   }
 
+  /**
+   * Check whether either user has blocked the other within the given scope.
+   * This is a convenience method used by messaging and chat systems to determine
+   * whether communication should be permitted.
+   *
+   * @param userId - First user id.
+   * @param otherUserId - Second user id.
+   * @param scope - Block scope to check (defaults to 'all').
+   * @returns True when either user has an active block against the other.
+   */
   async isBlockedEither(
     userId: number,
     otherUserId: number,

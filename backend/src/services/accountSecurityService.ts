@@ -16,10 +16,23 @@ import {
 } from '../types/accountManagement';
 
 export class AccountSecurityService {
-    // =====================================================
-    // ACCOUNT SUSPENSION
-    // =====================================================
-
+    /**
+     * Account security operations: suspensions, deletions, locking and
+     * security audit logging. Methods here are high-privilege and will
+     * update user status and emit security audit events.
+     */
+    
+    /**
+     * Suspend a user's account. Deactivates any existing suspensions, creates
+     * a new suspension record, updates the user's account status and logs a security event.
+     *
+     * @param userId - Target user id to suspend.
+     * @param reason - Suspension reason enum.
+     * @param adminId - Admin user id performing the suspension.
+     * @param expiresAt - Optional expiration date for the suspension.
+     * @param notes - Optional admin notes describing the suspension.
+     * @returns The created AccountSuspension record.
+     */
     static async suspendAccount(
         userId: number,
         reason: SuspensionReason,
@@ -83,6 +96,13 @@ export class AccountSecurityService {
         }
     }
 
+    /**
+     * Lift an active suspension for a user and restore their account status.
+     * Logs the action and invalidates caches.
+     *
+     * @param userId - Target user id.
+     * @param adminId - Admin id performing the lift.
+     */
     static async liftSuspension(
         userId: number,
         adminId: number
@@ -129,10 +149,15 @@ export class AccountSecurityService {
         }
     }
 
-    // =====================================================
-    // ACCOUNT DELETION
-    // =====================================================
-
+    /**
+     * Delete a user's account. Supports soft-delete (mark deleted) and
+     * hard-delete (anonymize and remove sensitive related data).
+     * Logs a critical security event and invalidates caches.
+     *
+     * @param userId - Target user id.
+     * @param reason - Reason string for deletion.
+     * @param soft - When true perform a soft-delete; otherwise remove personal data.
+     */
     static async deleteAccount(
         userId: number,
         reason: string,
@@ -196,6 +221,12 @@ export class AccountSecurityService {
         }
     }
 
+    /**
+     * Restore a previously soft-deleted account back to active status.
+     * Logs a security event and invalidates caches.
+     *
+     * @param userId - Target user id to restore.
+     */
     static async restoreAccount(userId: number): Promise<void> {
         const client = await pool.connect();
         
@@ -232,10 +263,15 @@ export class AccountSecurityService {
         }
     }
 
-    // =====================================================
-    // ACCOUNT LOCKING
-    // =====================================================
-
+    /**
+     * Lock a user's account for a duration (minutes) or indefinitely.
+     * Sets locked flags on the user row, logs a high-severity security event
+     * and invalidates caches.
+     *
+     * @param userId - Target user id.
+     * @param reason - Reason for locking.
+     * @param duration - Optional duration in minutes to auto-unlock.
+     */
     static async lockAccount(
         userId: number,
         reason: string,
@@ -269,6 +305,12 @@ export class AccountSecurityService {
         await this.invalidateUserCache(userId);
     }
 
+    /**
+     * Unlock a previously locked account and reset failed login counters.
+     * Logs a medium-severity security event and invalidates caches.
+     *
+     * @param userId - Target user id.
+     */
     static async unlockAccount(userId: number): Promise<void> {
         await pool.query(
             `UPDATE users 
@@ -294,10 +336,13 @@ export class AccountSecurityService {
         await this.invalidateUserCache(userId);
     }
 
-    // =====================================================
-    // ACCESS CONTROL
-    // =====================================================
-
+    /**
+     * Run a database check function that verifies whether the account may access
+     * game services (not suspended, not banned, etc.). Returns a structure with
+     * boolean and reason fields.
+     *
+     * @param userId - User id to check.
+     */
     static async checkAccountAccess(userId: number): Promise<AccountAccessCheck> {
         const result = await pool.query(
             'SELECT * FROM check_account_access($1)',
@@ -314,6 +359,12 @@ export class AccountSecurityService {
         return result.rows[0];
     }
 
+    /**
+     * Increment the failed login counter for a user and auto-lock the account
+     * when thresholds are exceeded.
+     *
+     * @param userId - User id whose counter will be incremented.
+     */
     static async incrementFailedLoginAttempts(userId: number): Promise<void> {
         const result = await pool.query(
             `UPDATE users 
@@ -336,6 +387,11 @@ export class AccountSecurityService {
         }
     }
 
+    /**
+     * Reset the failed login attempts counter for a user.
+     *
+     * @param userId - User id to reset.
+     */
     static async resetFailedLoginAttempts(userId: number): Promise<void> {
         await pool.query(
             `UPDATE users 
@@ -346,10 +402,13 @@ export class AccountSecurityService {
         );
     }
 
-    // =====================================================
-    // SECURITY LOGGING
-    // =====================================================
-
+    /**
+     * Append a security audit log entry into the security_audit_logs table.
+     *
+     * @param request - LogSecurityEventRequest containing user_id, event_type and metadata.
+     * @returns The id of the created audit log row.
+     * @throws Error when insertion fails.
+     */
     static async logSecurityEvent(request: LogSecurityEventRequest): Promise<number> {
         const result = await pool.query(
             `INSERT INTO security_audit_logs 
@@ -373,6 +432,14 @@ export class AccountSecurityService {
         return result.rows[0].id;
     }
 
+    /**
+     * Retrieve security audit logs for a user with pagination.
+     *
+     * @param userId - User id whose logs will be returned.
+     * @param limit - Maximum number of logs to fetch.
+     * @param offset - Pagination offset.
+     * @returns An object containing logs array and total count.
+     */
     static async getSecurityLogs(
         userId: number,
         limit: number = 50,
