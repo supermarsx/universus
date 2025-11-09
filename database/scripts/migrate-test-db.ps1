@@ -33,46 +33,48 @@ $SQL_DIR = $SQL_DIR.Path
 
 Write-Host "Applying SQL files from $SQL_DIR to $PGDATABASE@$PGHOST:$PGPORT"
 
-function Run-PsqlCommand($command) {
+function Run-PsqlCommandForFile([string]$filePath) {
   $attempt = 0
   $maxAttempts = 3
   $delay = 2
+  $psqlArgs = @('-v', 'ON_ERROR_STOP=1', '-h', $PGHOST, '-p', $PGPORT, '-U', $PGUSER, '-d', $PGDATABASE, '-f', $filePath)
   while ($attempt -lt $maxAttempts) {
-    try {
-      & sh -c $command
-      return $true
-    } catch {
-      $attempt++
-      Write-Host "psql command failed (attempt $attempt/$maxAttempts). Retrying in $delay seconds..." -ForegroundColor Yellow
-      Start-Sleep -Seconds $delay
-    }
+    & psql @psqlArgs
+    if ($LASTEXITCODE -eq 0) { return $true }
+    $attempt++
+    Write-Host "psql command failed (attempt $attempt/$maxAttempts). Retrying in $delay seconds..." -ForegroundColor Yellow
+    Start-Sleep -Seconds $delay
   }
   Write-Host "psql command failed after $maxAttempts attempts." -ForegroundColor Red
   return $false
+}
+
+function Run-PsqlCommandCapture([string[]]$args) {
+  & psql @args 2>$null | ForEach-Object { $_ }
+  return $LASTEXITCODE
 }
 
 # Apply each .sql file in the steps directory in alphabetical order
 Get-ChildItem -Path $SQL_DIR -Filter '*.sql' -File | Sort-Object Name | ForEach-Object {
   $file = $_.FullName
   Write-Host "Applying $($_.Name)"
-  $cmd = "psql -v ON_ERROR_STOP=1 -h `"$PGHOST`" -p `"$PGPORT`" -U `"$PGUSER`" -d `"$PGDATABASE`" -f `"$file`""
-  if (-not (Run-PsqlCommand $cmd)) { exit 1 }
+  if (-not (Run-PsqlCommandForFile $file)) { exit 1 }
 }
 
 Write-Host "Applying schema completed. Running sanity checks..."
 
 function Check-Table($tbl) {
-  $cmd = "psql -h `"$PGHOST`" -p `"$PGPORT`" -U `"$PGUSER`" -d `"$PGDATABASE`" -t -c \"SELECT COUNT(*) FROM $tbl;\""
-  try {
-    $output = & sh -c $cmd 2>$null
-    if ($LASTEXITCODE -ne 0) { throw }
-    $value = ($output -join "").Trim()
-    Write-Host "$tbl: $value"
-    return $true
-  } catch {
+  $psqlArgs = @('-h', $PGHOST, '-p', $PGPORT, '-U', $PGUSER, '-d', $PGDATABASE, '-t', '-c', "SELECT COUNT(*) FROM $tbl;")
+  $exit = Run-PsqlCommandCapture $psqlArgs
+  if ($exit -ne 0) {
     Write-Host "Sanity check failed: $tbl table missing or psql error" -ForegroundColor Red
     return $false
   }
+  # Capture output for display
+  $output = & psql @psqlArgs 2>$null
+  $value = ($output -join "").Trim()
+  Write-Host "$tbl: $value"
+  return $true
 }
 
 if (-not (Check-Table 'users')) { exit 1 }
@@ -81,9 +83,10 @@ if (-not (Check-Table 'fleets')) { exit 1 }
 
 if ($env:VERBOSE_MIGRATE -eq 'true') {
   Write-Host "Listing sample rows from users, planets, fleets for verification:"
-  & sh -c "psql -h `"$PGHOST`" -p `"$PGPORT`" -U `"$PGUSER`" -d `"$PGDATABASE`" -c \"SELECT * FROM users LIMIT 3;\""
-  & sh -c "psql -h `"$PGHOST`" -p `"$PGPORT`" -U `"$PGUSER`" -d `"$PGDATABASE`" -c \"SELECT * FROM planets LIMIT 3;\""
-  & sh -c "psql -h `"$PGHOST`" -p `"$PGPORT`" -U `"$PGUSER`" -d `"$PGDATABASE`" -c \"SELECT * FROM fleets LIMIT 3;\""
+  & psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -c "SELECT * FROM users LIMIT 3;"
+  & psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -c "SELECT * FROM planets LIMIT 3;"
+  & psql -h $PGHOST -p $PGPORT -U $PGUSER -d $PGDATABASE -c "SELECT * FROM fleets LIMIT 3;"
 }
 
 Write-Host "Sanity checks passed." -ForegroundColor Green
+

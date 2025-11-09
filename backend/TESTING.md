@@ -41,6 +41,22 @@ How the DB mock works
 
 Running integration tests locally (Postgres via Docker)
 
+PowerShell users: we provide PowerShell helpers to run the same flow on Windows. The PowerShell scripts are pure PowerShell and do not rely on `sh -c`.
+
+Examples (PowerShell):
+
+1) Start a Postgres container and apply migrations using the provided helper:
+
+   .\scripts\run-integration-local.ps1
+
+2) Or run the migrate script directly against a running Postgres:
+
+   $env:PGPASSWORD = 'postgres'
+   .\database\scripts\migrate-test-db.ps1
+
+
+
+
 1) Start a Postgres container (example):
 
    docker run --name universus-test-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=testdb -p 5432:5432 -d postgres:15
