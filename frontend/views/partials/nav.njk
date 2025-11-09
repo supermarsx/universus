@@ -1,6 +1,6 @@
 <nav class="top-nav" aria-label="Main navigation">
     <div class="nav-left">
-        <h1 class="nav-title">{{ brandName or ('universus' | t) }}</h1>
+        <h1 class="nav-title">{{ brandName or ('ui.universus' | t) }}</h1>
         <span id="username" class="nav-username">{{ user.username if user else '' }}</span>
     </div>
     
@@ -10,8 +10,8 @@
     
     <div class="nav-right">
         <div class="notification-center">
-<button class="notification-btn" id="notificationBell" aria-label="{{ 'notifications' | t }}" aria-haspopup="true" aria-expanded="false">
-                 <span class="sr-only">{{ 'open_notifications' | t }}</span>
+<button class="notification-btn" id="notificationBell" aria-label="{{ 'ui.notifications' | t }}" aria-haspopup="true" aria-expanded="false">
+                 <span class="sr-only">{{ 'ui.open_notifications' | t }}</span>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
                     <path d="M13.73 21a2 2 0 01-3.46 0"></path>
@@ -20,31 +20,31 @@
             </button>
             <div class="notification-dropdown" id="notificationDropdown" role="menu" aria-label="Notifications">
                 <div class="notification-header">
-                    <span>{{ 'notifications' | t }}</span>
-                    <button class="notification-action" id="markAllReadBtn">{{ 'mark_all_read' | t }}</button>
+                    <span>{{ 'ui.notifications' | t }}</span>
+                    <button class="notification-action" id="markAllReadBtn">{{ 'ui.mark_all_read' | t }}</button>
                 </div>
                 <div class="notification-list" id="notificationList" aria-live="polite">
-                    <p class="text-muted">{{ 'loading_notifications' | t }}</p>
+                    <p class="text-muted">{{ 'ui.loading_notifications' | t }}</p>
                 </div>
                 <div class="notification-footer">
-                    <a href="/notifications" class="notification-link">{{ 'view_all' | t }}</a>
+                    <a href="/notifications" class="notification-link">{{ 'ui.view_all' | t }}</a>
                 </div>
             </div>
         </div>
 
         {% if user.isAdmin %}
-        <a href="/admin" class="btn-admin">{{ 'admin' | t }}</a>
+        <a href="/admin" class="btn-admin">{{ 'admin.admin' | t }}</a>
         {% endif %}
         
         <!-- Account Dropdown -->
         <div class="account-dropdown">
 <button class="account-btn" id="accountDropdownBtn" aria-haspopup="true" aria-expanded="false">
-                 <span class="sr-only">{{ 'open_account_menu' | t }}</span>
+                 <span class="sr-only">{{ 'ui.open_account_menu' | t }}</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                     <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-{{ 'account' | t }}
+{{ 'ui.account' | t }}
             </button>
             <div class="account-dropdown-menu" id="accountDropdownMenu" role="menu" aria-label="Account">
                 <a href="/account/settings" class="dropdown-item">
@@ -52,20 +52,20 @@
                         <circle cx="12" cy="12" r="3"></circle>
                         <path d="M12 1v6m0 6v6m6-12h-6m-6 0H1m19 6h-6m-6 0H1"></path>
                     </svg>
-                    {{ 'settings' | t }}
+                    {{ 'ui.settings' | t }}
                 </a>
                 <a href="/account/security" class="dropdown-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                         <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                     </svg>
-                    {{ 'security' | t }}
+                    {{ 'ui.security' | t }}
                 </a>
                 <a href="/account/privacy" class="dropdown-item">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                     </svg>
-                    {{ 'privacy' | t }}
+                    {{ 'ui.privacy' | t }}
                 </a>
                 <div class="dropdown-divider"></div>
                 <a href="/account/transfer" class="dropdown-item">
@@ -73,12 +73,12 @@
                         <polyline points="17 1 21 5 17 9"></polyline>
                         <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
                     </svg>
-                    {{ 'transfer_account' | t }}
+                    {{ 'ui.transfer_account' | t }}
                 </a>
             </div>
         </div>
         
-        <button id="logoutBtn" class="btn-secondary">{{ 'logout' | t }}</button>
+        <button id="logoutBtn" class="btn-secondary">{{ 'ui.logout' | t }}</button>
         <div class="lang-switcher" style="display:inline-block;margin-left:1rem;">
             <select id="languageSelect" aria-label="Select language">
                 <option value="en">English</option>

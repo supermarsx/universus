@@ -11,18 +11,18 @@
     <!-- Shop Categories -->
     <div class="shop-sidebar">
         <nav class="shop-nav">
-            <a href="#" class="shop-nav-item active" data-category="all">{{ 'all_items' | t }}</a>
-            <a href="#" class="shop-nav-item" data-category="resources">{{ 'resources' | t }}</a>
-            <a href="#" class="shop-nav-item" data-category="officers">{{ 'officers' | t }}</a>
-            <a href="#" class="shop-nav-item" data-category="boosts">{{ 'boosts' | t }}</a>
-            <a href="#" class="shop-nav-item" data-category="premium">{{ 'premium' | t }}</a>
+            <a href="#" class="shop-nav-item active" data-category="all">{{ 'shop.all_items' | t }}</a>
+            <a href="#" class="shop-nav-item" data-category="resources">{{ 'game.resources' | t }}</a>
+            <a href="#" class="shop-nav-item" data-category="officers">{{ 'user.officers' | t }}</a>
+            <a href="#" class="shop-nav-item" data-category="boosts">{{ 'ui.boosts' | t }}</a>
+            <a href="#" class="shop-nav-item" data-category="premium">{{ 'ui.premium' | t }}</a>
         </nav>
 
         <!-- Active Perks -->
         <div class="active-perks">
             <h4>Active Perks</h4>
             <div id="activePerks">
-                <p class="text-muted">{{ 'no_active_perks' | t }}</p>
+                <p class="text-muted">{{ 'ui.no_active_perks' | t }}</p>
             </div>
         </div>
     </div>
@@ -37,7 +37,7 @@
         <div id="shopGrid" class="shop-grid" aria-live="polite">
         <div class="loading">
             <div class="spinner"></div>
-            <p>{{ 'loading' | t }}</p>
+            <p>{{ 'ui.loading' | t }}</p>
         </div>
         </div>
     </div>
@@ -47,7 +47,7 @@
 <div id="purchaseModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="purchaseModalTitle" tabindex="-1" style="display: none;">
     <div class="modal-content">
         <button class="close" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
-        <h3 id="purchaseModalTitle">{{ 'purchase_item' | t }}</h3>
+        <h3 id="purchaseModalTitle">{{ 'shop.purchase_item' | t }}</h3>
         <div id="purchaseDetails"></div>
     </div>
 </div>
@@ -56,7 +56,7 @@
 <div id="paymentModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle" tabindex="-1" style="display: none;">
     <div class="modal-content">
         <button class="close" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
-        <h3 id="paymentModalTitle">{{ 'purchase_dark_matter' | t }}</h3>
+        <h3 id="paymentModalTitle">{{ 'shop.purchase_dark_matter' | t }}</h3>
         <div id="paymentForm"></div>
     </div>
 </div>

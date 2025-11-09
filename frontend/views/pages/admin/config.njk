@@ -1,30 +1,30 @@
 {% extends "layouts/admin.njk" %}
 
-{% block title %}{{ 'config_management_admin_panel' | t }}{% endblock %}
+{% block title %}{{ 'admin.config_management_admin_panel' | t }}{% endblock %}
 
 {% block content %}
 <div class="admin-config-container">
     <!-- Header -->
     <div class="config-header">
-        <h1>{{ 'configuration_management' | t }}</h1>
+        <h1>{{ 'ui.configuration_management' | t }}</h1>
         <div class="config-actions">
-            <button id="refreshCache" class="btn btn-secondary" aria-label="{{ 'refresh_cache_aria' | t }}">
-                <i class="icon-refresh"></i> {{ 'refresh_cache' | t }}
+            <button id="refreshCache" class="btn btn-secondary" aria-label="{{ 'ui.refresh_cache_aria' | t }}">
+                <i class="icon-refresh"></i> {{ 'ui.refresh_cache' | t }}
             </button>
-            <button id="refreshSnapshot" class="btn btn-secondary" aria-label="{{ 'refresh_snapshot_aria' | t }}">
-                <i class="icon-bolt"></i> {{ 'refresh_snapshot' | t }}
+            <button id="refreshSnapshot" class="btn btn-secondary" aria-label="{{ 'ui.refresh_snapshot_aria' | t }}">
+                <i class="icon-bolt"></i> {{ 'ui.refresh_snapshot' | t }}
             </button>
             <button id="viewSnapshot" class="btn btn-info">
-                <i class="icon-eye"></i> {{ 'view_snapshot' | t }}
+                <i class="icon-eye"></i> {{ 'ui.view_snapshot' | t }}
             </button>
             <button id="exportConfig" class="btn btn-primary">
-                <i class="icon-download"></i> {{ 'export' | t }}
+                <i class="icon-download"></i> {{ 'ui.export' | t }}
             </button>
-            <button id="importConfig" class="btn btn-primary" aria-label="{{ 'import_aria' | t }}">
-                <i class="icon-upload"></i> {{ 'import' | t }}
+            <button id="importConfig" class="btn btn-primary" aria-label="{{ 'ui.import_aria' | t }}">
+                <i class="icon-upload"></i> {{ 'ui.import' | t }}
             </button>
-            <button id="viewHistory" class="btn btn-info" aria-label="{{ 'history_aria' | t }}">
-                <i class="icon-history"></i> {{ 'history' | t }}
+            <button id="viewHistory" class="btn btn-info" aria-label="{{ 'ui.history_aria' | t }}">
+                <i class="icon-history"></i> {{ 'ui.history' | t }}
             </button>
         </div>
     </div>
@@ -37,7 +37,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="totalParams">0</div>
-                <div class="stat-label">{{ 'total_parameters' | t }}</div>
+                <div class="stat-label">{{ 'ui.total_parameters' | t }}</div>
             </div>
         </div>
         <div class="stat-card">
@@ -46,7 +46,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="modifiedParams">0</div>
-                <div class="stat-label">{{ 'modified' | t }}</div>
+                <div class="stat-label">{{ 'ui.modified' | t }}</div>
             </div>
         </div>
         <div class="stat-card">
@@ -55,7 +55,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="recentChanges">0</div>
-                <div class="stat-label">{{ 'changes_24h' | t }}</div>
+                <div class="stat-label">{{ 'ui.changes_24h' | t }}</div>
             </div>
         </div>
         <div class="stat-card">
@@ -64,7 +64,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="restartRequired">0</div>
-                <div class="stat-label">{{ 'restart_required' | t }}</div>
+                <div class="stat-label">{{ 'ui.restart_required' | t }}</div>
             </div>
         </div>
 </div>
@@ -73,20 +73,20 @@
     <div class="config-runtime card">
         <div class="config-runtime-header">
             <div>
-                <h2>{{ 'runtime_game_configuration' | t }}</h2>
-                <p class="text-muted">{{ 'live_values_redis_snapshot' | t }}</p>
+                <h2>{{ 'ui.runtime_game_configuration' | t }}</h2>
+                <p class="text-muted">{{ 'ui.live_values_redis_snapshot' | t }}</p>
             </div>
             <div class="runtime-actions">
-                <button id="snapshotRefreshInline" class="btn btn-secondary" aria-label="{{ 'refresh_snapshot_inline_aria' | t }}">
-                    <i class="icon-refresh"></i> {{ 'refresh' | t }}
+                <button id="snapshotRefreshInline" class="btn btn-secondary" aria-label="{{ 'ui.refresh_snapshot_inline_aria' | t }}">
+                    <i class="icon-refresh"></i> {{ 'ui.refresh' | t }}
                 </button>
-                <button id="snapshotViewJson" class="btn btn-info" aria-label="{{ 'view_json_aria' | t }}">
-                    <i class="icon-eye"></i> {{ 'view_json' | t }}
+                <button id="snapshotViewJson" class="btn btn-info" aria-label="{{ 'ui.view_json_aria' | t }}">
+                    <i class="icon-eye"></i> {{ 'ui.view_json' | t }}
                 </button>
             </div>
         </div>
         <div class="snapshot-summary" id="snapshotSummary">
-            <div class="snapshot-placeholder">{{ 'loading_runtime_configuration' | t }}</div>
+            <div class="snapshot-placeholder">{{ 'ui.loading_runtime_configuration' | t }}</div>
         </div>
     </div>
 
@@ -100,16 +100,16 @@
     <!-- Configuration Editor -->
     <div class="config-editor">
         <div class="editor-toolbar">
-            <input type="text" id="searchParams" placeholder="{{ 'search_parameters' | t }}" class="search-input">
+            <input type="text" id="searchParams" placeholder="{{ 'ui.search_parameters' | t }}" class="search-input">
             <div class="toolbar-actions">
-<button id="saveChanges" class="btn btn-success" disabled aria-label="{{ 'save_changes_aria' | t }}">
-                        <i class="icon-save"></i> {{ 'save_changes' | t }}
+<button id="saveChanges" class="btn btn-success" disabled aria-label="{{ 'ui.save_changes_aria' | t }}">
+                        <i class="icon-save"></i> {{ 'ui.save_changes' | t }}
                     </button>
-<button id="discardChanges" class="btn btn-secondary" disabled aria-label="{{ 'discard_aria' | t }}">
-                        <i class="icon-cancel"></i> {{ 'discard' | t }}
+<button id="discardChanges" class="btn btn-secondary" disabled aria-label="{{ 'ui.discard_aria' | t }}">
+                        <i class="icon-cancel"></i> {{ 'ui.discard' | t }}
                     </button>
-<button id="resetCategory" class="btn btn-danger" aria-label="{{ 'reset_to_defaults_aria' | t }}">
-                        <i class="icon-reset"></i> {{ 'reset_to_defaults' | t }}
+<button id="resetCategory" class="btn btn-danger" aria-label="{{ 'ui.reset_to_defaults_aria' | t }}">
+                        <i class="icon-reset"></i> {{ 'ui.reset_to_defaults' | t }}
                     </button>
             </div>
         </div>
@@ -125,17 +125,17 @@
     <div id="historyModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="historyModalTitle">
         <div class="modal-content large">
             <div class="modal-header">
-                <h2 id="historyModalTitle">{{ 'config_change_history' | t }}</h2>
-                <button class="modal-close" aria-label="{{ 'close' | t }}">&times;</button>
+                <h2 id="historyModalTitle">{{ 'ui.config_change_history' | t }}</h2>
+                <button class="modal-close" aria-label="{{ 'ui.close' | t }}">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="history-filters">
                     <select id="historyCategory">
-                        <option value="">{{ 'all_categories' | t }}</option>
+                        <option value="">{{ 'ui.all_categories' | t }}</option>
                     </select>
                     <input type="date" id="historyStartDate">
                     <input type="date" id="historyEndDate">
-                    <button id="applyHistoryFilter" class="btn btn-sm btn-primary">{{ 'filter' | t }}</button>
+                    <button id="applyHistoryFilter" class="btn btn-sm btn-primary">{{ 'ui.filter' | t }}</button>
                 </div>
                 <div class="history-list" id="historyList">
                     <!-- History items populated dynamically -->
@@ -148,31 +148,31 @@
     <div id="importModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="importModalTitle">{{ 'import_configuration' | t }}</h2>
-                <button class="modal-close" aria-label="{{ 'close' | t }}">&times;</button>
+                <h2 id="importModalTitle">{{ 'ui.import_configuration' | t }}</h2>
+                <button class="modal-close" aria-label="{{ 'ui.close' | t }}">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="import-options">
                     <label>
                         <input type="radio" name="importMethod" value="file" checked>
-                        {{ 'upload_file' | t }}
+                        {{ 'monitoring.upload_file' | t }}
                     </label>
                     <label>
                         <input type="radio" name="importMethod" value="paste">
-                        {{ 'paste_json' | t }}
+                        {{ 'ui.paste_json' | t }}
                     </label>
                 </div>
                 <div id="importFileSection">
                     <input type="file" id="importFile" accept=".json">
                 </div>
                 <div id="importPasteSection" style="display:none;">
-                    <textarea id="importJSON" rows="10" placeholder="{{ 'paste_config_json_here' | t }}"></textarea>
+                    <textarea id="importJSON" rows="10" placeholder="{{ 'ui.paste_config_json_here' | t }}"></textarea>
                 </div>
                 <div class="import-validation" id="importValidation"></div>
             </div>
             <div class="modal-footer">
-                <button id="validateImport" class="btn btn-secondary" aria-label="{{ 'validate_aria' | t }}">{{ 'validate' | t }}</button>
-                <button id="performImport" class="btn btn-primary" disabled aria-label="{{ 'import_aria' | t }}">{{ 'import' | t }}</button>
+                <button id="validateImport" class="btn btn-secondary" aria-label="{{ 'ui.validate_aria' | t }}">{{ 'ui.validate' | t }}</button>
+                <button id="performImport" class="btn btn-primary" disabled aria-label="{{ 'ui.import_aria' | t }}">{{ 'ui.import' | t }}</button>
             </div>
         </div>
     </div>
@@ -181,12 +181,12 @@
     <div id="templateModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="templateModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="templateModalTitle">{{ 'configuration_templates' | t }}</h2>
-                <button class="modal-close" aria-label="{{ 'close' | t }}">&times;</button>
+                <h2 id="templateModalTitle">{{ 'ui.configuration_templates' | t }}</h2>
+                <button class="modal-close" aria-label="{{ 'ui.close' | t }}">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="template-actions">
-                    <button id="createTemplate" class="btn btn-primary" aria-label="{{ 'create_new_template_aria' | t }}">{{ 'create_new_template' | t }}</button>
+                    <button id="createTemplate" class="btn btn-primary" aria-label="{{ 'ui.create_new_template_aria' | t }}">{{ 'ui.create_new_template' | t }}</button>
                 </div>
                 <div class="template-list" id="templateList">
                     <!-- Templates populated dynamically -->
@@ -199,11 +199,11 @@
     <div id="snapshotModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="snapshotModalTitle">
         <div class="modal-content wide">
             <div class="modal-header">
-                <h2 id="snapshotModalTitle">{{ 'runtime_configuration_snapshot' | t }}</h2>
-                <button class="modal-close" aria-label="{{ 'close' | t }}">&times;</button>
+                <h2 id="snapshotModalTitle">{{ 'ui.runtime_configuration_snapshot' | t }}</h2>
+                <button class="modal-close" aria-label="{{ 'ui.close' | t }}">&times;</button>
             </div>
             <div class="modal-body">
-                <pre id="snapshotJson" class="snapshot-json">{{ 'loading' | t }}</pre>
+                <pre id="snapshotJson" class="snapshot-json">{{ 'ui.loading' | t }}</pre>
             </div>
         </div>
     </div>
@@ -212,19 +212,19 @@
     <div id="confirmModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <div class="modal-content small">
             <div class="modal-header">
-                <h2 id="confirmTitle">{{ 'confirm_action' | t }}</h2>
-                <button class="modal-close" aria-label="{{ 'close' | t }}">&times;</button>
+                <h2 id="confirmTitle">{{ 'ui.confirm_action' | t }}</h2>
+                <button class="modal-close" aria-label="{{ 'ui.close' | t }}">&times;</button>
             </div>
             <div class="modal-body">
                 <p id="confirmMessage"></p>
                 <div class="form-group">
-                    <label for="confirmReason">{{ 'reason_optional' | t }}</label>
-                    <input type="text" id="confirmReason" placeholder="{{ 'why_making_change' | t }}">
+                    <label for="confirmReason">{{ 'ui.reason_optional' | t }}</label>
+                    <input type="text" id="confirmReason" placeholder="{{ 'ui.why_making_change' | t }}">
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="confirmCancel" class="btn btn-secondary" aria-label="{{ 'cancel_aria' | t }}">{{ 'cancel' | t }}</button>
-                <button id="confirmOk" class="btn btn-danger" aria-label="{{ 'confirm_aria' | t }}">{{ 'confirm' | t }}</button>
+                <button id="confirmCancel" class="btn btn-secondary" aria-label="{{ 'ui.cancel_aria' | t }}">{{ 'ui.cancel' | t }}</button>
+                <button id="confirmOk" class="btn btn-danger" aria-label="{{ 'ui.confirm_aria' | t }}">{{ 'ui.confirm' | t }}</button>
             </div>
         </div>
     </div>

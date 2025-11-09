@@ -2,34 +2,16 @@
 // Overview Page Logic
 
 import i18next from 'i18next';
-import Backend from 'i18next-http-backend';
+import './i18n';
 
-// Initialize i18next
-// Assumes the page is served from /frontend and locales are at /locales/{lng}/translation.json
-// You may need to adjust the loadPath depending on your server setup
-
-i18next
-  .use(Backend)
-  .init({
-    lng: 'en',
-    fallbackLng: 'en',
-    debug: true,
-    backend: {
-      loadPath: '/locales/{{lng}}/translation.json'
-    }
-  }, function(err, t) {
-    if (err) {
-      console.error('i18next init failed:', err);
-    } else {
-      // Example: set welcome message
-      const welcomeEl = document.getElementById('welcomeMessage');
-      if (welcomeEl) welcomeEl.textContent = i18next.t('overview.welcome');
-      const descEl = document.getElementById('overviewDescription');
-      if (descEl) descEl.textContent = i18next.t('overview.description');
-      const startBtn = document.getElementById('startButton');
-      if (startBtn) startBtn.textContent = i18next.t('overview.startButton');
-    }
-  });
+// i18next is now initialized centrally in `frontend/src/i18n.ts`
+// Example: set welcome message (safe to call since the initializer runs on import)
+const welcomeEl = document.getElementById('welcomeMessage');
+if (welcomeEl) welcomeEl.textContent = i18next.t('overview.welcome');
+const descEl = document.getElementById('overviewDescription');
+if (descEl) descEl.textContent = i18next.t('overview.description');
+const startBtn = document.getElementById('startButton');
+if (startBtn) startBtn.textContent = i18next.t('overview.startButton');
 
 // Update page with planet data
 function updatePageData(data) {

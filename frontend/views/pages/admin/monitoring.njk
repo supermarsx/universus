@@ -1,5 +1,5 @@
 {% extends "base.njk" %}
-{% block title %}{{ 'monitoring_admin_panel' | t }}{% endblock %}
+{% block title %}{{ 'admin.monitoring_admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <style>
@@ -146,97 +146,97 @@
 <div class="monitoring-layout">
   <div class="monitoring-header">
     <div>
-      <h1>{{ 'server_monitoring' | t }}</h1>
-      <p class="text-muted">{{ 'monitoring_live_insights' | t }}</p>
+      <h1>{{ 'monitoring.server_monitoring' | t }}</h1>
+      <p class="text-muted">{{ 'monitoring.monitoring_live_insights' | t }}</p>
     </div>
     <div class="monitoring-actions">
-      <button id="refreshScalingMetrics" class="btn-ghost">{{ 'refresh' | t }}</button>
-      <button id="backToAdminDash" class="btn">{{ 'admin_dashboard' | t }}</button>
+      <button id="refreshScalingMetrics" class="btn-ghost">{{ 'ui.refresh' | t }}</button>
+      <button id="backToAdminDash" class="btn">{{ 'admin.admin_dashboard' | t }}</button>
     </div>
   </div>
 
   <div class="monitoring-grid">
     <div class="monitoring-card">
       <div class="card-header">
-        <h3>{{ 'process_and_load' | t }}</h3>
+        <h3>{{ 'bots.process_and_load' | t }}</h3>
       </div>
       <div class="metric-row">
-        <span>{{ 'uptime' | t }}</span>
+        <span>{{ 'monitoring.uptime' | t }}</span>
         <strong id="processUptime">—</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'load_1m' | t }}</span>
+        <span>{{ 'monitoring.load_1m' | t }}</span>
         <strong id="loadOne">0.00</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'load_5m' | t }}</span>
+        <span>{{ 'monitoring.load_5m' | t }}</span>
         <strong id="loadFive">0.00</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'load_15m' | t }}</span>
+        <span>{{ 'monitoring.load_15m' | t }}</span>
         <strong id="loadFifteen">0.00</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'rss' | t }}</span>
+        <span>{{ 'ui.rss' | t }}</span>
         <strong id="memoryRss">—</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'heap_used' | t }}</span>
+        <span>{{ 'ui.heap_used' | t }}</span>
         <strong id="memoryHeapUsed">—</strong>
       </div>
     </div>
 
     <div class="monitoring-card">
       <div class="card-header">
-        <h3>{{ 'socket_cluster' | t }}</h3>
+        <h3>{{ 'ui.socket_cluster' | t }}</h3>
       </div>
       <div class="metric-row">
-        <span>{{ 'connected_clients' | t }}</span>
+        <span>{{ 'ui.connected_clients' | t }}</span>
         <strong id="socketClients">0</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'rooms' | t }}</span>
+        <span>{{ 'ui.rooms' | t }}</span>
         <strong id="socketRooms">0</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'namespaces' | t }}</span>
+        <span>{{ 'ui.namespaces' | t }}</span>
         <strong id="socketNamespaces">0</strong>
       </div>
       <div class="metric-row">
-        <span>{{ 'adapter' | t }}</span>
+        <span>{{ 'ui.adapter' | t }}</span>
         <strong id="socketAdapter">n/a</strong>
       </div>
     </div>
 
     <div class="monitoring-card">
       <div class="card-header">
-        <h3>{{ 'redis_adapter' | t }}</h3>
+        <h3>{{ 'ui.redis_adapter' | t }}</h3>
       </div>
         <div class="metric-row">
-          <span>{{ 'status' | t }}</span>
-          <strong id="redisStatus">{{ 'unknown' | t }}</strong>
+          <span>{{ 'ui.status' | t }}</span>
+          <strong id="redisStatus">{{ 'ui.unknown' | t }}</strong>
         </div>
       <div class="metric-row">
-        <span>{{ 'ping_latency' | t }}</span>
+        <span>{{ 'ui.ping_latency' | t }}</span>
         <strong id="redisLatency">n/a</strong>
       </div>
     </div>
 
     <div class="monitoring-card">
       <div class="card-header">
-        <h3>{{ 'leaderboard_scheduler' | t }}</h3>
-        <button id="triggerLeaderboardRebuild" class="btn-primary">{{ 'force_rebuild' | t }}</button>
+        <h3>{{ 'schedules.leaderboard_scheduler' | t }}</h3>
+        <button id="triggerLeaderboardRebuild" class="btn-primary">{{ 'ui.force_rebuild' | t }}</button>
       </div>
         <div class="metric-row">
-          <span>{{ 'status' | t }}</span>
-          <span id="leaderboardStatus" class="status-badge status-warning">{{ 'paused' | t }}</span>
+          <span>{{ 'ui.status' | t }}</span>
+          <span id="leaderboardStatus" class="status-badge status-warning">{{ 'ui.paused' | t }}</span>
         </div>
         <div class="metric-row">
-          <span>{{ 'last_run' | t }}</span>
-          <strong id="leaderboardLastRun">{{ 'never' | t }}</strong>
+          <span>{{ 'schedules.last_run' | t }}</span>
+          <strong id="leaderboardLastRun">{{ 'ui.never' | t }}</strong>
         </div>
         <div class="metric-row">
-          <span>{{ 'interval' | t }}</span>
+          <span>{{ 'schedules.interval' | t }}</span>
           <strong id="leaderboardInterval">—</strong>
         </div>
     </div>

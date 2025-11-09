@@ -5,39 +5,39 @@
 {% set bodyClass = "game-body admin-body" %}
 
 {% block content %}
-<h2>{{ 'bot_management_system' | t }}</h2>
+<h2>{{ 'bots.bot_management_system' | t }}</h2>
 
 <div class="bot-management-toolbar">
-    <button id="createBotBtn" class="btn-primary">{{ 'create_new_bot' | t }}</button>
-    <button id="bulkCreateBtn" class="btn-secondary">{{ 'bulk_create_bots' | t }}</button>
-    <button id="processAllBotsBtn" class="btn-success" aria-label="{{ 'process_all_bots' | t }}">{{ 'process_all_bots' | t }}</button>
-    <button id="refreshBotsBtn" class="btn-secondary" aria-label="{{ 'refresh' | t }}">{{ 'refresh' | t }}</button>
+    <button id="createBotBtn" class="btn-primary">{{ 'bots.create_new_bot' | t }}</button>
+    <button id="bulkCreateBtn" class="btn-secondary">{{ 'bots.bulk_create_bots' | t }}</button>
+    <button id="processAllBotsBtn" class="btn-success" aria-label="{{ 'bots.process_all_bots' | t }}">{{ 'bots.process_all_bots' | t }}</button>
+    <button id="refreshBotsBtn" class="btn-secondary" aria-label="{{ 'ui.refresh' | t }}">{{ 'ui.refresh' | t }}</button>
 </div>
 
 <div class="bot-filters">
     <select id="personalityFilter" class="filter-select">
-        <option value="">{{ 'all_personalities' | t }}</option>
-        <option value="aggressive">{{ 'aggressive_conqueror' | t }}</option>
-        <option value="builder">{{ 'strategic_builder' | t }}</option>
-        <option value="diplomat">{{ 'diplomatic_negotiator' | t }}</option>
-        <option value="hoarder">{{ 'resource_hoarder' | t }}</option>
-<option value="rusher">{{ 'speed_rusher' | t }}</option>
-                    <option value="tech">{{ 'tech_enthusiast' | t }}</option>
-                    <option value="alliance">{{ 'alliance_focused' | t }}</option>
-<option value="solo">{{ 'solo_survivor' | t }}</option>
+        <option value="">{{ 'ui.all_personalities' | t }}</option>
+        <option value="aggressive">{{ 'ui.aggressive_conqueror' | t }}</option>
+        <option value="builder">{{ 'ui.strategic_builder' | t }}</option>
+        <option value="diplomat">{{ 'ui.diplomatic_negotiator' | t }}</option>
+        <option value="hoarder">{{ 'game.resource_hoarder' | t }}</option>
+<option value="rusher">{{ 'ui.speed_rusher' | t }}</option>
+                    <option value="tech">{{ 'ui.tech_enthusiast' | t }}</option>
+                    <option value="alliance">{{ 'ui.alliance_focused' | t }}</option>
+<option value="solo">{{ 'ui.solo_survivor' | t }}</option>
     </select>
     
     <select id="statusFilter" class="filter-select">
-        <option value="">{{ 'all_status' | t }}</option>
-        <option value="active">{{ 'active' | t }}</option>
-        <option value="inactive">{{ 'inactive' | t }}</option>
+        <option value="">{{ 'ui.all_status' | t }}</option>
+        <option value="active">{{ 'ui.active' | t }}</option>
+        <option value="inactive">{{ 'ui.inactive' | t }}</option>
     </select>
 </div>
 
 <div id="botsGrid" class="bots-grid">
     <div class="loading">
         <div class="spinner"></div>
-        <p>{{ 'loading_bots' | t }}</p>
+        <p>{{ 'bots.loading_bots' | t }}</p>
     </div>
 </div>
 
@@ -45,7 +45,7 @@
 <div id="botDetailsModal" class="modal" style="display: none;">
     <div class="modal-content modal-large">
         <span class="close">&times;</span>
-        <h3>{{ 'bot_details' | t }}</h3>
+        <h3>{{ 'bots.bot_details' | t }}</h3>
         <div id="botDetailsContent"></div>
     </div>
 </div>
@@ -54,38 +54,38 @@
 <div id="botFormModal" class="modal" style="display: none;">
     <div class="modal-content">
         <span class="close">&times;</span>
-        <h3 id="botFormTitle">{{ 'create_new_bot' | t }}</h3>
+        <h3 id="botFormTitle">{{ 'bots.create_new_bot' | t }}</h3>
         <form id="botForm">
             <div class="form-group">
-                <label for="botUsername">{{ 'username' | t }}:</label>
+                <label for="botUsername">{{ 'user.username' | t }}:</label>
                 <input type="text" id="botUsername" required>
             </div>
             <div class="form-group">
-                <label for="botEmail">{{ 'email' | t }}:</label>
+                <label for="botEmail">{{ 'ui.email' | t }}:</label>
                 <input type="email" id="botEmail" required>
             </div>
             <div class="form-group">
-                <label for="botPersonality">{{ 'personality' | t }}:</label>
+                <label for="botPersonality">{{ 'ui.personality' | t }}:</label>
                 <select id="botPersonality" required>
-                    <option value="aggressive">{{ 'aggressive_conqueror' | t }}</option>
-<option value="builder">{{ 'strategic_builder' | t }}</option>
-<option value="diplomat">{{ 'diplomatic_negotiator' | t }}</option>
-<option value="hoarder">{{ 'resource_hoarder' | t }}</option>
-<option value="rusher">{{ 'speed_rusher' | t }}</option>
-                    <option value="tech">{{ 'tech_enthusiast' | t }}</option>
-                    <option value="alliance">{{ 'alliance_focused' | t }}</option>
-<option value="solo">{{ 'solo_survivor' | t }}</option>
+                    <option value="aggressive">{{ 'ui.aggressive_conqueror' | t }}</option>
+<option value="builder">{{ 'ui.strategic_builder' | t }}</option>
+<option value="diplomat">{{ 'ui.diplomatic_negotiator' | t }}</option>
+<option value="hoarder">{{ 'game.resource_hoarder' | t }}</option>
+<option value="rusher">{{ 'ui.speed_rusher' | t }}</option>
+                    <option value="tech">{{ 'ui.tech_enthusiast' | t }}</option>
+                    <option value="alliance">{{ 'ui.alliance_focused' | t }}</option>
+<option value="solo">{{ 'ui.solo_survivor' | t }}</option>
                 </select>
             </div>
             <div class="form-group">
                 <label>
                     <input type="checkbox" id="botIsActive" checked>
-{{ 'active' | t }}
+{{ 'ui.active' | t }}
                 </label>
             </div>
             <div class="form-actions">
-                <button type="submit" class="btn-primary">{{ 'save_bot' | t }}</button>
-                <button type="button" class="btn-secondary" id="cancelBotForm">{{ 'cancel' | t }}</button>
+                <button type="submit" class="btn-primary">{{ 'bots.save_bot' | t }}</button>
+                <button type="button" class="btn-secondary" id="cancelBotForm">{{ 'ui.cancel' | t }}</button>
             </div>
         </form>
     </div>
@@ -95,21 +95,21 @@
 <div id="bulkCreateModal" class="modal" style="display: none;">
     <div class="modal-content">
         <span class="close">&times;</span>
-        <h3>{{ 'bulk_create_bots' | t }}</h3>
+        <h3>{{ 'bots.bulk_create_bots' | t }}</h3>
         <form id="bulkCreateForm">
             <div class="form-group">
-                <label for="bulkCount">{{ 'number_of_bots' | t }}:</label>
+                <label for="bulkCount">{{ 'bots.number_of_bots' | t }}:</label>
                 <input type="number" id="bulkCount" min="1" max="100" value="10" required>
             </div>
             <div class="form-group">
                 <label>
                     <input type="checkbox" id="bulkRandomPersonalities" checked>
-                    {{ 'random_personalities' | t }}
+                    {{ 'ui.random_personalities' | t }}
                 </label>
             </div>
             <div class="form-actions">
-                <button type="submit" class="btn-primary">{{ 'create_bots' | t }}</button>
-                <button type="button" class="btn-secondary" id="cancelBulkCreate">{{ 'cancel' | t }}</button>
+                <button type="submit" class="btn-primary">{{ 'bots.create_bots' | t }}</button>
+                <button type="button" class="btn-secondary" id="cancelBulkCreate">{{ 'ui.cancel' | t }}</button>
             </div>
         </form>
     </div>

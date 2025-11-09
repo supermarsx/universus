@@ -215,50 +215,50 @@
   <!-- Admin Sidebar -->
   <aside class="admin-sidebar">
     <div class="admin-sidebar-logo">
-      <h2>{{ 'admin_panel' | t }}</h2>
+      <h2>{{ 'admin.admin_panel' | t }}</h2>
     </div>
     <nav>
       <ul class="admin-nav">
         <li class="admin-nav-item">
            <a href="/admin/dashboard" class="admin-nav-link active">
             <div class="css-icon icon-overview admin-nav-icon"></div>
-            {{ 'dashboard' | t }}
+            {{ 'ui.dashboard' | t }}
           </a>
         </li>
         <li class="admin-nav-item">
            <a href="/admin/users" class="admin-nav-link">
             <div class="css-icon icon-user admin-nav-icon"></div>
-            {{ 'users' | t }}
+            {{ 'user.users' | t }}
           </a>
         </li>
         <li class="admin-nav-item">
           <a href="/admin/monitoring" class="admin-nav-link">
             <div class="css-icon icon-monitoring admin-nav-icon"></div>
-            {{ 'monitoring' | t }}
+            {{ 'monitoring.monitoring' | t }}
           </a>
         </li>
         <li class="admin-nav-item">
            <a href="/admin/settings" class="admin-nav-link">
             <div class="css-icon icon-settings admin-nav-icon"></div>
-            {{ 'settings' | t }}
+            {{ 'ui.settings' | t }}
           </a>
         </li>
         <li class="admin-nav-item">
           <a href="/admin/events" class="admin-nav-link">
             <div class="css-icon icon-event admin-nav-icon"></div>
-            {{ 'events' | t }}
+            {{ 'events.events' | t }}
           </a>
         </li>
         <li class="admin-nav-item">
           <a href="/admin/analytics" class="admin-nav-link">
             <div class="css-icon icon-chart admin-nav-icon"></div>
-            {{ 'analytics' | t }}
+            {{ 'admin.analytics' | t }}
           </a>
         </li>
         <li class="admin-nav-item">
           <a href="/admin/audit" class="admin-nav-link">
             <div class="css-icon icon-audit admin-nav-icon"></div>
-            {{ 'audit_logs' | t }}
+            {{ 'admin.audit_logs' | t }}
           </a>
         </li>
       </ul>
@@ -268,14 +268,14 @@
   <!-- Main Content -->
   <main class="admin-content">
     <header class="admin-header">
-      <h1>{{ 'admin_dashboard' | t }}</h1>
+      <h1>{{ 'admin.admin_dashboard' | t }}</h1>
       <div class="admin-user-info">
         <div class="notification-badge">
           <div class="css-icon icon-notification"></div>
           <span class="notification-count" id="notificationCount">3</span>
         </div>
-        <span class="admin-badge">{{ 'super_admin' | t }}</span>
-        <span class="admin-badge" id="adminUsername">{{ 'loading' | t }}</span>
+        <span class="admin-badge">{{ 'admin.super_admin' | t }}</span>
+        <span class="admin-badge" id="adminUsername">{{ 'ui.loading' | t }}</span>
       </div>
     </header>
 
@@ -283,48 +283,48 @@
     <div class="dashboard-grid">
       <div class="dashboard-card">
         <div class="dashboard-card-header">
-           <span class="dashboard-card-title">{{ 'server_health' | t }}</span>
+           <span class="dashboard-card-title">{{ 'monitoring.server_health' | t }}</span>
           <span class="status-indicator status-healthy" id="serverHealthStatus"></span>
         </div>
-         <div class="dashboard-card-value" id="serverHealthValue">{{ 'healthy' | t }}</div>
+         <div class="dashboard-card-value" id="serverHealthValue">{{ 'monitoring.healthy' | t }}</div>
          <div class="dashboard-card-subtitle">
-          {{ 'cpu' | t }}: <span id="cpuUsage">0</span>% | {{ 'memory' | t }}: <span id="memoryUsage">0</span>%
+          {{ 'ui.cpu' | t }}: <span id="cpuUsage">0</span>% | {{ 'ui.memory' | t }}: <span id="memoryUsage">0</span>%
         </div>
       </div>
 
       <div class="dashboard-card">
         <div class="dashboard-card-header">
-           <span class="dashboard-card-title">{{ 'active_players' | t }}</span>
+           <span class="dashboard-card-title">{{ 'ui.active_players' | t }}</span>
         </div>
         <div class="dashboard-card-value" id="activePlayers">0</div>
-         <div class="dashboard-card-subtitle">{{ 'online_right_now' | t }}</div>
+         <div class="dashboard-card-subtitle">{{ 'ui.online_right_now' | t }}</div>
       </div>
 
       <div class="dashboard-card">
         <div class="dashboard-card-header">
-           <span class="dashboard-card-title">{{ 'total_users' | t }}</span>
+           <span class="dashboard-card-title">{{ 'user.total_users' | t }}</span>
         </div>
         <div class="dashboard-card-value" id="totalUsers">0</div>
          <div class="dashboard-card-subtitle">
-          <span id="newUsersToday">0</span> {{ 'new_today' | t }}
+          <span id="newUsersToday">0</span> {{ 'ui.new_today' | t }}
         </div>
       </div>
 
       <div class="dashboard-card">
         <div class="dashboard-card-header">
-           <span class="dashboard-card-title">{{ 'active_events' | t }}</span>
+           <span class="dashboard-card-title">{{ 'events.active_events' | t }}</span>
         </div>
-        <div class="dashboard-card-value" id="active{{ 'events' | t }}">0</div>
-         <div class="dashboard-card-subtitle">{{ 'currently_running' | t }}</div>
+        <div class="dashboard-card-value" id="active{{ 'events.events' | t }}">0</div>
+         <div class="dashboard-card-subtitle">{{ 'ui.currently_running' | t }}</div>
       </div>
     </div>
 
     <!-- Recent Activity -->
     <div class="recent-activity">
-      <h3 style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'recent_admin_activity' | t }}</h3>
+      <h3 style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'admin.recent_admin_activity' | t }}</h3>
       <div id="recentActivityList">
         <div class="activity-item">
-           <span class="activity-text">{{ 'loading_activity' | t }}</span>
+           <span class="activity-text">{{ 'ui.loading_activity' | t }}</span>
           <span class="activity-time">--</span>
         </div>
       </div>
@@ -350,11 +350,11 @@
 
       if (!response.ok) {
         if (response.status === 403) {
-           alert('{{ 'admin_access_required' | t }}');
+           alert('{{ 'admin.admin_access_required' | t }}');
           window.location.href = '/overview';
           return;
         }
-         throw new Error('{{ 'failed_load_dashboard' | t }}');
+         throw new Error('{{ 'monitoring.failed_load_dashboard' | t }}');
       }
 
       const data = await response.json();
@@ -370,7 +370,7 @@
       document.getElementById('activePlayers').textContent = health.active_players;
       document.getElementById('totalUsers').textContent = data.user_analytics.total_users;
       document.getElementById('newUsersToday').textContent = data.user_analytics.new_users_today;
-      document.getElementById('active{{ 'events' | t }}').textContent = data.active_events.length;
+      document.getElementById('active{{ 'events.events' | t }}').textContent = data.active_events.length;
 
       // Update notifications
       document.getElementById('notificationCount').textContent = data.critical_alerts.length;
@@ -395,7 +395,7 @@
 
     } catch (error) {
       console.error('Dashboard error:', error);
-       alert('{{ 'failed_load_dashboard' | t }}');
+       alert('{{ 'monitoring.failed_load_dashboard' | t }}');
     }
   }
 

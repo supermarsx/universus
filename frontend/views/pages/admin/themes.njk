@@ -1,6 +1,6 @@
 {% extends "../layouts/base.njk" %}
 
-{% block title %}{{ 'theme_management' | t }} - {{ 'admin_panel' | t }}{% endblock %}
+{% block title %}{{ 'theme.theme_management' | t }} - {{ 'admin.admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <link rel="stylesheet" href="/css/theme-effects.css">
@@ -104,8 +104,8 @@
 <div class="container mt-4">
     <div class="row mb-4">
         <div class="col-12">
-            <h1>{{ 'theme_management' | t }}</h1>
-            <p class="text-muted">{{ 'manage_themes_desc' | t }}</p>
+            <h1>{{ 'theme.theme_management' | t }}</h1>
+            <p class="text-muted">{{ 'theme.manage_themes_desc' | t }}</p>
         </div>
     </div>
 
@@ -113,13 +113,13 @@
     <div class="row mb-4">
         <div class="col-12">
             <button class="btn btn-primary" onclick="createTheme()">
-                <i class="fas fa-plus"></i> {{ 'create_new_theme' | t }}
+                <i class="fas fa-plus"></i> {{ 'theme.create_new_theme' | t }}
             </button>
             <button class="btn btn-info" onclick="checkSchedules()">
-                <i class="fas fa-sync"></i> {{ 'check_schedules_now' | t }}
+                <i class="fas fa-sync"></i> {{ 'schedules.check_schedules_now' | t }}
             </button>
             <button class="btn btn-secondary" onclick="viewAnalytics()">
-                <i class="fas fa-chart-bar"></i> {{ 'view_analytics' | t }}
+                <i class="fas fa-chart-bar"></i> {{ 'admin.view_analytics' | t }}
             </button>
         </div>
     </div>
@@ -129,10 +129,10 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">{{ 'currently_active_theme' | t }}</h5>
+                    <h5 class="mb-0">{{ 'theme.currently_active_theme' | t }}</h5>
                 </div>
                 <div class="card-body" id="current-theme-display">
-                    <p class="text-muted">{{ 'loading' | t }}</p>
+                    <p class="text-muted">{{ 'ui.loading' | t }}</p>
                 </div>
             </div>
         </div>
@@ -141,9 +141,9 @@
     <!-- Theme List -->
     <div class="row">
         <div class="col-12">
-            <h3>{{ 'all_themes' | t }}</h3>
+            <h3>{{ 'theme.all_themes' | t }}</h3>
             <div id="themes-container">
-                <p class="text-muted">{{ 'loading_themes' | t }}</p>
+                <p class="text-muted">{{ 'theme.loading_themes' | t }}</p>
             </div>
         </div>
     </div>
@@ -153,11 +153,11 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">{{ 'active_schedules' | t }}</h5>
+                    <h5 class="mb-0">{{ 'schedules.active_schedules' | t }}</h5>
                 </div>
                 <div class="card-body">
                     <div id="schedules-container">
-                        <p class="text-muted">{{ 'loading_schedules' | t }}</p>
+                        <p class="text-muted">{{ 'schedules.loading_schedules' | t }}</p>
                     </div>
                 </div>
             </div>
@@ -168,64 +168,64 @@
 <!-- Create/Edit Theme Modal -->
 <div id="theme-modal" class="modal">
     <div class="modal-content">
-        <h3 id="modal-title">{{ 'create_theme' | t }}</h3>
+        <h3 id="modal-title">{{ 'theme.create_theme' | t }}</h3>
         <form id="theme-form" onsubmit="saveTheme(event)">
             <div class="form-group">
-                <label>{{ 'theme_key' | t }}</label>
+                <label>{{ 'theme.theme_key' | t }}</label>
                 <input type="text" class="form-control" id="theme-key" required>
-                <small class="text-muted">{{ 'theme_key_hint' | t }}</small>
+                <small class="text-muted">{{ 'theme.theme_key_hint' | t }}</small>
             </div>
             
             <div class="form-group">
-                <label>{{ 'name' | t }}</label>
+                <label>{{ 'ui.name' | t }}</label>
                 <input type="text" class="form-control" id="theme-name" required>
             </div>
             
             <div class="form-group">
-                <label>{{ 'description' | t }}</label>
+                <label>{{ 'ui.description' | t }}</label>
                 <textarea class="form-control" id="theme-description" rows="3"></textarea>
             </div>
             
             <div class="row">
                 <div class="col-md-4">
                     <div class="form-group">
-                        <label>{{ 'primary_color' | t }}</label>
+                        <label>{{ 'theme.primary_color' | t }}</label>
                         <input type="color" class="form-control" id="theme-primary-color" required>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="form-group">
-                        <label>{{ 'secondary_color' | t }}</label>
+                        <label>{{ 'theme.secondary_color' | t }}</label>
                         <input type="color" class="form-control" id="theme-secondary-color" required>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="form-group">
-                        <label>{{ 'accent_color' | t }}</label>
+                        <label>{{ 'theme.accent_color' | t }}</label>
                         <input type="color" class="form-control" id="theme-accent-color" required>
                     </div>
                 </div>
             </div>
             
             <div class="form-group">
-                <label>{{ 'category' | t }}</label>
+                <label>{{ 'ui.category' | t }}</label>
                 <select class="form-control" id="theme-category" required>
-                    <option value="seasonal">{{ 'seasonal' | t }}</option>
-                    <option value="event">{{ 'event' | t }}</option>
-                    <option value="special">{{ 'special' | t }}</option>
-                    <option value="custom">{{ 'custom' | t }}</option>
+                    <option value="seasonal">{{ 'ui.seasonal' | t }}</option>
+                    <option value="event">{{ 'events.event' | t }}</option>
+                    <option value="special">{{ 'ui.special' | t }}</option>
+                    <option value="custom">{{ 'ui.custom' | t }}</option>
                 </select>
             </div>
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="theme-available"> {{ 'available_for_use' | t }}
+                    <input type="checkbox" id="theme-available"> {{ 'ui.available_for_use' | t }}
                 </label>
             </div>
             
             <div class="mt-3">
-                <button type="submit" class="btn btn-primary">{{ 'save_theme' | t }}</button>
-                <button type="button" class="btn btn-secondary" onclick="closeModal()">{{ 'cancel' | t }}</button>
+                <button type="submit" class="btn btn-primary">{{ 'theme.save_theme' | t }}</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">{{ 'ui.cancel' | t }}</button>
             </div>
         </form>
     </div>
@@ -234,51 +234,51 @@
 <!-- Schedule Modal -->
 <div id="schedule-modal" class="modal">
     <div class="modal-content">
-        <h3>{{ 'create_schedule' | t }}</h3>
+        <h3>{{ 'schedules.create_schedule' | t }}</h3>
         <form id="schedule-form" onsubmit="saveSchedule(event)">
             <input type="hidden" id="schedule-theme-id">
             
             <div class="form-group">
-                <label>{{ 'schedule_name' | t }}</label>
+                <label>{{ 'schedules.schedule_name' | t }}</label>
                 <input type="text" class="form-control" id="schedule-name" required>
             </div>
             
             <div class="row">
                 <div class="col-md-6">
                     <div class="form-group">
-                        <label>{{ 'start_date' | t }}</label>
+                        <label>{{ 'ui.start_date' | t }}</label>
                         <input type="date" class="form-control" id="schedule-start-date" required>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="form-group">
-                        <label>{{ 'end_date' | t }}</label>
+                        <label>{{ 'ui.end_date' | t }}</label>
                         <input type="date" class="form-control" id="schedule-end-date" required>
                     </div>
                 </div>
             </div>
             
             <div class="form-group">
-                <label>{{ 'priority' | t }}</label>
+                <label>{{ 'ui.priority' | t }}</label>
                 <input type="number" class="form-control" id="schedule-priority" min="0" max="100" value="50" required>
-                <small class="text-muted">{{ 'priority_hint' | t }}</small>
+                <small class="text-muted">{{ 'ui.priority_hint' | t }}</small>
             </div>
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="schedule-recurring" checked> {{ 'recurring_annually' | t }}
+                    <input type="checkbox" id="schedule-recurring" checked> {{ 'ui.recurring_annually' | t }}
                 </label>
             </div>
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="schedule-enabled" checked> {{ 'enabled' | t }}
+                    <input type="checkbox" id="schedule-enabled" checked> {{ 'ui.enabled' | t }}
                 </label>
             </div>
             
             <div class="mt-3">
-                <button type="submit" class="btn btn-primary">{{ 'create_schedule' | t }}</button>
-                <button type="button" class="btn btn-secondary" onclick="closeScheduleModal()">{{ 'cancel' | t }}</button>
+                <button type="submit" class="btn btn-primary">{{ 'schedules.create_schedule' | t }}</button>
+                <button type="button" class="btn btn-secondary" onclick="closeScheduleModal()">{{ 'ui.cancel' | t }}</button>
             </div>
         </form>
     </div>
@@ -306,16 +306,16 @@ async function loadCurrentTheme() {
         if (data.success && data.theme) {
             container.innerHTML = `
                 <h4>${data.theme.name}</h4>
-                <p>${data.theme.description || (window.t ? t('no_description') : 'No description')}</p>
+                <p>${data.theme.description || (window.t ? t('ui.no_description') : 'No description')}</p>
                 <div class="theme-preview-box">
                     <div class="color-swatch" style="background: ${data.theme.primary_color}"></div>
                     <div class="color-swatch" style="background: ${data.theme.secondary_color}"></div>
                     <div class="color-swatch" style="background: ${data.theme.accent_color}"></div>
                 </div>
-                <button class="btn btn-sm btn-danger mt-2" onclick="deactivateTheme(${data.theme.id})" aria-label="'+(window.t?t('deactivate'):'Deactivate')+'">'+(window.t?t('deactivate'):'Deactivate')+'</button>
+                <button class="btn btn-sm btn-danger mt-2" onclick="deactivateTheme(${data.theme.id})" aria-label="'+(window.t?t('ui.deactivate'):'Deactivate')+'">'+(window.t?t('ui.deactivate'):'Deactivate')+'</button>
             `;
         } else {
-            container.innerHTML = '<p class="text-muted">{{ 'no_active_theme' | t }}</p>';
+            container.innerHTML = '<p class="text-muted">{{ 'theme.no_active_theme' | t }}</p>';
         }
     } catch (error) {
         console.error('Error loading current theme:', error);
@@ -340,40 +340,40 @@ async function loadThemes() {
                 <div class="theme-card ${theme.is_active ? 'active' : ''}">
                     <div class="row">
                         <div class="col-md-8">
-                            <h4>${theme.name} ${theme.is_active ? '<span class="badge badge-success">'+(window.t?t('active'):'Active')+'</span>' : ''}</h4>
-                            <p><strong>${window.t ? t('key_label') : 'Key:'}</strong> ${theme.theme_key}</p>
+                            <h4>${theme.name} ${theme.is_active ? '<span class="badge badge-success">'+(window.t?t('ui.active'):'Active')+'</span>' : ''}</h4>
+                            <p><strong>${window.t ? t('ui.key_label') : 'Key:'}</strong> ${theme.theme_key}</p>
                             <p>${theme.description || 'No description'}</p>
                             <div class="theme-preview-box">
-                                <div class=\"color-swatch\" style=\"background: ${theme.primary_color}\" title=\"${window.t ? t('primary') : 'Primary'}\"></div>
-                                <div class=\"color-swatch\" style=\"background: ${theme.secondary_color}\" title=\"${window.t ? t('secondary') : 'Secondary'}\"></div>
-                                <div class=\"color-swatch\" style=\"background: ${theme.accent_color}\" title=\"${window.t ? t('accent') : 'Accent'}\"></div>
+                                <div class=\"color-swatch\" style=\"background: ${theme.primary_color}\" title=\"${window.t ? t('ui.primary') : 'Primary'}\"></div>
+                                <div class=\"color-swatch\" style=\"background: ${theme.secondary_color}\" title=\"${window.t ? t('ui.secondary') : 'Secondary'}\"></div>
+                                <div class=\"color-swatch\" style=\"background: ${theme.accent_color}\" title=\"${window.t ? t('theme.accent') : 'Accent'}\"></div>
                             </div>
                         </div>
                         <div class="col-md-4 text-right">
-<button class="btn btn-sm btn-success mb-2" onclick="activateTheme(${theme.id})" aria-label="'+(window.t?t('activate'):'Activate')+'">
-                                <i class="fas fa-play"></i> '+(window.t?t('activate'):'Activate')+'
+<button class="btn btn-sm btn-success mb-2" onclick="activateTheme(${theme.id})" aria-label="'+(window.t?t('ui.activate'):'Activate')+'">
+                                <i class="fas fa-play"></i> '+(window.t?t('ui.activate'):'Activate')+'
                              </button>
-<button class="btn btn-sm btn-info mb-2" onclick="previewTheme(${theme.id})" aria-label="'+(window.t?t('preview'):'Preview')+'">
-                                <i class="fas fa-eye"></i> '+(window.t?t('preview'):'Preview')+'
+<button class="btn btn-sm btn-info mb-2" onclick="previewTheme(${theme.id})" aria-label="'+(window.t?t('ui.preview'):'Preview')+'">
+                                <i class="fas fa-eye"></i> '+(window.t?t('ui.preview'):'Preview')+'
                              </button>
-<button class="btn btn-sm btn-primary mb-2" onclick="createScheduleFor(${theme.id})" aria-label="'+(window.t?t('schedule'):'Schedule')+'">
-                                <i class="fas fa-calendar"></i> '+(window.t?t('schedule'):'Schedule')+'
+<button class="btn btn-sm btn-primary mb-2" onclick="createScheduleFor(${theme.id})" aria-label="'+(window.t?t('schedules.schedule'):'Schedule')+'">
+                                <i class="fas fa-calendar"></i> '+(window.t?t('schedules.schedule'):'Schedule')+'
                              </button>
-<button class="btn btn-sm btn-secondary mb-2" onclick="viewThemeAnalytics(${theme.id})" aria-label="'+(window.t?t('analytics'):'Analytics')+'">
-                                <i class="fas fa-chart-line"></i> '+(window.t?t('analytics'):'Analytics')+'
+<button class="btn btn-sm btn-secondary mb-2" onclick="viewThemeAnalytics(${theme.id})" aria-label="'+(window.t?t('admin.analytics'):'Analytics')+'">
+                                <i class="fas fa-chart-line"></i> '+(window.t?t('admin.analytics'):'Analytics')+'
                              </button>
-<button class="btn btn-sm btn-warning mb-2" onclick="editTheme(${theme.id})" aria-label="'+(window.t?t('edit'):'Edit')+'">
-                                <i class="fas fa-edit"></i> '+(window.t?t('edit'):'Edit')+'
+<button class="btn btn-sm btn-warning mb-2" onclick="editTheme(${theme.id})" aria-label="'+(window.t?t('ui.edit'):'Edit')+'">
+                                <i class="fas fa-edit"></i> '+(window.t?t('ui.edit'):'Edit')+'
                              </button>
-<button class="btn btn-sm btn-danger mb-2" onclick="deleteTheme(${theme.id})" aria-label="'+(window.t?t('delete'):'Delete')+'">
-                                <i class="fas fa-trash"></i> '+(window.t?t('delete'):'Delete')+'
+<button class="btn btn-sm btn-danger mb-2" onclick="deleteTheme(${theme.id})" aria-label="'+(window.t?t('ui.delete'):'Delete')+'">
+                                <i class="fas fa-trash"></i> '+(window.t?t('ui.delete'):'Delete')+'
                              </button>
                         </div>
                     </div>
                 </div>
             `).join('');
         } else {
-            container.innerHTML = '<p class=\"text-muted\">{{ 'no_themes_found' | t }}</p>';
+            container.innerHTML = '<p class=\"text-muted\">{{ 'theme.no_themes_found' | t }}</p>';
         }
     } catch (error) {
         console.error('Error loading themes:', error);
@@ -405,7 +405,7 @@ async function loadActiveSchedules() {
                 </div>
             `).join('');
         } else {
-            container.innerHTML = '<p class="text-muted">{{ 'no_active_schedules' | t }}</p>';
+            container.innerHTML = '<p class="text-muted">{{ 'schedules.no_active_schedules' | t }}</p>';
         }
     } catch (error) {
         console.error('Error loading schedules:', error);
@@ -414,7 +414,7 @@ async function loadActiveSchedules() {
 
 // Activate theme
 async function activateTheme(themeId) {
-    if (!confirm(window.t ? t('confirm_activate_theme') : 'Activate this theme? This will replace the current active theme.')) return;
+    if (!confirm(window.t ? t('theme.confirm_activate_theme') : 'Activate this theme? This will replace the current active theme.')) return;
     
     try {
         const token = localStorage.getItem('token');
@@ -430,12 +430,12 @@ async function activateTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert(window.t ? t('theme_activated_success') : 'Theme activated successfully!');
+            alert(window.t ? t('theme.theme_activated_success') : 'Theme activated successfully!');
             loadCurrentTheme();
             loadThemes();
-            window.dispatchEvent(new Event('refreshTheme'));
+            window.dispatchEvent(new Event('theme.refreshTheme'));
         } else {
-            alert((window.t ? t('failed_activate_theme') : 'Failed to activate theme: ') + data.message);
+            alert((window.t ? t('theme.failed_activate_theme') : 'Failed to activate theme: ') + data.message);
         }
     } catch (error) {
         console.error('Error activating theme:', error);
@@ -445,7 +445,7 @@ async function activateTheme(themeId) {
 
 // Deactivate theme
 async function deactivateTheme(themeId) {
-    if (!confirm(window.t ? t('confirm_deactivate_theme') : 'Deactivate this theme?')) return;
+    if (!confirm(window.t ? t('theme.confirm_deactivate_theme') : 'Deactivate this theme?')) return;
     
     try {
         const token = localStorage.getItem('token');
@@ -459,12 +459,12 @@ async function deactivateTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert(window.t ? t('theme_deactivated_success') : 'Theme deactivated successfully!');
+            alert(window.t ? t('theme.theme_deactivated_success') : 'Theme deactivated successfully!');
             loadCurrentTheme();
             loadThemes();
-            window.dispatchEvent(new Event('refreshTheme'));
+            window.dispatchEvent(new Event('theme.refreshTheme'));
         } else {
-            alert(window.t ? t('failed_deactivate_theme') : 'Failed to deactivate theme');
+            alert(window.t ? t('theme.failed_deactivate_theme') : 'Failed to deactivate theme');
         }
     } catch (error) {
         console.error('Error deactivating theme:', error);
@@ -485,7 +485,7 @@ async function previewTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert(window.t ? t('preview_mode_enabled') : 'Preview mode enabled! Refresh to see changes.');
+            alert(window.t ? t('theme.preview_mode_enabled') : 'Preview mode enabled! Refresh to see changes.');
             window.location.reload();
         }
     } catch (error) {
@@ -510,7 +510,7 @@ async function checkSchedules() {
             if (data.activated) {
                 alert(`Theme activated: ${data.theme?.name}`);
             } else {
-                alert(window.t ? t('no_schedule_changes') : 'No schedule changes');
+                alert(window.t ? t('schedules.no_schedule_changes') : 'No schedule changes');
             }
             loadCurrentTheme();
             loadThemes();
@@ -522,7 +522,7 @@ async function checkSchedules() {
 
 // Create theme modal
 function createTheme() {
-    document.getElementById('modal-title').textContent = window.t ? t('create_new_theme') : 'Create New Theme';
+    document.getElementById('modal-title').textContent = window.t ? t('theme.create_new_theme') : 'Create New Theme';
     document.getElementById('theme-form').reset();
     currentEditingTheme = null;
     document.getElementById('theme-modal').classList.add('active');
@@ -565,20 +565,20 @@ async function saveTheme(event) {
         const data = await response.json();
         
         if (data.success) {
-            alert(window.t ? t('theme_saved_success') : 'Theme saved successfully!');
+            alert(window.t ? t('theme.theme_saved_success') : 'Theme saved successfully!');
             closeModal();
             loadThemes();
         } else {
-            alert((window.t ? t('error_prefix') : 'Error: ') + data.message);
+            alert((window.t ? t('ui.error_prefix') : 'Error: ') + data.message);
         }
     } catch (error) {
         console.error('Error saving theme:', error);
-        alert((window.t ? t('error_prefix') : 'Error saving theme'));
+        alert((window.t ? t('ui.error_prefix') : 'Error saving theme'));
     }
 }
     } catch (error) {
         console.error('Error saving theme:', error);
-        alert((window.t ? t('error_prefix') : 'Error saving theme');
+        alert((window.t ? t('ui.error_prefix') : 'Error saving theme');
     }
 }
 
@@ -622,21 +622,21 @@ async function saveSchedule(event) {
         const data = await response.json();
         
         if (data.success) {
-            alert(window.t ? t('schedule_created_success') : 'Schedule created successfully!');
+            alert(window.t ? t('schedules.schedule_created_success') : 'Schedule created successfully!');
             closeScheduleModal();
             loadActiveSchedules();
         } else {
-            alert((window.t ? t('error_prefix') : 'Error: ') + data.message);
+            alert((window.t ? t('ui.error_prefix') : 'Error: ') + data.message);
         }
     } catch (error) {
         console.error('Error saving schedule:', error);
-        alert(window.t ? t('error_saving_schedule') : 'Error saving schedule');
+        alert(window.t ? t('schedules.error_saving_schedule') : 'Error saving schedule');
     }
 }
 
 // Delete theme
 async function deleteTheme(themeId) {
-    if (!confirm(window.t ? t('confirm_delete_theme') : 'Delete this theme? This action cannot be undone.')) return;
+    if (!confirm(window.t ? t('theme.confirm_delete_theme') : 'Delete this theme? This action cannot be undone.')) return;
     
     try {
         const token = localStorage.getItem('token');
@@ -650,10 +650,10 @@ async function deleteTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert(window.t ? t('theme_deleted_success') : 'Theme deleted successfully!');
+            alert(window.t ? t('theme.theme_deleted_success') : 'Theme deleted successfully!');
             loadThemes();
         } else {
-            alert(window.t ? t('error_deleting_theme') : 'Error deleting theme');
+            alert(window.t ? t('theme.error_deleting_theme') : 'Error deleting theme');
         }
     } catch (error) {
         console.error('Error deleting theme:', error);

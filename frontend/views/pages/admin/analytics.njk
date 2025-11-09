@@ -1,5 +1,5 @@
 {% extends "base.njk" %}
-{% block title %}{{ 'analytics_admin_panel' | t }}{% endblock %}
+{% block title %}{{ 'admin.analytics_admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <style>
@@ -93,21 +93,21 @@
 {% block content %}
 <div class="analytics-wrapper">
   <div>
-    <a href="/admin/dashboard" style="color: #6366f1;" aria-label="{{ 'back_to_dashboard' | t }}">{{ 'back_to_dashboard' | t }}</a>
-    <h1 style="margin: 1rem 0 0;">{{ 'analytics_and_usage' | t }}</h1>
-    <p style="color: #94a3b8;">{{ 'monitor_engagement_realtime' | t }}</p>
+    <a href="/admin/dashboard" style="color: #6366f1;" aria-label="{{ 'ui.back_to_dashboard' | t }}">{{ 'ui.back_to_dashboard' | t }}</a>
+    <h1 style="margin: 1rem 0 0;">{{ 'admin.analytics_and_usage' | t }}</h1>
+    <p style="color: #94a3b8;">{{ 'monitoring.monitor_engagement_realtime' | t }}</p>
   </div>
 
   <div class="analytics-controls">
-    <label for="analyticsRange">{{ 'range' | t }}</label>
+    <label for="analyticsRange">{{ 'ui.range' | t }}</label>
     <select id="analyticsRange">
-      <option value="1">{{ 'last_24h' | t }}</option>
-      <option value="3">{{ 'last_3_days' | t }}</option>
-      <option value="7" selected>{{ 'last_7_days' | t }}</option>
-      <option value="14">{{ 'last_14_days' | t }}</option>
-      <option value="30">{{ 'last_30_days' | t }}</option>
+      <option value="1">{{ 'ui.last_24h' | t }}</option>
+      <option value="3">{{ 'ui.last_3_days' | t }}</option>
+      <option value="7" selected>{{ 'ui.last_7_days' | t }}</option>
+      <option value="14">{{ 'ui.last_14_days' | t }}</option>
+      <option value="30">{{ 'ui.last_30_days' | t }}</option>
     </select>
-    <button id="analyticsRefresh" aria-label="{{ 'refresh' | t }}">{{ 'refresh' | t }}</button>
+    <button id="analyticsRefresh" aria-label="{{ 'ui.refresh' | t }}">{{ 'ui.refresh' | t }}</button>
     <span id="analyticsStatus" style="align-self: center; color: #94a3b8;"></span>
   </div>
 
@@ -116,9 +116,9 @@
   <table class="analytics-table" id="analyticsDailyTable">
     <thead>
       <tr>
-        <th>{{ 'date' | t }}</th>
-        <th>{{ 'event_type' | t }}</th>
-        <th>{{ 'total_events' | t }}</th>
+        <th>{{ 'ui.date' | t }}</th>
+        <th>{{ 'events.event_type' | t }}</th>
+        <th>{{ 'events.total_events' | t }}</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -137,7 +137,7 @@
 
   async function loadAnalytics() {
     try {
-      statusLabel.textContent = window.t ? t('loading_analytics') : 'Loading analytics...';
+      statusLabel.textContent = window.t ? t('admin.loading_analytics') : 'Loading analytics...';
       const token = localStorage.getItem('token');
       if (!token) {
         window.location.href = '/login.html';
@@ -150,7 +150,7 @@
         }
       });
       if (!response.ok) {
-        throw new Error(window.t ? t('failed_load_analytics') : 'Failed to load analytics data');
+        throw new Error(window.t ? t('admin.failed_load_analytics') : 'Failed to load analytics data');
       }
       const payload = await response.json();
       renderSummary(payload.data?.summary || []);
@@ -158,13 +158,13 @@
       statusLabel.textContent = \`Updated just now • Last \${days} day(s)\`;
     } catch (error) {
       console.error(error);
-      statusLabel.textContent = window.t ? t('unable_load_analytics') : 'Unable to load analytics';
+      statusLabel.textContent = window.t ? t('admin.unable_load_analytics') : 'Unable to load analytics';
     }
   }
 
   function renderSummary(summary) {
     if (!summary.length) {
-      summaryContainer.innerHTML = '<p style="color:#94a3b8;">' + (window.t ? t('no_events_tracked') : 'No events tracked for this range.') + '</p>';
+      summaryContainer.innerHTML = '<p style="color:#94a3b8;">' + (window.t ? t('events.no_events_tracked') : 'No events tracked for this range.') + '</p>';
       return;
     }
 
@@ -179,7 +179,7 @@
 
   function renderDaily(daily) {
     if (!daily.length) {
-      dailyTableBody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8;">' + (window.t ? t('no_daily_data') : 'No daily data available.') + '</td></tr>';
+      dailyTableBody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8;">' + (window.t ? t('ui.no_daily_data') : 'No daily data available.') + '</td></tr>';
       return;
     }
 

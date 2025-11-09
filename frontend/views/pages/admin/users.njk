@@ -1,6 +1,6 @@
 {% extends "base.njk" %}
 
-{% block title %}{{ 'user_management' | t }} - {{ 'admin_panel' | t }}{% endblock %}
+{% block title %}{{ 'user.user_management' | t }} - {{ 'admin.admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <style>
@@ -283,57 +283,57 @@
 
   <main class="admin-content">
     <div class="page-header">
-      <h1>{{ 'user_management' | t }}</h1>
-      <p>{{ 'manage_users_desc' | t }}</p>
+      <h1>{{ 'user.user_management' | t }}</h1>
+      <p>{{ 'user.manage_users_desc' | t }}</p>
     </div>
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">{{ 'total_users' | t }}</div>
+        <div class="stat-label">{{ 'user.total_users' | t }}</div>
         <div class="stat-value" id="totalUsers">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">{{ 'active_users' | t }}</div>
+        <div class="stat-label">{{ 'user.active_users' | t }}</div>
         <div class="stat-value" id="activeUsers">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">{{ 'banned_users' | t }}</div>
+        <div class="stat-label">{{ 'user.banned_users' | t }}</div>
         <div class="stat-value" id="bannedUsers">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">{{ 'online_now' | t }}</div>
+        <div class="stat-label">{{ 'ui.online_now' | t }}</div>
         <div class="stat-value" id="onlineUsers">-</div>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="search-box">
-        <input type="text" id="searchInput" placeholder="{{ 'search_users' | t }}">
+        <input type="text" id="searchInput" placeholder="{{ 'user.search_users' | t }}">
       </div>
       <select id="statusFilter" class="filter-select">
-        <option value="">{{ 'all_status' | t }}</option>
-        <option value="active">{{ 'status_active' | t }}</option>
-        <option value="banned">{{ 'status_banned' | t }}</option>
-        <option value="suspended">{{ 'status_suspended' | t }}</option>
+        <option value="">{{ 'ui.all_status' | t }}</option>
+        <option value="active">{{ 'user.status_active' | t }}</option>
+        <option value="banned">{{ 'user.status_banned' | t }}</option>
+        <option value="suspended">{{ 'user.status_suspended' | t }}</option>
       </select>
-      <button class="btn btn-primary" onclick="refreshUsers()">{{ 'refresh' | t }}</button>
+      <button class="btn btn-primary" onclick="refreshUsers()">{{ 'ui.refresh' | t }}</button>
     </div>
 
     <div class="users-table">
       <table>
         <thead>
           <tr>
-<th>{{ 'user' | t }}</th>
-                <th>{{ 'status' | t }}</th>
-                <th>{{ 'tags' | t }}</th>
-                <th>{{ 'joined' | t }}</th>
-                <th>{{ 'last_login' | t }}</th>
-                <th>{{ 'actions' | t }}</th>
+<th>{{ 'user.user' | t }}</th>
+                <th>{{ 'ui.status' | t }}</th>
+                <th>{{ 'ui.tags' | t }}</th>
+                <th>{{ 'ui.joined' | t }}</th>
+                <th>{{ 'ui.last_login' | t }}</th>
+                <th>{{ 'ui.actions' | t }}</th>
           </tr>
         </thead>
         <tbody id="usersTableBody">
           <tr>
-            <td colspan="6" style="text-align: center; padding: 2rem; color: #6366f1;">{{ 'loading_users' | t }}</td>
+            <td colspan="6" style="text-align: center; padding: 2rem; color: #6366f1;">{{ 'user.loading_users' | t }}</td>
           </tr>
         </tbody>
       </table>
@@ -346,29 +346,29 @@
 <!-- Block User Modal -->
 <div class="modal" id="blockModal" role="dialog" aria-modal="true" aria-labelledby="blockModalTitle">
   <div class="modal-content">
-    <h2 id="blockModalTitle" style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'block_user' | t }}</h2>
+    <h2 id="blockModalTitle" style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'user.block_user' | t }}</h2>
     <form id="blockForm">
       <input type="hidden" id="blockUserId">
       <div class="form-group">
-        <label>{{ 'block_type' | t }}</label>
+        <label>{{ 'user.block_type' | t }}</label>
         <select id="blockType" required>
-<option value="ban">{{ 'ban' | t }}</option>
-            <option value="mute">{{ 'mute' | t }}</option>
-            <option value="restrict">{{ 'restrict' | t }}</option>
-            <option value="warning">{{ 'warning' | t }}</option>
+<option value="ban">{{ 'user.ban' | t }}</option>
+            <option value="mute">{{ 'ui.mute' | t }}</option>
+            <option value="restrict">{{ 'ui.restrict' | t }}</option>
+            <option value="warning">{{ 'ui.warning' | t }}</option>
         </select>
       </div>
       <div class="form-group">
-        <label>{{ 'reason' | t }}</label>
+        <label>{{ 'ui.reason' | t }}</label>
         <textarea id="blockReason" required></textarea>
       </div>
       <div class="form-group">
-        <label>{{ 'duration_minutes' | t }}</label>
+        <label>{{ 'ui.duration_minutes' | t }}</label>
         <input type="number" id="blockDuration">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('blockModal')">{{ 'cancel' | t }}</button>
-        <button type="submit" class="btn btn-danger">{{ 'block_user_btn' | t }}</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('blockModal')">{{ 'ui.cancel' | t }}</button>
+        <button type="submit" class="btn btn-danger">{{ 'user.block_user_btn' | t }}</button>
       </div>
     </form>
   </div>
@@ -377,29 +377,29 @@
 <!-- Tag User Modal -->
 <div class="modal" id="tagModal" role="dialog" aria-modal="true" aria-labelledby="tagModalTitle">
   <div class="modal-content">
-    <h2 id="tagModalTitle" style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'tag_user' | t }}</h2>
+    <h2 id="tagModalTitle" style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'user.tag_user' | t }}</h2>
     <form id="tagForm">
       <input type="hidden" id="tagUserId">
       <div class="form-group">
-        <label>{{ 'tag_name' | t }}</label>
+        <label>{{ 'ui.tag_name' | t }}</label>
         <input type="text" id="tagName" required>
       </div>
       <div class="form-group">
-        <label>{{ 'category' | t }}</label>
+        <label>{{ 'ui.category' | t }}</label>
         <select id="tagCategory" required>
-          <option value="behavior">{{ 'behavior' | t }}</option>
-          <option value="payment">{{ 'payment_status' | t }}</option>
-          <option value="skill">{{ 'skill_level' | t }}</option>
-          <option value="special">{{ 'special_status' | t }}</option>
+          <option value="behavior">{{ 'ui.behavior' | t }}</option>
+          <option value="payment">{{ 'ui.payment_status' | t }}</option>
+          <option value="skill">{{ 'ui.skill_level' | t }}</option>
+          <option value="special">{{ 'ui.special_status' | t }}</option>
         </select>
       </div>
       <div class="form-group">
-        <label>{{ 'color' | t }}</label>
+        <label>{{ 'theme.color' | t }}</label>
         <input type="color" id="tagColor" value="#6366f1">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('tagModal')">{{ 'cancel' | t }}</button>
-        <button type="submit" class="btn btn-primary">{{ 'add_tag' | t }}</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('tagModal')">{{ 'ui.cancel' | t }}</button>
+        <button type="submit" class="btn btn-primary">{{ 'ui.add_tag' | t }}</button>
       </div>
     </form>
   </div>
@@ -428,7 +428,7 @@ async function loadUsers(page = 1) {
 function renderUsers(users) {
   const tbody = document.getElementById('usersTableBody');
   if (users.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">${window.t ? t('no_users_found') : 'No users found'}</td></tr>`; // i18n fallback already present, no change needed
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">${window.t ? t('user.no_users_found') : 'No users found'}</td></tr>`; // i18n fallback already present, no change needed
     return;
   }
   tbody.innerHTML = users.map(user => `
@@ -445,11 +445,11 @@ function renderUsers(users) {
       <td><span class="status-badge status-${user.account_status || 'active'}">${window.t ? t('status_' + (user.account_status || 'active')) : (user.account_status || 'active')}</span></td>
       <td>${(user.tags || []).map(tag => `<span class="tag" style="background: ${tag.color}22; color: ${tag.color}; border: 1px solid ${tag.color};">${tag.name}</span>`).join('')}</td>
       <td>${new Date(user.created_at).toLocaleDateString()}</td>
-      <td>${user.last_login ? new Date(user.last_login).toLocaleString() : (window.t ? t('never') : 'Never')}</td> <!-- i18n fallback already present, no change needed -->
+      <td>${user.last_login ? new Date(user.last_login).toLocaleString() : (window.t ? t('ui.never') : 'Never')}</td> <!-- i18n fallback already present, no change needed -->
       <td>
         <div class="action-buttons">
-          <button class="action-btn btn-block" onclick="openBlockModal(${user.id})" aria-label="${window.t ? t('block_user_btn_aria') : 'Block user'}">{{ window.t ? t('block_user_btn') : 'Block' }}</button>
-          <button class="action-btn btn-tag" onclick="openTagModal(${user.id})" aria-label="${window.t ? t('add_tag_aria') : 'Add tag to user'}">{{ window.t ? t('add_tag') : 'Tag' }}</button>
+          <button class="action-btn btn-block" onclick="openBlockModal(${user.id})" aria-label="${window.t ? t('user.block_user_btn_aria') : 'Block user'}">{{ window.t ? t('user.block_user_btn') : 'Block' }}</button>
+          <button class="action-btn btn-tag" onclick="openTagModal(${user.id})" aria-label="${window.t ? t('ui.add_tag_aria') : 'Add tag to user'}">{{ window.t ? t('ui.add_tag') : 'Tag' }}</button>
         </div>
       </td>
     </tr>
@@ -458,11 +458,11 @@ function renderUsers(users) {
 
 function renderPagination(data) {
   const pagination = document.getElementById('pagination');
-  let html = `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="loadUsers(${currentPage - 1})" aria-label="${window.t ? t('previous_page_aria') : 'Previous page'}">${window.t ? t('previous') : 'Previous'}</button>`;
+  let html = `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="loadUsers(${currentPage - 1})" aria-label="${window.t ? t('ui.previous_page_aria') : 'Previous page'}">${window.t ? t('ui.previous') : 'Previous'}</button>`;
   for (let i = 1; i <= Math.min(data.totalPages, 10); i++) {
     html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="loadUsers(${i})" aria-label="${window.t ? t('goto_page_aria', { page: i }) : 'Go to page ' + i}">${i}</button>`;
   }
-  html += `<button class="page-btn" ${currentPage === data.totalPages ? 'disabled' : ''} onclick="loadUsers(${currentPage + 1})" aria-label="${window.t ? t('next_page_aria') : 'Next page'}">${window.t ? t('next') : 'Next'}</button>`;
+  html += `<button class="page-btn" ${currentPage === data.totalPages ? 'disabled' : ''} onclick="loadUsers(${currentPage + 1})" aria-label="${window.t ? t('ui.next_page_aria') : 'Next page'}">${window.t ? t('ui.next') : 'Next'}</button>`;
   pagination.innerHTML = html;
 }
 
@@ -511,11 +511,11 @@ document.getElementById('blockForm').addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Failed to block user');
-    alert(window.t ? t('user_blocked_success') : 'User blocked successfully'); // i18n fallback already present, no change needed
+    alert(window.t ? t('user.user_blocked_success') : 'User blocked successfully'); // i18n fallback already present, no change needed
     closeModal('blockModal');
     loadUsers(currentPage);
   } catch (error) {
-    alert((window.t ? t('error_prefix') : 'Error: ') + error.message);
+    alert((window.t ? t('ui.error_prefix') : 'Error: ') + error.message);
   }
 });
 
@@ -540,11 +540,11 @@ document.getElementById('tagForm').addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Failed to tag user');
-    alert(window.t ? t('tag_added_success') : 'Tag added successfully'); // i18n fallback already present, no change needed
+    alert(window.t ? t('ui.tag_added_success') : 'Tag added successfully'); // i18n fallback already present, no change needed
     closeModal('tagModal');
     loadUsers(currentPage);
   } catch (error) {
-    alert((window.t ? t('error_prefix') : 'Error: ') + error.message);
+    alert((window.t ? t('ui.error_prefix') : 'Error: ') + error.message);
   }
 });
 
