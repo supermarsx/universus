@@ -2,8 +2,8 @@
 {% block title %}{{ 'audit_logs_admin_panel' | t }}{% endblock %}
 {% block content %}
 <div style="padding: 2rem; color: #e2e8f0;">
-  <h1>Audit Logs</h1>
+  <h1>{{ 'audit_logs' | t }}</h1>
   <p>{{ 'audit_log_viewer_coming_soon' | t }}</p>
-  <a href="/admin/dashboard" style="color: #6366f1;">← {{ 'back_to_dashboard' | t }}</a>
+  <a href="/admin/dashboard" style="color: #6366f1;" aria-label="{{ 'back_to_dashboard' | t }}">{{ 'back_to_dashboard' | t }}</a>
 </div>
 {% endblock %}

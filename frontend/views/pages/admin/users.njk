@@ -1,6 +1,6 @@
 {% extends "base.njk" %}
 
-{% block title %}User Management - Admin Panel{% endblock %}
+{% block title %}{{ 'user_management' | t }} - {{ 'admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <style>
@@ -344,9 +344,9 @@
 </div>
 
 <!-- Block User Modal -->
-<div class="modal" id="blockModal">
+<div class="modal" id="blockModal" role="dialog" aria-modal="true" aria-labelledby="blockModalTitle">
   <div class="modal-content">
-    <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'block_user' | t }}</h2>
+    <h2 id="blockModalTitle" style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'block_user' | t }}</h2>
     <form id="blockForm">
       <input type="hidden" id="blockUserId">
       <div class="form-group">
@@ -375,9 +375,9 @@
 </div>
 
 <!-- Tag User Modal -->
-<div class="modal" id="tagModal">
+<div class="modal" id="tagModal" role="dialog" aria-modal="true" aria-labelledby="tagModalTitle">
   <div class="modal-content">
-    <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'tag_user' | t }}</h2>
+    <h2 id="tagModalTitle" style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'tag_user' | t }}</h2>
     <form id="tagForm">
       <input type="hidden" id="tagUserId">
       <div class="form-group">
@@ -428,7 +428,7 @@ async function loadUsers(page = 1) {
 function renderUsers(users) {
   const tbody = document.getElementById('usersTableBody');
   if (users.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">${window.t ? t('no_users_found') : 'No users found'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">${window.t ? t('no_users_found') : 'No users found'}</td></tr>`; // i18n fallback already present, no change needed
     return;
   }
   tbody.innerHTML = users.map(user => `
@@ -442,14 +442,14 @@ function renderUsers(users) {
           </div>
         </div>
       </td>
-      <td><span class="status-badge status-${user.account_status || 'active'}">${user.account_status || 'active'}</span></td>
+      <td><span class="status-badge status-${user.account_status || 'active'}">${window.t ? t('status_' + (user.account_status || 'active')) : (user.account_status || 'active')}</span></td>
       <td>${(user.tags || []).map(tag => `<span class="tag" style="background: ${tag.color}22; color: ${tag.color}; border: 1px solid ${tag.color};">${tag.name}</span>`).join('')}</td>
       <td>${new Date(user.created_at).toLocaleDateString()}</td>
-      <td>${user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</td>
+      <td>${user.last_login ? new Date(user.last_login).toLocaleString() : (window.t ? t('never') : 'Never')}</td> <!-- i18n fallback already present, no change needed -->
       <td>
         <div class="action-buttons">
-          <button class="action-btn btn-block" onclick="openBlockModal(${user.id})">{{ window.t ? t('block_user_btn') : 'Block' }}</button>
-          <button class="action-btn btn-tag" onclick="openTagModal(${user.id})">{{ window.t ? t('add_tag') : 'Tag' }}</button>
+          <button class="action-btn btn-block" onclick="openBlockModal(${user.id})" aria-label="${window.t ? t('block_user_btn_aria') : 'Block user'}">{{ window.t ? t('block_user_btn') : 'Block' }}</button>
+          <button class="action-btn btn-tag" onclick="openTagModal(${user.id})" aria-label="${window.t ? t('add_tag_aria') : 'Add tag to user'}">{{ window.t ? t('add_tag') : 'Tag' }}</button>
         </div>
       </td>
     </tr>
@@ -458,11 +458,11 @@ function renderUsers(users) {
 
 function renderPagination(data) {
   const pagination = document.getElementById('pagination');
-  let html = `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="loadUsers(${currentPage - 1})">Previous</button>`;
+  let html = `<button class="page-btn" ${currentPage === 1 ? 'disabled' : ''} onclick="loadUsers(${currentPage - 1})" aria-label="${window.t ? t('previous_page_aria') : 'Previous page'}">${window.t ? t('previous') : 'Previous'}</button>`;
   for (let i = 1; i <= Math.min(data.totalPages, 10); i++) {
-    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="loadUsers(${i})">${i}</button>`;
+    html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="loadUsers(${i})" aria-label="${window.t ? t('goto_page_aria', { page: i }) : 'Go to page ' + i}">${i}</button>`;
   }
-  html += `<button class="page-btn" ${currentPage === data.totalPages ? 'disabled' : ''} onclick="loadUsers(${currentPage + 1})">Next</button>`;
+  html += `<button class="page-btn" ${currentPage === data.totalPages ? 'disabled' : ''} onclick="loadUsers(${currentPage + 1})" aria-label="${window.t ? t('next_page_aria') : 'Next page'}">${window.t ? t('next') : 'Next'}</button>`;
   pagination.innerHTML = html;
 }
 
@@ -511,7 +511,7 @@ document.getElementById('blockForm').addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Failed to block user');
-    alert(window.t ? t('user_blocked_success') : 'User blocked successfully');
+    alert(window.t ? t('user_blocked_success') : 'User blocked successfully'); // i18n fallback already present, no change needed
     closeModal('blockModal');
     loadUsers(currentPage);
   } catch (error) {
@@ -540,7 +540,7 @@ document.getElementById('tagForm').addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Failed to tag user');
-    alert(window.t ? t('tag_added_success') : 'Tag added successfully');
+    alert(window.t ? t('tag_added_success') : 'Tag added successfully'); // i18n fallback already present, no change needed
     closeModal('tagModal');
     loadUsers(currentPage);
   } catch (error) {

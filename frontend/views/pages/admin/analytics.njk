@@ -93,23 +93,21 @@
 {% block content %}
 <div class="analytics-wrapper">
   <div>
-    <a href="/admin/dashboard" style="color: #6366f1;">← Back to Dashboard</a>
-    <h1 style="margin: 1rem 0 0;">Analytics &amp; Usage</h1>
-    <p style="color: #94a3b8;">Monitor key engagement events in real-time.</p>
+    <a href="/admin/dashboard" style="color: #6366f1;" aria-label="{{ 'back_to_dashboard' | t }}">{{ 'back_to_dashboard' | t }}</a>
+    <h1 style="margin: 1rem 0 0;">{{ 'analytics_and_usage' | t }}</h1>
+    <p style="color: #94a3b8;">{{ 'monitor_engagement_realtime' | t }}</p>
   </div>
 
   <div class="analytics-controls">
-    <label>
-      Range
-      <select id="analyticsRange">
-        <option value="1">Last 24h</option>
-        <option value="3">Last 3 days</option>
-        <option value="7" selected>Last 7 days</option>
-        <option value="14">{{ 'last_14_days' | t }}</option>
-        <option value="30">{{ 'last_30_days' | t }}</option>
-      </select>
-    </label>
-    <button id="analyticsRefresh">{{ 'refresh' | t }}</button>
+    <label for="analyticsRange">{{ 'range' | t }}</label>
+    <select id="analyticsRange">
+      <option value="1">{{ 'last_24h' | t }}</option>
+      <option value="3">{{ 'last_3_days' | t }}</option>
+      <option value="7" selected>{{ 'last_7_days' | t }}</option>
+      <option value="14">{{ 'last_14_days' | t }}</option>
+      <option value="30">{{ 'last_30_days' | t }}</option>
+    </select>
+    <button id="analyticsRefresh" aria-label="{{ 'refresh' | t }}">{{ 'refresh' | t }}</button>
     <span id="analyticsStatus" style="align-self: center; color: #94a3b8;"></span>
   </div>
 
@@ -118,9 +116,9 @@
   <table class="analytics-table" id="analyticsDailyTable">
     <thead>
       <tr>
-        <th>Date</th>
+        <th>{{ 'date' | t }}</th>
         <th>{{ 'event_type' | t }}</th>
-        <th>Total Events</th>
+        <th>{{ 'total_events' | t }}</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -139,7 +137,7 @@
 
   async function loadAnalytics() {
     try {
-      statusLabel.textContent = 'Loading analytics...';
+      statusLabel.textContent = window.t ? t('loading_analytics') : 'Loading analytics...';
       const token = localStorage.getItem('token');
       if (!token) {
         window.location.href = '/login.html';
@@ -152,7 +150,7 @@
         }
       });
       if (!response.ok) {
-        throw new Error('Failed to load analytics data');
+        throw new Error(window.t ? t('failed_load_analytics') : 'Failed to load analytics data');
       }
       const payload = await response.json();
       renderSummary(payload.data?.summary || []);
@@ -160,7 +158,7 @@
       statusLabel.textContent = \`Updated just now • Last \${days} day(s)\`;
     } catch (error) {
       console.error(error);
-      statusLabel.textContent = 'Unable to load analytics';
+      statusLabel.textContent = window.t ? t('unable_load_analytics') : 'Unable to load analytics';
     }
   }
 
@@ -174,14 +172,14 @@
       <div class="analytics-card">
         <h3>${window.t ? t('event_type_' + item.event_type) : item.event_type}</h3>
         <p>${Number(item.total_events).toLocaleString()}</p>
-        <small style="color:#94a3b8;">Unique sources: ${Number(item.unique_sources).toLocaleString()}</small>
+        <small style="color:#94a3b8;">${window.t ? t('unique_sources', { count: Number(item.unique_sources).toLocaleString() }) : `Unique sources: ${Number(item.unique_sources).toLocaleString()}`}</small>
       </div>
     `).join('');
   }
 
   function renderDaily(daily) {
     if (!daily.length) {
-      dailyTableBody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8;">No daily data available.</td></tr>';
+      dailyTableBody.innerHTML = '<tr><td colspan="3" style="color:#94a3b8;">' + (window.t ? t('no_daily_data') : 'No daily data available.') + '</td></tr>';
       return;
     }
 

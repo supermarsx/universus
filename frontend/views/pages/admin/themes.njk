@@ -1,6 +1,6 @@
 {% extends "../layouts/base.njk" %}
 
-{% block title %}Theme Management - Admin Panel{% endblock %}
+{% block title %}{{ 'theme_management' | t }} - {{ 'admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <link rel="stylesheet" href="/css/theme-effects.css">
@@ -157,7 +157,7 @@
                 </div>
                 <div class="card-body">
                     <div id="schedules-container">
-                        <p class="text-muted">Loading schedules...</p>
+                        <p class="text-muted">{{ 'loading_schedules' | t }}</p>
                     </div>
                 </div>
             </div>
@@ -312,9 +312,7 @@ async function loadCurrentTheme() {
                     <div class="color-swatch" style="background: ${data.theme.secondary_color}"></div>
                     <div class="color-swatch" style="background: ${data.theme.accent_color}"></div>
                 </div>
-                <button class="btn btn-sm btn-danger mt-2" onclick="deactivateTheme(${data.theme.id})">
-                    Deactivate
-                </button>
+                <button class="btn btn-sm btn-danger mt-2" onclick="deactivateTheme(${data.theme.id})" aria-label="'+(window.t?t('deactivate'):'Deactivate')+'">'+(window.t?t('deactivate'):'Deactivate')+'</button>
             `;
         } else {
             container.innerHTML = '<p class="text-muted">{{ 'no_active_theme' | t }}</p>';
@@ -342,7 +340,7 @@ async function loadThemes() {
                 <div class="theme-card ${theme.is_active ? 'active' : ''}">
                     <div class="row">
                         <div class="col-md-8">
-                            <h4>${theme.name} ${theme.is_active ? '<span class="badge badge-success">Active</span>' : ''}</h4>
+                            <h4>${theme.name} ${theme.is_active ? '<span class="badge badge-success">'+(window.t?t('active'):'Active')+'</span>' : ''}</h4>
                             <p><strong>${window.t ? t('key_label') : 'Key:'}</strong> ${theme.theme_key}</p>
                             <p>${theme.description || 'No description'}</p>
                             <div class="theme-preview-box">
@@ -352,24 +350,24 @@ async function loadThemes() {
                             </div>
                         </div>
                         <div class="col-md-4 text-right">
-                            <button class="btn btn-sm btn-success mb-2" onclick="activateTheme(${theme.id})">
-                                <i class="fas fa-play"></i> Activate
-                            </button>
-                            <button class="btn btn-sm btn-info mb-2" onclick="previewTheme(${theme.id})">
-                                <i class="fas fa-eye"></i> Preview
-                            </button>
-                            <button class="btn btn-sm btn-primary mb-2" onclick="createScheduleFor(${theme.id})">
-                                <i class="fas fa-calendar"></i> Schedule
-                            </button>
-                            <button class="btn btn-sm btn-secondary mb-2" onclick="viewThemeAnalytics(${theme.id})">
-                                <i class="fas fa-chart-line"></i> Analytics
-                            </button>
-                            <button class="btn btn-sm btn-warning mb-2" onclick="editTheme(${theme.id})">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn btn-sm btn-danger mb-2" onclick="deleteTheme(${theme.id})">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
+<button class="btn btn-sm btn-success mb-2" onclick="activateTheme(${theme.id})" aria-label="'+(window.t?t('activate'):'Activate')+'">
+                                <i class="fas fa-play"></i> '+(window.t?t('activate'):'Activate')+'
+                             </button>
+<button class="btn btn-sm btn-info mb-2" onclick="previewTheme(${theme.id})" aria-label="'+(window.t?t('preview'):'Preview')+'">
+                                <i class="fas fa-eye"></i> '+(window.t?t('preview'):'Preview')+'
+                             </button>
+<button class="btn btn-sm btn-primary mb-2" onclick="createScheduleFor(${theme.id})" aria-label="'+(window.t?t('schedule'):'Schedule')+'">
+                                <i class="fas fa-calendar"></i> '+(window.t?t('schedule'):'Schedule')+'
+                             </button>
+<button class="btn btn-sm btn-secondary mb-2" onclick="viewThemeAnalytics(${theme.id})" aria-label="'+(window.t?t('analytics'):'Analytics')+'">
+                                <i class="fas fa-chart-line"></i> '+(window.t?t('analytics'):'Analytics')+'
+                             </button>
+<button class="btn btn-sm btn-warning mb-2" onclick="editTheme(${theme.id})" aria-label="'+(window.t?t('edit'):'Edit')+'">
+                                <i class="fas fa-edit"></i> '+(window.t?t('edit'):'Edit')+'
+                             </button>
+<button class="btn btn-sm btn-danger mb-2" onclick="deleteTheme(${theme.id})" aria-label="'+(window.t?t('delete'):'Delete')+'">
+                                <i class="fas fa-trash"></i> '+(window.t?t('delete'):'Delete')+'
+                             </button>
                         </div>
                     </div>
                 </div>
