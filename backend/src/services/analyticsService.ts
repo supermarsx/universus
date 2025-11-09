@@ -3,13 +3,29 @@ import { pool } from '../config/database';
 import { AnalyticsEventPayload } from '../types/analytics';
 import { analyticsQueue } from './analyticsQueue';
 
+/**
+ * Analytics service — accepts tracking events and persists or publishes them
+ * to a queue depending on configuration. Also exposes summary/reporting helpers.
+ */
 class AnalyticsService {
   private pool: Pool;
 
+  /**
+   * Construct the service with a PG connection pool.
+   *
+   * @param db - PostgreSQL Pool used for inserts and analytics queries.
+   */
   constructor(db: Pool) {
     this.pool = db;
   }
 
+  /**
+   * Track an analytics event. When an async analytics queue is enabled the
+   * event will be published to the queue; otherwise it will be persisted
+   * synchronously into the analytics_events table.
+   *
+   * @param input - AnalyticsEventPayload describing the event.
+   */
   async trackEvent(input: AnalyticsEventPayload): Promise<void> {
     if (analyticsQueue.isEnabled()) {
       await analyticsQueue.publish(input);
@@ -18,6 +34,11 @@ class AnalyticsService {
     await this.persistEvent(input);
   }
 
+  /**
+   * Persist an analytics event directly into the database.
+   *
+   * @param input - AnalyticsEventPayload to persist.
+   */
   async persistEvent(input: AnalyticsEventPayload): Promise<void> {
     await this.pool.query(
       `INSERT INTO analytics_events (user_id, session_id, event_type, event_properties, user_agent, ip_address)
@@ -33,6 +54,12 @@ class AnalyticsService {
     );
   }
 
+  /**
+   * Produce usage summary and daily breakdown for the given number of days.
+   *
+   * @param days - Number of days to include in the report (default 7).
+   * @returns Object with `summary` and `daily` arrays describing event counts.
+   */
   async getUsageSummary(days: number = 7) {
     const summary = await this.pool.query(
       `SELECT event_type,

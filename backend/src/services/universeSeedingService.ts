@@ -17,12 +17,12 @@ import {
 
 export class UniverseSeedingService {
   
-  // =====================================================
-  // UNIVERSE CREATION
-  // =====================================================
-  
   /**
-   * Create a new universe configuration
+   * Create a new universe configuration seed. Validates input and inserts a
+   * universe seed row which can be used later when seeding the actual universe.
+   *
+   * @param request - CreateUniverseRequest with universe options.
+   * @returns Result object indicating success and created universe id.
    */
   async createUniverse(request: CreateUniverseRequest): Promise<{ success: boolean; universeId?: number; message: string }> {
     const client = await pool.connect();
@@ -87,6 +87,14 @@ export class UniverseSeedingService {
   
   /**
    * Complete universe seeding process
+   */
+  /**
+   * Run the full universe seeding process for a previously created universe seed.
+   * This orchestrates galaxy generation, resource distribution, bot/template
+   * creation, alliance seeding and maintenance task scheduling.
+   *
+   * @param request - SeedUniverseRequest controlling which steps to execute.
+   * @returns UniverseSeedingResult with counts, duration and any errors.
    */
   async seedUniverse(request: SeedUniverseRequest): Promise<UniverseSeedingResult> {
     const startTime = Date.now();
@@ -198,12 +206,13 @@ export class UniverseSeedingService {
     }
   }
   
-  // =====================================================
-  // GALAXY GENERATION
-  // =====================================================
-  
   /**
-   * Generate all galaxies for a universe
+   * Internal: generate galaxy seeds and sector configurations for the given universe.
+   *
+   * @private
+   * @param client - Active DB client used within the seeding transaction.
+   * @param universeId - Universe seed id to generate galaxies for.
+   * @returns Number of galaxies generated.
    */
   private async generateGalaxiesForUniverse(client: any, universeId: number): Promise<number> {
     // Get universe configuration
@@ -272,7 +281,13 @@ export class UniverseSeedingService {
   }
   
   /**
-   * Create sector configurations for a galaxy
+   * Internal: create sector configuration rows for a galaxy.
+   *
+   * @private
+   * @param client - Active DB client.
+   * @param galaxyId - Galaxy seed id to attach sectors to.
+   * @param galaxyNumber - The 1-based galaxy number within the universe.
+   * @param totalGalaxies - Total galaxies in the universe (used for difficulty scaling).
    */
   private async createSectorConfigurations(
     client: any,
@@ -320,12 +335,14 @@ export class UniverseSeedingService {
     }
   }
   
-  // =====================================================
-  // RESOURCE DISTRIBUTION
-  // =====================================================
-  
   /**
-   * Distribute resources across all galaxies
+   * Internal: create and apply resource distribution patterns for each galaxy
+   * in the universe. Returns the number of patterns applied.
+   *
+   * @private
+   * @param client - DB client.
+   * @param universeId - Universe seed id.
+   * @returns Number of patterns applied.
    */
   private async distributeUniverseResources(client: any, universeId: number): Promise<number> {
     const galaxiesResult = await client.query(
@@ -360,12 +377,13 @@ export class UniverseSeedingService {
     return patternsApplied;
   }
   
-  // =====================================================
-  // BOT TEMPLATES
-  // =====================================================
-  
   /**
-   * Create bot generation templates
+   * Internal: pre-create bot templates used during bot population. Templates
+   * are parameterized by personality and skill-level.
+   *
+   * @private
+   * @param client - DB client.
+   * @param universeId - Universe seed id.
    */
   private async createBotTemplates(client: any, universeId: number): Promise<void> {
     const personalities = ['aggressive', 'defensive', 'economic', 'explorer', 'researcher', 'diplomatic', 'opportunist', 'balanced'];
@@ -399,12 +417,13 @@ export class UniverseSeedingService {
     }
   }
   
-  // =====================================================
-  // ALLIANCE SEEDING
-  // =====================================================
-  
   /**
-   * Create alliance seeds
+   * Internal: create alliance seed rows used to pre-populate alliance templates.
+   *
+   * @private
+   * @param client - DB client.
+   * @param universeId - Universe seed id.
+   * @returns Number of alliance seeds created.
    */
   private async createAllianceSeeds(client: any, universeId: number): Promise<number> {
     const allianceCount = 20; // Create 20 seed alliances
@@ -441,12 +460,12 @@ export class UniverseSeedingService {
     return created;
   }
   
-  // =====================================================
-  // MAINTENANCE TASKS
-  // =====================================================
-  
   /**
-   * Create automated maintenance tasks
+   * Internal: schedule recurring maintenance tasks for a universe (balance, cleanup, analytics, etc.).
+   *
+   * @private
+   * @param client - DB client.
+   * @param universeId - Universe seed id.
    */
   private async createMaintenanceTasks(client: any, universeId: number): Promise<void> {
     const tasks = [
@@ -469,12 +488,11 @@ export class UniverseSeedingService {
     }
   }
   
-  // =====================================================
-  // QUERY METHODS
-  // =====================================================
-  
   /**
-   * Get universe by ID
+   * Query a universe seed by id.
+   *
+   * @param universeId - Universe seed id to retrieve.
+   * @returns UniverseSeed or null when not found.
    */
   async getUniverseById(universeId: number): Promise<UniverseSeed | null> {
     const result = await pool.query(
@@ -486,7 +504,9 @@ export class UniverseSeedingService {
   }
   
   /**
-   * Get all universes
+   * Retrieve all universe seeds ordered by creation time.
+   *
+   * @returns Array of UniverseSeed objects.
    */
   async getAllUniverses(): Promise<UniverseSeed[]> {
     const result = await pool.query(
@@ -497,7 +517,9 @@ export class UniverseSeedingService {
   }
   
   /**
-   * Get seeded universes
+   * Return universes that have been seeded (is_seeded = true).
+   *
+   * @returns Array of seeded UniverseSeed rows.
    */
   async getSeededUniverses(): Promise<UniverseSeed[]> {
     const result = await pool.query(
@@ -508,7 +530,10 @@ export class UniverseSeedingService {
   }
   
   /**
-   * Get galaxies for universe
+   * Retrieve galaxy seed rows for a given universe.
+   *
+   * @param universeId - Universe seed id.
+   * @returns Array of GalaxySeed rows.
    */
   async getGalaxiesForUniverse(universeId: number): Promise<GalaxySeed[]> {
     const result = await pool.query(
@@ -519,10 +544,14 @@ export class UniverseSeedingService {
     return result.rows.map(row => this.mapGalaxySeed(row));
   }
   
-  // =====================================================
-  // HELPER METHODS
-  // =====================================================
-  
+  /**
+   * Determine the GalaxyType for each galaxy slot based on universe type and count.
+   *
+   * @private
+   * @param galaxyCount - Total number of galaxies.
+   * @param universeType - Universe type guiding galaxy composition.
+   * @returns Array of GalaxyType values with length equal to galaxyCount.
+   */
   private determineGalaxyTypes(galaxyCount: number, universeType: UniverseType): GalaxyType[] {
     const types: GalaxyType[] = [];
     

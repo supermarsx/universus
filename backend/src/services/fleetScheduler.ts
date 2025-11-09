@@ -16,12 +16,20 @@ interface ScheduledEvent {
 
 const ZSET_KEY = 'fleets:schedule';
 
+/**
+ * FleetScheduler manages scheduled fleet events (arrivals and returns) backed
+ * by a Redis sorted set. Consumers register callbacks that will be invoked
+ * when events become due.
+ */
 class FleetScheduler {
   private static instance: FleetScheduler;
   private callbacks: FleetSchedulerCallbacks | null = null;
   private timer: NodeJS.Timeout | null = null;
   private active = false;
 
+  /**
+   * Return the singleton FleetScheduler instance.
+   */
   static getInstance(): FleetScheduler {
     if (!FleetScheduler.instance) {
       FleetScheduler.instance = new FleetScheduler();
@@ -29,10 +37,19 @@ class FleetScheduler {
     return FleetScheduler.instance;
   }
 
+  /**
+   * Register callback handlers that will be invoked for arrival/return events.
+   *
+   * @param callbacks - Object containing onArrival and onReturn async handlers.
+   */
   registerCallbacks(callbacks: FleetSchedulerCallbacks): void {
     this.callbacks = callbacks;
   }
 
+  /**
+   * Initialize and start the scheduler. Bootstraps from DB into Redis and
+   * schedules the next tick. Safe to call multiple times.
+   */
   async start(): Promise<void> {
     if (this.active || !redis) {
       return;
@@ -44,21 +61,42 @@ class FleetScheduler {
     console.log('[FleetScheduler] Initialized with Redis-backed event queue');
   }
 
+  /**
+   * Rebuild the in-memory/sorted-set state from the database and reschedule.
+   */
   async reboot(): Promise<void> {
     await this.bootstrapFromDatabase();
     await this.scheduleNextTick();
   }
 
+  /**
+   * Schedule an arrival event for a fleet.
+   *
+   * @param fleetId - Fleet id
+   * @param arrivalTime - When the arrival will occur (Date, timestamp or ISO string)
+   */
   async scheduleArrival(fleetId: number, arrivalTime: Date | string | number | null): Promise<void> {
     if (!arrivalTime) return;
     await this.addEvent({ type: 'arrival', fleetId, score: this.toScore(arrivalTime) });
   }
 
+  /**
+   * Schedule a return event for a fleet.
+   *
+   * @param fleetId - Fleet id
+   * @param returnTime - When the return will occur
+   */
   async scheduleReturn(fleetId: number, returnTime: Date | string | number | null): Promise<void> {
     if (!returnTime) return;
     await this.addEvent({ type: 'return', fleetId, score: this.toScore(returnTime) });
   }
 
+  /**
+   * Remove scheduled events for a fleet. Optionally filter by event type.
+   *
+   * @param fleetId - Fleet id
+   * @param type - Optional event type to remove (arrival|return)
+   */
   async unschedule(fleetId: number, type?: FleetEventType): Promise<void> {
     if (!redis) return;
     if (type) {
@@ -69,12 +107,20 @@ class FleetScheduler {
     await this.scheduleNextTick();
   }
 
+  /**
+   * Internal: add an event into the Redis sorted set and schedule the next tick.
+   */
   private async addEvent(event: ScheduledEvent): Promise<void> {
     if (!redis) return;
     await redis.zadd(ZSET_KEY, event.score, `${event.type}:${event.fleetId}`);
     await this.scheduleNextTick();
   }
 
+  /**
+   * Bootstrap scheduler state from the database (populate Redis zset).
+   *
+   * @private
+   */
   private async bootstrapFromDatabase(): Promise<void> {
     if (!redis) return;
     await redis.del(ZSET_KEY);
@@ -99,6 +145,12 @@ class FleetScheduler {
     await pipeline.exec();
   }
 
+  /**
+   * Schedule the next setTimeout to process due events. Determines the nearest
+   * event score in Redis and sets a timer accordingly.
+   *
+   * @private
+   */
   private async scheduleNextTick(): Promise<void> {
     if (!redis) return;
     if (this.timer) {
@@ -117,6 +169,12 @@ class FleetScheduler {
     this.timer = setTimeout(() => this.processDueEvents(), timeout);
   }
 
+  /**
+   * Process all due fleet events (score <= now). Removes them from Redis,
+   * executes registered callbacks and reschedules the next tick.
+   *
+   * @private
+   */
   private async processDueEvents(): Promise<void> {
     if (!redis || !this.callbacks) return;
 
@@ -160,6 +218,12 @@ class FleetScheduler {
     await this.scheduleNextTick();
   }
 
+  /**
+   * Convert a Date-like value to a numeric score (ms since epoch) used by Redis.
+   *
+   * @private
+   * @param value - Date, ISO string or numeric timestamp
+   */
   private toScore(value: Date | string | number): number {
     if (typeof value === 'number') return value;
     if (value instanceof Date) return value.getTime();

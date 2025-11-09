@@ -114,3 +114,21 @@ export async function resolveLocation(
     usedFields: moon.used_fields,
   };
 }
+
+/**
+ * Assert that a planet id value is provided; throws if not.
+ *
+ * @param id - Optional planet id value
+ */
+export function ensurePlanetId(id?: number): asserts id is number {
+  if (!id) throw new Error('Planet id is required for this operation');
+}
+
+/**
+ * Assert that a moon id value is provided; throws if not.
+ *
+ * @param id - Optional moon id value
+ */
+export function ensureMoonId(id?: number): asserts id is number {
+  if (!id) throw new Error('Moon id is required for this operation');
+}
