@@ -1,6 +1,8 @@
 import os from 'os';
 import { AdminMonitoringService } from '../../src/services/adminMonitoringService';
 
+import { __setDefaultQueryResponse } from '../setup/dbMock';
+
 const mockQuery = jest.fn();
 
 jest.mock('../../src/config/database', () => ({
@@ -12,6 +14,9 @@ jest.mock('../../src/config/database', () => ({
 const dbModule = require('../../src/config/database');
 dbModule.default.query = mockQuery;
 dbModule.pool.query = mockQuery;
+
+__setDefaultQueryResponse({ rows: [], rowCount: 0 });
+
 
 describe('AdminMonitoringService', () => {
   beforeEach(() => {

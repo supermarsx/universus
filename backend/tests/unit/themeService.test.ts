@@ -1,5 +1,7 @@
 import { ThemeService } from '../../src/services/themeService';
 
+import { __setDefaultQueryResponse } from '../setup/dbMock';
+
 const mockQuery = jest.fn();
 
 jest.mock('../../src/config/database', () => ({
@@ -11,6 +13,10 @@ jest.mock('../../src/config/database', () => ({
 const dbModule = require('../../src/config/database');
 dbModule.default.query = mockQuery;
 dbModule.pool.query = mockQuery;
+
+// Provide a default empty response so tests don't need to set it every time.
+__setDefaultQueryResponse({ rows: [], rowCount: 0 });
+
 
 describe('ThemeService custom CSS handling', () => {
   beforeEach(() => {

@@ -1,5 +1,7 @@
 import playerBlockService from '../../src/services/playerBlockService';
 
+import { __setDefaultQueryResponse } from '../setup/dbMock';
+
 const mockQuery = jest.fn();
 
 jest.mock('../../src/config/database', () => ({
@@ -11,6 +13,9 @@ jest.mock('../../src/config/database', () => ({
 const dbModule = require('../../src/config/database');
 dbModule.pool.query = mockQuery;
 dbModule.default.query = mockQuery;
+
+__setDefaultQueryResponse({ rows: [], rowCount: 0 });
+
 
 describe('PlayerBlockService', () => {
   beforeEach(() => {
