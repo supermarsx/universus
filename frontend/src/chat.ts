@@ -4,13 +4,15 @@
  * Handles chat channels, private messages, and real-time updates
  */
 
+import i18n from './i18n';
+
 const CHAT_REACTIONS = [
-  { type: 'thumbs_up', emoji: '👍', label: 'Thumbs up' },
-  { type: 'thumbs_down', emoji: '👎', label: 'Thumbs down' },
-  { type: 'rofl', emoji: '🤣', label: 'ROFL' },
-  { type: 'clap', emoji: '👏', label: 'Clap' },
-  { type: 'angry', emoji: '😡', label: 'Angry' },
-  { type: 'cry', emoji: '😭', label: 'Crying' },
+  { type: 'thumbs_up', emoji: '👍', label: i18n.t('chat.reaction.thumbs_up', { defaultValue: 'Thumbs up' }) },
+  { type: 'thumbs_down', emoji: '👎', label: i18n.t('chat.reaction.thumbs_down', { defaultValue: 'Thumbs down' }) },
+  { type: 'rofl', emoji: '🤣', label: i18n.t('chat.reaction.rofl', { defaultValue: 'ROFL' }) },
+  { type: 'clap', emoji: '👏', label: i18n.t('chat.reaction.clap', { defaultValue: 'Clap' }) },
+  { type: 'angry', emoji: '😡', label: i18n.t('chat.reaction.angry', { defaultValue: 'Angry' }) },
+  { type: 'cry', emoji: '😭', label: i18n.t('chat.reaction.cry', { defaultValue: 'Crying' }) },
 ];
 
 class UniversusChat {
@@ -141,7 +143,7 @@ class UniversusChat {
     if (!list) return;
     
     if (this.conversations.length === 0) {
-      list.innerHTML = '<p style="font-size: 11px; color: #999; padding: 10px;">No conversations yet</p>';
+      list.innerHTML = `<p style="font-size: 11px; color: #999; padding: 10px;">${i18n.t('chat.noConversations', { defaultValue: 'No conversations yet' })}</p>`;
       return;
     }
     
@@ -160,7 +162,7 @@ class UniversusChat {
     
     const count = this.onlinePlayers.length;
     container.innerHTML = `
-      <div class="online-count">${count} player${count !== 1 ? 's' : ''} online</div>
+      <div class="online-count">${i18n.t('chat.playersOnline', { defaultValue: `${count} player${count !== 1 ? 's' : ''} online` })}</div>
       ${this.onlinePlayers.slice(0, 20).map(player => `
         <div class="player-item" onclick="chat.startPrivateMessage('${player.username}')">
           <span class="player-status status-${player.status}"></span>
@@ -203,10 +205,10 @@ class UniversusChat {
     
     // Update channel info
     document.getElementById('channel-info').innerHTML = `
-      <p><strong>Channel:</strong> ${channel.channel_name}</p>
-      <p><strong>Type:</strong> ${channel.channel_type}</p>
-      <p><strong>Description:</strong> ${channel.description || 'N/A'}</p>
-      <p style="font-size: 11px; color: #999;">Rate limit: ${channel.rate_limit_seconds}s between messages</p>
+      <p><strong>${i18n.t('chat.channelLabel', { defaultValue: 'Channel:' })}</strong> ${channel.channel_name}</p>
+      <p><strong>${i18n.t('chat.typeLabel', { defaultValue: 'Type:' })}</strong> ${channel.channel_type}</p>
+      <p><strong>${i18n.t('chat.descriptionLabel', { defaultValue: 'Description:' })}</strong> ${channel.description || i18n.t('chat.na', { defaultValue: 'N/A' })}</p>
+      <p style="font-size: 11px; color: #999;">${i18n.t('chat.rateLimit', { defaultValue: `Rate limit: ${channel.rate_limit_seconds}s between messages` })}</p>
     `;
   }
 
@@ -219,7 +221,7 @@ class UniversusChat {
     if (!conversation) return;
     
     // Update UI
-    document.getElementById('chat-title').textContent = `PM with ${conversation.other_username}`;
+    document.getElementById('chat-title').textContent = i18n.t('chat.pmWith', { defaultValue: `PM with ${conversation.other_username}` });
     document.getElementById('chat-input').disabled = false;
     document.getElementById('send-btn').disabled = false;
     
@@ -316,7 +318,7 @@ class UniversusChat {
     if (!messages || messages.length === 0) {
       this.activeMessages = [];
       this.messageCache.clear();
-      container.innerHTML = '<div class="chat-welcome"><p>No messages yet. Start the conversation!</p></div>';
+      container.innerHTML = `<div class="chat-welcome"><p>${i18n.t('chat.noMessagesYet', { defaultValue: 'No messages yet. Start the conversation!' })}</p></div>`;
       return;
     }
     
@@ -333,7 +335,7 @@ class UniversusChat {
       .map((msg) => this.createMessageHTML(msg));
 
     if (rendered.length === 0) {
-      container.innerHTML = '<div class="chat-welcome"><p>No messages to display.</p></div>';
+      container.innerHTML = `<div class="chat-welcome"><p>${i18n.t('chat.noMessagesToDisplay', { defaultValue: 'No messages to display.' })}</p></div>`;
       return;
     }
 
@@ -344,7 +346,7 @@ class UniversusChat {
   createMessageHTML(msg) {
     if (!msg) return '';
     const isOwnMessage = msg.user_id === this.currentUserId || msg.sender_id === this.currentUserId;
-    const username = msg.username || msg.sender_username || msg.systemUsername || 'Unknown';
+    const username = msg.username || msg.sender_username || msg.systemUsername || i18n.t('chat.unknown', { defaultValue: 'Unknown' });
     let messageClass = 'chat-message';
 
     if (msg.system) {
@@ -469,28 +471,28 @@ class UniversusChat {
     switch (command) {
       case 'block':
         if (!parts[0]) {
-          this.displaySystemMessage('Usage: /block <username> [scope]');
+          this.displaySystemMessage(i18n.t('chat.usage.block', { defaultValue: 'Usage: /block <username> [scope]' }));
           return;
         }
         await this.blockUserCommand(parts[0], parts[1]);
         break;
       case 'unblock':
         if (!parts[0]) {
-          this.displaySystemMessage('Usage: /unblock <username>');
+          this.displaySystemMessage(i18n.t('chat.usage.unblock', { defaultValue: 'Usage: /unblock <username>' }));
           return;
         }
         await this.unblockUserCommand(parts[0], parts[1]);
         break;
       case 'mute':
         if (!parts[0]) {
-          this.displaySystemMessage('Usage: /mute <username>');
+          this.displaySystemMessage(i18n.t('chat.usage.mute', { defaultValue: 'Usage: /mute <username>' }));
           return;
         }
         this.muteUser(parts[0]);
         break;
       case 'unmute':
         if (!parts[0]) {
-          this.displaySystemMessage('Usage: /unmute <username>');
+          this.displaySystemMessage(i18n.t('chat.usage.unmute', { defaultValue: 'Usage: /unmute <username>' }));
           return;
         }
         this.unmuteUser(parts[0]);
@@ -501,11 +503,11 @@ class UniversusChat {
       case 'commands':
       case 'help':
         this.displaySystemMessage(
-          'Commands: /block, /unblock, /mute, /unmute, /muted, /help'
+          i18n.t('chat.commandsList', { defaultValue: 'Commands: /block, /unblock, /mute, /unmute, /muted, /help' })
         );
         break;
       default:
-        this.displaySystemMessage(`Unknown command: /${command}`);
+        this.displaySystemMessage(i18n.t('chat.unknownCommand', { defaultValue: `Unknown command: /${command}` }));
     }
   }
 
@@ -518,11 +520,11 @@ class UniversusChat {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to block player');
+        throw new Error(data?.error || i18n.t('chat.failedBlock', { defaultValue: 'Failed to block player' }));
       }
-      this.displaySystemMessage(`Blocked ${username} (${scope})`);
+      this.displaySystemMessage(i18n.t('chat.blocked', { defaultValue: `Blocked ${username} (${scope})`, username, scope }));
     } catch (error: any) {
-      this.displaySystemMessage(error?.message || 'Failed to block player');
+      this.displaySystemMessage(error?.message || i18n.t('chat.failedBlock', { defaultValue: 'Failed to block player' }));
     }
   }
 
@@ -537,35 +539,35 @@ class UniversusChat {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to unblock player');
+        throw new Error(data?.error || i18n.t('chat.failedUnblock', { defaultValue: 'Failed to unblock player' }));
       }
-      this.displaySystemMessage(`Unblocked ${identifier}`);
+      this.displaySystemMessage(i18n.t('chat.unblocked', { defaultValue: `Unblocked ${identifier}`, identifier }));
     } catch (error: any) {
-      this.displaySystemMessage(error?.message || 'Failed to unblock player');
+      this.displaySystemMessage(error?.message || i18n.t('chat.failedUnblock', { defaultValue: 'Failed to unblock player' }));
     }
   }
 
   muteUser(username) {
     this.mutedUsers.add(username.toLowerCase());
     this.saveMutedUsers();
-    this.displaySystemMessage(`${username} muted locally.`);
+    this.displaySystemMessage(i18n.t('chat.mutedLocal', { defaultValue: `${username} muted locally.` }));
   }
 
   unmuteUser(username) {
     const removed = this.mutedUsers.delete(username.toLowerCase());
     this.saveMutedUsers();
     this.displaySystemMessage(
-      removed ? `${username} unmuted.` : `${username} was not muted.`
+      removed ? i18n.t('chat.unmuted', { defaultValue: `${username} unmuted.` }) : i18n.t('chat.wasNotMuted', { defaultValue: `${username} was not muted.` })
     );
   }
 
   listMutedUsers() {
     if (this.mutedUsers.size === 0) {
-      this.displaySystemMessage('Mute list is empty.');
+      this.displaySystemMessage(i18n.t('chat.muteListEmpty', { defaultValue: 'Mute list is empty.' }));
       return;
     }
     this.displaySystemMessage(
-      `Muted users: ${Array.from(this.mutedUsers).join(', ')}`
+      i18n.t('chat.mutedUsersList', { defaultValue: `Muted users: ${Array.from(this.mutedUsers).join(', ')}` })
     );
   }
 
@@ -582,7 +584,7 @@ class UniversusChat {
     let isAnnouncement = !!(announcementToggle && announcementToggle.checked && isWorld);
 
     if (announcementToggle && announcementToggle.checked && !isWorld) {
-      this.displaySystemMessage('Announcements are limited to the world chat.');
+      this.displaySystemMessage(i18n.t('chat.announcementsLimited', { defaultValue: 'Announcements are limited to the world chat.' }));
       announcementToggle.checked = false;
       isAnnouncement = false;
     }
@@ -737,7 +739,7 @@ class UniversusChat {
     return `
       <div class="pinned-card" data-scroll-to="${msg.id}">
         <div class="pinned-meta">
-          <span class="username">${this.escapeHTML(msg.username || 'Unknown')}</span>
+          <span class="username">${this.escapeHTML(msg.username || i18n.t('chat.unknown', { defaultValue: 'Unknown' }))}</span>
           <span class="timestamp">${this.formatTime(msg.pinned_at || msg.created_at)}</span>
         </div>
         <div class="pinned-body">${this.formatMessageContent(msg.message)}</div>
@@ -749,7 +751,7 @@ class UniversusChat {
     return `
       <div class="announcement-card" data-scroll-to="${msg.id}">
         <div class="announcement-meta">
-          <span class="username">${this.escapeHTML(msg.username || 'Unknown')}</span>
+          <span class="username">${this.escapeHTML(msg.username || i18n.t('chat.unknown', { defaultValue: 'Unknown' }))}</span>
           <span class="timestamp">${this.formatTime(msg.created_at)}</span>
         </div>
         <div class="announcement-body">${this.formatMessageContent(msg.message)}</div>
@@ -787,10 +789,10 @@ class UniversusChat {
   renderMessageBadges(msg) {
     const badges: string[] = [];
     if (msg.is_announcement) {
-      badges.push('<span class="message-badge announcement">Announcement</span>');
+      badges.push(`<span class="message-badge announcement">${i18n.t('chat.announcementBadge', { defaultValue: 'Announcement' })}</span>`);
     }
     if (msg.is_pinned) {
-      badges.push('<span class="message-badge pinned">Pinned</span>');
+      badges.push(`<span class="message-badge pinned">${i18n.t('chat.pinnedBadge', { defaultValue: 'Pinned' })}</span>`);
     }
     return badges.join('');
   }
@@ -801,7 +803,7 @@ class UniversusChat {
     const isPinned = Boolean(msg.is_pinned);
     actions.push(
       `<button class="message-action-btn" data-message-action="pin" data-message-id="${msg.id}" data-pinned="${isPinned}">
-        ${isPinned ? 'Unpin' : 'Pin'}
+        ${isPinned ? i18n.t('chat.unpin', { defaultValue: 'Unpin' }) : i18n.t('chat.pin', { defaultValue: 'Pin' })}
       </button>`
     );
 
@@ -809,7 +811,7 @@ class UniversusChat {
       const isAnnouncement = Boolean(msg.is_announcement);
       actions.push(
         `<button class="message-action-btn" data-message-action="announcement" data-message-id="${msg.id}" data-announcement="${isAnnouncement}">
-          ${isAnnouncement ? 'Unmark' : 'Announcement'}
+          ${isAnnouncement ? i18n.t('chat.unmark', { defaultValue: 'Unmark' }) : i18n.t('chat.announcementLabel', { defaultValue: 'Announcement' })}
         </button>`
       );
     }
@@ -832,6 +834,7 @@ class UniversusChat {
           data-reaction-btn
           data-reaction="${reaction.type}"
           data-message-id="${msg.id}"
+          title="${reaction.label}"
         >
           <span class="reaction-emoji">${reaction.emoji}</span>
           <span class="reaction-count">${count}</span>
@@ -855,7 +858,7 @@ class UniversusChat {
         body: JSON.stringify({ reactionType }),
       });
       if (!response.ok) {
-        throw new Error('Failed to toggle reaction');
+        throw new Error(i18n.t('chat.failedToggleReaction', { defaultValue: 'Failed to toggle reaction' }));
       }
       const data = await response.json();
       const existing = this.messageCache.get(messageId) || {};
@@ -890,7 +893,7 @@ class UniversusChat {
       const isAnnouncement = target?.dataset?.announcement === 'true';
       let expiresAt;
       if (!isAnnouncement) {
-        const input = prompt('Announcement duration in minutes (leave blank for no expiry):');
+        const input = prompt(i18n.t('chat.announcementPrompt', { defaultValue: 'Announcement duration in minutes (leave blank for no expiry):' }));
         if (input) {
           const minutes = parseInt(input, 10);
           if (!Number.isNaN(minutes) && minutes > 0) {
@@ -911,7 +914,7 @@ class UniversusChat {
         body: JSON.stringify({ pinned: shouldPin }),
       });
       if (!response.ok) {
-        throw new Error('Failed to update pin');
+        throw new Error(i18n.t('chat.failedUpdatePin', { defaultValue: 'Failed to update pin' }));
       }
       const data = await response.json();
       const updated = data.message;
@@ -921,7 +924,7 @@ class UniversusChat {
       this.refreshMessage(updated.id);
     } catch (error) {
       console.error('Failed to update pin:', error);
-      this.displaySystemMessage('Unable to update pin state.');
+      this.displaySystemMessage(i18n.t('chat.unableUpdatePin', { defaultValue: 'Unable to update pin state.' }));
     }
   }
 
@@ -936,7 +939,7 @@ class UniversusChat {
         }),
       });
       if (!response.ok) {
-        throw new Error('Failed to update announcement');
+        throw new Error(i18n.t('chat.failedUpdateAnnouncement', { defaultValue: 'Failed to update announcement' }));
       }
       const data = await response.json();
       const updated = data.message;
@@ -946,7 +949,7 @@ class UniversusChat {
       this.refreshMessage(updated.id);
     } catch (error) {
       console.error('Failed to update announcement:', error);
-      this.displaySystemMessage('Unable to update announcement state.');
+      this.displaySystemMessage(i18n.t('chat.unableUpdateAnnouncement', { defaultValue: 'Unable to update announcement state.' }));
     }
   }
 
@@ -954,7 +957,7 @@ class UniversusChat {
     const systemMessage = {
       id: `sys-${Date.now()}`,
       system: true,
-      systemUsername: 'System',
+      systemUsername: i18n.t('chat.systemUsername', { defaultValue: 'System' }),
       message,
       created_at: new Date().toISOString(),
     };
@@ -976,10 +979,10 @@ class UniversusChat {
   startPrivateMessage(username) {
     // Find or create conversation
     // For now, just show a simple prompt
-    const message = prompt(`Send message to ${username}:`);
+    const message = prompt(i18n.t('chat.pmPrompt', { defaultValue: `Send message to ${username}:` }));
     if (message && message.trim()) {
       // TODO: Implement creating new conversation
-      alert('Private messaging feature coming soon!');
+      alert(i18n.t('chat.pmComingSoon', { defaultValue: 'Private messaging feature coming soon!' }));
     }
   }
 
@@ -1058,7 +1061,7 @@ class UniversusChat {
         });
       } else {
         // Show notification
-        this.showNotification('New Private Message', `From ${data.senderUsername}`);
+        this.showNotification(i18n.t('chat.newPmTitle', { defaultValue: 'New Private Message' }), i18n.t('chat.newPmFrom', { defaultValue: `From ${data.senderUsername}` }));
       }
       
       // Refresh conversations list
@@ -1175,7 +1178,7 @@ class UniversusChat {
     // Add new indicator
     const indicator = document.createElement('div');
     indicator.className = 'typing-indicator';
-    indicator.textContent = `${username} is typing...`;
+    indicator.textContent = i18n.t('chat.typing', { defaultValue: `${username} is typing...` });
     container.appendChild(indicator);
     
     // Remove after 3 seconds
@@ -1194,9 +1197,9 @@ class UniversusChat {
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
     
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    if (diffMins < 1) return i18n.t('chat.justNow', { defaultValue: 'Just now' });
+    if (diffMins < 60) return i18n.t('chat.minutesAgo', { defaultValue: `${diffMins}m ago` });
+    if (diffMins < 1440) return i18n.t('chat.hoursAgo', { defaultValue: `${Math.floor(diffMins / 60)}h ago` });
     return date.toLocaleDateString();
   }
 
@@ -1232,6 +1235,7 @@ function closePMModal() {
 
 function sendPrivateMessage() {
   // TODO: Implement PM sending
-  alert('Private message sending not yet implemented');
+  alert(i18n.t('chat.pmSendingNotImpl', { defaultValue: 'Private message sending not yet implemented' }));
   closePMModal();
 }
+
