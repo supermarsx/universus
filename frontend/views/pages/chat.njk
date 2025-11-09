@@ -42,7 +42,7 @@
 
       <div id="chat-announcements" class="chat-announcements" style="display:none;"></div>
       <div id="chat-pinned" class="chat-pinned" style="display:none;"></div>
-      <div id="chat-messages" class="chat-messages">
+      <div id="chat-messages" class="chat-messages" aria-live="polite">
         <!-- Messages appear here -->
         <div class="chat-welcome">
           <p>Welcome to Universus Chat!</p>
@@ -107,17 +107,17 @@
 </div>
 
 <!-- Private Message Modal -->
-<div id="pm-modal" class="modal">
+<div id="pm-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pm-modal-title" tabindex="-1">
   <div class="modal-content">
     <div class="modal-header">
-      <h3>Send Private Message</h3>
-      <button class="modal-close" onclick="closePMModal()">&times;</button>
+      <h3 id="pm-modal-title">Send Private Message</h3>
+      <button class="modal-close" onclick="closePMModal()" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
     </div>
     <div class="modal-body">
-      <label>To:</label>
+      <label for="pm-recipient">To:</label>
       <input type="text" id="pm-recipient" placeholder="Enter username">
       
-      <label>Message:</label>
+      <label for="pm-message">Message:</label>
       <textarea id="pm-message" rows="5" maxlength="500"></textarea>
     </div>
     <div class="modal-footer">

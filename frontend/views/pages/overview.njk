@@ -9,31 +9,31 @@
 
 <div class="overview-grid">
     <!-- Planet Information -->
-    <div class="overview-card card-enhanced">
-        <h3>Planet Information</h3>
+    <section class="overview-card card-enhanced" aria-labelledby="planetInfoHeading">
+        <h3 id="planetInfoHeading">Planet Information</h3>
         <div id="planetInfo">
             <p><strong>Name:</strong> <span id="planetName">{{ planet.name if planet else '-' }}</span></p>
             <p><strong>Coordinates:</strong> <span id="planetCoords">{{ planet.coordinates if planet else '-' }}</span></p>
             <p><strong>Temperature:</strong> <span id="planetTemp">{{ planet.temperature if planet else '-' }}</span></p>
             <p><strong>Diameter:</strong> <span id="planetDiameter">{{ planet.diameter if planet else '-' }}</span></p>
         </div>
-    </div>
+    </section>
 
     <!-- Resource Production -->
-    <div class="overview-card card-enhanced">
-        <h3>Resource Production</h3>
-        <div id="productionInfo">
+    <section class="overview-card card-enhanced" aria-labelledby="productionInfoHeading">
+        <h3 id="productionInfoHeading">Resource Production</h3>
+        <div id="productionInfo" role="region" aria-live="polite">
             <p><strong>Metal:</strong> <span id="metalProd">{{ production.metal if production else '0' }}</span> /hour</p>
             <p><strong>Crystal:</strong> <span id="crystalProd">{{ production.crystal if production else '0' }}</span> /hour</p>
             <p><strong>Deuterium:</strong> <span id="deuteriumProd">{{ production.deuterium if production else '0' }}</span> /hour</p>
             <p><strong>Energy:</strong> <span id="energyProd">{{ production.energy if production else '0' }}</span></p>
         </div>
-    </div>
+    </section>
 
     <!-- Construction Queue -->
-    <div class="overview-card card-enhanced">
-        <h3>Construction Queue</h3>
-        <div id="constructionQueue">
+    <section class="overview-card card-enhanced" aria-labelledby="constructionQueueHeading">
+        <h3 id="constructionQueueHeading">Construction Queue</h3>
+        <div id="constructionQueue" role="region" aria-live="polite">
             {% if queue and queue.length > 0 %}
                 {% for item in queue %}
                 <div class="queue-item">
@@ -45,24 +45,24 @@
                 <p class="text-muted">No construction in progress</p>
             {% endif %}
         </div>
-    </div>
+    </section>
 
     <!-- Quick Stats -->
-    <div class="overview-card card-enhanced">
-        <h3>Quick Stats</h3>
+    <section class="overview-card card-enhanced" aria-labelledby="quickStatsHeading">
+        <h3 id="quickStatsHeading">Quick Stats</h3>
         <div id="quickStats">
             <p><strong>Total Planets:</strong> <span id="totalPlanets">{{ stats.totalPlanets if stats else '1' }}</span></p>
             <p><strong>Total Score:</strong> <span id="totalScore">{{ stats.totalScore if stats else '0' }}</span></p>
             <p><strong>Fleet Size:</strong> <span id="fleetSize">{{ stats.fleetSize if stats else '0' }}</span></p>
             <p><strong>Military Rank:</strong> <span id="militaryRank">{{ stats.militaryRank if stats else '-' }}</span></p>
         </div>
-    </div>
+    </section>
 </div>
 
 <!-- Recent Events -->
-<div class="overview-section">
-    <h3>Recent Events</h3>
-    <div id="recentEvents" class="events-list">
+<section class="overview-section" aria-labelledby="recentEventsHeading">
+    <h3 id="recentEventsHeading">Recent Events</h3>
+    <div id="recentEvents" class="events-list" role="region" aria-live="polite">
         {% if events and events.length > 0 %}
             {% for event in events %}
             <div class="event-item event-{{ event.type }}">
@@ -74,7 +74,7 @@
             <p class="text-muted">No recent events</p>
         {% endif %}
     </div>
-</div>
+</section>
 {% endblock %}
 
 {% block scripts %}

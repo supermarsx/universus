@@ -179,6 +179,49 @@ body {
     display: block;
 }
 
+/* Accessibility: Skip Link and Screen Reader Only */
+.skip-link {
+    position: absolute;
+    left: -999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    z-index: 10000;
+    background: #fff;
+    color: #2563eb;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    transition: left 0.2s;
+}
+.skip-link:focus, .skip-link:active {
+    left: 16px;
+    top: 16px;
+    width: auto;
+    height: auto;
+    outline: 2px solid #2563eb;
+    box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2);
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+.sr-only-focusable:active, .sr-only-focusable:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+}
+
 /* Utility Classes */
 .text-center {
     text-align: center;

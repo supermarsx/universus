@@ -34,7 +34,7 @@
             <strong id="userDM">0</strong>
         </div>
 
-        <div id="shopGrid" class="shop-grid">
+        <div id="shopGrid" class="shop-grid" aria-live="polite">
             <div class="loading">
                 <div class="spinner"></div>
                 <p>Loading shop items...</p>
@@ -44,19 +44,19 @@
 </div>
 
 <!-- Purchase Modal -->
-<div id="purchaseModal" class="modal" style="display: none;">
+<div id="purchaseModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="purchaseModalTitle" tabindex="-1" style="display: none;">
     <div class="modal-content">
-        <span class="close">&times;</span>
-        <h3>Purchase Item</h3>
+        <button class="close" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
+        <h3 id="purchaseModalTitle">Purchase Item</h3>
         <div id="purchaseDetails"></div>
     </div>
 </div>
 
 <!-- Payment Modal -->
-<div id="paymentModal" class="modal" style="display: none;">
+<div id="paymentModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle" tabindex="-1" style="display: none;">
     <div class="modal-content">
-        <span class="close">&times;</span>
-        <h3>Purchase Dark Matter</h3>
+        <button class="close" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
+        <h3 id="paymentModalTitle">Purchase Dark Matter</h3>
         <div id="paymentForm"></div>
     </div>
 </div>

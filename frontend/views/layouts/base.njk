@@ -20,7 +20,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body class="{{ bodyClass or '' }}" {% if pageBackground %}style="background-image: url('{{ pageBackground }}');"{% endif %}>
-    {% block body %}{% endblock %}
+    <a href="#main-content" class="skip-link sr-only-focusable">Skip to main content</a>
+    <header>
+        {% include "partials/nav.njk" %}
+    </header>
+    <main id="main-content" tabindex="-1">
+        {% block body %}{% endblock %}
+    </main>
+    <footer>
+        {% include "partials/footer.njk" %}
+    </footer>
     
     <!-- Socket.io -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>

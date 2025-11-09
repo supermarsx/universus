@@ -1,11 +1,12 @@
 <aside class="sidebar">
     <!-- Planet Selector -->
-    <div class="planet-selector">
-        <h3>Your Planets</h3>
-        <select id="planetSelect" class="planet-dropdown">
-            <option>Loading...</option>
-        </select>
-    </div>
+<div class="planet-selector">
+    <h3 id="planetSelectorHeading">Your Planets</h3>
+    <label for="planetSelect" class="sr-only">Select planet</label>
+    <select id="planetSelect" class="planet-dropdown" aria-labelledby="planetSelectorHeading">
+        <option>Loading...</option>
+    </select>
+</div>
 
     <!-- Main Menu -->
     <nav class="main-menu">

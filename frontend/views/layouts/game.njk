@@ -6,6 +6,7 @@
 {% endblock %}
 
 {% block body %}
+<a href="#mainContent" class="skip-link">Skip to main content</a>
 <!-- Top Navigation -->
 {% include "partials/nav.njk" %}
 
@@ -14,7 +15,7 @@
     {% include "partials/sidebar.njk" %}
     
     <!-- Main Content Area -->
-    <main class="content-area">
+    <main id="mainContent" class="content-area" tabindex="-1" role="main" aria-label="Game main content">
         {% block content %}{% endblock %}
     </main>
 </div>
