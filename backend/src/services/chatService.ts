@@ -43,7 +43,11 @@ class ChatService {
   // =====================================================
   // CHANNEL MANAGEMENT
   // =====================================================
-
+  /**
+   * Retrieve all active chat channels.
+   *
+   * @returns Promise resolving to an array of active ChatChannel records.
+   */
   async getAllChannels(): Promise<ChatChannel[]> {
     const result = await pool.query(
       `SELECT * FROM chat_channels WHERE is_active = TRUE ORDER BY id`
@@ -51,6 +55,12 @@ class ChatService {
     return result.rows;
   }
 
+  /**
+   * Load a chat channel by its numeric id.
+   *
+   * @param channelId - Database id of the chat channel.
+   * @returns Promise resolving to the ChatChannel or null if not found.
+   */
   async getChannelById(channelId: number): Promise<ChatChannel | null> {
     const result = await pool.query(
       `SELECT * FROM chat_channels WHERE id = $1`,
@@ -59,6 +69,12 @@ class ChatService {
     return result.rows[0] || null;
   }
 
+  /**
+   * Load a chat channel by its unique channel name.
+   *
+   * @param channelName - The textual name of the channel (e.g. "global").
+   * @returns Promise resolving to the ChatChannel or null if not found.
+   */
   async getChannelByName(channelName: string): Promise<ChatChannel | null> {
     const result = await pool.query(
       `SELECT * FROM chat_channels WHERE channel_name = $1`,
@@ -71,6 +87,17 @@ class ChatService {
   // CHAT MESSAGES
   // =====================================================
 
+  /**
+   * Send a message to a channel.
+   * Performs rate-limit checks, restriction checks, length validation and
+   * inserts the message into the DB. Hydrates the returned message for the
+   * viewer and updates Redis rate-limit state.
+   *
+   * @param userId - ID of the sending user.
+   * @param request - SendChatMessageRequest containing channelId, message and options.
+   * @returns Promise resolving to the created, hydrated ChatMessage.
+   * @throws Error when rate-limited, restricted, invalid channel, or DB failure.
+   */
   async sendMessage(
     userId: number,
     request: SendChatMessageRequest
@@ -148,6 +175,12 @@ class ChatService {
     return hydrated;
   }
 
+  /**
+   * Retrieve chat history for a channel with optional pagination.
+   *
+   * @param request - GetChatHistoryRequest with channelId, limit, before and viewerUserId.
+   * @returns ChatHistoryResponse containing messages, pinned messages, announcements and totals.
+   */
   async getChatHistory(request: GetChatHistoryRequest): Promise<ChatHistoryResponse> {
     const { channelId, limit = 50, before, viewerUserId } = request;
 
@@ -204,6 +237,14 @@ class ChatService {
     };
   }
 
+  /**
+   * Edit an existing message. Only the original sender may edit their message.
+   *
+   * @param messageId - ID of the message to edit.
+   * @param userId - ID of the user attempting the edit.
+   * @param newMessage - New message text.
+   * @throws Error when message not found or not editable.
+   */
   async editMessage(messageId: number, userId: number, newMessage: string): Promise<void> {
     const result = await pool.query(
       `UPDATE chat_messages 
@@ -218,6 +259,15 @@ class ChatService {
     }
   }
 
+  /**
+   * Soft-delete a chat message. Admins may delete any message; regular users may
+   * only delete their own messages.
+   *
+   * @param messageId - ID of the message to delete.
+   * @param userId - ID of the acting user.
+   * @param isAdmin - If true, perform an admin delete bypassing ownership checks.
+   * @throws Error when message not found or deletion not permitted.
+   */
   async deleteMessage(messageId: number, userId: number, isAdmin: boolean = false): Promise<void> {
     let query: string;
     let params: any[];
@@ -241,6 +291,13 @@ class ChatService {
     }
   }
 
+  /**
+   * Flag a message for moderation review.
+   *
+   * @param messageId - ID of the message to flag.
+   * @param flaggedBy - ID of the user flagging the message.
+   * @param reason - Reason provided for flagging.
+   */
   async flagMessage(
     messageId: number,
     flaggedBy: number,
@@ -254,6 +311,15 @@ class ChatService {
     );
   }
 
+  /**
+   * Pin or unpin a message. Requires moderator/admin privileges.
+   *
+   * @param messageId - ID of the message to pin/unpin.
+   * @param userId - ID of the user performing the action.
+   * @param shouldPin - True to pin, false to unpin.
+   * @returns The hydrated ChatMessage after pin state change.
+   * @throws Error when permissions are insufficient or message not found.
+   */
   async pinMessage(
     messageId: number,
     userId: number,
@@ -284,6 +350,16 @@ class ChatService {
     return hydrated;
   }
 
+  /**
+   * Mark or unmark a message as an announcement. Requires moderator/admin.
+   * Announcements are limited to global/world channels.
+   *
+   * @param messageId - ID of the message to change.
+   * @param userId - Acting user id.
+   * @param isAnnouncement - True to mark as announcement.
+   * @param expiresAt - Optional expiration date for the announcement.
+   * @returns The hydrated ChatMessage after update.
+   */
   async markAnnouncement(
     messageId: number,
     userId: number,
@@ -325,6 +401,16 @@ class ChatService {
     return hydrated;
   }
 
+  /**
+   * Toggle a reaction for a message by the viewer. Adds the reaction if absent,
+   * removes it if present. Returns updated reaction summary and viewer reactions.
+   *
+   * @param messageId - ID of the target message.
+   * @param userId - ID of the reacting user.
+   * @param reaction - Reaction type to toggle.
+   * @returns An object containing messageId, channelId, aggregated reactions and viewer reactions.
+   * @throws Error for unsupported reaction types or missing message.
+   */
   async toggleReaction(
     messageId: number,
     userId: number,
@@ -383,6 +469,15 @@ class ChatService {
   // PRIVATE MESSAGING
   // =====================================================
 
+  /**
+   * Send a private message between two users. Automatically creates a conversation
+   * if one does not exist. Respects block lists.
+   *
+   * @param senderId - ID of the sending user.
+   * @param request - SendPrivateMessageRequest containing receiverId and message.
+   * @returns The created PrivateMessage including sender username.
+   * @throws Error when sending to self, blocked, or DB failures.
+   */
   async sendPrivateMessage(
     senderId: number,
     request: SendPrivateMessageRequest
@@ -428,6 +523,15 @@ class ChatService {
     };
   }
 
+  /**
+   * Ensure a private conversation exists for a pair of users and return it.
+   * Normalizes ordering so user1_id < user2_id for storage consistency.
+   *
+   * @private
+   * @param user1Id - First user id.
+   * @param user2Id - Second user id.
+   * @returns The PrivateConversation row.
+   */
   private async getOrCreateConversation(
     user1Id: number,
     user2Id: number
@@ -460,6 +564,14 @@ class ChatService {
     return result.rows[0];
   }
 
+  /**
+   * List private conversations for a user with pagination.
+   *
+   * @param userId - The user to list conversations for.
+   * @param limit - Maximum number of conversations to return.
+   * @param offset - Offset for pagination.
+   * @returns PrivateConversationsResponse with conversations and total count.
+   */
   async getPrivateConversations(
     userId: number,
     limit: number = 20,
@@ -504,6 +616,17 @@ class ChatService {
     };
   }
 
+  /**
+   * Retrieve private messages for a conversation. Validates access and marks
+   * messages as read for the requesting user.
+   *
+   * @param userId - ID of the requesting user.
+   * @param conversationId - Conversation id to read.
+   * @param limit - Number of messages to return.
+   * @param before - Optional Date to page before.
+   * @returns PrivateMessagesResponse containing messages and pagination info.
+   * @throws Error when conversation not found or access denied.
+   */
   async getPrivateMessages(
     userId: number,
     conversationId: number,
@@ -574,6 +697,13 @@ class ChatService {
     };
   }
 
+  /**
+   * Mark messages as read in a conversation for the viewer and reset unread
+   * counters stored on the conversation row.
+   *
+   * @param conversationId - Conversation id to update.
+   * @param userId - Viewer id who read the messages.
+   */
   async markMessagesAsRead(conversationId: number, userId: number): Promise<void> {
     await pool.query(
       `UPDATE private_messages 
@@ -608,6 +738,16 @@ class ChatService {
   // RESTRICTIONS & MODERATION
   // =====================================================
 
+  /**
+   * Apply a chat restriction (mute/ban/shadow) to a user, optionally scoped to a channel.
+   *
+   * @param userId - Target user id.
+   * @param channelId - Channel id or null for global restriction.
+   * @param restrictionType - Type of restriction (mute, ban, shadow, etc.).
+   * @param reason - Reason for restriction.
+   * @param restrictedBy - Admin/moderator user id applying the restriction.
+   * @param durationMinutes - Optional duration in minutes; null for indefinite.
+   */
   async restrictUser(
     userId: number,
     channelId: number | null,
@@ -633,6 +773,13 @@ class ChatService {
     );
   }
 
+  /**
+   * Remove a previously applied chat restriction.
+   *
+   * @param userId - Target user id.
+   * @param channelId - Channel id or null for global restriction.
+   * @param restrictionType - The restriction type to remove.
+   */
   async removeRestriction(
     userId: number,
     channelId: number | null,
@@ -645,6 +792,13 @@ class ChatService {
     );
   }
 
+  /**
+   * Check if a user is currently restricted (mute/ban) for a given channel.
+   *
+   * @param userId - User id to check.
+   * @param channelId - Channel id to check restrictions for.
+   * @returns True if user is restricted, false otherwise.
+   */
   async isUserRestricted(userId: number, channelId: number): Promise<boolean> {
     const result = await pool.query(
       `SELECT 1 FROM chat_restrictions 
@@ -658,10 +812,24 @@ class ChatService {
     return result.rows.length > 0;
   }
 
+  /**
+   * Check whether either user has blocked the other for private messages.
+   *
+   * @param userId - First user id.
+   * @param otherUserId - Second user id.
+   * @returns True when a block exists in either direction.
+   */
   async isUserBlocked(userId: number, otherUserId: number): Promise<boolean> {
     return playerBlockService.isBlockedEither(userId, otherUserId, 'messages');
   }
 
+  /**
+   * Check if a user is shadow-banned globally or for a specific channel.
+   *
+   * @param userId - User id to check.
+   * @param channelId - Channel id or null to check global shadow bans.
+   * @returns True if shadow-banned, false otherwise.
+   */
   async isShadowBanned(userId: number, channelId: number | null): Promise<boolean> {
     const result = await pool.query(
       `SELECT 1 FROM chat_restrictions 
@@ -674,6 +842,13 @@ class ChatService {
     return result.rows.length > 0;
   }
 
+  /**
+   * Normalize a raw DB row into the ChatMessage shape used by the API.
+   *
+   * @private
+   * @param row - Raw database row.
+   * @returns ChatMessage with normalized booleans and defaults.
+   */
   private normalizeChatRow(row: any): ChatMessage {
     return {
       ...row,
@@ -684,6 +859,13 @@ class ChatService {
     };
   }
 
+  /**
+   * Load pinned messages for a channel.
+   *
+   * @private
+   * @param channelId - Channel id to query.
+   * @param limit - Max number of pinned messages to return.
+   */
   private async getPinnedMessages(channelId: number, limit: number = 5): Promise<ChatMessage[]> {
     const result = await pool.query(
       `SELECT 
@@ -703,6 +885,13 @@ class ChatService {
     return result.rows.map((row) => this.normalizeChatRow(row));
   }
 
+  /**
+   * Load currently active announcements for a channel.
+   *
+   * @private
+   * @param channelId - Channel id.
+   * @param limit - Limit number of announcements returned.
+   */
   private async getActiveAnnouncements(channelId: number, limit: number = 3): Promise<ChatMessage[]> {
     const result = await pool.query(
       `SELECT 
@@ -723,6 +912,14 @@ class ChatService {
     return result.rows.map((row) => this.normalizeChatRow(row));
   }
 
+  /**
+   * Attach aggregated reaction counts and per-viewer reactions to a set of messages.
+   * Mutates the provided messages array in place.
+   *
+   * @private
+   * @param messages - Array of ChatMessage objects to enrich.
+   * @param viewerUserId - Optional id of the viewing user to include viewer reactions.
+   */
   private async attachReactionSummaries(
     messages: ChatMessage[],
     viewerUserId?: number
@@ -767,6 +964,13 @@ class ChatService {
     });
   }
 
+  /**
+   * Compute aggregated reaction counts for a single message.
+   *
+   * @private
+   * @param messageId - Message id to summarize.
+   * @returns Object mapping reaction types to counts.
+   */
   private async getReactionSummary(
     messageId: number
   ): Promise<Partial<Record<ChatReactionType, number>>> {
@@ -785,6 +989,14 @@ class ChatService {
     return summary;
   }
 
+  /**
+   * Return the list of reactions the viewer has applied to a message.
+   *
+   * @private
+   * @param messageId - Target message id.
+   * @param userId - Viewer user id.
+   * @returns Array of ChatReactionType values the viewer has on the message.
+   */
   private async getViewerReactionsForMessage(
     messageId: number,
     userId: number
@@ -798,6 +1010,13 @@ class ChatService {
     return result.rows.map((row) => row.reaction_type as ChatReactionType);
   }
 
+  /**
+   * Check whether a user is an admin or moderator for chat moderation actions.
+   *
+   * @private
+   * @param userId - User id to check.
+   * @returns True when the user has moderator/admin privileges.
+   */
   private async isUserModeratorOrAdmin(userId: number): Promise<boolean> {
     const result = await pool.query(
       `SELECT 
@@ -814,6 +1033,14 @@ class ChatService {
     return ['super_admin', 'game_admin', 'moderator'].includes(level);
   }
 
+  /**
+   * Load a single chat message by id and attach reaction summaries.
+   *
+   * @private
+   * @param messageId - Message id to load.
+   * @param viewerUserId - Optional viewer id to include viewer-specific reactions.
+   * @returns The ChatMessage or null if not found.
+   */
   private async getMessageById(
     messageId: number,
     viewerUserId?: number
@@ -843,6 +1070,14 @@ class ChatService {
   // RATE LIMITING
   // =====================================================
 
+  /**
+   * Check whether a user may send a message to the channel according to the
+   * channel's configured rate limit and the user's last message timestamp in Redis.
+   *
+   * @param userId - User id to check.
+   * @param channelId - Channel id to check against.
+   * @returns True when allowed to send, false when rate-limited.
+   */
   async checkRateLimit(userId: number, channelId: number): Promise<boolean> {
     const channel = await this.getChannelById(channelId);
     if (!channel) return false;
@@ -858,6 +1093,14 @@ class ChatService {
     return timeSinceLastMessage >= channel.rate_limit_seconds * 1000;
   }
 
+  /**
+   * Update the Redis record that tracks the timestamp of the user's last message
+   * for a given channel. Used to enforce rate limits.
+   *
+   * @private
+   * @param userId - User id to update.
+   * @param channelId - Channel id.
+   */
   private async updateRateLimit(userId: number, channelId: number): Promise<void> {
     const key = `chat:ratelimit:${userId}:${channelId}`;
     await redis.setex(key, 60, Date.now().toString()); // Cache for 60 seconds
@@ -867,11 +1110,23 @@ class ChatService {
   // ANALYTICS
   // =====================================================
 
+  /**
+   * Return historical chat activity statistics (precomputed view `v_chat_activity`).
+   *
+   * @returns Array of ChatActivityStats rows.
+   */
   async getChatActivityStats(): Promise<ChatActivityStats[]> {
     const result = await pool.query(`SELECT * FROM v_chat_activity`);
     return result.rows;
   }
 
+  /**
+   * Count messages sent by a user optionally since a given date.
+   *
+   * @param userId - User id to count messages for.
+   * @param since - Optional date to count messages from.
+   * @returns Number of messages.
+   */
   async getUserMessageCount(userId: number, since?: Date): Promise<number> {
     let query = `SELECT COUNT(*) FROM chat_messages WHERE user_id = $1 AND is_deleted = FALSE`;
     const params: any[] = [userId];
@@ -889,6 +1144,12 @@ class ChatService {
   // CLEANUP
   // =====================================================
 
+  /**
+   * Remove messages older than the configured retention (daysToKeep).
+   *
+   * @param daysToKeep - Number of days to retain messages (default 30).
+   * @returns Number of rows deleted.
+   */
   async cleanupOldMessages(daysToKeep: number = 30): Promise<number> {
     const result = await pool.query(
       `DELETE FROM chat_messages 
@@ -899,6 +1160,11 @@ class ChatService {
     return result.rowCount || 0;
   }
 
+  /**
+   * Remove expired chat restrictions from the database.
+   *
+   * @returns Number of restrictions removed.
+   */
   async autoExpireRestrictions(): Promise<number> {
     const result = await pool.query(
       `DELETE FROM chat_restrictions 

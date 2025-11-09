@@ -27,7 +27,11 @@ class NotificationService {
   // =====================================================
   // NOTIFICATION TYPES
   // =====================================================
-
+  /**
+   * Return all active notification types available in the system.
+   *
+   * @returns Array of NotificationType objects.
+   */
   async getAllNotificationTypes(): Promise<NotificationType[]> {
     const result = await pool.query(
       `SELECT * FROM notification_types WHERE is_active = TRUE ORDER BY category, type_name`
@@ -35,6 +39,12 @@ class NotificationService {
     return result.rows;
   }
 
+  /**
+   * Lookup a notification type by its machine-readable name.
+   *
+   * @param typeName - Type string to lookup (e.g. 'fleet_arrived').
+   * @returns NotificationType or null when not found.
+   */
   async getNotificationTypeByName(typeName: string): Promise<NotificationType | null> {
     const result = await pool.query(
       `SELECT * FROM notification_types WHERE type_name = $1`,
@@ -46,7 +56,14 @@ class NotificationService {
   // =====================================================
   // CREATE NOTIFICATIONS
   // =====================================================
-
+  /**
+   * Create a notification for a single user, respecting their preferences.
+   * Increments unread counters and emits the realtime notification when applicable.
+   *
+   * @param request - CreateNotificationRequest with userId, type, title, message and optional metadata.
+   * @returns The created Notification payload.
+   * @throws Error when blocked by preferences or on DB failure.
+   */
   async createNotification(request: CreateNotificationRequest): Promise<Notification> {
     const {
       userId,
@@ -110,6 +127,13 @@ class NotificationService {
     return payload;
   }
 
+  /**
+   * Create notifications in bulk for multiple users. Each user's preferences are checked.
+   * Unread counters are incremented in Redis for recipients.
+   *
+   * @param batch - NotificationBatch describing the recipients and notification payload.
+   * @returns Number of notifications successfully inserted.
+   */
   async createBatchNotifications(batch: NotificationBatch): Promise<number> {
     const { userIds, notificationTypeId, title, message, priority = 1, metadata } = batch;
 
@@ -159,6 +183,13 @@ class NotificationService {
   }
 
   // Quick notification creators for common events
+  /**
+   * Convenience helper: create and emit a 'fleet_arrived' notification for a user.
+   *
+   * @param userId - Recipient user id.
+   * @param fleetId - Related fleet id used in the action URL.
+   * @param location - Readable location string used in the message.
+   */
   async notifyFleetArrived(userId: number, fleetId: number, location: string): Promise<void> {
     const type = await this.getNotificationTypeByName('fleet_arrived');
     if (!type) return;
@@ -176,6 +207,13 @@ class NotificationService {
     });
   }
 
+  /**
+   * Helper to notify that a fleet has returned.
+   *
+   * @param userId - Recipient user id.
+   * @param fleetId - Fleet id.
+   * @param location - Human-readable location.
+   */
   async notifyFleetReturned(userId: number, fleetId: number, location: string): Promise<void> {
     const type = await this.getNotificationTypeByName('fleet_returned');
     if (!type) return;
@@ -193,6 +231,14 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify a user that a combat report is available.
+   *
+   * @param userId - Recipient user id.
+   * @param combatId - ID for the combat report.
+   * @param winner - Winner description used in the message.
+   * @param location - Location of the combat.
+   */
   async notifyCombatReport(userId: number, combatId: number, winner: string, location: string): Promise<void> {
     const type = await this.getNotificationTypeByName('combat_report');
     if (!type) return;
@@ -210,6 +256,14 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify the result of a colonization attempt.
+   *
+   * @param userId - Recipient user id.
+   * @param location - Location string.
+   * @param success - True for success, false for failure.
+   * @param planetId - Optional new planet id when colonization succeeded.
+   */
   async notifyColonizationResult(
     userId: number,
     location: string,
@@ -238,6 +292,14 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify a user that one of their planets is under attack.
+   *
+   * @param userId - Recipient user id.
+   * @param attackerName - Name of the attacker.
+   * @param planetName - Name of the target planet.
+   * @param combatId - Combat id for quick navigation.
+   */
   async notifyUnderAttack(
     userId: number,
     attackerName: string,
@@ -260,6 +322,13 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify a user that a building has completed construction.
+   *
+   * @param userId - Recipient user id.
+   * @param buildingName - Friendly building name.
+   * @param planetId - Planet id where the building completed.
+   */
   async notifyBuildingComplete(
     userId: number,
     buildingName: string,
@@ -281,6 +350,12 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify a user that a research item completed.
+   *
+   * @param userId - Recipient user id.
+   * @param technologyName - Name of the technology completed.
+   */
   async notifyResearchComplete(userId: number, technologyName: string): Promise<void> {
     const type = await this.getNotificationTypeByName('research_complete');
     if (!type) return;
@@ -298,6 +373,14 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify a user that a trade completed.
+   *
+   * @param userId - Recipient user id.
+   * @param resource - Resource name traded.
+   * @param amount - Quantity traded.
+   * @param tradeId - Trade id for navigation.
+   */
   async notifyTradeComplete(
     userId: number,
     resource: string,
@@ -320,6 +403,13 @@ class NotificationService {
     });
   }
 
+  /**
+   * Notify a user that they've been invited to an alliance.
+   *
+   * @param userId - Recipient user id.
+   * @param allianceName - Alliance display name.
+   * @param allianceId - Alliance id for navigation.
+   */
   async notifyAllianceInvite(
     userId: number,
     allianceName: string,
@@ -345,6 +435,12 @@ class NotificationService {
   // READ NOTIFICATIONS
   // =====================================================
 
+  /**
+   * Retrieve a user's notifications with optional filtering and pagination.
+   *
+   * @param request - GetNotificationsRequest with userId, unreadOnly, category, limit and offset.
+   * @returns NotificationsResponse with notifications array, total and unreadCount.
+   */
   async getUserNotifications(request: GetNotificationsRequest): Promise<NotificationsResponse> {
     const { userId, unreadOnly = false, category, limit = 50, offset = 0 } = request;
 
@@ -401,6 +497,13 @@ class NotificationService {
     };
   }
 
+  /**
+   * Load a single notification for a user by id.
+   *
+   * @param notificationId - Notification id to load.
+   * @param userId - Owner user id.
+   * @returns Notification row or null when not found/accessible.
+   */
   async getNotificationById(notificationId: number, userId: number): Promise<Notification | null> {
     const result = await pool.query(
       `SELECT 
@@ -421,6 +524,12 @@ class NotificationService {
   // UPDATE NOTIFICATIONS
   // =====================================================
 
+  /**
+   * Mark a single notification as read and decrement the unread counter in Redis.
+   *
+   * @param notificationId - ID of the notification to mark.
+   * @param userId - Owner user id.
+   */
   async markAsRead(notificationId: number, userId: number): Promise<void> {
     const result = await pool.query(
       `UPDATE notifications 
@@ -434,6 +543,12 @@ class NotificationService {
     }
   }
 
+  /**
+   * Mark all notifications for a user as read and reset the unread Redis counter.
+   *
+   * @param userId - User id whose notifications will be marked as read.
+   * @returns Number of notifications updated.
+   */
   async markAllAsRead(userId: number): Promise<number> {
     const result = await pool.query(
       `UPDATE notifications 
@@ -450,6 +565,12 @@ class NotificationService {
     return count;
   }
 
+  /**
+   * Archive (soft-hide) a notification for a user.
+   *
+   * @param notificationId - Notification id to archive.
+   * @param userId - Owner user id.
+   */
   async archiveNotification(notificationId: number, userId: number): Promise<void> {
     await pool.query(
       `UPDATE notifications 
@@ -459,6 +580,12 @@ class NotificationService {
     );
   }
 
+  /**
+   * Permanently delete a notification for a user and update unread counters when applicable.
+   *
+   * @param notificationId - Notification id to delete.
+   * @param userId - Owner user id.
+   */
   async deleteNotification(notificationId: number, userId: number): Promise<void> {
     const result = await pool.query(
       `DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING is_read`,
@@ -474,6 +601,12 @@ class NotificationService {
   // USER PREFERENCES
   // =====================================================
 
+  /**
+   * Return notification preferences for a user across types.
+   *
+   * @param userId - User id to fetch preferences for.
+   * @returns Array of NotificationPreferences rows.
+   */
   async getUserPreferences(userId: number): Promise<NotificationPreferences[]> {
     const result = await pool.query(
       `SELECT np.*, nt.type_name, nt.category
@@ -487,6 +620,14 @@ class NotificationService {
     return result.rows;
   }
 
+  /**
+   * Update or insert a notification preference for a user/type.
+   * Uses upsert semantics to merge changes.
+   *
+   * @param userId - User id owning the preference.
+   * @param notificationTypeId - Type id that the preference controls.
+   * @param updates - Partial preference updates.
+   */
   async updatePreference(
     userId: number,
     notificationTypeId: number,
@@ -509,6 +650,16 @@ class NotificationService {
     );
   }
 
+  /**
+   * Check whether a notification should be delivered to a user given their preferences
+   * and the notification's priority. Defaults to allowing delivery when no preference exists.
+   *
+   * @private
+   * @param userId - User id to check.
+   * @param notificationTypeId - Notification type id.
+   * @param priority - Notification priority.
+   * @returns True when notification is allowed, false when blocked by preferences.
+   */
   private async checkUserPreferences(
     userId: number,
     notificationTypeId: number,
@@ -532,6 +683,13 @@ class NotificationService {
   // UNREAD COUNT MANAGEMENT (Redis Cache)
   // =====================================================
 
+  /**
+   * Return the cached unread notification count for a user if present, otherwise
+   * compute from the database and cache the result.
+   *
+   * @param userId - User id to query.
+   * @returns Number of unread notifications.
+   */
   async getUnreadCount(userId: number): Promise<number> {
     const cached = await redis.get(`notifications:unread:${userId}`);
     if (cached) {
@@ -552,10 +710,23 @@ class NotificationService {
     return count;
   }
 
+  /**
+   * Increment the Redis unread notification counter for a user.
+   *
+   * @private
+   * @param userId - User id whose counter will be incremented.
+   */
   private async incrementUnreadCount(userId: number): Promise<void> {
     await redis.incr(`notifications:unread:${userId}`);
   }
 
+  /**
+   * Decrement the Redis unread notification counter for a user when a
+   * notification is read or deleted.
+   *
+   * @private
+   * @param userId - User id whose counter will be decremented.
+   */
   private async decrementUnreadCount(userId: number): Promise<void> {
     const current = await redis.get(`notifications:unread:${userId}`);
     if (current && parseInt(current) > 0) {
@@ -567,6 +738,12 @@ class NotificationService {
   // ANALYTICS
   // =====================================================
 
+  /**
+   * Return aggregated unread notification statistics for a user.
+   *
+   * @param userId - User id to query.
+   * @returns UserUnreadStats with counts broken down by category.
+   */
   async getUserUnreadStats(userId: number): Promise<UserUnreadStats> {
     const result = await pool.query(
       `SELECT * FROM v_user_unread_notifications WHERE user_id = $1`,
@@ -583,6 +760,12 @@ class NotificationService {
     };
   }
 
+  /**
+   * Return recent notification statistics (counts, unread, average read time)
+   * grouped by notification category for the last 24 hours.
+   *
+   * @returns Array of statistics rows.
+   */
   async getNotificationStats(): Promise<any> {
     const result = await pool.query(`
       SELECT 
@@ -603,6 +786,12 @@ class NotificationService {
   // CLEANUP
   // =====================================================
 
+  /**
+   * Delete archived notifications older than the configured retention period.
+   *
+   * @param daysToKeep - Days to retain archived notifications (default 30).
+   * @returns Number of rows deleted.
+   */
   async cleanupOldNotifications(daysToKeep: number = 30): Promise<number> {
     const result = await pool.query(
       `DELETE FROM notifications 
@@ -614,6 +803,11 @@ class NotificationService {
     return result.rowCount || 0;
   }
 
+  /**
+   * Remove notifications whose expires_at timestamp has passed.
+   *
+   * @returns Number of notifications removed.
+   */
   async cleanupExpiredNotifications(): Promise<number> {
     const result = await pool.query(
       `DELETE FROM notifications 
@@ -624,12 +818,23 @@ class NotificationService {
   }
 
   // Auto-cleanup scheduler (call this every hour)
+  /**
+   * Run scheduled cleanup tasks: remove expired and old archived notifications.
+   * This is intended to be invoked periodically (e.g. hourly).
+   */
   async performScheduledCleanup(): Promise<void> {
     const expired = await this.cleanupExpiredNotifications();
     const old = await this.cleanupOldNotifications(30);
     console.log(`Notification cleanup: ${expired} expired, ${old} old notifications removed`);
   }
 
+  /**
+   * Emit a realtime notification event to the connected realtime handler.
+   * This method is a no-op when the realtime handler is not available.
+   *
+   * @private
+   * @param notification - Notification object to broadcast.
+   */
   private emitRealtimeNotification(notification: Notification): void {
     const handler = getRealtimeHandler();
     if (!handler) return;

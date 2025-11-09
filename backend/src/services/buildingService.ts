@@ -19,6 +19,17 @@ interface ConstructionQueueParams {
 }
 
 export class BuildingService {
+  /**
+   * Start construction of a building at a specified location.
+   *
+   * Validates requirements, checks field availability for moons, deducts
+   * resources and inserts a construction queue entry.
+   *
+   * @param userId - Owner initiating construction
+   * @param buildingType - Key of the building to construct
+   * @param options - Location hints (planetId, moonId, locationType)
+   * @returns The inserted queue row or null on failure
+   */
   static async startConstruction(
     userId: number,
     buildingType: string,
@@ -155,6 +166,14 @@ export class BuildingService {
     }
   }
 
+  /**
+   * Finalize a finished construction entry and apply the building level.
+   *
+   * This will update the appropriate planet/moon row and adjust moon fields
+   * when necessary, then remove the construction queue entry.
+   *
+   * @param constructionId - ID of the construction queue item to finalize
+   */
   static async finishConstruction(constructionId: number): Promise<void> {
     const client = await pool.connect();
 
@@ -212,6 +231,10 @@ export class BuildingService {
     }
   }
 
+  /**
+   * Helper that finds all constructions with end_time <= NOW() and attempts
+   * to finalize them by calling `finishConstruction` for each.
+   */
   static async checkAndFinishConstructions(): Promise<void> {
     const result = await pool.query(
       'SELECT * FROM construction_queue WHERE end_time <= NOW()'
@@ -232,6 +255,12 @@ export class BuildingService {
     }
   }
 
+  /**
+   * Retrieve the construction queue for a given location.
+   *
+   * @param params - ConstructionQueueParams with planetId and optional moonId/locationType
+   * @returns Array of construction queue rows
+   */
   static async getConstructionQueue(
     params: ConstructionQueueParams
   ): Promise<any[]> {
@@ -255,6 +284,15 @@ export class BuildingService {
     return result.rows;
   }
 
+  /**
+   * Cancel an active construction and refund a portion of resources.
+   *
+   * Validates ownership and then refunds 60% of the costs back to the
+   * location's resource pool before deleting the queue entry.
+   *
+   * @param userId - ID of the user performing cancellation
+   * @param constructionId - ID of the construction queue entry
+   */
   static async cancelConstruction(
     userId: number,
     constructionId: number
@@ -317,6 +355,11 @@ export class BuildingService {
     }
   }
 
+  /**
+   * Resolve a queue row to its target storage table and id (planets or moons).
+   *
+   * @private
+   */
   private static resolveQueueTarget(queueRow: any): {
     table: 'planets' | 'moons';
     id: number;
@@ -343,6 +386,12 @@ export class BuildingService {
     };
   }
 
+  /**
+   * Build WHERE clause and parameter array for selecting queue rows for a
+   * given location.
+   *
+   * @private
+   */
   private static buildQueueFilter(location: {
     type: LocationType;
     planetId: number;

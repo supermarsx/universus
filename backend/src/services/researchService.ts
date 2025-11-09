@@ -22,6 +22,17 @@ interface ResearchOverview {
 }
 
 export class ResearchService {
+  /**
+   * Start a research task for a user on a planet.
+   *
+   * Performs validation, resource deduction, inserts a research queue entry
+   * and emits a realtime update event.
+   *
+   * @param userId - ID of the user starting research
+   * @param planetId - Planet id where research is performed
+   * @param researchType - Research key from RESEARCH config
+   * @returns The queued research entry decorated with progress/secondsRemaining
+   */
   static async startResearch(
     userId: number,
     planetId: number,
@@ -118,6 +129,12 @@ export class ResearchService {
     }
   }
 
+  /**
+   * Build a research overview for a user (lab level, technologies, queue)
+   *
+   * @param userId - User id
+   * @param planetId - Optional planet to calculate lab level
+   */
   static async getResearchOverview(userId: number, planetId?: number): Promise<ResearchOverview> {
     const researchRow = await this.getResearchRow(userId);
     const queue = await this.getResearchQueue(userId);
@@ -139,10 +156,21 @@ export class ResearchService {
     };
   }
 
+  /**
+   * Return the research row (current technology levels) for a user.
+   *
+   * @param userId - User id
+   */
   static async getUserResearch(userId: number): Promise<any> {
     return this.getResearchRow(userId);
   }
 
+  /**
+   * Retrieve and decorate the user's research queue entries.
+   *
+   * @param userId - User id
+   * @returns Array of decorated queue entries
+   */
   static async getResearchQueue(userId: number): Promise<any[]> {
     const result = await pool.query(
       'SELECT * FROM research_queue WHERE user_id = $1 ORDER BY start_time',
@@ -151,6 +179,12 @@ export class ResearchService {
     return result.rows.map((row) => this.decorateQueueEntry(row));
   }
 
+  /**
+   * Cancel an active research queue entry and refund partial resources.
+   *
+   * @param userId - Owner id
+   * @param queueId - Queue entry id
+   */
   static async cancelResearch(userId: number, queueId: number): Promise<void> {
     const client = await pool.connect();
     
@@ -199,6 +233,13 @@ export class ResearchService {
     }
   }
 
+  /**
+   * Finalize any research entries that have ended and apply the technology
+   * level changes to the user's research row. Emits notifications and
+   * realtime events for completed entries.
+   *
+   * @returns Number of completed entries
+   */
   static async completeFinishedResearch(): Promise<number> {
     const result = await pool.query(
       'SELECT * FROM research_queue WHERE end_time <= NOW()'
@@ -242,6 +283,12 @@ export class ResearchService {
     return completed;
   }
 
+  /**
+   * Retrieve the research row for a user. Accepts an optional DB client
+   * to participate in a transaction.
+   *
+   * @private
+   */
   private static async getResearchRow(userId: number, client: any = pool): Promise<any> {
     const result = await client.query(
       'SELECT * FROM research WHERE user_id = $1',
@@ -250,6 +297,11 @@ export class ResearchService {
     return result.rows[0] || {};
   }
 
+  /**
+   * Helper to fetch a planet owned by a user within an optional transaction.
+   *
+   * @private
+   */
   private static async getUserPlanet(userId: number, planetId: number, client: any = pool): Promise<any | null> {
     const result = await client.query(
       'SELECT * FROM planets WHERE id = $1 AND user_id = $2',
@@ -258,6 +310,12 @@ export class ResearchService {
     return result.rows[0] || null;
   }
 
+  /**
+   * Build a normalized list of all research technologies with metadata
+   * such as current level, next level cost and whether requirements are met.
+   *
+   * @private
+   */
   private static buildTechnologyList(researchRow: any, planet?: any) {
     return Object.entries(RESEARCH).map(([type, config]) => {
       const currentLevel = researchRow[type] || 0;
@@ -276,6 +334,12 @@ export class ResearchService {
     });
   }
 
+  /**
+   * Ensure that research requirements (buildings/research) are met before
+   * allowing a research action to proceed. Throws on unmet requirements.
+   *
+   * @private
+   */
   private static ensureRequirements(
     researchType: string,
     config: ResearchConfig,
@@ -301,6 +365,11 @@ export class ResearchService {
     }
   }
 
+  /**
+   * Check whether requirements are satisfied (used by UI lists).
+   *
+   * @private
+   */
   private static requirementsMet(
     requirements: ResearchConfig['requirements'] | undefined,
     planet: any,
@@ -327,6 +396,11 @@ export class ResearchService {
     return true;
   }
 
+  /**
+   * Decorate a raw research queue row with progress and secondsRemaining.
+   *
+   * @private
+   */
   private static decorateQueueEntry(queue: any) {
     if (!queue) return null;
     const now = Date.now();
@@ -342,6 +416,11 @@ export class ResearchService {
     };
   }
 
+  /**
+   * Emit research-related realtime events via the realtime handler.
+   *
+   * @private
+   */
   private static emitResearchEvent(
     userId: number,
     event: 'researchUpdate' | 'researchComplete',
@@ -357,6 +436,11 @@ export class ResearchService {
     }
   }
 
+  /**
+   * Format a research key into a display-friendly name.
+   *
+   * @private
+   */
   private static formatTechnologyName(key: string): string {
     const config = RESEARCH[key];
     if (config?.displayName) return config.displayName;

@@ -17,6 +17,12 @@ import {
 import { gameConfig } from './gameConfigAdapter';
 
 export class PlanetService {
+  /**
+   * Get all planets owned by a user.
+   *
+   * @param userId - Owner's user id
+   * @returns Array of Planet rows
+   */
   static async getPlanetsByUserId(userId: number): Promise<Planet[]> {
     const result = await pool.query(
       'SELECT * FROM planets WHERE user_id = $1 ORDER BY id',
@@ -25,11 +31,23 @@ export class PlanetService {
     return result.rows;
   }
 
+  /**
+   * Count planets owned by a user.
+   *
+   * @param userId - Owner's user id
+   * @returns Number of planets
+   */
   static async getPlanetCountByUserId(userId: number): Promise<number> {
     const result = await pool.query('SELECT COUNT(*) FROM planets WHERE user_id = $1', [userId]);
     return parseInt(result.rows[0]?.count || '0', 10);
   }
 
+  /**
+   * Fetch a planet by its primary id.
+   *
+   * @param planetId - Planet id
+   * @returns Planet row or null
+   */
   static async getPlanetById(planetId: number): Promise<Planet | null> {
     const result = await pool.query(
       'SELECT * FROM planets WHERE id = $1',
@@ -38,6 +56,13 @@ export class PlanetService {
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
+  /**
+   * Recalculate and persist resource values for a planet based on
+   * elapsed time and configured production rates.
+   *
+   * @param planetId - Planet id to update
+   * @returns Updated Planet object
+   */
   static async updateResources(planetId: number): Promise<Planet> {
     const planet = await this.getPlanetById(planetId);
     if (!planet) throw new Error('Planet not found');
@@ -101,6 +126,12 @@ export class PlanetService {
     return planet;
   }
 
+  /**
+   * Calculate the per-hour resource production for a planet.
+   *
+   * @param planet - Planet record used to compute production
+   * @returns Object with metal, crystal, deuterium and energy production
+   */
   static async getResourceProduction(planet: Planet): Promise<{
     metal: number;
     crystal: number;
@@ -138,6 +169,14 @@ export class PlanetService {
     };
   }
 
+  /**
+   * Check whether a planet can afford a specified cost after updating
+   * its current resource state.
+   *
+   * @param planetId - Planet id
+   * @param cost - Cost object with metal/crystal/deuterium
+   * @returns Boolean indicating affordability
+   */
   static async canAfford(
     planetId: number,
     cost: { metal: number; crystal: number; deuterium: number }
@@ -150,6 +189,12 @@ export class PlanetService {
     );
   }
 
+  /**
+   * Deduct resources from a planet (atomic DB update).
+   *
+   * @param planetId - Planet id
+   * @param cost - Cost object with metal/crystal/deuterium to subtract
+   */
   static async deductResources(
     planetId: number,
     cost: { metal: number; crystal: number; deuterium: number }
@@ -162,6 +207,12 @@ export class PlanetService {
     );
   }
 
+  /**
+   * Add resources to a planet (atomic DB update).
+   *
+   * @param planetId - Planet id
+   * @param resources - Amounts to add
+   */
   static async addResources(
     planetId: number,
     resources: { metal: number; crystal: number; deuterium: number }
@@ -174,6 +225,14 @@ export class PlanetService {
     );
   }
 
+  /**
+   * Lookup a planet by galaxy/system/position coordinates.
+   *
+   * @param galaxy - Galaxy number
+   * @param system - System number
+   * @param position - Position in the system
+   * @returns Planet row or null
+   */
   static async getPlanetByCoordinates(
     galaxy: number,
     system: number,
@@ -186,6 +245,14 @@ export class PlanetService {
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
+  /**
+   * Create a new colonized planet record for a user. Can accept an
+   * optional client (transaction) for caller-managed transactions.
+   *
+   * @param params - Parameters including userId, coordinates and optional initial resources
+   * @param client - Optional PoolClient to run the insert within an existing transaction
+   * @returns The newly created Planet row
+   */
   static async createColonizedPlanet(
     params: {
       userId: number;

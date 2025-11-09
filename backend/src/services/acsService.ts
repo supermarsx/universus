@@ -20,6 +20,16 @@ interface CreateAcsPayload {
 }
 
 export class AcsService {
+  /**
+   * Create a new ACS group for the user's alliance.
+   *
+   * Validates membership, creates the group and ensures the creator is a
+   * member of the newly-created group.
+   *
+   * @param userId - Creator user id
+   * @param payload - Group creation payload
+   * @returns Newly created ACS group row
+   */
   static async createGroup(userId: number, payload: CreateAcsPayload): Promise<any> {
     const client = await pool.connect();
     try {
@@ -77,6 +87,13 @@ export class AcsService {
     }
   }
 
+  /**
+   * Join an existing ACS group (must belong to same alliance).
+   *
+   * @param userId - User id joining the group
+   * @param groupId - ACS group id
+   * @param planetId - Optional planet id associated with the join
+   */
   static async joinGroup(userId: number, groupId: number, planetId?: number): Promise<void> {
     const client = await pool.connect();
     try {
@@ -113,6 +130,12 @@ export class AcsService {
     }
   }
 
+  /**
+   * Leave an ACS group.
+   *
+   * @param userId - User id leaving
+   * @param groupId - ACS group id
+   */
   static async leaveGroup(userId: number, groupId: number): Promise<void> {
     await pool.query(
       'DELETE FROM acs_group_members WHERE group_id = $1 AND user_id = $2',
@@ -120,6 +143,12 @@ export class AcsService {
     );
   }
 
+  /**
+   * List active ACS groups for the user's alliance.
+   *
+   * @param userId - User id
+   * @returns Array of ACS groups with member counts
+   */
   static async listAllianceGroups(userId: number): Promise<any[]> {
     const alliance = await this.getUserAlliance(pool, userId);
     if (!alliance) return [];
@@ -137,6 +166,12 @@ export class AcsService {
     return result.rows;
   }
 
+  /**
+   * Helper - resolve the alliance id for a user (accepts a client for
+   * transactional usage).
+   *
+   * @private
+   */
   private static async getUserAlliance(client: PoolClient | typeof pool, userId: number): Promise<number | null> {
     const result = await client.query(
       'SELECT alliance_id FROM alliance_members WHERE user_id = $1',

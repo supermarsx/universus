@@ -18,6 +18,19 @@ interface ShipyardQueueParams {
 }
 
 export class ShipyardService {
+  /**
+   * Start production for a ship or defense unit.
+   *
+   * Deducts resources from the location, computes build time using game
+   * configuration, inserts a queue entry and returns the queued entry.
+   *
+   * @param userId - Owner initiating production
+   * @param unitType - Unit key from SHIPS or DEFENSES
+   * @param quantity - Number of units to produce (must be > 0)
+   * @param options - Optional location identifiers (planetId, moonId, locationType)
+   * @returns The queued entry decorated with progress/secondsRemaining
+   * @throws Error when validation fails (insufficient resources, invalid unit, etc.)
+   */
   static async startProduction(
     userId: number,
     unitType: string,
@@ -115,6 +128,12 @@ export class ShipyardService {
     }
   }
 
+  /**
+   * Retrieve the shipyard queue for a given location.
+   *
+   * @param params - Object describing the target location (planetId, optional moonId, optional locationType)
+   * @returns Array of decorated queue entries
+   */
   static async getQueue(params: ShipyardQueueParams): Promise<any[]> {
     const locationType: LocationType = params.locationType ?? 'planet';
     const values: Array<string | number> = [locationType, params.planetId];
@@ -136,6 +155,15 @@ export class ShipyardService {
     return result.rows.map((queue) => this.decorateQueueEntry(queue));
   }
 
+  /**
+   * Cancel a queued production item and refund a portion of resources.
+   *
+   * Validates ownership and refunds 60% of the unit costs back to the
+   * location's resource pool, then removes the queue entry.
+   *
+   * @param userId - ID of the user attempting the cancellation
+   * @param queueId - ID of the queue entry to cancel
+   */
   static async cancelProduction(userId: number, queueId: number): Promise<void> {
     const client = await pool.connect();
 
@@ -193,6 +221,14 @@ export class ShipyardService {
     }
   }
 
+  /**
+   * Process finished shipyard queue entries (end_time <= NOW()).
+   *
+   * For each finished entry, the units are applied to the target (planet
+   * or moon) and the queue entry removed. Returns the number of entries completed.
+   *
+   * @returns Number of completed queue entries
+   */
   static async completeFinishedJobs(): Promise<number> {
     const result = await pool.query(
       'SELECT * FROM shipyard_queue WHERE end_time <= NOW()'
@@ -228,6 +264,11 @@ export class ShipyardService {
     return completed;
   }
 
+  /**
+   * Decorate a raw queue row with convenience fields used by the API.
+   *
+   * @private
+   */
   private static decorateQueueEntry(queue: any) {
     const now = Date.now();
     const end = new Date(queue.end_time).getTime();
@@ -242,6 +283,13 @@ export class ShipyardService {
     };
   }
 
+  /**
+   * Resolve the storage table and id referenced by a queue row.
+   *
+   * Returns `{ table: 'planets' | 'moons', id }` or throws if missing.
+   *
+   * @private
+   */
   private static resolveQueueTarget(queueRow: any): {
     table: 'planets' | 'moons';
     id: number;

@@ -9,6 +9,21 @@
 import { Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { AdminAuthRequest, AdminLevel, ADMIN_PERMISSIONS } from '../types/admin';
+/**
+ * Ensure the current request is performed by an active admin user.
+ *
+ * - Verifies that the request contains an authenticated user.
+ * - Loads admin metadata from `admin_users` and injects `req.admin`,
+ *   `req.adminLevel` and `req.adminPermissions` for downstream handlers.
+ * - Optionally enforces an IP whitelist defined on the admin record.
+ *
+ * On failure the middleware will send an appropriate HTTP response and
+ * will not call `next()`.
+ *
+ * @param req - Express request augmented with typed admin fields
+ * @param res - Express response used to send failure responses
+ * @param next - Express next function to continue the middleware chain
+ */
 export const requireAdmin = async (
   req: AdminAuthRequest,
   res: Response,
@@ -77,8 +92,14 @@ export const requireAdmin = async (
 };
 
 /**
- * Require Specific Admin Level
- * Ensures admin has at least the specified level
+ * Factory middleware that ensures the admin has at least `minLevel`.
+ *
+ * The returned middleware reads `req.adminLevel` (set by
+ * `requireAdmin`) and compares it against the configured hierarchy.
+ * If the admin's level is lower than `minLevel`, a 403 response is sent.
+ *
+ * @param minLevel - Minimum required admin level (e.g. 'moderator')
+ * @returns Express middleware function enforcing the level requirement
  */
 export const requireAdminLevel = (minLevel: AdminLevel) => {
   const levelHierarchy: Record<AdminLevel, number> = {
@@ -115,8 +136,14 @@ export const requireAdminLevel = (minLevel: AdminLevel) => {
 };
 
 /**
- * Require Specific Permission
- * Checks if admin has a specific permission
+ * Factory middleware to require a specific admin permission.
+ *
+ * Permission format is a colon-delimited string (e.g. 'user:read'). Admin
+ * permission entries may include wildcards such as 'user:*' or '*' to grant
+ * broader access. Super-admins (permissions include '*') bypass checks.
+ *
+ * @param permission - Permission string required to proceed
+ * @returns Express middleware that enforces the permission
  */
 export const requirePermission = (permission: string) => {
   return async (
@@ -162,7 +189,13 @@ export const requirePermission = (permission: string) => {
 };
 
 /**
- * Require Multiple Permissions (all required)
+ * Require multiple permissions — all listed permissions must be present.
+ *
+ * Super-admins bypass permission enforcement. Wildcard permission entries
+ * (e.g. 'user:*') match any permission with the same prefix.
+ *
+ * @param permissions - Array of permission strings required
+ * @returns Express middleware enforcing that all permissions exist
  */
 export const requirePermissions = (permissions: string[]) => {
   return async (
@@ -205,7 +238,13 @@ export const requirePermissions = (permissions: string[]) => {
 };
 
 /**
- * Require Any Permission (at least one required)
+ * Require any of the provided permissions — succeeds if the admin has at
+ * least one of them.
+ *
+ * Super-admins bypass the check.
+ *
+ * @param permissions - Array of permission strings (at least one required)
+ * @returns Express middleware that requires at least one permission
  */
 export const requireAnyPermission = (permissions: string[]) => {
   return async (
@@ -248,8 +287,25 @@ export const requireAnyPermission = (permissions: string[]) => {
 };
 
 /**
- * Log Admin Action Helper
- * Used throughout admin routes to audit all actions
+ * Persist an admin audit log row.
+ *
+ * Inserts a record into `admin_audit_logs` and returns the new row id.
+ * This helper swallows errors and returns `-1` on failure to avoid
+ * disrupting the caller's flow.
+ *
+ * @param adminId - Numeric id of the admin performing the action (optional)
+ * @param adminUsername - Admin username (for readability in logs)
+ * @param actionType - Short action identifier (e.g. 'user:ban')
+ * @param actionCategory - High level category (e.g. 'security')
+ * @param targetType - Optional target entity type (e.g. 'user')
+ * @param targetId - Optional numeric id of the target entity
+ * @param actionDetails - Optional free-form details/metadata (will be JSON-stringified)
+ * @param severity - Severity level (e.g. 'low', 'medium', 'high')
+ * @param success - Whether the action completed successfully
+ * @param errorMessage - Optional error message if the action failed
+ * @param beforeState - Optional snapshot of resource before the action
+ * @param afterState - Optional snapshot of resource after the action
+ * @returns Newly created audit log id, or -1 on failure
  */
 export const logAdminAction = async (
   adminId: number | undefined,
@@ -297,8 +353,14 @@ export const logAdminAction = async (
 };
 
 /**
- * Admin Audit Wrapper
- * Wraps route handlers to automatically log actions
+ * Higher-order wrapper for admin route handlers that automatically logs the
+ * action after the handler completes (or fails). Useful to ensure audit
+ * entries are always recorded with duration and basic request context.
+ *
+ * @param actionType - Short action identifier used in logs
+ * @param actionCategory - High-level category for the action
+ * @param getTarget - Optional function to extract a target { type, id } from the request
+ * @returns A function that wraps an async route handler
  */
 export const withAudit = (
   actionType: string,
@@ -349,11 +411,22 @@ export const withAudit = (
 };
 
 /**
- * Rate Limiting for Admin Actions
- * Prevents abuse of admin endpoints
+ * Rate limiting helper for admin endpoints.
+ *
+ * This basic in-memory limiter tracks counts per `userId:path` key and is
+ * intended for low-volume admin use. It is NOT suitable for distributed
+ * deployments — use a Redis-backed limiter for production-scaled rate
+ * limiting.
  */
 const actionCounts = new Map<string, { count: number; resetAt: number }>();
 
+/**
+ * Create a middleware enforcing a maximum number of actions per window.
+ *
+ * @param maxActions - Maximum allowed actions in the sliding window
+ * @param windowMs - Window duration in milliseconds
+ * @returns Express middleware enforcing the rate limit
+ */
 export const rateLimit = (maxActions: number, windowMs: number) => {
   return (req: AdminAuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
@@ -387,6 +460,16 @@ export const rateLimit = (maxActions: number, windowMs: number) => {
 /**
  * Check if User is Blocked
  * Middleware to prevent blocked users from performing actions
+ */
+/**
+ * Middleware to check whether the current user account is blocked.
+ *
+ * Calls the `is_user_blocked` DB helper and, when blocked, returns a 403
+ * with block metadata. Otherwise calls `next()`.
+ *
+ * @param req - AdminAuthRequest (must include authenticated `req.user`)
+ * @param res - Express response used to send block details on failure
+ * @param next - Express next function to continue the middleware chain
  */
 export const checkUserBlocked = async (
   req: AdminAuthRequest,

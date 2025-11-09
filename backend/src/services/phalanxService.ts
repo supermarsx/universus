@@ -19,6 +19,15 @@ interface PhalanxScanParams {
 }
 
 class PhalanxService {
+  /**
+   * Perform a phalanx sensor scan from a moon.
+   *
+   * Validates ownership and sensor range, charges deuterium cost and returns
+   * a summary of the target (planet info) and inbound/outbound fleets.
+   *
+   * @param params - Scan parameters including userId, moonId and target coordinates
+   * @returns Scan result object with target info, sensor metadata and fleet lists
+   */
   async performScan(params: PhalanxScanParams) {
     const client = await pool.connect();
 
