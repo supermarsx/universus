@@ -15,7 +15,7 @@ const SHIP_STATS = {
   deathstar: { name: 'Deathstar', cargo: 1000000, fuel: 1 },
 };
 
-class FleetManager {
+export class FleetManager {
   constructor() {
     this.planet = null;
     this.selectedShips = {};

@@ -361,19 +361,52 @@
     "noConstruction": "No construction in progress",
     "completesIn": "Completes in: {{time}}"
   },
-  "shipyard": {
+    "shipyard": {
+    "shipyardLabel": "Shipyard",
+    "notificationTitle": "Shipyard",
     "noMoon": "No moon available.",
     "buildMoonShipyard": "Build a Moon Shipyard to produce fleets here.",
     "moonShipyardLevel": "Moon shipyard level {{level}}.",
     "planetaryShipyardLevel": "Planetary shipyard level {{level}}.",
     "buildShipyard": "Build a shipyard on this planet to unlock production.",
+    "buildMoonShipyardForDefense": "Build a Moon Shipyard to construct defenses here.",
+    "buildShipyardForDefense": "Build a shipyard on this planet to unlock defenses.",
     "selectProductionLocation": "Select a production location.",
+    "inHangar": "In hangar: {{count}}",
+    "deployed": "Deployed: {{count}}",
     "build": "Build",
     "insufficientResources": "Insufficient resources",
+    "moonProductionQueue": "Moon Production Queue",
+    "shipProductionQueue": "Ship Production Queue",
+    "eta": "ETA",
+    "cancel": "Cancel",
+    "cancelConfirm": "Cancel production? Only 60% of resources are refunded.",
     "productionStarted": "Production started: {{quantity}}x {{unit}}",
     "productionCancelled": "Production cancelled",
     "failedToStartProduction": "Failed to start production",
-    "failedToCancelProduction": "Failed to cancel production"
+    "failedToCancelProduction": "Failed to cancel production",
+    "ships": {
+      "small_cargo": { "name": "Small Cargo", "description": "Basic transporter for resources." },
+      "large_cargo": { "name": "Large Cargo", "description": "Heavy duty transporter with expanded capacity." },
+      "light_fighter": { "name": "Light Fighter", "description": "Fast attack craft ideal for raiding." },
+      "heavy_fighter": { "name": "Heavy Fighter", "description": "Armored strike craft with higher damage." },
+      "cruiser": { "name": "Cruiser", "description": "Balanced ship excelling at escort missions." },
+      "battleship": { "name": "Battleship", "description": "Heavy flagship-class combat vessel." },
+      "colony_ship": { "name": "Colony Ship", "description": "Carries a full population ready to settle new worlds." },
+      "recycler": { "name": "Recycler", "description": "Harvests debris left behind after battles." },
+      "espionage_probe": { "name": "Espionage Probe", "description": "Gather intel on enemy worlds." },
+      "bomber": { "name": "Bomber", "description": "Specialized at destroying defenses." },
+      "destroyer": { "name": "Destroyer", "description": "Capital ship that counters most defenses." },
+      "deathstar": { "name": "Deathstar", "description": "Planet buster with massive firepower." }
+    },
+    "defense": {
+      "rocket_launcher": { "name": "Rocket Launcher", "description": "Basic defensive battery." },
+      "light_laser": { "name": "Light Laser", "description": "Standard defensive laser." },
+      "heavy_laser": { "name": "Heavy Laser", "description": "Upgraded laser with enhanced output." },
+      "gauss_cannon": { "name": "Gauss Cannon", "description": "Magnetically accelerated slug launcher." },
+      "ion_cannon": { "name": "Ion Cannon", "description": "Disrupts shields with ionized beams." },
+      "plasma_turret": { "name": "Plasma Turret", "description": "End-game defense platform." }
+    }
   },
   "research": {
     "energy": "Energy & Power",

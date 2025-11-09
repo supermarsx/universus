@@ -1,4 +1,5 @@
 // @ts-nocheck
+import i18next from 'i18next';
 
 const SHIP_BLUEPRINTS = {
   small_cargo: { name: 'Small Cargo', description: 'Basic transporter for resources.', cost: { metal: 2000, crystal: 2000, deuterium: 0 }, image: 'support-cargo-freighter' },
@@ -24,7 +25,7 @@ const DEFENSE_BLUEPRINTS = {
   plasma_turret: { name: 'Plasma Turret', description: 'End-game defense platform.', cost: { metal: 50000, crystal: 50000, deuterium: 30000 }, image: 'plasma-turret' },
 };
 
-class ShipyardManager {
+export class ShipyardManager {
   constructor() {
     this.planet = null;
     this.moon = null;
@@ -79,14 +80,14 @@ class ShipyardManager {
     if (this.planet) {
       const planetOption = document.createElement('option');
       planetOption.value = 'planet';
-      planetOption.textContent = `${this.planet.name} Shipyard`;
+      planetOption.textContent = `${this.planet.name} ${i18next.t('shipyard.shipyardLabel')}`;
       this.locationSelect.appendChild(planetOption);
     }
 
     if (this.moon) {
       const moonOption = document.createElement('option');
       moonOption.value = 'moon';
-      moonOption.textContent = `${this.moon.name} Shipyard`;
+      moonOption.textContent = `${this.moon.name} ${i18next.t('shipyard.shipyardLabel')}`;
       this.locationSelect.appendChild(moonOption);
       this.locationSelect.disabled = false;
     } else {
@@ -105,19 +106,19 @@ class ShipyardManager {
   updateLocationStatus() {
     if (!this.locationStatus) return;
 
-    if (this.locationType === 'moon') {
+        if (this.locationType === 'moon') {
       if (!this.moon) {
-        this.locationStatus.textContent = 'No moon available.';
+        this.locationStatus.textContent = i18next.t('shipyard.noMoon');
       } else if ((this.moon.moon_shipyard || 0) === 0) {
-        this.locationStatus.textContent = 'Build a Moon Shipyard to produce fleets here.';
+        this.locationStatus.textContent = i18next.t('shipyard.buildMoonShipyard');
       } else {
-        this.locationStatus.textContent = `Moon shipyard level ${this.moon.moon_shipyard}.`;
+        this.locationStatus.textContent = i18next.t('shipyard.moonShipyardLevel', { level: this.moon.moon_shipyard });
       }
     } else {
       const level = this.planet?.shipyard || 0;
       this.locationStatus.textContent = level
-        ? `Planetary shipyard level ${level}.`
-        : 'Build a shipyard on this planet to unlock production.';
+        ? i18next.t('shipyard.planetaryShipyardLevel', { level })
+        : i18next.t('shipyard.buildShipyard');
     }
   }
 
@@ -178,15 +179,15 @@ class ShipyardManager {
 
     const context = this.getActiveLocation();
     if (!context || !context.source) {
-      grid.innerHTML = '<p class="text-muted">Select a production location.</p>';
+      grid.innerHTML = `<p class="text-muted">${i18next.t('shipyard.selectProductionLocation')}</p>`;
       return;
     }
 
     if ((context.shipyardLevel || 0) === 0) {
       grid.innerHTML =
         this.locationType === 'moon'
-          ? '<p class="text-muted">Build a Moon Shipyard to construct fleets here.</p>'
-          : '<p class="text-muted">Build a shipyard on this planet to construct ships.</p>';
+          ? `<p class="text-muted">${i18next.t('shipyard.buildMoonShipyard')}</p>`
+          : `<p class="text-muted">${i18next.t('shipyard.buildShipyard')}</p>`;
       return;
     }
 
@@ -201,17 +202,17 @@ class ShipyardManager {
       card.innerHTML = `
         <div class="ship-card-header">
           <div>
-            <h3>${blueprint.name}</h3>
-            <p>In hangar: ${available}</p>
+            <h3>${i18next.t(`shipyard.ships.${key}.name`)}</h3>
+            <p>${i18next.t('shipyard.inHangar', { count: available })}</p>
           </div>
-          <img src="/assets/ships/${blueprint.image}.png" alt="${blueprint.name}" onerror="this.src='/assets/ships/fighter-interceptor.png'">
+          <img src="/assets/ships/${blueprint.image}.png" alt="${i18next.t(`shipyard.ships.${key}.name`)}" onerror="this.src='/assets/ships/fighter-interceptor.png'">
         </div>
-        <p class="ship-description">${blueprint.description}</p>
+        <p class="ship-description">${i18next.t(`shipyard.ships.${key}.description`)}</p>
         ${this.renderCost(blueprint.cost, resources)}
         <div class="build-controls">
           <input type="number" class="quantity-input" min="1" value="1" aria-label="quantity">
           <button class="btn btn-primary" ${canAfford ? '' : 'disabled'}>
-            ${canAfford ? 'Build' : 'Insufficient resources'}
+            ${canAfford ? i18next.t('shipyard.build') : i18next.t('shipyard.insufficientResources')}
           </button>
         </div>
       `;
@@ -233,15 +234,15 @@ class ShipyardManager {
 
     const context = this.getActiveLocation();
     if (!context || !context.source) {
-      grid.innerHTML = '<p class="text-muted">Select a production location.</p>';
+      grid.innerHTML = `<p class="text-muted">${i18next.t('shipyard.selectProductionLocation')}</p>`;
       return;
     }
 
     if ((context.shipyardLevel || 0) === 0) {
       grid.innerHTML =
         this.locationType === 'moon'
-          ? '<p class="text-muted">Build a Moon Shipyard to construct defenses here.</p>'
-          : '<p class="text-muted">Build a shipyard on this planet to unlock defenses.</p>';
+          ? `<p class="text-muted">${i18next.t('shipyard.buildMoonShipyardForDefense')}</p>`
+          : `<p class="text-muted">${i18next.t('shipyard.buildShipyardForDefense')}</p>`;
       return;
     }
 
@@ -256,18 +257,18 @@ class ShipyardManager {
       card.innerHTML = `
         <div class="ship-card-header">
           <div>
-            <h3>${blueprint.name}</h3>
-            <p>Deployed: ${available}</p>
+            <h3>${i18next.t(`shipyard.defense.${key}.name`)}</h3>
+            <p>${i18next.t('shipyard.deployed', { count: available })}</p>
           </div>
-          <img src="/assets/buildings/${blueprint.image}.png" alt="${blueprint.name}" onerror="this.src='/assets/buildings/defense-turret.png'">
+          <img src="/assets/buildings/${blueprint.image}.png" alt="${i18next.t(`shipyard.defense.${key}.name`)}" onerror="this.src='/assets/buildings/defense-turret.png'">
         </div>
-        <p class="ship-description">${blueprint.description}</p>
+        <p class="ship-description">${i18next.t(`shipyard.defense.${key}.description`)}</p>
         ${this.renderCost(blueprint.cost, resources)}
         <div class="build-controls">
           <input type="number" class="quantity-input" min="1" value="1" aria-label="quantity">
-          <button class="btn btn-primary" ${canAfford ? '' : 'disabled'}>
-            ${canAfford ? 'Build' : 'Insufficient resources'}
-          </button>
+            <button class="btn btn-primary" ${canAfford ? '' : 'disabled'}>
+              ${canAfford ? i18next.t('shipyard.build') : i18next.t('shipyard.insufficientResources')}
+            </button>
         </div>
       `;
 
@@ -321,10 +322,10 @@ class ShipyardManager {
         moonId: this.locationType === 'moon' ? this.moon?.id : undefined,
       });
 
-      showNotification('Shipyard', `Production started: ${quantity}x ${this.formatName(unitType)}`, 'success');
+      showNotification(i18next.t('shipyard.notificationTitle'), i18next.t('shipyard.productionStarted', { quantity, unit: i18next.t(`shipyard.ships.${unitType}.name`) }), 'success');
       await loadPlanetData(this.planet.id);
     } catch (error) {
-      showNotification('Shipyard', error.message || 'Failed to start production', 'error');
+      showNotification(i18next.t('shipyard.notificationTitle'), i18next.t('shipyard.failedToStartProduction'), 'error');
     }
   }
 
@@ -362,7 +363,7 @@ class ShipyardManager {
     const header = wrapper.querySelector('h3');
     if (header) {
       header.textContent =
-        this.locationType === 'moon' ? 'Moon Production Queue' : 'Ship Production Queue';
+        this.locationType === 'moon' ? i18next.t('shipyard.moonProductionQueue') : i18next.t('shipyard.shipProductionQueue');
     }
 
     this.queue.forEach((item) => {
@@ -373,9 +374,9 @@ class ShipyardManager {
         <div class="queue-header">
           <div>
             <strong>${item.quantity}x ${this.formatName(item.unit_type)}</strong>
-            <span class="queue-status">ETA: <span data-queue-timer="${item.id}">${this.formatTime(item.secondsRemaining || 0)}</span></span>
+            <span class="queue-status">${i18next.t('shipyard.eta')}: <span data-queue-timer="${item.id}">${this.formatTime(item.secondsRemaining || 0)}</span></span>
           </div>
-          <button class="btn btn-text" data-cancel="${item.id}">Cancel</button>
+          <button class="btn btn-text" data-cancel="${item.id}">${i18next.t('shipyard.cancel')}</button>
         </div>
         <div class="progress-bar">
           <div class="progress-fill" style="width: ${percent}%"></div>
@@ -413,23 +414,38 @@ class ShipyardManager {
   async cancelQueue(queueId) {
     if (!this.planet) return;
 
-    if (!confirm('Cancel production? Only 60% of resources are refunded.')) {
+    if (!confirm(i18next.t('shipyard.cancelConfirm'))) {
       return;
     }
 
     try {
       await api.delete(`/shipyard/queue/${queueId}`);
-      showNotification('Shipyard', 'Production cancelled', 'info');
+      showNotification(i18next.t('shipyard.notificationTitle'), i18next.t('shipyard.productionCancelled'), 'info');
       await loadPlanetData(this.planet.id);
     } catch (error) {
-      showNotification('Shipyard', error.message || 'Failed to cancel production', 'error');
+      showNotification(i18next.t('shipyard.notificationTitle'), i18next.t('shipyard.failedToCancelProduction'), 'error');
     }
   }
 
   formatName(key) {
+    if (key === null || key === undefined) return String(key);
+
+    const shipKey = `shipyard.ships.${key}.name`;
+    const defenseKey = `shipyard.defense.${key}.name`;
+
+    const shipName = i18next.t(shipKey);
+    if (shipName && shipName !== shipKey) return shipName;
+
+    const defenseName = i18next.t(defenseKey);
+    if (defenseName && defenseName !== defenseKey) return defenseName;
+
+    if (typeof key !== 'string') return String(key);
+
+    if (!key) return '';
+
     return key
       .split('_')
-      .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+      .map((chunk) => (chunk ? chunk.charAt(0).toUpperCase() + chunk.slice(1) : ''))
       .join(' ');
   }
 
@@ -438,16 +454,22 @@ class ShipyardManager {
   }
 
   formatTime(seconds) {
+    // Handle non-number values
+    if (typeof seconds !== 'number' || isNaN(seconds)) return '0h 0m 0s';
+
+    // Use floor division for hours so negative seconds borrow from hours as expected
     const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const remainder = seconds - hrs * 3600;
+    const mins = Math.floor(remainder / 60);
+    const secs = remainder % 60;
+
     return `${hrs}h ${mins}m ${secs}s`;
   }
 }
 
-let shipyardManager;
+export let shipyardManager;
 
-function updatePageData(data) {
+export function updatePageData(data) {
     if (!shipyardManager) return;
     shipyardManager.updatePlanet(data);
 }

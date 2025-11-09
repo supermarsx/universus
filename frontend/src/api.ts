@@ -123,3 +123,9 @@ const api = {
 };
 
 window.api = api;
+
+// Export for CommonJS usage in tests/mocks
+module.exports = api;
+
+// ES module default export for TypeScript imports
+export default api;

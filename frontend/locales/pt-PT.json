@@ -318,5 +318,52 @@
     "my_fleets": "My Fleets",
     "resource_hoarder": "Resource Hoarder",
     "resources": "Resources"
+  },
+  "shipyard": {
+    "shipyardLabel": "Estaleiro",
+    "notificationTitle": "Estaleiro",
+    "noMoon": "Nenhuma lua disponível.",
+    "buildMoonShipyard": "Construa um Estaleiro Lunar para produzir frotas aqui.",
+    "moonShipyardLevel": "Nível do estaleiro lunar {{level}}.",
+    "planetaryShipyardLevel": "Nível do estaleiro planetário {{level}}.",
+    "buildShipyard": "Construa um estaleiro neste planeta para desbloquear a produção.",
+    "buildMoonShipyardForDefense": "Construa um Estaleiro Lunar para construir defesas aqui.",
+    "buildShipyardForDefense": "Construa um estaleiro neste planeta para desbloquear defesas.",
+    "selectProductionLocation": "Selecione um local de produção.",
+    "inHangar": "No hangar: {{count}}",
+    "deployed": "Implantado: {{count}}",
+    "build": "Construir",
+    "insufficientResources": "Recursos insuficientes",
+    "moonProductionQueue": "Fila de Produção Lunar",
+    "shipProductionQueue": "Fila de Produção de Navios",
+    "eta": "ETA",
+    "cancel": "Cancelar",
+    "cancelConfirm": "Cancelar produção? Apenas 60% dos recursos são reembolsados.",
+    "productionStarted": "Produção iniciada: {{quantity}}x {{unit}}",
+    "productionCancelled": "Produção cancelada",
+    "failedToStartProduction": "Falha ao iniciar a produção",
+    "failedToCancelProduction": "Falha ao cancelar produção",
+    "ships": {
+      "small_cargo": { "name": "Carga Pequena", "description": "Transportador básico para recursos." },
+      "large_cargo": { "name": "Carga Grande", "description": "Transportador pesado com capacidade expandida." },
+      "light_fighter": { "name": "Caça Leve", "description": "Nave de ataque rápida ideal para saques." },
+      "heavy_fighter": { "name": "Caça Pesado", "description": "Nave de ataque blindada com maior dano." },
+      "cruiser": { "name": "Cruzador", "description": "Nave equilibrada, excelente em missões de escolta." },
+      "battleship": { "name": "Navio de Batalha", "description": "Embarcação de combate pesada classe bandeira." },
+      "colony_ship": { "name": "Navio Colonial", "description": "Transporta uma população pronta para colonizar novos mundos." },
+      "recycler": { "name": "Reciclador", "description": "Recolhe destroços deixados após batalhas." },
+      "espionage_probe": { "name": "Sonda de Espionagem", "description": "Coleta informações sobre mundos inimigos." },
+      "bomber": { "name": "Bombardeiro", "description": "Especializado em destruir defesas." },
+      "destroyer": { "name": "Destruidor", "description": "Nave capital que enfrenta a maioria das defesas." },
+      "deathstar": { "name": "Estrela da Morte", "description": "Destruidora de planetas com poder de fogo massivo." }
+    },
+    "defense": {
+      "rocket_launcher": { "name": "Lançador de Foguetes", "description": "Bateria defensiva básica." },
+      "light_laser": { "name": "Laser Leve", "description": "Laser defensivo padrão." },
+      "heavy_laser": { "name": "Laser Pesado", "description": "Laser melhorado com saída ampliada." },
+      "gauss_cannon": { "name": "Canhão Gauss", "description": "Lançador de projéteis magneticamente acelerado." },
+      "ion_cannon": { "name": "Canhão de Íons", "description": "Desestabiliza escudos com feixes ionizados." },
+      "plasma_turret": { "name": "Torretas de Plasma", "description": "Plataforma de defesa de fim de jogo." }
+    }
   }
 }
