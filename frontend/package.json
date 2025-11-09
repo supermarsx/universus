@@ -10,7 +10,7 @@
     "lint": "eslint \"js/**/*.js\" \"views/**/*.njk\"",
     "format": "prettier --write \"js/**/*.js\" \"css/**/*.css\" \"views/**/*.njk\"",
     "prepare": "npm run build",
-  "test": "jest"
+  "test": "jest --ci --runInBand"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
