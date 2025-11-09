@@ -8,7 +8,7 @@
 
 import { Response, NextFunction } from 'express';
 import { pool } from '../config/database';
-import { AdminAuthRequest, AdminLevel, ADMIN_PERMISSIONS } from '../types/admin';
+import { AdminAuthRequest } from '../types/admin';
 /**
  * Ensure the current request is performed by an active admin user.
  *
@@ -35,12 +35,22 @@ export const requireAdmin = async (
       return;
     }
 
-    // Query admin user data
+    // Query admin user data, role, and permissions
     const adminResult = await pool.query(
-      `SELECT au.*, u.username, u.email 
+      `SELECT 
+         au.*, 
+         u.username, 
+         u.email, 
+         r.id as role_id, 
+         r.name as role_name, 
+         ARRAY_REMOVE(ARRAY_AGG(p.name), NULL) as permissions
        FROM admin_users au
        JOIN users u ON au.user_id = u.id
-       WHERE au.user_id = $1 AND au.is_active = TRUE`,
+       JOIN roles r ON au.role_id = r.id
+       LEFT JOIN role_permissions rp ON r.id = rp.role_id
+       LEFT JOIN permissions p ON rp.permission_id = p.id
+       WHERE au.user_id = $1 AND au.is_active = TRUE
+       GROUP BY au.id, u.username, u.email, r.id, r.name`,
       [req.user.id]
     );
 
@@ -79,60 +89,14 @@ export const requireAdmin = async (
 
     // Inject admin data into request
     req.admin = admin;
-    req.adminLevel = admin.admin_level as AdminLevel;
-    req.adminPermissions = admin.permissions?.length > 0 
-      ? admin.permissions 
-      : ADMIN_PERMISSIONS[admin.admin_level as AdminLevel];
+    req.adminRole = admin.role_name;
+    req.adminPermissions = Array.isArray(admin.permissions) ? admin.permissions : [];
 
     next();
   } catch (error) {
     console.error('Admin authentication error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
-};
-
-/**
- * Factory middleware that ensures the admin has at least `minLevel`.
- *
- * The returned middleware reads `req.adminLevel` (set by
- * `requireAdmin`) and compares it against the configured hierarchy.
- * If the admin's level is lower than `minLevel`, a 403 response is sent.
- *
- * @param minLevel - Minimum required admin level (e.g. 'moderator')
- * @returns Express middleware function enforcing the level requirement
- */
-export const requireAdminLevel = (minLevel: AdminLevel) => {
-  const levelHierarchy: Record<AdminLevel, number> = {
-    support: 1,
-    moderator: 2,
-    game_admin: 3,
-    super_admin: 4,
-  };
-
-  return async (
-    req: AdminAuthRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    if (!req.adminLevel) {
-      res.status(403).json({ error: 'Admin authentication required' });
-      return;
-    }
-
-    const userLevel = levelHierarchy[req.adminLevel];
-    const requiredLevel = levelHierarchy[minLevel];
-
-    if (userLevel < requiredLevel) {
-      res.status(403).json({ 
-        error: 'Insufficient admin privileges',
-        required: minLevel,
-        current: req.adminLevel,
-      });
-      return;
-    }
-
-    next();
-  };
 };
 
 /**

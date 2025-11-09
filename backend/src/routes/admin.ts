@@ -537,4 +537,48 @@ router.get('/audit-log', authenticateToken, verifyAdminRole, async (req: AuthReq
     }
 });
 
+/**
+ * OBSERVABILITY ENDPOINTS
+ * GET/PUT /api/admin/observability/config (SA/SGM only)
+ * GET /api/admin/observability/status (GM/SM/M and above)
+ */
+import { requirePermission } from '../middleware/adminAuth';
+import { AdminAuthRequest } from '../types/admin';
+
+// In-memory config (replace with DB or file storage as needed)
+let observabilityConfig = {
+  prometheusUrl: 'http://localhost:9090',
+  grafanaUrl: 'http://localhost:3000',
+  alertmanagerUrl: 'http://localhost:9093',
+  otelCollectorUrl: 'http://localhost:4317',
+  blackboxUrl: 'http://localhost:9115',
+  enabled: true,
+};
+
+// GET observability config (SA/SGM only)
+router.get('/observability/config', authenticateToken, requirePermission('monitoring:write'), async (req: AdminAuthRequest, res: Response) => {
+  res.json(observabilityConfig);
+});
+
+// PUT observability config (SA/SGM only)
+router.put('/observability/config', authenticateToken, requirePermission('monitoring:write'), async (req: AdminAuthRequest, res: Response) => {
+  const updates = req.body;
+  observabilityConfig = { ...observabilityConfig, ...updates };
+  res.json({ success: true, config: observabilityConfig });
+});
+
+// GET observability status (GM/SM/M and above)
+router.get('/observability/status', authenticateToken, requirePermission('monitoring:read'), async (req: AdminAuthRequest, res: Response) => {
+  // Mock status (replace with real health checks/metrics)
+  res.json({
+    prometheus: { url: observabilityConfig.prometheusUrl, status: 'ok' },
+    grafana: { url: observabilityConfig.grafanaUrl, status: 'ok' },
+    alertmanager: { url: observabilityConfig.alertmanagerUrl, status: 'ok' },
+    otel_collector: { url: observabilityConfig.otelCollectorUrl, status: 'ok' },
+    blackbox: { url: observabilityConfig.blackboxUrl, status: 'ok' },
+    enabled: observabilityConfig.enabled,
+    lastChecked: new Date().toISOString(),
+  });
+});
+
 export default router;

@@ -5,12 +5,11 @@ import { User } from './index';
 // ADMIN USER TYPES
 // ========================================
 
-export type AdminLevel = 'super_admin' | 'game_admin' | 'moderator' | 'support';
-
 export interface AdminUser {
   id: number;
   user_id: number;
-  admin_level: AdminLevel;
+  role_id: number;
+  role_name: string;
   permissions: string[];
   created_at: Date;
   created_by?: number;
@@ -22,12 +21,6 @@ export interface AdminUser {
   notes?: string;
 }
 
-export interface AdminPermissions {
-  super_admin: string[]; // ['*']
-  game_admin: string[];  // Specific permissions
-  moderator: string[];   // Limited permissions
-  support: string[];     // Basic permissions
-}
 
 // ========================================
 // AUDIT LOG TYPES
@@ -137,7 +130,7 @@ export interface AdminNotification {
   title: string;
   message: string;
   data?: Record<string, any>;
-  target_admin_level?: AdminLevel;
+  target_admin_role?: string;
   target_admin_ids?: number[];
   created_at: Date;
   expires_at?: Date;
@@ -205,7 +198,7 @@ export interface GameEvent {
 export interface AdminAuthRequest extends Request {
   user?: User;
   admin?: AdminUser;
-  adminLevel?: AdminLevel;
+  adminRole?: string;
   adminPermissions?: string[];
 }
 
@@ -324,43 +317,7 @@ export interface AdminDashboard {
   online_admins: number;
 }
 
-// ========================================
-// PERMISSION DEFINITIONS
-// ========================================
 
-export const ADMIN_PERMISSIONS: AdminPermissions = {
-  super_admin: ['*'], // Full access
-  game_admin: [
-    'user:read',
-    'user:write',
-    'user:ban',
-    'user:tag',
-    'game:config',
-    'game:events',
-    'game:resources',
-    'monitoring:read',
-    'monitoring:write',
-    'reports:read',
-    'reports:write',
-    'alliance:manage',
-    'fleet:manage',
-  ],
-  moderator: [
-    'user:read',
-    'user:mute',
-    'user:warn',
-    'user:tag',
-    'content:moderate',
-    'reports:read',
-    'monitoring:read',
-  ],
-  support: [
-    'user:read',
-    'user:assist',
-    'reports:read',
-    'tickets:manage',
-  ],
-};
 
 // ========================================
 // UTILITY TYPES

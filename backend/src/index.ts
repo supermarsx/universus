@@ -6,6 +6,9 @@
  * together route modules, socket initialization and high-level schedulers.
  */
 
+if (process.env.OTEL_ENABLED === 'true') {
+  require('./otel-bootstrap');
+}
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
@@ -102,6 +105,15 @@ app.use('/api/alliances', allianceRoutes); // Phase 11: Enhanced Alliance Manage
 app.use('/api/moons', moonRoutes);
 app.use('/api/player-blocks', playerBlockRoutes);
 app.use('/api/analytics', analyticsRoutes);
+
+// Prometheus metrics endpoint
+import client from 'prom-client';
+const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -3,7 +3,6 @@ import os from 'os';
 import { AdminAuthRequest } from '../types/admin';
 import { 
   requireAdmin,
-  requireAdminLevel,
   requirePermission,
   requirePermissions,
   rateLimit,
