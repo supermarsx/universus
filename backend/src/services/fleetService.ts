@@ -1,3 +1,10 @@
+/**
+ * @module backend/services/fleetService
+ *
+ * FleetService handles fleet dispatching, mission processing and fleet state
+ * transitions. It performs validations, persists fleet movements and invokes
+ * combat/espionage/harvest handlers as missions complete.
+ */
 import { pool } from '../config/database';
 import { PlanetService } from './planetService';
 import { CombatService } from './combatService';
@@ -59,7 +66,17 @@ const PLANET_BUILDING_KEYS = [
 
 const messagingService = new MessagingService(pool);
 
+/**
+ * Coordinator for fleet operations (dispatch, arrival processing, returns).
+ * Public APIs are mostly static helpers used by controllers and schedulers.
+ */
 export class FleetService {
+  /**
+   * Dispatch a fleet from an origin planet to a target coordinate.
+   * Validates ships, fuel and cargo, persists the fleet and schedules arrival.
+   *
+   * @returns The created Fleet record
+   */
   static async dispatchFleet(
     userId: number,
     originPlanetId: number,
@@ -210,6 +227,10 @@ export class FleetService {
     }
   }
 
+  /**
+   * Compute a heuristic distance value between two coordinates. Used to
+   * translate to travel time based on ship speeds.
+   */
   static calculateDistance(
     g1: number,
     s1: number,
@@ -242,6 +263,9 @@ export class FleetService {
     return minSpeed === Infinity ? 0 : minSpeed;
   }
 
+  /**
+   * Return fleets owned by a user along with ETA metadata suitable for the UI.
+   */
   static async getUserFleets(userId: number): Promise<any[]> {
     const result = await pool.query(
       `SELECT 
@@ -278,6 +302,9 @@ export class FleetService {
     });
   }
 
+  /**
+   * Fetch recent combat reports involving the specified user.
+   */
   static async getRecentCombatReports(userId: number, limit = 5): Promise<any[]> {
     const result = await pool.query(
       `SELECT 
@@ -339,6 +366,11 @@ export class FleetService {
     }));
   }
 
+  /**
+   * Process an arriving fleet: route to the correct mission handler and
+   * commit mission side-effects (combat, colonization, harvest, espionage).
+   * This method is invoked by the scheduler when an arrival event fires.
+   */
   static async processFleetArrival(fleetId: number): Promise<void> {
     const client = await pool.connect();
     
@@ -932,6 +964,10 @@ export class FleetService {
     handler.emitFleetUpdate(userId, payload);
   }
 
+  /**
+   * Finalize a returning fleet: add ships/resources back to the origin
+   * planet and emit realtime events/notifications.
+   */
   static async completeFleetReturn(fleetId: number): Promise<void> {
     const client = await pool.connect();
 

@@ -1,3 +1,10 @@
+/**
+ * @module backend/services/galaxyService
+ *
+ * GalaxyService provides read-only views and intel for galaxy/system slots.
+ * It builds a sensor snapshot for a requested system, combining planet,
+ * moon and debris data with the requesting player's sensor capabilities.
+ */
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import { PlanetService } from './planetService';
@@ -124,6 +131,12 @@ const CACHE_TTL_SECONDS = 15;
 export class GalaxyService {
   private static config = GameConfigAdapter.getInstance();
 
+  /**
+   * Build a complete snapshot for a given system as visible to a user.
+   * The snapshot includes pagination metadata, sensor intel and per-slot data.
+   *
+   * @param context - Request context containing user and coordinates
+   */
   static async getSystemSnapshot(context: GalaxyRequestContext): Promise<GalaxySnapshot> {
     const [galaxyCount, systemsPerGalaxy, positionsPerSystem] = await Promise.all([
       this.config.getGalaxyCount(),
@@ -189,6 +202,13 @@ export class GalaxyService {
     };
   }
 
+  /**
+   * Read raw rows for planets, debris and moons for a system. Results are
+   * cached briefly in Redis to reduce DB load for rapid UI paging.
+   *
+   * @param galaxy - Galaxy number
+   * @param system - System number
+   */
   private static async fetchRawSystemData(galaxy: number, system: number): Promise<RawSystemData> {
     const cacheKey = `galaxy:raw:${galaxy}:${system}`;
 
@@ -256,6 +276,10 @@ export class GalaxyService {
     return payload;
   }
 
+  /**
+   * Convenience helper to fetch a user's alliance id (or null).
+   * @param userId - User id to look up
+   */
   private static async getUserAllianceId(userId: number): Promise<number | null> {
     const result = await pool.query(
       'SELECT alliance_id FROM users WHERE id = $1',
@@ -265,6 +289,10 @@ export class GalaxyService {
     return result.rows[0]?.alliance_id || null;
   }
 
+  /**
+   * Convert raw system rows into the public-facing slot intel structure.
+   * This composes planet, moon, debris and owner decoration logic.
+   */
   private static buildSlots(params: {
     rawData: RawSystemData;
     positionsPerSystem: number;
@@ -345,6 +373,10 @@ export class GalaxyService {
     return slots;
   }
 
+  /**
+   * Build the owner metadata object for a planet row, including relation
+   * (self/ally/neutral) and recent activity classification.
+   */
   private static decorateOwner(row: RawPlanetRow, userId: number, requesterAllianceId: number | null) {
     if (!row.user_id) return undefined;
 
@@ -376,6 +408,9 @@ export class GalaxyService {
     };
   }
 
+  /**
+   * Convert minutes-since-last-seen into an activity label used by the UI.
+   */
   private static classifyActivity(minutesSince: number | null) {
     if (minutesSince === null) {
       return {
@@ -399,6 +434,10 @@ export class GalaxyService {
     return { label: 'inactive', minutesSince };
   }
 
+  /**
+   * Determine the intel quality ('full'|'partial'|'minimal') for a slot
+   * relative to the origin sensor source and sensor ranges.
+   */
   private static determineIntelQuality(
     planetRow: RawPlanetRow | null,
     originPlanet: any | null,
@@ -420,6 +459,10 @@ export class GalaxyService {
     return 'minimal';
   }
 
+  /**
+   * Calculate the effective sensor range considering espionage tech and
+   * installed phalanx/sensor arrays on the origin planet.
+   */
   private static calculateSensorRange(espionageLevel: number, originPlanet: any | null): number {
     const baseRange = 1;
     const espionageBonus = Math.floor(espionageLevel / 2);

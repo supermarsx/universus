@@ -579,16 +579,27 @@ export class UniverseSeedingService {
     return types;
   }
   
+  /**
+   * Determine base abundance multiplier for a given galaxy/resource type.
+   *
+   * @param galaxyType - Galaxy type which adjusts abundance
+   * @param resourceType - Resource key (currently unused but kept for future rules)
+   * @returns Multiplier applied to base abundance
+   */
   private getAbundanceForType(galaxyType: GalaxyType, resourceType: string): number {
     const baseAbundance = 1.0;
-    
+
     if (galaxyType === GalaxyType.RESOURCE_RICH) return baseAbundance * 1.5;
     if (galaxyType === GalaxyType.WASTELAND) return baseAbundance * 0.7;
     if (galaxyType === GalaxyType.ENDGAME) return baseAbundance * 1.3;
-    
+
     return baseAbundance;
   }
   
+  /**
+   * Get chance (percentage) for rare materials spawning in a galaxy.
+   * @param galaxyType - Galaxy type that influences rare material frequency
+   */
   private getRareMaterialsChance(galaxyType: GalaxyType): number {
     if (galaxyType === GalaxyType.ENDGAME) return 15.0;
     if (galaxyType === GalaxyType.RESOURCE_RICH) return 10.0;
@@ -596,10 +607,22 @@ export class UniverseSeedingService {
     return 5.0;
   }
   
+  /**
+   * Compute base difficulty for a galaxy relative to its index and the total
+   * number of galaxies. Scale is 1..10.
+   *
+   * @param galaxyNumber - 1-based galaxy index
+   * @param totalGalaxies - Total galaxies in the universe
+   */
   private getBaseDifficulty(galaxyNumber: number, totalGalaxies: number): number {
     return Math.min(10, Math.ceil((galaxyNumber / totalGalaxies) * 10));
   }
   
+  /**
+   * NPC strength multiplier based on galaxy type.
+   *
+   * @param galaxyType - Galaxy type
+   */
   private getNpcMultiplier(galaxyType: GalaxyType): number {
     if (galaxyType === GalaxyType.MILITARY) return 1.5;
     if (galaxyType === GalaxyType.ENDGAME) return 2.0;
@@ -607,6 +630,11 @@ export class UniverseSeedingService {
     return 1.0;
   }
   
+  /**
+   * Determine aggression score for a bot personality (higher = more aggressive).
+   *
+   * @param personality - Personality key used for bot templates
+   */
   private getAggressionForPersonality(personality: string): number {
     const levels: Record<string, number> = {
       aggressive: 9,
@@ -621,6 +649,11 @@ export class UniverseSeedingService {
     return levels[personality] || 5;
   }
   
+  /**
+   * Expansion multiplier according to skill level.
+   *
+   * @param skillLevel - one of novice|intermediate|advanced|expert
+   */
   private getExpansionForSkill(skillLevel: string): number {
     const rates: Record<string, number> = {
       novice: 0.7,
@@ -631,6 +664,10 @@ export class UniverseSeedingService {
     return rates[skillLevel] || 1.0;
   }
   
+  /**
+   * Heuristic for trading activity by personality.
+   * @param personality - personality key
+   */
   private getTradingActivity(personality: string): number {
     if (personality === 'economic') return 0.9;
     if (personality === 'diplomatic') return 0.7;
@@ -638,6 +675,10 @@ export class UniverseSeedingService {
     return 0.5;
   }
   
+  /**
+   * Resolve which resource a personality focuses on.
+   * @param personality - personality key
+   */
   private getResourceFocus(personality: string): string {
     if (personality === 'military' || personality === 'aggressive') return 'metal';
     if (personality === 'researcher') return 'crystal';
@@ -645,6 +686,11 @@ export class UniverseSeedingService {
     return 'balanced';
   }
   
+  /**
+   * Combat willingness that adjusts bot behavior in conflicts.
+   * Returns a number between 0 and 1.
+   * @param personality - personality key
+   */
   private getCombatWillingness(personality: string): number {
     if (personality === 'aggressive') return 0.9;
     if (personality === 'defensive') return 0.3;
@@ -652,6 +698,10 @@ export class UniverseSeedingService {
     return 0.5;
   }
   
+  /**
+   * Map a DB row into a UniverseSeed DTO used by the service API.
+   * @param row - Raw DB row from universe_seeds
+   */
   private mapUniverseSeed(row: any): UniverseSeed {
     return {
       id: row.id,
@@ -682,6 +732,10 @@ export class UniverseSeedingService {
     };
   }
   
+  /**
+   * Map a DB row into a GalaxySeed DTO used by the service API.
+   * @param row - Raw DB row from galaxy_seeds
+   */
   private mapGalaxySeed(row: any): GalaxySeed {
     return {
       id: row.id,
