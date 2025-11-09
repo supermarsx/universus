@@ -1,5 +1,5 @@
 {% extends "base.njk" %}
-{% block title %}Analytics - Admin Panel{% endblock %}
+{% block title %}{{ 'analytics_admin_panel' | t }}{% endblock %}
 
 {% block styles %}
 <style>
@@ -105,11 +105,11 @@
         <option value="1">Last 24h</option>
         <option value="3">Last 3 days</option>
         <option value="7" selected>Last 7 days</option>
-        <option value="14">Last 14 days</option>
-        <option value="30">Last 30 days</option>
+        <option value="14">{{ 'last_14_days' | t }}</option>
+        <option value="30">{{ 'last_30_days' | t }}</option>
       </select>
     </label>
-    <button id="analyticsRefresh">Refresh</button>
+    <button id="analyticsRefresh">{{ 'refresh' | t }}</button>
     <span id="analyticsStatus" style="align-self: center; color: #94a3b8;"></span>
   </div>
 
@@ -119,7 +119,7 @@
     <thead>
       <tr>
         <th>Date</th>
-        <th>Event Type</th>
+        <th>{{ 'event_type' | t }}</th>
         <th>Total Events</th>
       </tr>
     </thead>
@@ -166,13 +166,13 @@
 
   function renderSummary(summary) {
     if (!summary.length) {
-      summaryContainer.innerHTML = '<p style="color:#94a3b8;">No events tracked for this range.</p>';
+      summaryContainer.innerHTML = '<p style="color:#94a3b8;">' + (window.t ? t('no_events_tracked') : 'No events tracked for this range.') + '</p>';
       return;
     }
 
     summaryContainer.innerHTML = summary.map(item => `
       <div class="analytics-card">
-        <h3>${item.event_type}</h3>
+        <h3>${window.t ? t('event_type_' + item.event_type) : item.event_type}</h3>
         <p>${Number(item.total_events).toLocaleString()}</p>
         <small style="color:#94a3b8;">Unique sources: ${Number(item.unique_sources).toLocaleString()}</small>
       </div>

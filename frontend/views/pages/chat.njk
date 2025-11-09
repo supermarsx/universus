@@ -8,23 +8,23 @@
     <!-- Left Sidebar: Channels & Conversations -->
     <div class="chat-sidebar">
       <div class="sidebar-section">
-        <h3>Chat Channels</h3>
+        <h3>{{ 'chat_channels' | t }}</h3>
         <div id="channel-list" class="channel-list">
           <!-- Channels loaded via JavaScript -->
         </div>
       </div>
       
       <div class="sidebar-section">
-        <h3>Private Messages</h3>
+        <h3>{{ 'private_messages' | t }}</h3>
         <div id="conversation-list" class="conversation-list">
           <!-- Conversations loaded via JavaScript -->
         </div>
       </div>
       
       <div class="sidebar-section">
-        <h3>Online Players</h3>
+        <h3>{{ 'online_players' | t }}</h3>
         <div id="online-players" class="online-players-list">
-          <div class="online-count">Loading...</div>
+          <div class="online-count">{{ 'loading' | t }}</div>
         </div>
       </div>
     </div>
@@ -32,7 +32,7 @@
     <!-- Main Chat Area -->
     <div class="chat-main">
       <div class="chat-header">
-        <h2 id="chat-title">Select a channel</h2>
+        <h2 id="chat-title">{{ 'select_channel' | t }}</h2>
         <div class="chat-actions">
           <button id="chat-settings-btn" class="btn btn-icon">
             <i class="icon-settings"></i>
@@ -45,9 +45,9 @@
       <div id="chat-messages" class="chat-messages" aria-live="polite">
         <!-- Messages appear here -->
         <div class="chat-welcome">
-          <p>Welcome to Universus Chat!</p>
-          <p>Select a channel from the sidebar to start chatting.</p>
-          <p style="margin-top: 8px; color: #bbb;">Tip: type <code>/help</code> to see chat commands.</p>
+          <p>{{ 'welcome_universus_chat' | t }}</p>
+          <p>{{ 'select_channel_sidebar' | t }}</p>
+          <p style="margin-top: 8px; color: #bbb;">{{ 'tip_help' | t }}</p>
         </div>
       </div>
 
@@ -56,26 +56,26 @@
           type="text" 
           id="chat-input" 
           class="chat-input" 
-          placeholder="Type your message..." 
+          placeholder="{{ 'type_message' | t }}" 
           maxlength="500"
           disabled
         />
-        <button id="send-btn" class="btn btn-primary" disabled>
-          Send
-        </button>
+<button id="send-btn" class="btn btn-primary" disabled>
+           {{ 'send' | t }}
+         </button>
       </div>
 
       <div id="chat-admin-controls" class="chat-admin-controls" style="display:none;">
         <label class="control-pill">
           <input type="checkbox" id="send-pin">
-          <span>Pin message</span>
+          <span>{{ 'pin_message' | t }}</span>
         </label>
         <label class="control-pill" data-role="announcement">
           <input type="checkbox" id="send-announcement">
-          <span>Announcement (world chat)</span>
+          <span>{{ 'announcement_world_chat' | t }}</span>
         </label>
         <label class="control-pill small">
-          <span>Expires</span>
+          <span>{{ 'expires' | t }}</span>
           <input type="datetime-local" id="announcement-expiry" class="control-input">
         </label>
       </div>
@@ -84,23 +84,23 @@
     <!-- Right Sidebar: Info Panel -->
     <div class="chat-info-panel">
       <div class="info-section">
-        <h3>Channel Info</h3>
+        <h3>{{ 'channel_info' | t }}</h3>
         <div id="channel-info">
-          <p class="text-muted">Select a channel to view info</p>
+          <p class="text-muted">{{ 'select_channel_info' | t }}</p>
         </div>
       </div>
 
       <div class="info-section">
-        <h3>Quick Actions</h3>
-        <button class="btn btn-block" onclick="openTradePanel()">
-          <i class="icon-trade"></i> View Trades
-        </button>
-        <button class="btn btn-block" onclick="openFleetPanel()">
-          <i class="icon-fleet"></i> My Fleets
-        </button>
-        <button class="btn btn-block" onclick="openNotifications()">
-          <i class="icon-bell"></i> Notifications
-        </button>
+        <h3>{{ 'quick_actions' | t }}</h3>
+<button class="btn btn-block" onclick="openTradePanel()">
+           <i class="icon-trade"></i> {{ 'view_trades' | t }}
+         </button>
+<button class="btn btn-block" onclick="openFleetPanel()">
+           <i class="icon-fleet"></i> {{ 'my_fleets' | t }}
+         </button>
+<button class="btn btn-block" onclick="openNotifications()">
+           <i class="icon-bell"></i> {{ 'notifications' | t }}
+         </button>
       </div>
     </div>
   </div>
@@ -110,19 +110,19 @@
 <div id="pm-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="pm-modal-title" tabindex="-1">
   <div class="modal-content">
     <div class="modal-header">
-      <h3 id="pm-modal-title">Send Private Message</h3>
+      <h3 id="pm-modal-title">{{ 'send_private_message' | t }}</h3>
       <button class="modal-close" onclick="closePMModal()" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
     </div>
     <div class="modal-body">
-      <label for="pm-recipient">To:</label>
-      <input type="text" id="pm-recipient" placeholder="Enter username">
+      <label for="pm-recipient">{{ 'to' | t }}</label>
+      <input type="text" id="pm-recipient" placeholder="{{ 'enter_username' | t }}">
       
-      <label for="pm-message">Message:</label>
+      <label for="pm-message">{{ 'message' | t }}</label>
       <textarea id="pm-message" rows="5" maxlength="500"></textarea>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closePMModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="sendPrivateMessage()">Send</button>
+      <button class="btn btn-secondary" onclick="closePMModal()">{{ 'cancel' | t }}</button>
+      <button class="btn btn-primary" onclick="sendPrivateMessage()">{{ 'send' | t }}</button>
     </div>
   </div>
 </div>

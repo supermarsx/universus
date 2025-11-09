@@ -283,57 +283,57 @@
 
   <main class="admin-content">
     <div class="page-header">
-      <h1>User Management</h1>
-      <p>Manage users, permissions, and account status</p>
+      <h1>{{ 'user_management' | t }}</h1>
+      <p>{{ 'manage_users_desc' | t }}</p>
     </div>
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">Total Users</div>
+        <div class="stat-label">{{ 'total_users' | t }}</div>
         <div class="stat-value" id="totalUsers">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Active Users</div>
+        <div class="stat-label">{{ 'active_users' | t }}</div>
         <div class="stat-value" id="activeUsers">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Banned Users</div>
+        <div class="stat-label">{{ 'banned_users' | t }}</div>
         <div class="stat-value" id="bannedUsers">-</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Online Now</div>
+        <div class="stat-label">{{ 'online_now' | t }}</div>
         <div class="stat-value" id="onlineUsers">-</div>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="search-box">
-        <input type="text" id="searchInput" placeholder="Search users...">
+        <input type="text" id="searchInput" placeholder="{{ 'search_users' | t }}">
       </div>
       <select id="statusFilter" class="filter-select">
-        <option value="">All Status</option>
-        <option value="active">Active</option>
-        <option value="banned">Banned</option>
-        <option value="suspended">Suspended</option>
+        <option value="">{{ 'all_status' | t }}</option>
+        <option value="active">{{ 'status_active' | t }}</option>
+        <option value="banned">{{ 'status_banned' | t }}</option>
+        <option value="suspended">{{ 'status_suspended' | t }}</option>
       </select>
-      <button class="btn btn-primary" onclick="refreshUsers()">Refresh</button>
+      <button class="btn btn-primary" onclick="refreshUsers()">{{ 'refresh' | t }}</button>
     </div>
 
     <div class="users-table">
       <table>
         <thead>
           <tr>
-            <th>User</th>
-            <th>Status</th>
-            <th>Tags</th>
-            <th>Joined</th>
-            <th>Last Login</th>
-            <th>Actions</th>
+<th>{{ 'user' | t }}</th>
+                <th>{{ 'status' | t }}</th>
+                <th>{{ 'tags' | t }}</th>
+                <th>{{ 'joined' | t }}</th>
+                <th>{{ 'last_login' | t }}</th>
+                <th>{{ 'actions' | t }}</th>
           </tr>
         </thead>
         <tbody id="usersTableBody">
           <tr>
-            <td colspan="6" style="text-align: center; padding: 2rem; color: #6366f1;">Loading users...</td>
+            <td colspan="6" style="text-align: center; padding: 2rem; color: #6366f1;">{{ 'loading_users' | t }}</td>
           </tr>
         </tbody>
       </table>
@@ -346,29 +346,29 @@
 <!-- Block User Modal -->
 <div class="modal" id="blockModal">
   <div class="modal-content">
-    <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">Block User</h2>
+    <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'block_user' | t }}</h2>
     <form id="blockForm">
       <input type="hidden" id="blockUserId">
       <div class="form-group">
-        <label>Block Type</label>
+        <label>{{ 'block_type' | t }}</label>
         <select id="blockType" required>
-          <option value="ban">Ban</option>
-          <option value="mute">Mute</option>
-          <option value="restrict">Restrict</option>
-          <option value="warning">Warning</option>
+<option value="ban">{{ 'ban' | t }}</option>
+            <option value="mute">{{ 'mute' | t }}</option>
+            <option value="restrict">{{ 'restrict' | t }}</option>
+            <option value="warning">{{ 'warning' | t }}</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Reason</label>
+        <label>{{ 'reason' | t }}</label>
         <textarea id="blockReason" required></textarea>
       </div>
       <div class="form-group">
-        <label>Duration (minutes, leave empty for permanent)</label>
+        <label>{{ 'duration_minutes' | t }}</label>
         <input type="number" id="blockDuration">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('blockModal')">Cancel</button>
-        <button type="submit" class="btn btn-danger">Block User</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('blockModal')">{{ 'cancel' | t }}</button>
+        <button type="submit" class="btn btn-danger">{{ 'block_user_btn' | t }}</button>
       </div>
     </form>
   </div>
@@ -377,29 +377,29 @@
 <!-- Tag User Modal -->
 <div class="modal" id="tagModal">
   <div class="modal-content">
-    <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">Tag User</h2>
+    <h2 style="color: #e2e8f0; margin-bottom: 1.5rem;">{{ 'tag_user' | t }}</h2>
     <form id="tagForm">
       <input type="hidden" id="tagUserId">
       <div class="form-group">
-        <label>Tag Name</label>
+        <label>{{ 'tag_name' | t }}</label>
         <input type="text" id="tagName" required>
       </div>
       <div class="form-group">
-        <label>Category</label>
+        <label>{{ 'category' | t }}</label>
         <select id="tagCategory" required>
-          <option value="behavior">Behavior</option>
-          <option value="payment">Payment Status</option>
-          <option value="skill">Skill Level</option>
-          <option value="special">Special Status</option>
+          <option value="behavior">{{ 'behavior' | t }}</option>
+          <option value="payment">{{ 'payment_status' | t }}</option>
+          <option value="skill">{{ 'skill_level' | t }}</option>
+          <option value="special">{{ 'special_status' | t }}</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Color</label>
+        <label>{{ 'color' | t }}</label>
         <input type="color" id="tagColor" value="#6366f1">
       </div>
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('tagModal')">Cancel</button>
-        <button type="submit" class="btn btn-primary">Add Tag</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('tagModal')">{{ 'cancel' | t }}</button>
+        <button type="submit" class="btn btn-primary">{{ 'add_tag' | t }}</button>
       </div>
     </form>
   </div>
@@ -428,7 +428,7 @@ async function loadUsers(page = 1) {
 function renderUsers(users) {
   const tbody = document.getElementById('usersTableBody');
   if (users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No users found</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; padding: 2rem;">${window.t ? t('no_users_found') : 'No users found'}</td></tr>`;
     return;
   }
   tbody.innerHTML = users.map(user => `
@@ -448,8 +448,8 @@ function renderUsers(users) {
       <td>${user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</td>
       <td>
         <div class="action-buttons">
-          <button class="action-btn btn-block" onclick="openBlockModal(${user.id})">Block</button>
-          <button class="action-btn btn-tag" onclick="openTagModal(${user.id})">Tag</button>
+          <button class="action-btn btn-block" onclick="openBlockModal(${user.id})">{{ window.t ? t('block_user_btn') : 'Block' }}</button>
+          <button class="action-btn btn-tag" onclick="openTagModal(${user.id})">{{ window.t ? t('add_tag') : 'Tag' }}</button>
         </div>
       </td>
     </tr>
@@ -511,11 +511,11 @@ document.getElementById('blockForm').addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Failed to block user');
-    alert('User blocked successfully');
+    alert(window.t ? t('user_blocked_success') : 'User blocked successfully');
     closeModal('blockModal');
     loadUsers(currentPage);
   } catch (error) {
-    alert('Error: ' + error.message);
+    alert((window.t ? t('error_prefix') : 'Error: ') + error.message);
   }
 });
 
@@ -540,11 +540,11 @@ document.getElementById('tagForm').addEventListener('submit', async (e) => {
       body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error('Failed to tag user');
-    alert('Tag added successfully');
+    alert(window.t ? t('tag_added_success') : 'Tag added successfully');
     closeModal('tagModal');
     loadUsers(currentPage);
   } catch (error) {
-    alert('Error: ' + error.message);
+    alert((window.t ? t('error_prefix') : 'Error: ') + error.message);
   }
 });
 

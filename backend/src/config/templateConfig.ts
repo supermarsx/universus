@@ -47,13 +47,29 @@ import path from 'path';
 export function configureTemplateEngine(app: express.Application): nunjucks.Environment {
   const viewsPath = path.join(__dirname, '../../frontend/views');
   
-  // Configure Nunjucks
-  const env = nunjucks.configure(viewsPath, {
-    autoescape: true,
-    express: app,
-    watch: process.env.NODE_ENV === 'development',
-    noCache: process.env.NODE_ENV === 'development',
-  });
+   // Configure Nunjucks
+   const env = nunjucks.configure(viewsPath, {
+     autoescape: true,
+     express: app,
+     watch: process.env.NODE_ENV === 'development',
+     noCache: process.env.NODE_ENV === 'development',
+   });
+
+   // --- i18n translation filter ---
+   const fs = require('fs');
+   const path = require('path');
+   // Load English translations (default)
+   let translations = {};
+   try {
+     const enPath = path.join(__dirname, '../../frontend/locales/en.json');
+     translations = JSON.parse(fs.readFileSync(enPath, 'utf8'));
+   } catch (e) {
+     console.error('Failed to load translations:', e);
+   }
+   env.addFilter('t', (key: string) => {
+     return translations[key] || key;
+   });
+
 
   /**
    * formatNumber filter

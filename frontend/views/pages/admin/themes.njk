@@ -104,8 +104,8 @@
 <div class="container mt-4">
     <div class="row mb-4">
         <div class="col-12">
-            <h1>Theme Management</h1>
-            <p class="text-muted">Manage seasonal themes and schedules</p>
+            <h1>{{ 'theme_management' | t }}</h1>
+            <p class="text-muted">{{ 'manage_themes_desc' | t }}</p>
         </div>
     </div>
 
@@ -113,13 +113,13 @@
     <div class="row mb-4">
         <div class="col-12">
             <button class="btn btn-primary" onclick="createTheme()">
-                <i class="fas fa-plus"></i> Create New Theme
+                <i class="fas fa-plus"></i> {{ 'create_new_theme' | t }}
             </button>
             <button class="btn btn-info" onclick="checkSchedules()">
-                <i class="fas fa-sync"></i> Check Schedules Now
+                <i class="fas fa-sync"></i> {{ 'check_schedules_now' | t }}
             </button>
             <button class="btn btn-secondary" onclick="viewAnalytics()">
-                <i class="fas fa-chart-bar"></i> View Analytics
+                <i class="fas fa-chart-bar"></i> {{ 'view_analytics' | t }}
             </button>
         </div>
     </div>
@@ -129,10 +129,10 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">Currently Active Theme</h5>
+                    <h5 class="mb-0">{{ 'currently_active_theme' | t }}</h5>
                 </div>
                 <div class="card-body" id="current-theme-display">
-                    <p class="text-muted">Loading...</p>
+                    <p class="text-muted">{{ 'loading' | t }}</p>
                 </div>
             </div>
         </div>
@@ -141,9 +141,9 @@
     <!-- Theme List -->
     <div class="row">
         <div class="col-12">
-            <h3>All Themes</h3>
+            <h3>{{ 'all_themes' | t }}</h3>
             <div id="themes-container">
-                <p class="text-muted">Loading themes...</p>
+                <p class="text-muted">{{ 'loading_themes' | t }}</p>
             </div>
         </div>
     </div>
@@ -153,7 +153,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0">Active Schedules</h5>
+                    <h5 class="mb-0">{{ 'active_schedules' | t }}</h5>
                 </div>
                 <div class="card-body">
                     <div id="schedules-container">
@@ -168,64 +168,64 @@
 <!-- Create/Edit Theme Modal -->
 <div id="theme-modal" class="modal">
     <div class="modal-content">
-        <h3 id="modal-title">Create New Theme</h3>
+        <h3 id="modal-title">{{ 'create_theme' | t }}</h3>
         <form id="theme-form" onsubmit="saveTheme(event)">
             <div class="form-group">
-                <label>Theme Key</label>
+                <label>{{ 'theme_key' | t }}</label>
                 <input type="text" class="form-control" id="theme-key" required>
-                <small class="text-muted">Unique identifier (e.g., 'summer', 'winter')</small>
+                <small class="text-muted">{{ 'theme_key_hint' | t }}</small>
             </div>
             
             <div class="form-group">
-                <label>Name</label>
+                <label>{{ 'name' | t }}</label>
                 <input type="text" class="form-control" id="theme-name" required>
             </div>
             
             <div class="form-group">
-                <label>Description</label>
+                <label>{{ 'description' | t }}</label>
                 <textarea class="form-control" id="theme-description" rows="3"></textarea>
             </div>
             
             <div class="row">
                 <div class="col-md-4">
                     <div class="form-group">
-                        <label>Primary Color</label>
+                        <label>{{ 'primary_color' | t }}</label>
                         <input type="color" class="form-control" id="theme-primary-color" required>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="form-group">
-                        <label>Secondary Color</label>
+                        <label>{{ 'secondary_color' | t }}</label>
                         <input type="color" class="form-control" id="theme-secondary-color" required>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="form-group">
-                        <label>Accent Color</label>
+                        <label>{{ 'accent_color' | t }}</label>
                         <input type="color" class="form-control" id="theme-accent-color" required>
                     </div>
                 </div>
             </div>
             
             <div class="form-group">
-                <label>Category</label>
+                <label>{{ 'category' | t }}</label>
                 <select class="form-control" id="theme-category" required>
-                    <option value="seasonal">Seasonal</option>
-                    <option value="event">Event</option>
-                    <option value="special">Special</option>
-                    <option value="custom">Custom</option>
+                    <option value="seasonal">{{ 'seasonal' | t }}</option>
+                    <option value="event">{{ 'event' | t }}</option>
+                    <option value="special">{{ 'special' | t }}</option>
+                    <option value="custom">{{ 'custom' | t }}</option>
                 </select>
             </div>
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="theme-available"> Available for use
+                    <input type="checkbox" id="theme-available"> {{ 'available_for_use' | t }}
                 </label>
             </div>
             
             <div class="mt-3">
-                <button type="submit" class="btn btn-primary">Save Theme</button>
-                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">{{ 'save_theme' | t }}</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">{{ 'cancel' | t }}</button>
             </div>
         </form>
     </div>
@@ -234,51 +234,51 @@
 <!-- Schedule Modal -->
 <div id="schedule-modal" class="modal">
     <div class="modal-content">
-        <h3>Create Schedule</h3>
+        <h3>{{ 'create_schedule' | t }}</h3>
         <form id="schedule-form" onsubmit="saveSchedule(event)">
             <input type="hidden" id="schedule-theme-id">
             
             <div class="form-group">
-                <label>Schedule Name</label>
+                <label>{{ 'schedule_name' | t }}</label>
                 <input type="text" class="form-control" id="schedule-name" required>
             </div>
             
             <div class="row">
                 <div class="col-md-6">
                     <div class="form-group">
-                        <label>Start Date</label>
+                        <label>{{ 'start_date' | t }}</label>
                         <input type="date" class="form-control" id="schedule-start-date" required>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="form-group">
-                        <label>End Date</label>
+                        <label>{{ 'end_date' | t }}</label>
                         <input type="date" class="form-control" id="schedule-end-date" required>
                     </div>
                 </div>
             </div>
             
             <div class="form-group">
-                <label>Priority (0-100)</label>
+                <label>{{ 'priority' | t }}</label>
                 <input type="number" class="form-control" id="schedule-priority" min="0" max="100" value="50" required>
-                <small class="text-muted">Higher priority wins if schedules overlap</small>
+                <small class="text-muted">{{ 'priority_hint' | t }}</small>
             </div>
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="schedule-recurring" checked> Recurring annually
+                    <input type="checkbox" id="schedule-recurring" checked> {{ 'recurring_annually' | t }}
                 </label>
             </div>
             
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="schedule-enabled" checked> Enabled
+                    <input type="checkbox" id="schedule-enabled" checked> {{ 'enabled' | t }}
                 </label>
             </div>
             
             <div class="mt-3">
-                <button type="submit" class="btn btn-primary">Create Schedule</button>
-                <button type="button" class="btn btn-secondary" onclick="closeScheduleModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">{{ 'create_schedule' | t }}</button>
+                <button type="button" class="btn btn-secondary" onclick="closeScheduleModal()">{{ 'cancel' | t }}</button>
             </div>
         </form>
     </div>
@@ -306,7 +306,7 @@ async function loadCurrentTheme() {
         if (data.success && data.theme) {
             container.innerHTML = `
                 <h4>${data.theme.name}</h4>
-                <p>${data.theme.description || 'No description'}</p>
+                <p>${data.theme.description || (window.t ? t('no_description') : 'No description')}</p>
                 <div class="theme-preview-box">
                     <div class="color-swatch" style="background: ${data.theme.primary_color}"></div>
                     <div class="color-swatch" style="background: ${data.theme.secondary_color}"></div>
@@ -317,7 +317,7 @@ async function loadCurrentTheme() {
                 </button>
             `;
         } else {
-            container.innerHTML = '<p class="text-muted">No active theme</p>';
+            container.innerHTML = '<p class="text-muted">{{ 'no_active_theme' | t }}</p>';
         }
     } catch (error) {
         console.error('Error loading current theme:', error);
@@ -343,12 +343,12 @@ async function loadThemes() {
                     <div class="row">
                         <div class="col-md-8">
                             <h4>${theme.name} ${theme.is_active ? '<span class="badge badge-success">Active</span>' : ''}</h4>
-                            <p><strong>Key:</strong> ${theme.theme_key}</p>
+                            <p><strong>${window.t ? t('key_label') : 'Key:'}</strong> ${theme.theme_key}</p>
                             <p>${theme.description || 'No description'}</p>
                             <div class="theme-preview-box">
-                                <div class="color-swatch" style="background: ${theme.primary_color}" title="Primary"></div>
-                                <div class="color-swatch" style="background: ${theme.secondary_color}" title="Secondary"></div>
-                                <div class="color-swatch" style="background: ${theme.accent_color}" title="Accent"></div>
+                                <div class=\"color-swatch\" style=\"background: ${theme.primary_color}\" title=\"${window.t ? t('primary') : 'Primary'}\"></div>
+                                <div class=\"color-swatch\" style=\"background: ${theme.secondary_color}\" title=\"${window.t ? t('secondary') : 'Secondary'}\"></div>
+                                <div class=\"color-swatch\" style=\"background: ${theme.accent_color}\" title=\"${window.t ? t('accent') : 'Accent'}\"></div>
                             </div>
                         </div>
                         <div class="col-md-4 text-right">
@@ -375,7 +375,7 @@ async function loadThemes() {
                 </div>
             `).join('');
         } else {
-            container.innerHTML = '<p class="text-muted">No themes found</p>';
+            container.innerHTML = '<p class=\"text-muted\">{{ 'no_themes_found' | t }}</p>';
         }
     } catch (error) {
         console.error('Error loading themes:', error);
@@ -407,7 +407,7 @@ async function loadActiveSchedules() {
                 </div>
             `).join('');
         } else {
-            container.innerHTML = '<p class="text-muted">No active schedules</p>';
+            container.innerHTML = '<p class="text-muted">{{ 'no_active_schedules' | t }}</p>';
         }
     } catch (error) {
         console.error('Error loading schedules:', error);
@@ -416,7 +416,7 @@ async function loadActiveSchedules() {
 
 // Activate theme
 async function activateTheme(themeId) {
-    if (!confirm('Activate this theme? This will replace the current active theme.')) return;
+    if (!confirm(window.t ? t('confirm_activate_theme') : 'Activate this theme? This will replace the current active theme.')) return;
     
     try {
         const token = localStorage.getItem('token');
@@ -432,12 +432,12 @@ async function activateTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert('Theme activated successfully!');
+            alert(window.t ? t('theme_activated_success') : 'Theme activated successfully!');
             loadCurrentTheme();
             loadThemes();
             window.dispatchEvent(new Event('refreshTheme'));
         } else {
-            alert('Failed to activate theme: ' + data.message);
+            alert((window.t ? t('failed_activate_theme') : 'Failed to activate theme: ') + data.message);
         }
     } catch (error) {
         console.error('Error activating theme:', error);
@@ -447,7 +447,7 @@ async function activateTheme(themeId) {
 
 // Deactivate theme
 async function deactivateTheme(themeId) {
-    if (!confirm('Deactivate this theme?')) return;
+    if (!confirm(window.t ? t('confirm_deactivate_theme') : 'Deactivate this theme?')) return;
     
     try {
         const token = localStorage.getItem('token');
@@ -461,12 +461,12 @@ async function deactivateTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert('Theme deactivated successfully!');
+            alert(window.t ? t('theme_deactivated_success') : 'Theme deactivated successfully!');
             loadCurrentTheme();
             loadThemes();
             window.dispatchEvent(new Event('refreshTheme'));
         } else {
-            alert('Failed to deactivate theme');
+            alert(window.t ? t('failed_deactivate_theme') : 'Failed to deactivate theme');
         }
     } catch (error) {
         console.error('Error deactivating theme:', error);
@@ -487,7 +487,7 @@ async function previewTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert('Preview mode enabled! Refresh to see changes.');
+            alert(window.t ? t('preview_mode_enabled') : 'Preview mode enabled! Refresh to see changes.');
             window.location.reload();
         }
     } catch (error) {
@@ -512,7 +512,7 @@ async function checkSchedules() {
             if (data.activated) {
                 alert(`Theme activated: ${data.theme?.name}`);
             } else {
-                alert('No schedule changes');
+                alert(window.t ? t('no_schedule_changes') : 'No schedule changes');
             }
             loadCurrentTheme();
             loadThemes();
@@ -524,7 +524,7 @@ async function checkSchedules() {
 
 // Create theme modal
 function createTheme() {
-    document.getElementById('modal-title').textContent = 'Create New Theme';
+    document.getElementById('modal-title').textContent = window.t ? t('create_new_theme') : 'Create New Theme';
     document.getElementById('theme-form').reset();
     currentEditingTheme = null;
     document.getElementById('theme-modal').classList.add('active');
@@ -567,15 +567,20 @@ async function saveTheme(event) {
         const data = await response.json();
         
         if (data.success) {
-            alert('Theme saved successfully!');
+            alert(window.t ? t('theme_saved_success') : 'Theme saved successfully!');
             closeModal();
             loadThemes();
         } else {
-            alert('Error: ' + data.message);
+            alert((window.t ? t('error_prefix') : 'Error: ') + data.message);
         }
     } catch (error) {
         console.error('Error saving theme:', error);
-        alert('Error saving theme');
+        alert((window.t ? t('error_prefix') : 'Error saving theme'));
+    }
+}
+    } catch (error) {
+        console.error('Error saving theme:', error);
+        alert((window.t ? t('error_prefix') : 'Error saving theme');
     }
 }
 
@@ -619,21 +624,21 @@ async function saveSchedule(event) {
         const data = await response.json();
         
         if (data.success) {
-            alert('Schedule created successfully!');
+            alert(window.t ? t('schedule_created_success') : 'Schedule created successfully!');
             closeScheduleModal();
             loadActiveSchedules();
         } else {
-            alert('Error: ' + data.message);
+            alert((window.t ? t('error_prefix') : 'Error: ') + data.message);
         }
     } catch (error) {
         console.error('Error saving schedule:', error);
-        alert('Error saving schedule');
+        alert(window.t ? t('error_saving_schedule') : 'Error saving schedule');
     }
 }
 
 // Delete theme
 async function deleteTheme(themeId) {
-    if (!confirm('Delete this theme? This action cannot be undone.')) return;
+    if (!confirm(window.t ? t('confirm_delete_theme') : 'Delete this theme? This action cannot be undone.')) return;
     
     try {
         const token = localStorage.getItem('token');
@@ -647,10 +652,10 @@ async function deleteTheme(themeId) {
         const data = await response.json();
         
         if (data.success) {
-            alert('Theme deleted successfully!');
+            alert(window.t ? t('theme_deleted_success') : 'Theme deleted successfully!');
             loadThemes();
         } else {
-            alert('Error deleting theme');
+            alert(window.t ? t('error_deleting_theme') : 'Error deleting theme');
         }
     } catch (error) {
         console.error('Error deleting theme:', error);
@@ -664,7 +669,7 @@ function viewAnalytics() {
 
 // View theme analytics
 function viewThemeAnalytics(themeId) {
-    alert(`Theme analytics for ID ${themeId} coming soon!`);
+    alert(window.t ? t('theme_analytics_coming_soon', {id: themeId}) : `Theme analytics for ID ${themeId} coming soon!`);
 }
 </script>
 {% endblock %}

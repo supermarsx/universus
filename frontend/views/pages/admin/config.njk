@@ -1,30 +1,30 @@
 {% extends "layouts/admin.njk" %}
 
-{% block title %}Configuration Management - Admin Panel{% endblock %}
+{% block title %}{{ 'config_management_admin_panel' | t }}{% endblock %}
 
 {% block content %}
 <div class="admin-config-container">
     <!-- Header -->
     <div class="config-header">
-        <h1>Configuration Management</h1>
+        <h1>{{ 'configuration_management' | t }}</h1>
         <div class="config-actions">
             <button id="refreshCache" class="btn btn-secondary">
-                <i class="icon-refresh"></i> Refresh Cache
+                <i class="icon-refresh"></i> {{ 'refresh_cache' | t }}
             </button>
             <button id="refreshSnapshot" class="btn btn-secondary">
-                <i class="icon-bolt"></i> Refresh Snapshot
+                <i class="icon-bolt"></i> {{ 'refresh_snapshot' | t }}
             </button>
             <button id="viewSnapshot" class="btn btn-info">
-                <i class="icon-eye"></i> View Snapshot
+                <i class="icon-eye"></i> {{ 'view_snapshot' | t }}
             </button>
             <button id="exportConfig" class="btn btn-primary">
-                <i class="icon-download"></i> Export
+                <i class="icon-download"></i> {{ 'export' | t }}
             </button>
             <button id="importConfig" class="btn btn-primary">
-                <i class="icon-upload"></i> Import
+                <i class="icon-upload"></i> {{ 'import' | t }}
             </button>
             <button id="viewHistory" class="btn btn-info">
-                <i class="icon-history"></i> History
+                <i class="icon-history"></i> {{ 'history' | t }}
             </button>
         </div>
     </div>
@@ -37,7 +37,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="totalParams">0</div>
-                <div class="stat-label">Total Parameters</div>
+                <div class="stat-label">{{ 'total_parameters' | t }}</div>
             </div>
         </div>
         <div class="stat-card">
@@ -46,7 +46,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="modifiedParams">0</div>
-                <div class="stat-label">Modified</div>
+                <div class="stat-label">{{ 'modified' | t }}</div>
             </div>
         </div>
         <div class="stat-card">
@@ -55,7 +55,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="recentChanges">0</div>
-                <div class="stat-label">Changes (24h)</div>
+                <div class="stat-label">{{ 'changes_24h' | t }}</div>
             </div>
         </div>
         <div class="stat-card">
@@ -64,7 +64,7 @@
             </div>
             <div class="stat-content">
                 <div class="stat-value" id="restartRequired">0</div>
-                <div class="stat-label">Restart Required</div>
+                <div class="stat-label">{{ 'restart_required' | t }}</div>
             </div>
         </div>
 </div>
@@ -73,20 +73,20 @@
     <div class="config-runtime card">
         <div class="config-runtime-header">
             <div>
-                <h2>Runtime Game Configuration</h2>
-                <p class="text-muted">Live values served from Redis snapshot</p>
+                <h2>{{ 'runtime_game_configuration' | t }}</h2>
+                <p class="text-muted">{{ 'live_values_redis_snapshot' | t }}</p>
             </div>
             <div class="runtime-actions">
                 <button id="snapshotRefreshInline" class="btn btn-secondary">
-                    <i class="icon-refresh"></i> Refresh
+                    <i class="icon-refresh"></i> {{ 'refresh' | t }}
                 </button>
                 <button id="snapshotViewJson" class="btn btn-info">
-                    <i class="icon-eye"></i> View JSON
+                    <i class="icon-eye"></i> {{ 'view_json' | t }}
                 </button>
             </div>
         </div>
         <div class="snapshot-summary" id="snapshotSummary">
-            <div class="snapshot-placeholder">Loading runtime configuration…</div>
+            <div class="snapshot-placeholder">{{ 'loading_runtime_configuration' | t }}</div>
         </div>
     </div>
 
@@ -100,17 +100,17 @@
     <!-- Configuration Editor -->
     <div class="config-editor">
         <div class="editor-toolbar">
-            <input type="text" id="searchParams" placeholder="Search parameters..." class="search-input">
+            <input type="text" id="searchParams" placeholder="{{ 'search_parameters' | t }}" class="search-input">
             <div class="toolbar-actions">
-                <button id="saveChanges" class="btn btn-success" disabled>
-                    <i class="icon-save"></i> Save Changes
-                </button>
-                <button id="discardChanges" class="btn btn-secondary" disabled>
-                    <i class="icon-cancel"></i> Discard
-                </button>
-                <button id="resetCategory" class="btn btn-danger">
-                    <i class="icon-reset"></i> Reset to Defaults
-                </button>
+<button id="saveChanges" class="btn btn-success" disabled>
+                        <i class="icon-save"></i> {{ 'save_changes' | t }}
+                    </button>
+<button id="discardChanges" class="btn btn-secondary" disabled>
+                        <i class="icon-cancel"></i> {{ 'discard' | t }}
+                    </button>
+<button id="resetCategory" class="btn btn-danger">
+                        <i class="icon-reset"></i> {{ 'reset_to_defaults' | t }}
+                    </button>
             </div>
         </div>
 
@@ -125,17 +125,17 @@
     <div id="historyModal" class="modal">
         <div class="modal-content large">
             <div class="modal-header">
-                <h2>Configuration Change History</h2>
+                <h2>{{ 'config_change_history' | t }}</h2>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="history-filters">
                     <select id="historyCategory">
-                        <option value="">All Categories</option>
+                        <option value="">{{ 'all_categories' | t }}</option>
                     </select>
                     <input type="date" id="historyStartDate">
                     <input type="date" id="historyEndDate">
-                    <button id="applyHistoryFilter" class="btn btn-sm btn-primary">Filter</button>
+                    <button id="applyHistoryFilter" class="btn btn-sm btn-primary">{{ 'filter' | t }}</button>
                 </div>
                 <div class="history-list" id="historyList">
                     <!-- History items populated dynamically -->
@@ -148,31 +148,31 @@
     <div id="importModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Import Configuration</h2>
+                <h2>{{ 'import_configuration' | t }}</h2>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="import-options">
                     <label>
                         <input type="radio" name="importMethod" value="file" checked>
-                        Upload File
+                        {{ 'upload_file' | t }}
                     </label>
                     <label>
                         <input type="radio" name="importMethod" value="paste">
-                        Paste JSON
+                        {{ 'paste_json' | t }}
                     </label>
                 </div>
                 <div id="importFileSection">
                     <input type="file" id="importFile" accept=".json">
                 </div>
                 <div id="importPasteSection" style="display:none;">
-                    <textarea id="importJSON" rows="10" placeholder="Paste configuration JSON here..."></textarea>
+                    <textarea id="importJSON" rows="10" placeholder="{{ 'paste_config_json_here' | t }}"></textarea>
                 </div>
                 <div class="import-validation" id="importValidation"></div>
             </div>
             <div class="modal-footer">
-                <button id="validateImport" class="btn btn-secondary">Validate</button>
-                <button id="performImport" class="btn btn-primary" disabled>Import</button>
+                <button id="validateImport" class="btn btn-secondary">{{ 'validate' | t }}</button>
+                <button id="performImport" class="btn btn-primary" disabled>{{ 'import' | t }}</button>
             </div>
         </div>
     </div>
@@ -181,12 +181,12 @@
     <div id="templateModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Configuration Templates</h2>
+                <h2>{{ 'configuration_templates' | t }}</h2>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="template-actions">
-                    <button id="createTemplate" class="btn btn-primary">Create New Template</button>
+                    <button id="createTemplate" class="btn btn-primary">{{ 'create_new_template' | t }}</button>
                 </div>
                 <div class="template-list" id="templateList">
                     <!-- Templates populated dynamically -->
@@ -199,11 +199,11 @@
     <div id="snapshotModal" class="modal">
         <div class="modal-content wide">
             <div class="modal-header">
-                <h2>Runtime Configuration Snapshot</h2>
+                <h2>{{ 'runtime_configuration_snapshot' | t }}</h2>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
-                <pre id="snapshotJson" class="snapshot-json">Loading…</pre>
+                <pre id="snapshotJson" class="snapshot-json">{{ 'loading' | t }}</pre>
             </div>
         </div>
     </div>
@@ -212,19 +212,19 @@
     <div id="confirmModal" class="modal">
         <div class="modal-content small">
             <div class="modal-header">
-                <h2 id="confirmTitle">Confirm Action</h2>
+                <h2 id="confirmTitle">{{ 'confirm_action' | t }}</h2>
                 <button class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <p id="confirmMessage"></p>
                 <div class="form-group">
-                    <label for="confirmReason">Reason (optional):</label>
-                    <input type="text" id="confirmReason" placeholder="Why are you making this change?">
+                    <label for="confirmReason">{{ 'reason_optional' | t }}</label>
+                    <input type="text" id="confirmReason" placeholder="{{ 'why_making_change' | t }}">
                 </div>
             </div>
             <div class="modal-footer">
-                <button id="confirmCancel" class="btn btn-secondary">Cancel</button>
-                <button id="confirmOk" class="btn btn-danger">Confirm</button>
+                <button id="confirmCancel" class="btn btn-secondary">{{ 'cancel' | t }}</button>
+                <button id="confirmOk" class="btn btn-danger">{{ 'confirm' | t }}</button>
             </div>
         </div>
     </div>

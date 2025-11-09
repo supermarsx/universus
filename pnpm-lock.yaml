@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      nunjucks-i18n:
+        specifier: ^2.0.0
+        version: 2.0.0
       pnpm-store:
         specifier: link:/tmp/pnpm-store
         version: link:../../../../../tmp/pnpm-store
@@ -1122,6 +1125,10 @@ packages:
   lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
 
+  lodash@2.4.1:
+    resolution: {integrity: sha512-qa6QqjA9jJB4AYw+NpD2GI4dzHL6Mv0hL+By6iIul4Ce0C1refrjZJmcGvWdnLUwl4LIPtvzje3UQfGH+nCEsQ==}
+    engines: {'0': node, '1': rhino}
+
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
 
@@ -1190,6 +1197,9 @@ packages:
   npm-run-path@4.0.1:
     resolution: {integrity: sha512-S48WzZW777zhNIrn7gxOlISNAqi9ZC/uQFnRdbeIHhZhCA6UqpkOT8T1G7BvfdgP4Er8gF4sUbaS0i7QvIfCWw==}
     engines: {node: '>=8'}
+
+  nunjucks-i18n@2.0.0:
+    resolution: {integrity: sha512-EsQ9+rUBkcjTm1PEJn1+bd1I2IfHd4RPKRB1RWFv/NlPIZWbMrMmyrubluV76/akcYnLzzepB6GMKJe2juB35Q==}
 
   nwsapi@2.2.22:
     resolution: {integrity: sha512-ujSMe1OWVn55euT1ihwCI1ZcAaAU3nxUiDwfDQldc51ZXaB9m2AyOn6/jh1BLe2t/G8xd6uKG1UBF2aZJeg2SQ==}
@@ -2972,6 +2982,8 @@ snapshots:
 
   lodash.merge@4.6.2: {}
 
+  lodash@2.4.1: {}
+
   lru-cache@10.4.3: {}
 
   lru-cache@5.1.1:
@@ -3026,6 +3038,10 @@ snapshots:
   npm-run-path@4.0.1:
     dependencies:
       path-key: 3.1.1
+
+  nunjucks-i18n@2.0.0:
+    dependencies:
+      lodash: 2.4.1
 
   nwsapi@2.2.22: {}
 

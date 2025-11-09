@@ -1,5 +1,6 @@
 {
 	"dependencies": {
+		"nunjucks-i18n": "^2.0.0",
 		"pnpm-store": "link:/tmp/pnpm-store"
 	},
 	"devDependencies": {
