@@ -1,12 +1,15 @@
+/**
+ * @module backend/services/analyticsService
+ *
+ * AnalyticsService accepts tracking events and persists or publishes them to
+ * a processing queue depending on configuration. It also exposes reporting
+ * helpers used by admin dashboards and exports.
+ */
 import { Pool } from 'pg';
 import { pool } from '../config/database';
 import { AnalyticsEventPayload } from '../types/analytics';
 import { analyticsQueue } from './analyticsQueue';
 
-/**
- * Analytics service — accepts tracking events and persists or publishes them
- * to a queue depending on configuration. Also exposes summary/reporting helpers.
- */
 class AnalyticsService {
   private pool: Pool;
 

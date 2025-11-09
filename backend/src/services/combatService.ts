@@ -1,3 +1,11 @@
+/**
+ * @module backend/services/combatService
+ *
+ * CombatService runs deterministic combat simulations used by the game.
+ * It converts ship and defense counts into combat units, simulates rounds,
+ * computes losses, debris and loot, and persists combat reports. The
+ * simulation is intentionally simplified for determinism and performance.
+ */
 import { pool } from '../config/database';
 import { SHIPS, DEFENSES } from '../config/gameConfig';
 import { combatTracker } from './millisecondCombatTracker';
@@ -26,6 +34,22 @@ export interface CombatResult {
 }
 
 export class CombatService {
+  /**
+   * Simulate a full fleet/defense battle.
+   *
+   * This method executes the configured number of rounds or until one side
+   * is eliminated. It returns a detailed CombatResult describing rounds,
+   * losses, debris and loot. Optionally logs rounds to the millisecond
+   * combat tracker when a planetId is provided.
+   *
+   * @param attackerShips - mapping of ship keys to counts for attacker
+   * @param defenderShips - mapping of ship keys to counts for defender
+   * @param defenderDefenses - mapping of defense keys to counts for defender
+   * @param attackerTech - research/tech levels for attacker
+   * @param defenderTech - research/tech levels for defender
+   * @param planetResources - resources available on the defended planet
+   * @param planetId - optional planet id used for logging/tracking
+   */
   static async simulateBattle(
     attackerShips: { [key: string]: number },
     defenderShips: { [key: string]: number },
@@ -143,7 +167,8 @@ export class CombatService {
   }
 
   /**
-   * Get ship counts from combat units
+   * Convert an array of CombatUnit into a counts map keyed by unit type.
+   * @private
    */
   private static getShipCounts(units: CombatUnit[]): { [key: string]: number } {
     const counts: { [key: string]: number } = {};
@@ -199,6 +224,11 @@ export class CombatService {
     attackers: CombatUnit[],
     defenders: CombatUnit[]
   ): any {
+    /**
+     * Simulate a single combat round where attackers then defenders fire.
+     * Returns an object with shot counts and destroyed counts for the round.
+     * @private
+     */
     const roundData = {
       attackerShots: 0,
       defenderShots: 0,
@@ -238,6 +268,12 @@ export class CombatService {
     target: CombatUnit,
     targetArray: CombatUnit[]
   ): void {
+    /**
+     * Apply shooter damage to a single target, handling shields, hull and
+     * rapid-fire behavior. Mutates the target and may recursively trigger
+     * additional shots when rapid fire activates.
+     * @private
+     */
     let damage = shooter.weapon;
 
     // Check if damage can penetrate shield
@@ -279,6 +315,10 @@ export class CombatService {
   }
 
   private static removeDestroyed(units: CombatUnit[]): number {
+    /**
+     * Remove and count destroyed units (hull <= 0) from the provided array.
+     * @private
+     */
     let destroyed = 0;
     for (let i = units.length - 1; i >= 0; i--) {
       if (units[i].hull <= 0) {
@@ -290,6 +330,10 @@ export class CombatService {
   }
 
   private static regenerateShields(units: CombatUnit[]): void {
+    /**
+     * Reset shields to their full config value between rounds.
+     * @private
+     */
     for (const unit of units) {
       const config = SHIPS[unit.type] || DEFENSES[unit.type];
       if (config) {
@@ -302,6 +346,10 @@ export class CombatService {
     initial: { [key: string]: number },
     remaining: CombatUnit[]
   ): { [key: string]: number } {
+    /**
+     * Compute losses by comparing initial counts to remaining combat units.
+     * @private
+     */
     const losses: { [key: string]: number } = {};
     const remainingCounts: { [key: string]: number } = {};
 
@@ -323,6 +371,10 @@ export class CombatService {
     attackerLosses: { [key: string]: number },
     defenderLosses: { [key: string]: number }
   ): { metal: number; crystal: number } {
+    /**
+     * Convert losses into debris amounts using configured cost fractions.
+     * @private
+     */
     let metal = 0;
     let crystal = 0;
 
@@ -346,6 +398,11 @@ export class CombatService {
     planetResources: { metal: number; crystal: number; deuterium: number },
     attackerUnits: CombatUnit[]
   ): { metal: number; crystal: number; deuterium: number } {
+    /**
+     * Estimate loot collected by attacker units from planet resources given
+     * attacker cargo capacity and the 50% looting cap.
+     * @private
+     */
     // Calculate cargo capacity
     let cargoCapacity = 0;
     for (const unit of attackerUnits) {

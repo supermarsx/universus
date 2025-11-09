@@ -1,7 +1,11 @@
-// =====================================================
-// PLAYER ROUTING SERVICE
-// Intelligent player-to-server routing with load balancing
-// =====================================================
+/**
+ * @module backend/services/playerRoutingService
+ *
+ * PlayerRoutingService routes players to optimal shard servers using a
+ * pluggable load-balancing algorithm (round-robin, least-connections,
+ * weighted, geographic, health-based). It also manages player assignments,
+ * migrations and auto-balancing operations.
+ */
 
 import pool from '../config/database';
 import serverDiscoveryService from './serverDiscoveryService';
@@ -38,12 +42,12 @@ export class PlayerRoutingService {
     this.config = { ...this.DEFAULT_CONFIG, ...config };
   }
 
-  // =====================================================
-  // PLAYER ROUTING
-  // =====================================================
-
   /**
-   * Route player to optimal server
+   * Route a player to the best available server based on the configured
+   * algorithm and optional player preferences. If the player already has
+   * an active healthy assignment, that assignment will be returned.
+   *
+   * @param request - PlayerRoutingRequest containing user/session and preferences
    */
   async routePlayer(request: PlayerRoutingRequest): Promise<PlayerRoutingResult> {
     // Check if player already has an active assignment

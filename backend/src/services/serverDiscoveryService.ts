@@ -1,7 +1,18 @@
-// =====================================================
-// SERVER DISCOVERY SERVICE
-// Manages server registration, health monitoring, and discovery
-// =====================================================
+/**
+ * @module backend/services/serverDiscoveryService
+ *
+ * Server discovery and health management utilities. This service is responsible
+ * for registering/deregistering shard servers, tracking health metrics and
+ * heartbeats, performing periodic health checks, and providing queries for
+ * selecting suitable servers (least-loaded, healthy by region/type).
+ *
+ * Public surface:
+ * - registerServer, deregisterServer
+ * - updateServerHealth, recordHeartbeat, checkServerHealth
+ * - startHealthMonitoring, stopHealthMonitoring
+ * - getAllServers, getServerById, getLeastLoadedServer, getServersByType/Region
+ * - updateServerStatus, updateServerConfig, getServerStatistics
+ */
 
 import pool from '../config/database';
 import {
@@ -17,17 +28,25 @@ import {
 } from '../types/sharding';
 
 export class ServerDiscoveryService {
+  /**
+   * Server discovery service instance.
+   * Manages shard server metadata and health checks stored in Postgres.
+   */
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private readonly HEALTH_CHECK_INTERVAL_MS = 30000; // 30 seconds
   private readonly HEARTBEAT_TIMEOUT_MS = 90000; // 90 seconds
   private readonly MAX_FAILED_CHECKS = 3;
 
-  // =====================================================
-  // SERVER REGISTRATION
-  // =====================================================
-
   /**
-   * Register a new server in the shard cluster
+   * Register a new server in the shard cluster.
+   *
+   * Inserts a new row into `shard_servers` or updates an existing entry when
+   * a server with the same `server_id` already exists. The returned object is
+   * mapped to the `ShardServer` type.
+   *
+   * @param {ServerRegistrationRequest} request - Registration payload from server
+   * @returns {Promise<ShardServer>} The registered or updated shard server
+   * @throws Will re-throw any database errors encountered during the transaction
    */
   async registerServer(request: ServerRegistrationRequest): Promise<ShardServer> {
     const client = await pool.connect();
@@ -265,7 +284,13 @@ export class ServerDiscoveryService {
   }
 
   /**
-   * Perform health checks on all servers
+   * Perform health checks on all non-offline servers.
+   *
+   * This method queries `shard_servers` and evaluates heartbeat age and
+   * health scores. It will degrade or mark servers offline and trigger
+   * failover handling for servers judged to be offline.
+   *
+   * @private
    */
   private async performHealthChecks(): Promise<void> {
     const result = await pool.query(
@@ -301,7 +326,14 @@ export class ServerDiscoveryService {
   }
 
   /**
-   * Handle server failure and trigger failover
+   * Handle server failure and trigger failover actions.
+   *
+   * Marks the failed server offline, fetches affected players and marks them
+   * for reassignment. The reassignment happens during player login or
+   * placement cycles.
+   *
+   * @private
+   * @param {string} serverId - The server identifier to handle
    */
   private async handleServerFailure(serverId: string): Promise<void> {
     console.error(`Server failure detected: ${serverId}`);
@@ -385,7 +417,14 @@ export class ServerDiscoveryService {
   }
 
   /**
-   * Get healthy servers (status = online, health > 70)
+   * Get healthy servers (status = online, health_score >= 70).
+   *
+   * Optionally filter by server type. Results are ordered by health score
+   * (descending) then current load (ascending) to prefer high-health low-load
+   * servers.
+   *
+   * @param {ServerType=} type - Optional type filter
+   * @returns {Promise<ShardServer[]>} Matching servers
    */
   async getHealthyServers(type?: ServerType): Promise<ShardServer[]> {
     let query = `
@@ -553,6 +592,13 @@ export class ServerDiscoveryService {
   // UTILITY METHODS
   // =====================================================
 
+  /**
+   * Map a raw database row into the ShardServer interface
+   *
+   * @private
+   * @param {any} row - Raw row from `shard_servers`
+   * @returns {ShardServer}
+   */
   private mapServerRow(row: any): ShardServer {
     return {
       id: row.id,

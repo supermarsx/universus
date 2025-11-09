@@ -1,5 +1,12 @@
-// Phase 9: Session Management Service
-// Handles multi-session tracking, device management, and suspicious activity detection
+/**
+ * @module backend/services/sessionManagementService
+ *
+ * Session management helper for user sessions, device management, and
+ * suspicious activity detection. Provides helpers to create/validate/terminate
+ * sessions and maintain a Redis cache for active sessions. This service also
+ * performs simple device parsing and integrates with `AccountSecurityService`
+ * to log notable security events.
+ */
 
 import { pool } from '../config/database';
 import { redisClient } from '../config/redis';
@@ -17,13 +24,26 @@ import {
 import { AccountSecurityService } from './accountSecurityService';
 
 export class SessionManagementService {
+    /**
+     * Session management utilities (static helpers).
+     * Methods are implemented as static to allow light-weight usage without
+     * instantiation.
+     */
     private static readonly SESSION_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
     private static readonly CACHE_TTL = 3600; // 1 hour
 
-    // =====================================================
-    // SESSION CREATION
-    // =====================================================
-
+    /**
+     * Create a new user session.
+     *
+     * Generates a cryptographically secure session token, persists session
+     * metadata to Postgres and caches the session in Redis. Suspicious login
+     * checks are executed and security events are logged via
+     * `AccountSecurityService`.
+     *
+     * @param {CreateSessionRequest} request - Session creation payload
+     * @returns {Promise<UserSession>} The persisted session object
+     * @throws Re-throws database or cache errors
+     */
     static async createSession(request: CreateSessionRequest): Promise<UserSession> {
         const sessionToken = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + this.SESSION_DURATION);
@@ -81,10 +101,17 @@ export class SessionManagementService {
         return session;
     }
 
-    // =====================================================
-    // SESSION VALIDATION
-    // =====================================================
-
+    /**
+     * Validate a session token.
+     *
+     * The cache is consulted first for performance; if the session is not
+     * cached, the database is queried. Valid sessions have status ACTIVE and
+     * an expiry in the future. Last activity is updated on successful
+     * validation.
+     *
+     * @param {string} sessionToken - Session token to validate
+     * @returns {Promise<UserSession | null>} Session object or null when invalid
+     */
     static async validateSession(sessionToken: string): Promise<UserSession | null> {
         // Check cache first
         const cachedSession = await this.getCachedSession(sessionToken);
@@ -120,10 +147,15 @@ export class SessionManagementService {
         return session;
     }
 
-    // =====================================================
-    // SESSION TERMINATION
-    // =====================================================
-
+    /**
+     * Terminate a single session for a user.
+     *
+     * This sets the session status to TERMINATED and removes the token from
+     * Redis cache when present. A security event is logged for auditing.
+     *
+     * @param {number} sessionId - Session database id
+     * @param {number} userId - Owner user id
+     */
     static async terminateSession(sessionId: number, userId: number): Promise<void> {
         const result = await pool.query(
             `UPDATE user_sessions 
@@ -147,6 +179,13 @@ export class SessionManagementService {
         });
     }
 
+    /**
+     * Terminate all active sessions for a user (optionally excluding one)
+     *
+     * @param {number} userId - User whose sessions will be terminated
+     * @param {number=} exceptSessionId - Optional session id to exclude
+     * @returns {Promise<number>} Number of sessions terminated
+     */
     static async terminateAllSessions(userId: number, exceptSessionId?: number): Promise<number> {
         let query = `UPDATE user_sessions 
                      SET status = $1 
@@ -178,10 +217,12 @@ export class SessionManagementService {
         return result.rowCount || 0;
     }
 
-    // =====================================================
-    // SESSION QUERIES
-    // =====================================================
-
+    /**
+     * Get active sessions for a user.
+     *
+     * @param {number} userId - User id to query
+     * @returns {Promise<SessionListResponse>} Sessions and counts
+     */
     static async getActiveSessions(userId: number): Promise<SessionListResponse> {
         const result = await pool.query(
             `SELECT * FROM user_sessions 
@@ -199,6 +240,13 @@ export class SessionManagementService {
         };
     }
 
+    /**
+     * Get a session by id for a specific user
+     *
+     * @param {number} sessionId - Session id
+     * @param {number} userId - Owner user id
+     * @returns {Promise<UserSession | null>} Session row or null
+     */
     static async getSessionById(sessionId: number, userId: number): Promise<UserSession | null> {
         const result = await pool.query(
             'SELECT * FROM user_sessions WHERE id = $1 AND user_id = $2',
@@ -212,6 +260,17 @@ export class SessionManagementService {
     // SUSPICIOUS ACTIVITY DETECTION
     // =====================================================
 
+    /**
+     * Check for suspicious session activity and log alerts.
+     *
+     * Performs heuristics like new IP detection, new location detection,
+     * and rapid session creation. High-severity alerts will mark recent
+     * sessions as SUSPICIOUS.
+     *
+     * @param {number} userId - User to evaluate
+     * @param {string} ipAddress - IP address of the new session
+     * @param {string=} location - Optional human-readable location
+     */
     static async checkSuspiciousActivity(
         userId: number,
         ipAddress: string,
@@ -308,6 +367,13 @@ export class SessionManagementService {
         }
     }
 
+    /**
+     * Retrieve recorded suspicious activity events for a user.
+     *
+     * @param {number} userId - User id
+     * @param {number=} limit - Maximum number of events to return
+     * @returns {Promise<any[]>} Array of security audit log rows
+     */
     static async getSuspiciousActivities(
         userId: number,
         limit: number = 20
@@ -324,10 +390,13 @@ export class SessionManagementService {
         return result.rows;
     }
 
-    // =====================================================
-    // DEVICE TRUST MANAGEMENT
-    // =====================================================
-
+    /**
+     * Mark a device/session as trusted or untrusted.
+     *
+     * @param {number} sessionId - Session id
+     * @param {number} userId - Owner user id
+     * @param {boolean} isTrusted - True to mark trusted, false to revoke
+     */
     static async updateDeviceTrust(
         sessionId: number,
         userId: number,
@@ -350,10 +419,11 @@ export class SessionManagementService {
         });
     }
 
-    // =====================================================
-    // SESSION CLEANUP
-    // =====================================================
-
+    /**
+     * Cleanup expired sessions and invalidate cache entries.
+     *
+     * @returns {Promise<number>} Number of sessions expired and invalidated
+     */
     static async cleanupExpiredSessions(): Promise<number> {
         const result = await pool.query(
             `UPDATE user_sessions 
@@ -372,10 +442,15 @@ export class SessionManagementService {
         return result.rowCount || 0;
     }
 
-    // =====================================================
-    // DEVICE INFO PARSING
-    // =====================================================
-
+    /**
+     * Parse a simple user-agent string to derive device information.
+     * This is intentionally lightweight; for robust parsing use a library
+     * like `ua-parser-js` in production.
+     *
+     * @private
+     * @param {string=} userAgent - Raw user agent header
+     * @returns {DeviceInfo} Parsed device fingerprint and metadata
+     */
     private static parseDeviceInfo(userAgent?: string): DeviceInfo {
         if (!userAgent) {
             return {
@@ -417,10 +492,10 @@ export class SessionManagementService {
         };
     }
 
-    // =====================================================
-    // CACHE OPERATIONS
-    // =====================================================
-
+    /**
+     * Cache a session in Redis with a TTL.
+     * @private
+     */
     private static async cacheSession(session: UserSession): Promise<void> {
         try {
             const key = `session:${session.session_token}`;

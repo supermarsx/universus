@@ -1,7 +1,12 @@
-// =====================================================
-// PLAYER PLACEMENT SERVICE
-// Intelligent player starting position algorithms
-// =====================================================
+/**
+ * @module backend/services/playerPlacementService
+ *
+ * PlayerPlacementService determines where new players are placed within a
+ * seeded universe. It implements scoring heuristics that consider resource
+ * richness, distance, competition and strategic sector properties. The
+ * public API `placePlayer` persists a placement and returns diagnostics
+ * about the chosen location.
+ */
 
 import pool from '../config/database';
 import {
@@ -14,13 +19,15 @@ import {
 } from '../types/universe';
 
 export class PlayerPlacementService {
-  
-  // =====================================================
-  // PLAYER PLACEMENT
-  // =====================================================
-  
   /**
-   * Place a player in the universe using intelligent algorithms
+   * Place a player in the universe using intelligent algorithms.
+   *
+   * The function will either honor a custom location or run the internal
+   * placement algorithm which samples candidate systems and scores them.
+   * The result includes the persisted placement DTO and a numeric quality
+   * score used by UI and analytics.
+   *
+   * @param request - Placement request containing user, universe and options
    */
   async placePlayer(request: PlacePlayerRequest): Promise<PlayerPlacementResult> {
     const client = await pool.connect();
@@ -158,13 +165,12 @@ export class PlayerPlacementService {
       client.release();
     }
   }
-  
-  // =====================================================
-  // PLACEMENT ALGORITHMS
-  // =====================================================
-  
+
   /**
-   * Find optimal placement location using scoring algorithm
+   * Find optimal placement location using scoring algorithm.
+   * Samples candidate systems across suitable galaxies and returns the
+   * highest scoring location along with alternatives.
+   * @private
    */
   private async findOptimalPlacement(
     client: any,
@@ -236,7 +242,9 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Score a potential placement location
+   * Score a potential placement location using the composed heuristics.
+   * Returns breakdown of component scores and a total (0-100).
+   * @private
    */
   private async scoreLocation(
     client: any,
@@ -277,7 +285,9 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Calculate resource richness score
+   * Calculate resource richness score for the target system. Returns a
+   * value mapped to the 0-30 range used by the scoring algorithm.
+   * @private
    */
   private async calculateResourceScore(client: any, location: Coordinates): Promise<number> {
     // Check if planet resources exist for this location
@@ -301,7 +311,8 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Calculate distance from galaxy center score
+   * Calculate distance-from-center score. Prefers mid-range systems.
+   * @private
    */
   private calculateDistanceScore(location: Coordinates): number {
     // Prefer mid-range systems (not too close to center, not too far)
@@ -319,7 +330,9 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Calculate competition score (fewer nearby players = better)
+   * Calculate competition score based on nearby placed players. Fewer
+   * competitors increases the score.
+   * @private
    */
   private async calculateCompetitionScore(
     client: any,
@@ -343,7 +356,8 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Calculate strategic value score based on playstyle
+   * Calculate strategic value score using sector metadata and playstyle.
+   * @private
    */
   private async calculateStrategicScore(
     client: any,
@@ -383,7 +397,9 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Find best available position in a system
+   * Find best available position (1..15) in the requested system. Prefers
+   * the first free slot and falls back to a random slot when full.
+   * @private
    */
   private async findBestPositionInSystem(client: any, galaxy: number, system: number): Promise<number> {
     // Get occupied positions in this system
@@ -410,7 +426,9 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Calculate location quality using database function
+   * Calculate a placement quality metric using a database helper function.
+   * Returns a numeric score used for analytics and UI badges.
+   * @private
    */
   private async calculateLocationQuality(
     client: any,
@@ -425,12 +443,9 @@ export class PlayerPlacementService {
     return parseFloat(result.rows[0].quality) || 50;
   }
   
-  // =====================================================
-  // QUERY METHODS
-  // =====================================================
-  
+
   /**
-   * Get player placement
+   * Retrieve the placement record for a user in a universe.
    */
   async getPlayerPlacement(userId: number, universeId: number): Promise<PlayerPlacement | null> {
     const result = await pool.query(
@@ -442,7 +457,7 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Get all placements in universe
+   * Retrieve all player placements in a universe ordered by recency.
    */
   async getUniversePlacements(universeId: number): Promise<PlayerPlacement[]> {
     const result = await pool.query(
@@ -454,7 +469,7 @@ export class PlayerPlacementService {
   }
   
   /**
-   * Get placements in galaxy
+   * Retrieve placements for a single galaxy within a universe.
    */
   async getGalaxyPlacements(universeId: number, galaxy: number): Promise<PlayerPlacement[]> {
     const result = await pool.query(
@@ -464,13 +479,10 @@ export class PlayerPlacementService {
     
     return result.rows.map(row => this.mapPlayerPlacement(row));
   }
-  
-  // =====================================================
-  // UTILITY METHODS
-  // =====================================================
-  
+ 
   /**
-   * Get sample systems for evaluation
+   * Generate a sampled set of systems for placement evaluation.
+   * @private
    */
   private getSampleSystems(totalSystems: number, sampleSize: number): number[] {
     const systems: number[] = [];
@@ -483,6 +495,10 @@ export class PlayerPlacementService {
     return systems;
   }
   
+  /**
+   * Map DB row into PlayerPlacement DTO.
+   * @private
+   */
   private mapPlayerPlacement(row: any): PlayerPlacement {
     return {
       id: row.id,
