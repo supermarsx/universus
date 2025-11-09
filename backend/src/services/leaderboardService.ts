@@ -609,6 +609,14 @@ export class LeaderboardService {
   }
 
   /**
+   * Get top alliances from the alliance leaderboard.
+   *
+   * @param {number} limit - Number of top alliances to retrieve (default: 50)
+   * @param {number} offset - Starting position (default: 0)
+   * @returns {Promise<AllianceScore[]>} Array of top alliances with rankings
+   */
+ 
+  /**
    * Get top N alliances from the leaderboard
    *
    * @param {number} limit - Number of top alliances to retrieve (default: 50)
@@ -713,11 +721,23 @@ export class LeaderboardService {
     };
   }
 
+  /**
+   * Get members for a given alliance, paginated.
+   *
+   * If the per-alliance member leaderboard cache is missing or expired, it
+   * will be rebuilt on demand.
+   *
+   * @param {number} allianceId - Alliance id
+   * @param {number=} limit - Page size
+   * @param {number=} offset - Page offset
+   * @returns {Promise<PlayerScore[]>} Members with scores and ranks
+   */
   async getAllianceMembers(
     allianceId: number,
     limit: number = 25,
     offset: number = 0
   ): Promise<PlayerScore[]> {
+ 
     const key = this.getAllianceMemberKey(allianceId);
     const exists = await this.redis.exists(key);
     if (!exists || (await this.redis.ttl(key)) <= 0) {

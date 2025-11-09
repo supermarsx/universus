@@ -202,6 +202,13 @@ export class GalaxyService {
     };
   }
 
+    /**
+     * Build the system snapshot visible to a requesting user.
+     *
+     * @param {GalaxyRequestContext} context - Context including user and target coordinates
+     * @returns {Promise<GalaxySnapshot>} The assembled snapshot with pagination and slot intel
+     */
+
   /**
    * Read raw rows for planets, debris and moons for a system. Results are
    * cached briefly in Redis to reduce DB load for rapid UI paging.

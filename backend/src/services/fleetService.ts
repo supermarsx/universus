@@ -1126,6 +1126,15 @@ export class FleetService {
     }
   }
 
+  /**
+   * Safely parse a JSON string or return the object as-is.
+   * Useful for fields that may be stored as JSON text in the DB or as objects.
+   *
+   * @private
+   * @param {any} value - Value that may be a JSON string or already an object
+   * @returns {any} Parsed object or empty object on failure
+   */
+
   private static async collectAttackParticipants(fleet: Fleet, client: PoolClient): Promise<FleetParticipant[]> {
     const participants: FleetParticipant[] = [
       { fleet, ships: this.safeParse(fleet.ships) }
@@ -1161,6 +1170,15 @@ export class FleetService {
     return participants;
   }
 
+  /**
+   * Assemble participants in an attack including ACS members if present.
+   *
+   * @private
+   * @param {Fleet} fleet - The initiating fleet record
+   * @param {PoolClient} client - Transactional PG client (for FOR UPDATE queries)
+   * @returns {Promise<FleetParticipant[]>} Array of participating fleets with parsed ships
+   */
+
   private static combineFleetShips(participants: FleetParticipant[]): { [key: string]: number } {
     const totals: { [key: string]: number } = {};
     participants.forEach((participant) => {
@@ -1170,6 +1188,14 @@ export class FleetService {
     });
     return totals;
   }
+
+  /**
+   * Sum ship counts across multiple participants into a single ship map.
+   *
+   * @private
+   * @param {FleetParticipant[]} participants - Fleets participating in the action
+   * @returns {{ [key: string]: number }} Aggregated ship counts by type
+   */
 
   private static mergeTechLevels(rows: any[]): any {
     const merged: Record<string, number> = {};
@@ -1183,6 +1209,14 @@ export class FleetService {
     });
     return merged;
   }
+
+  /**
+   * Merge multiple technology level records, taking the max per technology.
+   *
+   * @private
+   * @param {any[]} rows - Array of tech level maps
+   * @returns {Record<string, number>} Merged tech levels
+   */
 
   private static async fetchUsernames(userIds: Array<number | null | undefined>): Promise<Record<number, string>> {
     const ids = Array.from(
@@ -1206,6 +1240,14 @@ export class FleetService {
     });
     return map;
   }
+
+  /**
+   * Resolve a list of user ids to a map of username strings.
+   *
+   * @private
+   * @param {(number | null | undefined)[]} userIds - Array of user ids (may include null/undefined)
+   * @returns {Promise<Record<number,string>>} Map from id to username
+   */
 
   private static async updateAttackerFleetsAfterCombat(
     participants: FleetParticipant[],
@@ -1251,6 +1293,18 @@ export class FleetService {
       this.scheduleReturnEvent(participant.fleet.id, participant.fleet.return_time);
     }
   }
+
+  /**
+   * Apply losses to attacker fleets after combat and allocate loot.
+   *
+   * This function updates fleet records in-place using the provided client
+   * within a transaction.
+   *
+   * @private
+   * @param {FleetParticipant[]} participants - Fleets engaged as attackers
+   * @param {CombatResult} result - Result object from the combat simulation
+   * @param {PoolClient} client - PG client used for transactional updates
+   */
 
   private static allocateLosses(
     participants: FleetParticipant[],
