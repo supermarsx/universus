@@ -48,7 +48,28 @@ const translations: Record<string, string> = {
   'shipyard.eta': 'ETA',
   'shipyard.cancel': 'Cancel',
   'shipyard.cancelConfirm': 'Are you sure you want to cancel?',
-};
+  // Accessibility feedback form translations
+  'a11y.title': 'Accessibility Feedback',
+  'a11y.intro': 'Please tell us about any accessibility issues you encountered.',
+  'a11y.nameLabel': 'Your name (optional)',
+  'a11y.namePlaceholder': 'Full name',
+  'a11y.emailLabel': 'Email (optional)',
+  'a11y.emailPlaceholder': 'you@example.com',
+  'a11y.issueTypeLegend': 'Issue type',
+  'a11y.issue.contrast': 'Contrast',
+  'a11y.issue.navigation': 'Navigation/Keyboard',
+  'a11y.issue.other': 'Other',
+  'a11y.descriptionLabel': 'Description',
+  'a11y.descriptionPlaceholder': 'Describe the problem and where it occurs',
+  'a11y.screenshotLabel': 'Optional screenshot URL',
+  'a11y.screenshotPlaceholder': 'https://example.com/screenshot.png',
+  'a11y.submit': 'Submit report',
+  'a11y.reset': 'Reset',
+  'a11y.requiredDescription': 'Please provide a description of the issue.',
+  'a11y.successMessage': 'Thank you — accessibility report submitted.',
+  'a11y.failureMessage': 'Failed to submit report. Please try again later.',
+  };
+
 
 function t(key: string, opts?: Record<string, any>): string {
   if (key.startsWith('shipyard.ships.')) {
@@ -85,4 +106,3 @@ function t(key: string, opts?: Record<string, any>): string {
 const i18next = { t };
 
 export default i18next;
-module.exports = i18next;

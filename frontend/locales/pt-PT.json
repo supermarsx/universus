@@ -298,7 +298,10 @@
     "number_of_bots": "Number of Bots",
     "process_all_bots": "Process All Bots",
     "process_and_load": "Process & Load",
-    "save_bot": "Save Bot"
+    "save_bot": "Save Bot",
+    "modal": { "title": "Configurações de bot" },
+    "loading": "A carregar bots...",
+    "empty": "Nenhum bot configurado."
   },
   "monitoring": {
     "failed_load_dashboard": "Failed to load dashboard",
@@ -365,5 +368,48 @@
       "ion_cannon": { "name": "Canhão de Íons", "description": "Desestabiliza escudos com feixes ionizados." },
       "plasma_turret": { "name": "Torretas de Plasma", "description": "Plataforma de defesa de fim de jogo." }
     }
+  },
+  "fleet": {
+    "empty": "You have no fleets.",
+    "validation": { "selectShip": "Please select a ship before sending." },
+    "sendButton": "Send",
+    "shipName": { "UNKNOWN": "Unknown ship" }
+  },
+  "galaxy": {
+    "loading": "Loading galaxy map...",
+    "noSystems": "No systems found.",
+    "unreachable": "System unreachable."
+  },
+  "matrixShop": {
+    "noCosmetics": "You don't own any cosmetics yet.",
+    "exploreButton": "Explore cosmetics"
+  },
+  "buildings": {
+    "moonUnavailable": "Moon building currently unavailable.",
+    "upgradeButton": "Upgrade"
+  },
+
+  "a11y": {
+    "title": "Feedback de Acessibilidade",
+    "intro": "Por favor, conte-nos sobre quaisquer problemas de acessibilidade que você encontrou.",
+    "nameLabel": "Seu nome (opcional)",
+    "namePlaceholder": "Nome completo",
+    "emailLabel": "Email (opcional)",
+    "emailPlaceholder": "voce@exemplo.com",
+    "issueTypeLegend": "Tipo de problema",
+    "issue": {
+      "contrast": "Contraste",
+      "navigation": "Navegação/Teclado",
+      "other": "Outro"
+    },
+    "descriptionLabel": "Descrição",
+    "descriptionPlaceholder": "Descreva o problema e onde ele ocorre",
+    "screenshotLabel": "URL da captura de tela (opcional)",
+    "screenshotPlaceholder": "https://exemplo.com/captura.png",
+    "submit": "Enviar relatório",
+    "reset": "Redefinir",
+    "requiredDescription": "Por favor, forneça uma descrição do problema.",
+    "successMessage": "Obrigado — relatório de acessibilidade enviado.",
+    "failureMessage": "Falha ao enviar o relatório. Por favor, tente novamente mais tarde."
   }
 }

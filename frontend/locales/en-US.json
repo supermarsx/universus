@@ -333,7 +333,10 @@
     "number_of_bots": "Number of Bots",
     "process_all_bots": "Process All Bots",
     "process_and_load": "Process & Load",
-    "save_bot": "Save Bot"
+    "save_bot": "Save Bot",
+    "modal": { "title": "Bot settings" },
+    "loading": "Loading bots...",
+    "empty": "No bots configured."
   },
   "monitoring": {
     "failed_load_dashboard": "Failed to load dashboard",
@@ -360,6 +363,25 @@
     "startButton": "Get Started",
     "noConstruction": "No construction in progress",
     "completesIn": "Completes in: {{time}}"
+  },
+  "fleet": {
+    "empty": "You have no fleets.",
+    "validation": { "selectShip": "Please select a ship before sending." },
+    "sendButton": "Send",
+    "shipName": { "UNKNOWN": "Unknown ship" }
+  },
+  "galaxy": {
+    "loading": "Loading galaxy map...",
+    "noSystems": "No systems found.",
+    "unreachable": "System unreachable."
+  },
+  "matrixShop": {
+    "noCosmetics": "You don't own any cosmetics yet.",
+    "exploreButton": "Explore cosmetics"
+  },
+  "buildings": {
+    "moonUnavailable": "Moon building currently unavailable.",
+    "upgradeButton": "Upgrade"
   },
     "shipyard": {
     "shipyardLabel": "Shipyard",
@@ -484,5 +506,28 @@
     "error": "Error",
     "success": "Success",
     "info": "Info"
+  },
+  "a11y": {
+    "title": "Accessibility Feedback",
+    "intro": "Please tell us about any accessibility issues you encountered.",
+    "nameLabel": "Your name (optional)",
+    "namePlaceholder": "Full name",
+    "emailLabel": "Email (optional)",
+    "emailPlaceholder": "you@example.com",
+    "issueTypeLegend": "Issue type",
+    "issue": {
+      "contrast": "Contrast",
+      "navigation": "Navigation/Keyboard",
+      "other": "Other"
+    },
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Describe the problem and where it occurs",
+    "screenshotLabel": "Optional screenshot URL",
+    "screenshotPlaceholder": "https://example.com/screenshot.png",
+    "submit": "Submit report",
+    "reset": "Reset",
+    "requiredDescription": "Please provide a description of the issue.",
+    "successMessage": "Thank you — accessibility report submitted.",
+    "failureMessage": "Failed to submit report. Please try again later."
   }
 }

@@ -6,6 +6,7 @@ const mockData = {
   '/shop/catalog': [],
   '/shop/perks': [],
   '/users/me': { id: 1, username: 'test' },
+  '/a11y/report': { success: true },
 };
 
 const api = {
@@ -24,4 +25,4 @@ const api = {
   }),
 };
 
-module.exports = api;
+export default api;
