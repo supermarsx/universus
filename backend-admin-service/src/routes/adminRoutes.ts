@@ -2,7 +2,6 @@ import { Router, Response } from 'express';
 import { AdminAuthRequest } from '../types/admin';
 import { 
   requireAdmin,
-  requireAdminLevel,
   requirePermission,
   requirePermissions,
   rateLimit,
@@ -287,7 +286,7 @@ router.post(
 router.post(
   '/users/bulk-action',
   requireAdmin,
-  requireAdminLevel('game_admin'),
+  requirePermission('game:config'),
   rateLimit(5, 60000),
   async (req: AdminAuthRequest, res: Response): Promise<void> => {
     try {
@@ -516,7 +515,7 @@ router.get(
 router.put(
   '/settings/:key',
   requireAdmin,
-  requireAdminLevel('game_admin'),
+  requirePermission('game:config'),
   rateLimit(30, 60000),
   async (req: AdminAuthRequest, res: Response): Promise<void> => {
     try {
@@ -725,7 +724,7 @@ router.get(
 router.get(
   '/analytics/top-admins',
   requireAdmin,
-  requireAdminLevel('game_admin'),
+  requirePermission('game:config'),
   async (req: AdminAuthRequest, res: Response): Promise<void> => {
     try {
       const days = parseInt(req.query.days as string) || 30;
