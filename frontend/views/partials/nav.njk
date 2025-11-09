@@ -79,8 +79,30 @@
         </div>
         
         <button id="logoutBtn" class="btn-secondary">{{ 'logout' | t }}</button>
+        <div class="lang-switcher" style="display:inline-block;margin-left:1rem;">
+            <select id="languageSelect" aria-label="Select language">
+                <option value="en">English</option>
+                <option value="pt-PT">Português</option>
+            </select>
+        </div>
     </div>
 </nav>
+<script>
+// Language switcher logic
+if (window.i18next) {
+    document.addEventListener('DOMContentLoaded', function() {
+        var langSelect = document.getElementById('languageSelect');
+        if (langSelect) {
+            langSelect.value = window.i18next.language || 'en';
+            langSelect.addEventListener('change', function() {
+                window.i18next.changeLanguage(langSelect.value, function() {
+                    window.location.reload();
+                });
+            });
+        }
+    });
+}
+</script>
 
 <style>
 .account-dropdown {

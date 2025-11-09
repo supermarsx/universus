@@ -1,6 +1,36 @@
 // @ts-nocheck
 // Overview Page Logic
 
+import i18next from 'i18next';
+import Backend from 'i18next-http-backend';
+
+// Initialize i18next
+// Assumes the page is served from /frontend and locales are at /locales/{lng}/translation.json
+// You may need to adjust the loadPath depending on your server setup
+
+i18next
+  .use(Backend)
+  .init({
+    lng: 'en',
+    fallbackLng: 'en',
+    debug: true,
+    backend: {
+      loadPath: '/locales/{{lng}}/translation.json'
+    }
+  }, function(err, t) {
+    if (err) {
+      console.error('i18next init failed:', err);
+    } else {
+      // Example: set welcome message
+      const welcomeEl = document.getElementById('welcomeMessage');
+      if (welcomeEl) welcomeEl.textContent = i18next.t('overview.welcome');
+      const descEl = document.getElementById('overviewDescription');
+      if (descEl) descEl.textContent = i18next.t('overview.description');
+      const startBtn = document.getElementById('startButton');
+      if (startBtn) startBtn.textContent = i18next.t('overview.startButton');
+    }
+  });
+
 // Update page with planet data
 function updatePageData(data) {
     const planet = data.planet;

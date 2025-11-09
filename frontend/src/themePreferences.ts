@@ -1,4 +1,5 @@
 // @ts-nocheck
+import i18next from 'i18next';
 /**
  * User Theme Preferences Component
  * Allows users to customize theme experience
@@ -222,7 +223,7 @@ class ThemePreferences {
         try {
             const token = localStorage.getItem('token');
             if (!token) {
-                this.showNotification('You must be logged in to save custom CSS.', 'error');
+                this.showNotification(i18next.t('themePreferences.mustBeLoggedIn'), 'error');
                 return;
             }
 
@@ -230,7 +231,7 @@ class ThemePreferences {
             const css = textarea?.value || '';
 
             if (css.length > this.maxCustomCssLength) {
-                this.showNotification(`Custom CSS is limited to ${this.maxCustomCssLength} characters.`, 'error');
+                this.showNotification(i18next.t('themePreferences.cssLimit', { max: this.maxCustomCssLength }), 'error');
                 return;
             }
 
@@ -251,14 +252,14 @@ class ThemePreferences {
 
             this.customCss = data.customCSS || '';
             this.updateCustomCssUI();
-            this.showNotification(data.message || 'Custom CSS saved.', 'success');
+            this.showNotification(data.message || i18next.t('themePreferences.cssSaved'), 'success');
 
             window.dispatchEvent(new CustomEvent('userCustomCssUpdated', {
                 detail: { css: this.customCss }
             }));
         } catch (error) {
             console.error('[ThemePreferences] Error saving custom CSS:', error);
-            const message = error instanceof Error ? error.message : 'Failed to save custom CSS';
+            const message = error instanceof Error ? error.message : i18next.t('themePreferences.failedToSaveCss');
             this.showNotification(message, 'error');
         }
     }
@@ -279,7 +280,7 @@ class ThemePreferences {
         try {
             const token = localStorage.getItem('token');
             if (!token) {
-                alert('Please log in to save preferences');
+                alert(i18next.t('themePreferences.pleaseLoginToSave'));
                 return;
             }
 
@@ -314,16 +315,16 @@ class ThemePreferences {
                         detail: { preferences: data.preferences }
                     }));
 
-                    this.showNotification('Preferences saved successfully!', 'success');
+                    this.showNotification(i18next.t('themePreferences.preferencesSaved'), 'success');
                 } else {
-                    this.showNotification('Error saving preferences: ' + data.message, 'error');
+                    this.showNotification(i18next.t('themePreferences.errorSavingPreferencesWithMsg', { message: data.message }), 'error');
                 }
             } else {
-                this.showNotification('Error saving preferences', 'error');
+                this.showNotification(i18next.t('themePreferences.errorSavingPreferences'), 'error');
             }
         } catch (error) {
             console.error('[ThemePreferences] Error saving preferences:', error);
-            this.showNotification('Error saving preferences', 'error');
+            this.showNotification(i18next.t('themePreferences.errorSavingPreferences'), 'error');
         }
     }
 
@@ -346,7 +347,7 @@ class ThemePreferences {
      * Reset to defaults
      */
     async resetToDefaults() {
-        if (!confirm('Reset all theme preferences to default values?')) return;
+        if (!confirm(i18next.t('themePreferences.resetDefaultsConfirm'))) return;
 
         const defaultPreferences = {
             enabled: true,
@@ -376,7 +377,7 @@ class ThemePreferences {
                 if (data.success) {
                     this.preferences = data.preferences;
                     this.updateUI();
-                    this.showNotification('Preferences reset to defaults', 'success');
+                    this.showNotification(i18next.t('themePreferences.preferencesReset'), 'success');
                     
                     // Reload theme
                     if (window.themeLoader) {
@@ -386,7 +387,7 @@ class ThemePreferences {
             }
         } catch (error) {
             console.error('[ThemePreferences] Error resetting preferences:', error);
-            this.showNotification('Error resetting preferences', 'error');
+            this.showNotification(i18next.t('themePreferences.errorResettingPreferences'), 'error');
         }
     }
 }
