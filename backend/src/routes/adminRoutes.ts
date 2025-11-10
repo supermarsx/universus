@@ -8,6 +8,7 @@ import {
   rateLimit,
   verifyAdmin2FA,
 } from '../middleware/adminAuth';
+import { authenticateToken } from '../middleware/auth';
 import { AdminUserService } from '../services/adminUserService';
 import { AdminMonitoringService } from '../services/adminMonitoringService';
 import { 
@@ -85,9 +86,10 @@ router.post('/login', authenticateToken, verifyAdmin2FA, async (req: AdminAuthRe
         permissions: Array.isArray(admin.permissions) ? admin.permissions : []
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Admin login error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -123,9 +125,10 @@ router.get('/2fa/status', authenticateToken, async (req: AdminAuthRequest, res: 
       twoFactorRequired: !admin.two_factor_enabled,
       twoFactorEnabled: admin.two_factor_enabled
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Admin 2FA status error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -162,7 +165,7 @@ router.get(
         AdminEventsService.getActiveEvents(),
         AdminMonitoringService.getNotifications(
           req.user!.id,
-          req.adminLevel!,
+          String(req.adminLevel!),
           true
         ),
         AdminMonitoringService.getOnlineAdminsCount(),
@@ -179,9 +182,10 @@ router.get(
         critical_alerts: notifications.filter((n) => n.priority === 'critical'),
         online_admins: onlineAdmins,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Dashboard error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -213,9 +217,10 @@ router.get(
 
       const result = await AdminUserService.getUsers(filter);
       res.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get users error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -233,9 +238,10 @@ router.get(
       const userId = parseInt(req.params.id);
       const user = await AdminUserService.getUserDetails(userId);
       res.json(user);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get user details error:', error);
-      res.status(404).json({ error: error.message });
+      res.status(404).json({ error: errMsg });
     }
   }
 );
@@ -268,9 +274,10 @@ router.post(
       );
 
       res.json({ success: true, block });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Block user error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -294,9 +301,10 @@ router.post(
       );
 
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Unblock user error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -328,9 +336,10 @@ router.post(
       );
 
       res.json({ success: true, tag });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Tag user error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -348,9 +357,10 @@ router.delete(
       const tagId = parseInt(req.params.id);
       await AdminUserService.removeTag(tagId, req.user!.id, req.user!.username);
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Remove tag error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -384,9 +394,10 @@ router.post(
       );
 
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Adjust resources error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -421,9 +432,10 @@ router.post(
         failed_actions: result.failed, 
         errors: result.errors 
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Bulk action error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -443,9 +455,10 @@ router.get(
     try {
       const health = await AdminMonitoringService.getServerHealth();
       res.json(health);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get health error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -464,9 +477,10 @@ router.get(
       const hours = parseInt(req.query.hours as string) || 24;
       const metrics = await AdminMonitoringService.getMetricsHistory(metricName, hours);
       res.json(metrics);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get metrics error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -482,9 +496,10 @@ router.get(
     try {
       const activity = await AdminMonitoringService.getPlayerActivity();
       res.json(activity);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get activity error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -501,9 +516,10 @@ router.get(
     try {
       const stats = await AdminMonitoringService.getDatabaseStats();
       res.json(stats);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get database stats error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -551,9 +567,10 @@ router.get(
         },
         leaderboard: LeaderboardScheduler.getStatus(),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get scaling metrics error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -566,9 +583,10 @@ router.post(
     try {
       await LeaderboardScheduler.triggerRebuild();
       res.json({ success: true, message: 'Leaderboard rebuild triggered.' });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Manual leaderboard rebuild error:', error);
-      res.status(500).json({ error: error.message || 'Failed to rebuild leaderboard' });
+      res.status(500).json({ error: errMsg || 'Failed to rebuild leaderboard' });
     }
   }
 );
@@ -606,9 +624,10 @@ router.post(
       );
 
       res.json({ success: true, message: 'Restriction applied' });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Apply chat restriction error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -632,9 +651,10 @@ router.delete(
       );
 
       res.json({ success: true, message: 'Restriction removed' });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Remove chat restriction error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -655,13 +675,14 @@ router.get(
       const unreadOnly = req.query.unread === 'true';
       const notifications = await AdminMonitoringService.getNotifications(
         req.user!.id,
-        req.adminLevel!,
+        String(req.adminLevel!),
         unreadOnly
       );
       res.json(notifications);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get notifications error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -678,9 +699,10 @@ router.post(
       const notificationId = parseInt(req.params.id);
       await AdminMonitoringService.markNotificationRead(notificationId, req.user!.id);
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Mark read error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -697,9 +719,10 @@ router.post(
       const notificationId = parseInt(req.params.id);
       await AdminMonitoringService.acknowledgeNotification(notificationId, req.user!.id);
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Acknowledge error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -721,9 +744,10 @@ router.get(
       const category = req.query.category as any;
       const settings = await AdminSettingsService.getAllSettings(category);
       res.json(settings);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get settings error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -744,9 +768,10 @@ router.get(
         return;
       }
       res.json(setting);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get setting error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -769,9 +794,10 @@ router.put(
         req.user!.username
       );
       res.json(setting);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Update setting error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -789,9 +815,10 @@ router.get(
       const limit = parseInt(req.query.limit as string) || 10;
       const history = await AdminSettingsService.getSettingHistory(req.params.key, limit);
       res.json(history);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get history error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -813,9 +840,10 @@ router.get(
       const limit = parseInt(req.query.limit as string) || 50;
       const events = await AdminEventsService.getAllEvents(limit);
       res.json(events);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get events error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -851,9 +879,10 @@ router.post(
       );
 
       res.json({ success: true, event });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Create event error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -871,9 +900,10 @@ router.post(
       const eventId = parseInt(req.params.id);
       await AdminEventsService.activateEvent(eventId, req.user!.id, req.user!.username);
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Activate event error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -891,9 +921,10 @@ router.post(
       const eventId = parseInt(req.params.id);
       await AdminEventsService.deactivateEvent(eventId, req.user!.id, req.user!.username);
       res.json({ success: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Deactivate event error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -914,9 +945,10 @@ router.get(
     try {
       const analytics = await AdminAnalyticsService.getResourceAnalytics();
       res.json(analytics);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get resource analytics error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -933,9 +965,10 @@ router.get(
     try {
       const analytics = await AdminAnalyticsService.getCombatAnalytics();
       res.json(analytics);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get combat analytics error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -953,9 +986,10 @@ router.get(
       const days = parseInt(req.query.days as string) || 30;
       const stats = await AdminAnalyticsService.getAuditStats(days);
       res.json(stats);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get audit stats error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -974,9 +1008,10 @@ router.get(
       const limit = parseInt(req.query.limit as string) || 10;
       const topAdmins = await AdminAnalyticsService.getTopAdmins(days, limit);
       res.json(topAdmins);
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get top admins error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -1045,9 +1080,10 @@ router.get(
         limit,
         totalPages: Math.ceil(total / limit),
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
       console.error('Get audit logs error:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 );
@@ -1081,9 +1117,10 @@ router.get('/roles', requirePermission('admin:manage'), async (req: AdminAuthReq
       success: true,
       roles: result.rows
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Get roles error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1120,9 +1157,10 @@ router.get('/roles/:id', requirePermission('admin:manage'), async (req: AdminAut
         permissions: permissionsResult.rows
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Get role error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1178,12 +1216,13 @@ router.post('/roles', requirePermission('admin:manage'), async (req: AdminAuthRe
     } finally {
       client.release();
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Create role error:', error);
-    if (error.code === '23505') {
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as any).code === '23505') {
       res.status(400).json({ error: 'Role name already exists' });
     } else {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 });
@@ -1258,12 +1297,13 @@ router.put('/roles/:id', requirePermission('admin:manage'), async (req: AdminAut
     } finally {
       client.release();
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Update role error:', error);
-    if (error.code === '23505') {
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as any).code === '23505') {
       res.status(400).json({ error: 'Role name already exists' });
     } else {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 });
@@ -1336,9 +1376,10 @@ router.delete('/roles/:id', requirePermission('admin:manage'), async (req: Admin
     } finally {
       client.release();
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Delete role error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1358,9 +1399,10 @@ router.get('/permissions', requirePermission('admin:manage'), async (req: AdminA
       success: true,
       permissions: result.rows
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Get permissions error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1391,9 +1433,10 @@ router.get('/users/:userId/role', requirePermission('admin:manage'), async (req:
       success: true,
       adminUser: result.rows[0]
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Get user role error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1453,9 +1496,10 @@ router.put('/users/:userId/role', requirePermission('admin:manage'), async (req:
       success: true,
       message: 'Role assigned successfully'
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Assign user role error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1521,9 +1565,10 @@ router.get('/users/list', requirePermission('admin:manage'), async (req: AdminAu
         pages: Math.ceil(parseInt(countResult.rows[0].total) / parseInt(limit as string))
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Get admin users error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1601,12 +1646,13 @@ router.post('/users/:userId/promote', requirePermission('admin:manage'), async (
     } finally {
       client.release();
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Promote user error:', error);
-    if (error.code === '23505') {
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as any).code === '23505') {
       res.status(400).json({ error: 'User is already an admin' });
     } else {
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: errMsg });
     }
   }
 });
@@ -1674,9 +1720,10 @@ router.post('/users/:userId/demote', requirePermission('admin:manage'), async (r
     } finally {
       client.release();
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Demote user error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1696,9 +1743,10 @@ router.get('/locales', requireAdmin, requirePermission('game:config:write'), (re
   try {
     const locales = getAvailableLocales();
     res.json({ locales });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('List locales error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1716,9 +1764,10 @@ router.get('/locales/:locale', requireAdmin, requirePermission('game:config:writ
     const localePath = path.join(__dirname, '../../../frontend/locales', `${locale}.json`);
     const data = fs.readFileSync(localePath, 'utf-8');
     res.json({ locale, data: JSON.parse(data) });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Get locale error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -1740,9 +1789,10 @@ router.put('/locales/:locale', requireAdmin, requirePermission('game:config:writ
     }
     fs.writeFileSync(localePath, JSON.stringify(newData, null, 2), 'utf-8');
     res.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
     console.error('Update locale error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: errMsg });
   }
 });
 

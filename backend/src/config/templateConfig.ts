@@ -56,19 +56,18 @@ export function configureTemplateEngine(app: express.Application): nunjucks.Envi
    });
 
    // --- i18n translation filter ---
-   const fs = require('fs');
-   const path = require('path');
-   // Load English translations (default)
-   let translations = {};
-   try {
-     const enPath = path.join(__dirname, '../../frontend/locales/en.json');
-     translations = JSON.parse(fs.readFileSync(enPath, 'utf8'));
-   } catch (e) {
-     console.error('Failed to load translations:', e);
-   }
-   env.addFilter('t', (key: string) => {
-     return translations[key] || key;
-   });
+    const fs = require('fs');
+    // Load English translations (default)
+    let translations: Record<string, string> = {};
+    try {
+      const enPath = path.join(__dirname, '../../frontend/locales/en.json');
+      translations = JSON.parse(fs.readFileSync(enPath, 'utf8'));
+    } catch (e) {
+      console.error('Failed to load translations:', e);
+    }
+    env.addFilter('t', (key: string) => {
+      return translations[key] || key;
+    });
 
 
   /**

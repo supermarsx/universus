@@ -201,6 +201,7 @@ export interface AdminAuthRequest extends Request {
   adminRole?: string;
   adminPermissions?: string[];
   twoFactorVerified?: boolean;
+  adminLevel?: number;
 }
 
 // ========================================

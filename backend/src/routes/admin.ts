@@ -12,10 +12,10 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { requirePermission } from '../middleware/adminAuth';
-import { AuthRequest, AdminAuthRequest } from '../types';
+
 import { pool } from '../config/database';
 import os from 'os';
+
 
 const router = Router();
 
@@ -35,7 +35,7 @@ async function logAdminAction(
              VALUES ($1, $2, $3, NOW())`,
             [userId, action, JSON.stringify(details)]
         );
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error logging admin action:', error);
     }
 }
@@ -94,7 +94,7 @@ router.get('/stats', authenticateToken, requirePermission('monitoring:read'), as
         };
 
         res.json(stats);
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching admin stats:', error);
         res.status(500).json({ error: 'Failed to fetch statistics' });
     }
@@ -162,7 +162,7 @@ router.get('/users', authenticateToken, requirePermission('user:read'), async (r
             isAdmin: row.is_admin,
             planetCount: parseInt(row.planet_count)
         })));
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching users:', error);
         res.status(500).json({ error: 'Failed to fetch users' });
     }
@@ -227,7 +227,7 @@ router.get('/users/:id', authenticateToken, requirePermission('user:read'), asyn
             planets: planetsQuery.rows,
             recentActivity: activityQuery.rows
         });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching user details:', error);
         res.status(500).json({ error: 'Failed to fetch user details' });
     }
@@ -269,7 +269,7 @@ router.post('/users/:id/ban', authenticateToken, requirePermission('user:ban'), 
         });
 
         res.json({ success: true, message: 'User banned successfully' });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error banning user:', error);
         res.status(500).json({ error: 'Failed to ban user' });
     }
@@ -295,7 +295,7 @@ router.post('/users/:id/unban', authenticateToken, requirePermission('user:ban')
         });
 
         res.json({ success: true, message: 'User unbanned successfully' });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error unbanning user:', error);
         res.status(500).json({ error: 'Failed to unban user' });
     }
@@ -344,7 +344,7 @@ router.get('/server-status', authenticateToken, requirePermission('monitoring:re
         };
 
         res.json(status);
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching server status:', error);
         res.status(500).json({ error: 'Failed to fetch server status' });
     }
@@ -377,7 +377,7 @@ router.get('/logs', authenticateToken, requirePermission('audit:read'), async (r
         const result = await pool.query(query, params);
 
         res.json(result.rows);
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching logs:', error);
         // Return empty array if table doesn't exist yet
         res.json([]);
@@ -416,7 +416,7 @@ router.get('/database-stats', authenticateToken, requirePermission('monitoring:r
                         size: `${table.size_mb} MB`,
                         lastModified: new Date().toISOString() // Approximation
                     };
-                } catch (error) {
+                } catch (error: unknown) {
                     return {
                         tableName: table.table_name,
                         rowCount: 0,
@@ -428,7 +428,7 @@ router.get('/database-stats', authenticateToken, requirePermission('monitoring:r
         );
 
         res.json(tableStats);
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching database stats:', error);
         res.status(500).json({ error: 'Failed to fetch database statistics' });
     }
@@ -450,7 +450,7 @@ router.get('/settings', authenticateToken, requirePermission('game:read'), async
         });
 
         res.json(settingsObj);
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching settings:', error);
         // Return default settings if table doesn't exist
         res.json({
@@ -483,7 +483,7 @@ router.put('/settings', authenticateToken, requirePermission('game:write'), asyn
         await logAdminAction(req.user!.id, 'SETTINGS_UPDATED', settings);
 
         res.json({ success: true, message: 'Settings updated successfully' });
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error updating settings:', error);
         res.status(500).json({ error: 'Failed to update settings' });
     }
@@ -508,7 +508,7 @@ router.get('/audit-log', authenticateToken, requirePermission('audit:read'), asy
         `, [parseInt(limit as string)]);
 
         res.json(logs.rows);
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error fetching audit log:', error);
         res.json([]);
     }
@@ -519,8 +519,6 @@ router.get('/audit-log', authenticateToken, requirePermission('audit:read'), asy
  * GET/PUT /api/admin/observability/config (SA/SGM only)
  * GET /api/admin/observability/status (GM/SM/M and above)
  */
-import { requirePermission } from '../middleware/adminAuth';
-import { AdminAuthRequest } from '../types/admin';
 
 // In-memory config (replace with DB or file storage as needed)
 let observabilityConfig = {
