@@ -1,0 +1,17 @@
+# Dynamic config for Traefik (middlewares, routers, services)
+# This file can be extended for advanced routing, auth, etc.
+
+http:
+  middlewares:
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "admin:$apr1$3r4nd0m$Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9Q9" # Replace with your own hash
+  routers:
+    traefik-dashboard:
+      rule: "Host(`traefik.localhost`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+      entryPoints:
+        - traefik
+      service: api@internal
+      middlewares:
+        - dashboard-auth

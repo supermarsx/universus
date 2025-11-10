@@ -1680,4 +1680,70 @@ router.post('/users/:userId/demote', requirePermission('admin:manage'), async (r
   }
 });
 
+// ========================================
+// I18N / LOCALE MANAGEMENT
+// ========================================
+
+import { getAvailableLocales } from '../config/localeUtils';
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * GET /api/admin/locales
+ * List all available locale codes
+ */
+router.get('/locales', requireAdmin, requirePermission('game:config:write'), (req: AdminAuthRequest, res: Response) => {
+  try {
+    const locales = getAvailableLocales();
+    res.json({ locales });
+  } catch (error: any) {
+    console.error('List locales error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/admin/locales/:locale
+ * Get the contents of a locale JSON file
+ */
+router.get('/locales/:locale', requireAdmin, requirePermission('game:config:write'), (req: AdminAuthRequest, res: Response) => {
+  try {
+    const { locale } = req.params;
+    const locales = getAvailableLocales();
+    if (!locales.includes(locale)) {
+      return res.status(404).json({ error: 'Locale not found' });
+    }
+    const localePath = path.join(__dirname, '../../../frontend/locales', `${locale}.json`);
+    const data = fs.readFileSync(localePath, 'utf-8');
+    res.json({ locale, data: JSON.parse(data) });
+  } catch (error: any) {
+    console.error('Get locale error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PUT /api/admin/locales/:locale
+ * Update a locale JSON file
+ */
+router.put('/locales/:locale', requireAdmin, requirePermission('game:config:write'), (req: AdminAuthRequest, res: Response) => {
+  try {
+    const { locale } = req.params;
+    const locales = getAvailableLocales();
+    if (!locales.includes(locale)) {
+      return res.status(404).json({ error: 'Locale not found' });
+    }
+    const localePath = path.join(__dirname, '../../../frontend/locales', `${locale}.json`);
+    const newData = req.body.data;
+    if (!newData || typeof newData !== 'object') {
+      return res.status(400).json({ error: 'Invalid data' });
+    }
+    fs.writeFileSync(localePath, JSON.stringify(newData, null, 2), 'utf-8');
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Update locale error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

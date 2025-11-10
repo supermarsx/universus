@@ -274,6 +274,21 @@
     "users": "Users"
   },
     "admin": {
+      "locales": {
+        "sidebar": "Locales",
+        "title": "Locale Management",
+        "select_locale": "Select Locale",
+        "reload": "Reload",
+        "key": "Key",
+        "value": "Value",
+        "save_changes": "Save Changes",
+        "cancel": "Cancel",
+        "loading": "Loading...",
+        "error_load_locales": "Failed to load locales.",
+        "error_load_locale": "Failed to load locale.",
+        "error_save_locale": "Failed to save locale.",
+        "success_save_locale": "Locale saved successfully!"
+      },
       "title_dashboard": "Admin Dashboard - Universus",
       "title_bots": "Universus - Bot Management",
     "admin": "Admin",
@@ -800,5 +815,23 @@
     "requiredDescription": "Please provide a description of the issue.",
     "successMessage": "Thank you — accessibility report submitted.",
     "failureMessage": "Failed to submit report. Please try again later."
+  },
+  "admin": {
+    "locales": {
+      "title": "Locale Management",
+      "select_locale": "Select Locale:",
+      "reload": "Reload",
+      "loading": "Loading...",
+      "error_loading_locales": "Failed to load locales.",
+      "error_loading_locale": "Failed to load locale.",
+      "error_saving_locale": "Failed to save locale.",
+      "save_changes": "Save Changes",
+      "cancel": "Cancel",
+      "key": "Key",
+      "value": "Value",
+      "success_save": "Locale saved successfully!",
+      "not_found": "Locale not found.",
+      "invalid_data": "Invalid data."
+    }
   }
 }

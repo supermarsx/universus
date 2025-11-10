@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+      # Dashboard is now only accessible via traefik.localhost:8080 on the internal network
+      # - "8080:8080" # REMOVE this line for security
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - ./acme.json:/acme.json
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    networks:
+      - universus
+
+  frontend:
+    build: ../frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`localhost`) || Host(`yourdomain.com`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+    networks:
+      - universus
+
+  backend:
+    build: ../backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`api.localhost`) || Host(`api.yourdomain.com`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=3000"
+    networks:
+      - universus
+
+  backend-admin-service:
+    build: ../backend-admin-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin.rule=Host(`admin.localhost`) || Host(`admin.yourdomain.com`)"
+      - "traefik.http.services.admin.loadbalancer.server.port=3001"
+    networks:
+      - universus
+
+  backend-bot-service:
+    build: ../backend-bot-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bot.rule=Host(`bot.localhost`) || Host(`bot.yourdomain.com`)"
+      - "traefik.http.services.bot.loadbalancer.server.port=3002"
+    networks:
+      - universus
+
+  email-delivery-service:
+    build: ../email-delivery-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.email.rule=Host(`email.localhost`) || Host(`email.yourdomain.com`)"
+      - "traefik.http.services.email.loadbalancer.server.port=3003"
+    networks:
+      - universus
+
+  observability-service:
+    build: ../observability-service
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.observability.rule=Host(`obs.localhost`) || Host(`obs.yourdomain.com`)"
+      - "traefik.http.services.observability.loadbalancer.server.port=3004"
+    networks:
+      - universus
+
+  # Add other services (db, redis, rabbitmq) as needed, but usually not exposed via Traefik
+
+networks:
+  universus:
+    driver: bridge

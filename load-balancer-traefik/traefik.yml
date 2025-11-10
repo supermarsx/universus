@@ -1,0 +1,40 @@
+# Traefik v3 configuration for Universus Monorepo
+# See https://doc.traefik.io/traefik/
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+api:
+  dashboard: true
+  insecure: false
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+  traefik:
+    address: ":8080"
+
+log:
+  level: INFO
+
+accessLog: {}
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "admin@example.com"
+      storage: acme.json
+      httpChallenge:
+        entryPoint: web
