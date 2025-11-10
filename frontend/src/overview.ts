@@ -23,8 +23,8 @@ function updatePageData(data) {
     document.getElementById('planetName').textContent = planet.name;
     document.getElementById('planetCoords').textContent = 
         `[${planet.galaxy}:${planet.system}:${planet.position}]`;
-    document.getElementById('planetTemp').textContent = `${planet.temperature}°C`;
-    document.getElementById('planetDiameter').textContent = `${formatNumber(planet.diameter)} km`;
+    document.getElementById('planetTemp').textContent = `${planet.temperature}°${i18next.t('overview.celsius', { defaultValue: 'C' })}`;
+    document.getElementById('planetDiameter').textContent = `${formatNumber(planet.diameter)} ${i18next.t('overview.km', { defaultValue: 'km' })}`;
 
     // Update production information
     document.getElementById('metalProd').textContent = formatNumber(production.metal);
@@ -44,8 +44,8 @@ function updatePageData(data) {
             const timeRemaining = calculateTimeRemaining(endTime);
             
             queueItem.innerHTML = `
-                <p><strong>${formatBuildingName(item.building_type)}</strong> (Level ${item.level})</p>
-                <p class="text-muted">Completes in: ${formatTime(timeRemaining)}</p>
+                <p><strong>${i18next.t('buildings.list.' + item.building_type + '.name', { defaultValue: formatBuildingName(item.building_type) })}</strong> (${i18next.t('buildings.level')} ${item.level})</p>
+                <p class="text-muted">${i18next.t('overview.completesIn', { time: formatTime(timeRemaining) })}</p>
             `;
             
             queueElement.appendChild(queueItem);
@@ -53,8 +53,8 @@ function updatePageData(data) {
             // Start countdown timer
             startCountdown(queueItem, endTime);
         });
-    } else {
-        queueElement.innerHTML = '<p class="text-muted">No construction in progress</p>';
+        } else {
+        queueElement.innerHTML = `<p class="text-muted">${i18next.t('overview.noConstruction')}</p>`;
     }
 
     // Update quick stats
@@ -75,7 +75,7 @@ function startCountdown(element, endTime) {
         } else {
             const timeElement = element.querySelector('.text-muted');
             if (timeElement) {
-                timeElement.textContent = `Completes in: ${formatTime(remaining)}`;
+                timeElement.textContent = i18next.t('overview.completesIn', { time: formatTime(remaining) });
             }
         }
     }, 1000);

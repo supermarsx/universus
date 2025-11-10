@@ -142,15 +142,16 @@ export class FleetManager {
       this.fetchActiveFleets();
       this.recordMissionLog(payload);
       if (payload.action === 'combat') {
-        const outcome =
+        const outcomeKey =
           payload.report?.winner === 'attacker'
             ? payload.role === 'attacker'
-              ? 'Victory'
-              : 'Defeat'
+              ? 'fleet.outcome.victory'
+              : 'fleet.outcome.defeat'
             : payload.role === 'defender'
-            ? 'Victory'
-            : 'Defeat';
-        this.notify(`${outcome}: combat at ${this.formatCoords(payload.report)}`, 'info');
+            ? 'fleet.outcome.victory'
+            : 'fleet.outcome.defeat';
+        const outcome = i18n.t(outcomeKey, { defaultValue: payload.report?.winner === 'attacker' ? (payload.role === 'attacker' ? 'Victory' : 'Defeat') : (payload.role === 'defender' ? 'Victory' : 'Defeat') });
+        this.notify(i18n.t('fleet.combatAt', { result: outcome, coords: this.formatCoords(payload.report), defaultValue: `${outcome}: combat at ${this.formatCoords(payload.report)}` }), 'info');
         this.loadCombatReports();
         this.loadMissionHistory();
       }
@@ -630,19 +631,19 @@ card.innerHTML = `
           <small>${new Date(report.battleTime).toLocaleString()}</small>
         </div>
         <div class="combat-report-body">
-          <p><strong>Attacker:</strong> ${report.attacker}</p>
-          ${report.attackerAllies?.length ? `<p class="combat-allies">Allies: ${report.attackerAllies.map((ally) => ally.username).join(', ')}</p>` : ''}
-          <p><strong>Defender:</strong> ${report.defender || 'Unknown'}</p>
-          <div class="combat-loot">
-            <span>Loot: ${this.formatLoot(report.loot)}</span>
-          </div>
-          <div class="combat-losses">
-            <span>Attacker Losses: ${this.formatLosses(report.attackerLosses)}</span>
-            <span>Defender Losses: ${this.formatLosses(report.defenderLosses)}</span>
-          </div>
-          <div class="combat-report-actions">
-            <button class="btn btn-secondary btn-small" data-replay="${index}">Watch Replay</button>
-          </div>
+          <p><strong>${i18n.t('fleet.attackerLabel', { defaultValue: 'Attacker:' })}</strong> ${report.attacker}</p>
+           ${report.attackerAllies?.length ? `<p class="combat-allies">${i18n.t('fleet.alliesLabel', { defaultValue: 'Allies:' })} ${report.attackerAllies.map((ally) => ally.username).join(', ')}</p>` : ''}
+           <p><strong>${i18n.t('fleet.defenderLabel', { defaultValue: 'Defender:' })}</strong> ${report.defender || i18n.t('fleet.unknown', { defaultValue: 'Unknown' })}</p>
+           <div class="combat-loot">
+             <span>${i18n.t('fleet.lootLabel', { defaultValue: 'Loot:' })} ${this.formatLoot(report.loot)}</span>
+           </div>
+           <div class="combat-losses">
+             <span>${i18n.t('fleet.attackerLossesLabel', { defaultValue: 'Attacker Losses:' })} ${this.formatLosses(report.attackerLosses)}</span>
+             <span>${i18n.t('fleet.defenderLossesLabel', { defaultValue: 'Defender Losses:' })} ${this.formatLosses(report.defenderLosses)}</span>
+           </div>
+           <div class="combat-report-actions">
+             <button class="btn btn-secondary btn-small" data-replay="${index}">${i18n.t('fleet.watchReplay', { defaultValue: 'Watch Replay' })}</button>
+           </div>
         </div>
       `;
       container.appendChild(card);
@@ -859,21 +860,22 @@ card.innerHTML = `
       case 'arrival':
         entry = {
           title: i18n.t('fleet.log.arrived', { defaultValue: 'Fleet Arrived' }),
-          message: `Fleet #${payload.fleetId} reached its destination`,
+          message: i18n.t('fleet.log.arrivedMessage', { id: payload.fleetId, defaultValue: `Fleet #${payload.fleetId} reached its destination` }),
           timestamp: now,
         };
         break;
       case 'recall':
         entry = {
           title: i18n.t('fleet.log.recall', { defaultValue: 'Recall Issued' }),
-          message: `Fleet #${payload.fleetId} is returning`,
+          message: i18n.t('fleet.log.recallMessage', { id: payload.fleetId, defaultValue: `Fleet #${payload.fleetId} is returning` }),
           timestamp: now,
         };
         break;
       case 'combat':
         entry = {
-          title: payload.role === 'attacker' ? 'Combat Report' : 'Defense Report',
-          message: `${payload.report?.winner?.toUpperCase()} at ${this.formatCoords(payload.report)}`,
+          title: payload.role === 'attacker' ? i18n.t('fleet.log.combatReport', { defaultValue: 'Combat Report' }) : i18n.t('fleet.log.defenseReport', { defaultValue: 'Defense Report' }),
+          message: i18n.t('fleet.log.combatMessage', { result: (payload.report?.winner || '').toUpperCase(), coords: this.formatCoords(payload.report), defaultValue: `${(payload.report?.winner || '').toUpperCase()} at ${this.formatCoords(payload.report)}` }),
+
           timestamp: now,
         };
         break;
@@ -894,7 +896,8 @@ card.innerHTML = `
       case 'espionage':
         entry = {
           title: i18n.t('fleet.log.espionage', { defaultValue: 'Espionage Report' }),
-          message: `Intel ${payload.intelLevel || 'standard'}${payload.detected ? ' • Detected' : ''}`,
+          message: i18n.t('fleet.log.espionageMessage', { level: payload.intelLevel || 'standard', detected: payload.detected ? i18n.t('fleet.detected', { defaultValue: 'Detected' }) : '', defaultValue: `Intel ${payload.intelLevel || 'standard'}${payload.detected ? ' • Detected' : ''}` }),
+
           timestamp: now,
         };
         break;
@@ -904,8 +907,8 @@ card.innerHTML = `
         entry = {
           title: payload.empty ? i18n.t('fleet.log.harvestAttempt', { defaultValue: 'Harvest Attempt' }) : i18n.t('fleet.log.harvestComplete', { defaultValue: 'Harvest Complete' }),
           message: payload.empty
-            ? 'No debris recovered.'
-            : 'Recovered ' + this.formatNumber(metal) + ' metal and ' + this.formatNumber(crystal) + ' crystal.',
+            ? i18n.t('fleet.noDebris', { defaultValue: 'No debris recovered.' })
+            : i18n.t('fleet.harvestRecovered', { metal: this.formatNumber(metal), crystal: this.formatNumber(crystal), defaultValue: 'Recovered ' + this.formatNumber(metal) + ' metal and ' + this.formatNumber(crystal) + ' crystal.' }),
           timestamp: now,
         };
         break;
@@ -921,15 +924,15 @@ card.innerHTML = `
   async loadMissionHistory() {
     try {
       const history = await api.get('/fleet/history?limit=25');
-      this.missionLog = (history || []).map((fleet) => ({
-        title: this.getLocalizedMissionLabel(fleet.mission_type) + ' (' + fleet.status + ')',
+    this.missionLog = (history || []).map((fleet) => ({
+        title: this.getLocalizedMissionLabel(fleet.mission_type) + ' (' + (fleet.status || i18n.t('fleet.unknown', { defaultValue: 'unknown' })) + ')',
         message: this.formatCoords({
           target: {
             galaxy: fleet.target_galaxy,
             system: fleet.target_system,
             position: fleet.target_position,
           },
-        }) + ' • Ships: ' + this.formatShipsSummary(fleet.ships),
+        }) + ' • ' + i18n.t('fleet.shipsLabel', { defaultValue: 'Ships:' }) + ' ' + this.formatShipsSummary(fleet.ships),
         timestamp: fleet.departure_time || fleet.createdAt || new Date().toISOString(),
       }));
       this.renderMissionLog();
@@ -940,7 +943,7 @@ card.innerHTML = `
 
   formatShipsSummary(ships = {}) {
     const entries = Object.entries(ships);
-    if (!entries.length) return 'No ships';
+    if (!entries.length) return i18n.t('fleet.noShips', { defaultValue: 'No ships' });
     return entries
       .map(([key, count]) => (SHIP_STATS[key]?.name || this.formatName(key)) + ' ' + count)
       .slice(0, 4)

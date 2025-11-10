@@ -438,7 +438,9 @@
     "description": "This is your overview page.",
     "startButton": "Get Started",
     "noConstruction": "No construction in progress",
-    "completesIn": "Completes in: {{time}}"
+    "completesIn": "Completes in: {{time}}",
+    "km": "km",
+    "celsius": "C"
   },
 "fleet": {
     "empty": "You have no fleets.",
@@ -470,6 +472,9 @@
     "returnLabel": "Return:",
     "recall": "Recall",
     "replayUnavailable": "Replay unavailable for this report.",
+    "battleLabel": "Battle:",
+    "outcomeLabel": "Outcome:",
+    "lootLabel": "Loot:",
     "noMissionActivity": "No mission activity yet.",
     "recallSent": "Recall order sent.",
     "failedToRecall": "Failed to recall fleet",
@@ -478,6 +483,14 @@
     "chooseMissionType": "Choose a mission type.",
     "failedToDispatch": "Failed to dispatch fleet",
     "dispatchedSuccess": "Fleet dispatched successfully!"
+  },
+  "combat": {
+    "roundLabel": "Round {{count}}",
+    "deploying": "Deploying Fleets",
+    "volley": "Volley: {{shots}} shots",
+    "counter": "Counter: {{shots}} shots",
+    "attackerLosses": "Attacker losses: {{losses}}",
+    "defenderLosses": "Defender losses: {{losses}}"
   },
   "galaxy": {
     "loading": "Loading galaxy map...",
@@ -548,7 +561,19 @@
   },
   "matrixShop": {
     "noCosmetics": "You don't own any cosmetics yet.",
-    "exploreButton": "Explore cosmetics"
+    "exploreButton": "Explore cosmetics",
+    "noItemsFiltered": "No items found matching your filters",
+    "buyNow": "Buy Now",
+    "stockRemaining": "Only {{count}} left in stock!",
+    "unequip": "Unequip",
+    "equip": "Equip",
+    "gift": "Gift",
+    "activePromotions": "🎉 Active Promotions",
+    "promoCodeLabel": "Code:",
+    "expiresInLabel": "Expires in",
+    "flashSales": "⚡ Flash Sales",
+    "priceWasNow": "Was: ${{was}} → Now: ${{now}}",
+    "endsIn": "Ends in"
   },
   "buildings": {
     "moonUnavailable": "Moon building currently unavailable.",
@@ -645,14 +670,14 @@
     "general": "General Research",
     "idle": "Research Laboratory Idle",
     "assignProject": "Assign a new research project to keep your scientists busy.",
-    "researching": "Researching {{tech}} (Level {{level}})",
+    "researching": "🔬 Researching {{tech}} (Level {{level}})",
     "queue": "Queue",
     "noPending": "No pending research projects.",
     "requirements": "Requirements",
     "noDescription": "No description available.",
     "researchInProgress": "Research in progress",
     "insufficientResources": "Insufficient resources",
-    "researchLevel": "Research Level {{level}}",
+    "researchLevel": "Level {{level}}",
     "failedToLoad": "Failed to load research data",
     "failedToStart": "Failed to start research",
     "researchStarted": "Research started: {{tech}}",
@@ -677,7 +702,36 @@
     "markAsRead": "Mark as Read",
     "reply": "Reply",
     "delete": "Delete",
-    "close": "Close"
+    "close": "Close",
+    "meta": { "from": "From:", "date": "Date:" },
+    "type": { "combat": "COMBAT", "espionage": "SPY", "alliance": "ALLIANCE", "system": "SYSTEM", "player": "PLAYER" },
+    "combat": {
+      "detailsTitle": "Combat Details",
+      "side": "Side",
+      "player": "Player",
+      "shipsLost": "Ships Lost",
+      "defenseLost": "Defense Lost",
+      "attacker": "Attacker",
+      "defender": "Defender",
+      "resultLabel": "Result:",
+      "attackerVictory": "Attacker Victory",
+      "defenderVictory": "Defender Victory",
+      "lootLabel": "Loot:",
+      "metal": "Metal",
+      "crystal": "Crystal",
+      "deuterium": "Deuterium"
+    },
+    "espionage": {
+      "title": "Espionage Report",
+      "targetLabel": "Target:",
+      "planetLabel": "Planet:",
+      "resourcesTitle": "Resources",
+      "metal": "Metal",
+      "crystal": "Crystal",
+      "deuterium": "Deuterium",
+      "fleetTitle": "Fleet",
+      "defenseTitle": "Defense"
+    }
   },
   "notifications": {
     "unableToLoad": "Unable to load notifications.",

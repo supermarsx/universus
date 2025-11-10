@@ -249,7 +249,7 @@ function renderItems(items) {
     if (items.length === 0) {
         grid.innerHTML = `
             <div class="loading-matrix">
-                <p>No items found matching your filters</p>
+                <p>${i18n.t('matrixShop.noItemsFiltered', { defaultValue: 'No items found matching your filters' })}</p>
             </div>
         `;
         return;
@@ -269,7 +269,7 @@ function renderItems(items) {
                     ${item.price_dm > 0 ? `${item.price_dm} DM` : ''}
                 </div>
                 <div class="item-actions">
-                    <button class="btn-quick-buy" onclick="event.stopPropagation(); quickBuy(${item.id})">Buy Now</button>
+                    <button class="btn-quick-buy" onclick="event.stopPropagation(); quickBuy(${item.id})">${i18n.t('matrixShop.buyNow', { defaultValue: 'Buy Now' })}</button>
                 </div>
             </div>
         </div>
@@ -281,8 +281,8 @@ window.showItemDetails = async function(itemId) {
     const item = currentItems.find(i => i.id === itemId);
     if (!item) return;
 
-    selectedItem = item;
-
+        selectedItem = item;
+ 
     // Populate modal
     document.getElementById('modalImage').src = item.image_url || '/images/placeholder-cosmetic.png';
     document.getElementById('modalImage').alt = item.name;
@@ -290,12 +290,12 @@ window.showItemDetails = async function(itemId) {
     document.getElementById('modalDescription').textContent = item.description;
     document.getElementById('modalRarity').textContent = item.rarity.replace('_', ' ');
     document.getElementById('modalRarity').className = `rarity-badge ${item.rarity}`;
-
+ 
     // Prices
     if (item.price_usd > 0) {
         document.getElementById('modalPriceUSD').textContent = `$${item.price_usd.toFixed(2)}`;
     }
-
+ 
     if (item.price_dm > 0) {
         document.getElementById('dmPriceOption').style.display = 'block';
         document.getElementById('modalPriceDM').textContent = `${item.price_dm} DM`;
@@ -304,15 +304,15 @@ window.showItemDetails = async function(itemId) {
         document.getElementById('dmPriceOption').style.display = 'none';
         document.getElementById('purchaseDM').style.display = 'none';
     }
-
+ 
     // Stock info
     if (item.stock_quantity !== null && item.stock_quantity !== undefined) {
         document.getElementById('stockInfo').style.display = 'block';
-        document.getElementById('stockText').textContent = `Only ${item.stock_quantity} left in stock!`;
+        document.getElementById('stockText').textContent = i18n.t('matrixShop.stockRemaining', { defaultValue: 'Only {{count}} left in stock!', count: item.stock_quantity, interpolation: { escapeValue: false } }).replace('{{count}}', item.stock_quantity);
     } else {
         document.getElementById('stockInfo').style.display = 'none';
     }
-
+ 
     // Show modal
     document.getElementById('itemModal').classList.add('active');
 };
@@ -431,11 +431,12 @@ function renderInventory() {
     const grid = document.getElementById('inventoryGrid');
     
     if (userInventory.length === 0) {
-        grid.innerHTML = '<p style="text-align: center; color: rgba(0,255,65,0.6);">You don\'t own any cosmetics yet</p>';
+        grid.innerHTML = `
+            <p style="text-align: center; color: rgba(0,255,65,0.6);">${i18n.t('matrixShop.noCosmetics', { defaultValue: "You don't own any cosmetics yet" })}</p>`;
         return;
     }
 
-    grid.innerHTML = userInventory.map(item => `
+        grid.innerHTML = userInventory.map(item => `
         <div class="inventory-item ${item.is_equipped ? 'equipped' : ''}">
             <img src="${item.cosmetic.image_url || '/images/placeholder-cosmetic.png'}" alt="${item.cosmetic.name}">
             <div class="inventory-info">
@@ -444,10 +445,10 @@ function renderInventory() {
             </div>
             <div class="inventory-actions">
                 ${item.is_equipped 
-                    ? `<button class="btn-unequip" onclick="unequipItem(${item.id})">Unequip</button>`
-                    : `<button class="btn-equip" onclick="equipItem(${item.id})">Equip</button>`
+                    ? `<button class="btn-unequip" onclick="unequipItem(${item.id})">${i18n.t('matrixShop.unequip', { defaultValue: 'Unequip' })}</button>`
+                    : `<button class="btn-equip" onclick="equipItem(${item.id})">${i18n.t('matrixShop.equip', { defaultValue: 'Equip' })}</button>`
                 }
-                <button class="btn-gift" onclick="openGiftModal(${item.cosmetic_id})">Gift</button>
+                <button class="btn-gift" onclick="openGiftModal(${item.cosmetic_id})">${i18n.t('matrixShop.gift', { defaultValue: 'Gift' })}</button>
             </div>
         </div>
     `).join('');
@@ -619,16 +620,16 @@ function renderPromotions(promotions) {
     section.classList.add('active');
 
     section.innerHTML = `
-        <h3 style="margin-bottom: 15px; color: var(--matrix-warning);">🎉 Active Promotions</h3>
+        <h3 style="margin-bottom: 15px; color: var(--matrix-warning);">${i18n.t('matrixShop.activePromotions', { defaultValue: '🎉 Active Promotions' })}</h3>
         ${promotions.map(promo => `
             <div class="promo-banner">
                 <div class="promo-info">
                     <h3>${promo.name}</h3>
                     <p style="margin: 5px 0;">${promo.description}</p>
-                    <div class="promo-code">Code: ${promo.code}</div>
+                    <div class="promo-code">${i18n.t('matrixShop.promoCodeLabel', { defaultValue: 'Code:' })} ${promo.code}</div>
                 </div>
                 <div class="promo-timer">
-                    <div>Expires in</div>
+                    <div>${i18n.t('matrixShop.expiresInLabel', { defaultValue: 'Expires in' })}</div>
                     <div class="timer-value" data-expires="${promo.end_date}">${getTimeRemaining(promo.end_date)}</div>
                 </div>
             </div>
@@ -669,16 +670,16 @@ function renderFlashSales(sales) {
     section.classList.add('active');
 
     section.innerHTML = `
-        <h3 style="margin-bottom: 15px; color: var(--matrix-danger);">⚡ Flash Sales</h3>
+        <h3 style="margin-bottom: 15px; color: var(--matrix-danger);">${i18n.t('matrixShop.flashSales', { defaultValue: '⚡ Flash Sales' })}</h3>
         ${sales.map(sale => `
             <div class="promo-banner">
                 <div class="promo-info">
                     <h3>${sale.cosmetic.name}</h3>
                     <p style="margin: 5px 0;">${sale.discount_percentage}% OFF</p>
-                    <div class="promo-code">Was: $${sale.cosmetic.price_usd.toFixed(2)} → Now: $${(sale.cosmetic.price_usd * (1 - sale.discount_percentage / 100)).toFixed(2)}</div>
+                    <div class="promo-code">${i18n.t('matrixShop.priceWasNow', { defaultValue: 'Was: ${{was}} → Now: ${{now}}', interpolation: { escapeValue: false } }).replace('{{was}}', sale.cosmetic.price_usd.toFixed(2)).replace('{{now}}', (sale.cosmetic.price_usd * (1 - sale.discount_percentage / 100)).toFixed(2))}</div>
                 </div>
                 <div class="promo-timer">
-                    <div>Ends in</div>
+                    <div>${i18n.t('matrixShop.endsIn', { defaultValue: 'Ends in' })}</div>
                     <div class="timer-value" data-expires="${sale.end_date}">${getTimeRemaining(sale.end_date)}</div>
                 </div>
             </div>

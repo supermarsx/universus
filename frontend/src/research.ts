@@ -1,4 +1,6 @@
 // @ts-nocheck
+import i18next from 'i18next';
+
 const RESEARCH_CATEGORY_LABELS = {
     energy: 'Energy & Power',
     weapons: 'Weapons',
@@ -38,7 +40,7 @@ class ResearchManager {
             window.socket.on('researchUpdate', () => this.loadResearchData());
             window.socket.on('researchComplete', (payload) => {
                 this.showNotification(
-                    `Research complete: ${this.formatTechName(payload.researchType)} Level ${payload.level}`,
+                    i18next.t('research.researchComplete', { tech: this.formatTechName(payload.researchType), level: payload.level, defaultValue: `Research complete: ${this.formatTechName(payload.researchType)} Level ${payload.level}` }),
                     'success'
                 );
                 this.loadResearchData();
@@ -65,7 +67,7 @@ class ResearchManager {
             this.render();
         } catch (error) {
             console.error('Failed to load research data:', error);
-            this.showNotification(error.message || 'Failed to load research data', 'error');
+            this.showNotification(error.message || i18next.t('research.failedToLoad', { defaultValue: 'Failed to load research data' }), 'error');
         }
     }
 
@@ -82,8 +84,8 @@ class ResearchManager {
         if (!this.state || !this.state.currentResearch) {
             container.innerHTML = `
                 <div class="research-status-idle">
-                    <h3>Research Laboratory Idle</h3>
-                    <p>Assign a new research project to keep your scientists busy.</p>
+                    <h3>${i18next.t('research.idle', { defaultValue: 'Research Laboratory Idle' })}</h3>
+                    <p>${i18next.t('research.assignProject', { defaultValue: 'Assign a new research project to keep your scientists busy.' })}</p>
                 </div>
             `;
             if (this.statusTimer) {
@@ -99,7 +101,7 @@ class ResearchManager {
 
         container.innerHTML = `
             <div class="research-status-active">
-                <h3>🔬 Researching ${this.formatTechName(current.research_type)} (Level ${current.level})</h3>
+                <h3>${i18next.t('research.researching', { tech: this.formatTechName(current.research_type), level: current.level, defaultValue: `🔬 Researching ${this.formatTechName(current.research_type)} (Level ${current.level})` })}</h3>
                 <div class="research-progress">
                     <div class="progress-bar">
                         <div class="progress-fill" id="research-progress-fill"></div>
@@ -137,7 +139,7 @@ class ResearchManager {
         if (!this.state || !this.state.queue || this.state.queue.length === 0) {
             container.innerHTML = `
                 <div class="research-queue-empty">
-                    <p>No pending research projects.</p>
+                    <p>${i18next.t('research.noPending', { defaultValue: 'No pending research projects.' })}</p>
                 </div>
             `;
             return;
@@ -147,19 +149,19 @@ class ResearchManager {
             <div class="queue-entry">
                 <div>
                     <strong>${this.formatTechName(entry.research_type)}</strong>
-                    <span>Level ${entry.level}</span>
+                    <span>${i18next.t('research.researchLevel', { level: entry.level, defaultValue: `Level ${entry.level}` })}</span>
                 </div>
                 <div class="queue-actions">
                     <span>${this.formatTime(entry.secondsRemaining)}</span>
                     <button class="btn btn-text" data-queue-id="${entry.id}">
-                        Cancel
+                        ${i18next.t('ui.cancel', { defaultValue: 'Cancel' })}
                     </button>
                 </div>
             </div>
         `).join('');
 
         container.innerHTML = `
-            <h3>Queue</h3>
+            <h3>${i18next.t('research.queue', { defaultValue: 'Queue' })}</h3>
             ${entries}
         `;
 
@@ -180,7 +182,7 @@ class ResearchManager {
             section.className = 'tech-category card-enhanced';
             section.innerHTML = `
                 <div class="category-header">
-                    <h3>${RESEARCH_CATEGORY_LABELS[category] || this.formatTechName(category)}</h3>
+                    <h3>${i18next.t(`research.${category}`, { defaultValue: RESEARCH_CATEGORY_LABELS[category] || this.formatTechName(category) })}</h3>
                     <p>${techList.length} technologies</p>
                 </div>
                 <div class="tech-card-grid"></div>
@@ -204,13 +206,13 @@ class ResearchManager {
         card.innerHTML = `
             <div class="tech-card-header">
                 <h4>${tech.name}</h4>
-                <span class="tech-level">Level ${tech.level}</span>
+                <span class="tech-level">${i18next.t('research.researchLevel', { level: tech.level, defaultValue: `Level ${tech.level}` })}</span>
             </div>
-            <p class="tech-description">${tech.description || 'No description available.'}</p>
+            <p class="tech-description">${tech.description || i18next.t('research.noDescription', { defaultValue: 'No description available.' })}</p>
             <div class="tech-costs">
-                ${this.renderCost('Metal', tech.cost.metal)}
-                ${this.renderCost('Crystal', tech.cost.crystal)}
-                ${this.renderCost('Deuterium', tech.cost.deuterium)}
+                ${this.renderCost(i18next.t('buildings.resources.metal', { defaultValue: 'Metal' }), tech.cost.metal)}
+                ${this.renderCost(i18next.t('buildings.resources.crystal', { defaultValue: 'Crystal' }), tech.cost.crystal)}
+                ${this.renderCost(i18next.t('buildings.resources.deuterium', { defaultValue: 'Deuterium' }), tech.cost.deuterium)}
             </div>
             ${this.renderRequirements(tech)}
             <button 
@@ -218,7 +220,7 @@ class ResearchManager {
                 data-tech="${tech.type}"
                 ${canResearch ? '' : 'disabled'}
             >
-                ${isBusy ? 'Research in progress' : affordable ? `Research Level ${tech.nextLevel}` : 'Insufficient resources'}
+                ${isBusy ? i18next.t('research.researchInProgress', { defaultValue: 'Research in progress' }) : affordable ? i18next.t('research.researchLevel', { level: tech.nextLevel, defaultValue: `Research Level ${tech.nextLevel}` }) : i18next.t('research.insufficientResources', { defaultValue: 'Insufficient resources' })}
             </button>
         `;
 
@@ -261,7 +263,7 @@ class ResearchManager {
 
         return `
             <div class="tech-requirements">
-                <strong>Requirements</strong>
+                <strong>${i18next.t('research.requirements', { defaultValue: 'Requirements' })}</strong>
                 ${entries.join('')}
             </div>
         `;
@@ -284,11 +286,11 @@ class ResearchManager {
                 planetId: this.planet.id,
                 researchType,
             });
-            this.showNotification(`Research started: ${this.formatTechName(researchType)}`, 'success');
+            this.showNotification(i18next.t('research.researchStarted', { tech: this.formatTechName(researchType), defaultValue: `Research started: ${this.formatTechName(researchType)}` }), 'success');
             await this.loadResearchData();
         } catch (error) {
             console.error('Failed to start research:', error);
-            this.showNotification(error.message || 'Failed to start research', 'error');
+            this.showNotification(error.message || i18next.t('research.failedToStart', { defaultValue: 'Failed to start research' }), 'error');
         }
     }
 
@@ -296,11 +298,11 @@ class ResearchManager {
         if (!queueId) return;
         try {
             await api.delete(`/research/queue/${queueId}`);
-            this.showNotification('Research cancelled', 'info');
+            this.showNotification(i18next.t('research.researchCancelled', { defaultValue: 'Research cancelled' }), 'info');
             await this.loadResearchData();
         } catch (error) {
             console.error('Failed to cancel research:', error);
-            this.showNotification(error.message || 'Failed to cancel research', 'error');
+            this.showNotification(error.message || i18next.t('research.failedToCancel', { defaultValue: 'Failed to cancel research' }), 'error');
         }
     }
 
@@ -361,3 +363,4 @@ function updatePageData(data) {
 document.addEventListener('DOMContentLoaded', () => {
     ensureManager();
 });
+

@@ -25,9 +25,9 @@ class CombatVisualizer {
     this.lastFrame = 0;
 
     this.summary.innerHTML = `
-      <p><strong>Battle:</strong> ${report.attacker} vs ${report.defender || 'Unknown'}</p>
-      <p><strong>Outcome:</strong> ${report.winner.toUpperCase()}</p>
-      <p><strong>Loot:</strong> ${this.formatLoot(report.loot)}</p>
+      <p><strong>${i18n.t('fleet.battleLabel', { defaultValue: 'Battle:' })}</strong> ${report.attacker} vs ${report.defender || i18n.t('fleet.unknown', { defaultValue: 'Unknown' })}</p>
+      <p><strong>${i18n.t('fleet.outcomeLabel', { defaultValue: 'Outcome:' })}</strong> ${report.winner ? report.winner.toUpperCase() : ''}</p>
+      <p><strong>${i18n.t('fleet.lootLabel', { defaultValue: 'Loot:' })}</strong> ${this.formatLoot(report.loot)}</p>
     `;
 
     this.modal.style.display = 'block';
@@ -65,7 +65,7 @@ class CombatVisualizer {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.fillStyle = '#fbbf24';
     this.ctx.font = '18px Orbitron, sans-serif';
-    this.ctx.fillText('Replay unavailable for this battle.', 40, this.canvas.height / 2);
+    this.ctx.fillText(i18n.t('fleet.replayUnavailable', { defaultValue: 'Replay unavailable for this report.' }), 40, this.canvas.height / 2);
   }
 
   drawRound() {
@@ -113,13 +113,13 @@ class CombatVisualizer {
     // Round info
     this.ctx.fillStyle = '#e2e8f0';
     this.ctx.font = '16px Orbitron, sans-serif';
-    const roundLabel = this.roundIndex >= 0 ? `Round ${this.roundIndex + 1}` : 'Deploying Fleets';
+    const roundLabel = this.roundIndex >= 0 ? i18n.t('combat.roundLabel', { count: this.roundIndex + 1, defaultValue: `Round ${this.roundIndex + 1}` }) : i18n.t('combat.deploying', { defaultValue: 'Deploying Fleets' });
     this.ctx.fillText(roundLabel, 30, 40);
     this.ctx.font = '13px Inter, sans-serif';
-    this.ctx.fillText(`Volley: ${round.attackerShots || 0} shots`, 30, 70);
-    this.ctx.fillText(`Counter: ${round.defenderShots || 0} shots`, 30, 90);
-    this.ctx.fillText(`Attacker losses: ${round.attackerDestroyed || 0}`, width - 220, 70);
-    this.ctx.fillText(`Defender losses: ${round.defenderDestroyed || 0}`, width - 220, 90);
+    this.ctx.fillText(i18n.t('combat.volley', { shots: round.attackerShots || 0, defaultValue: `Volley: ${round.attackerShots || 0} shots` }), 30, 70);
+    this.ctx.fillText(i18n.t('combat.counter', { shots: round.defenderShots || 0, defaultValue: `Counter: ${round.defenderShots || 0} shots` }), 30, 90);
+    this.ctx.fillText(i18n.t('combat.attackerLosses', { losses: round.attackerDestroyed || 0, defaultValue: `Attacker losses: ${round.attackerDestroyed || 0}` }), width - 220, 70);
+    this.ctx.fillText(i18n.t('combat.defenderLosses', { losses: round.defenderDestroyed || 0, defaultValue: `Defender losses: ${round.defenderDestroyed || 0}` }), width - 220, 90);
   }
 
   close() {

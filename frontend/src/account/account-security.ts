@@ -52,20 +52,20 @@
         const accountDetail = document.getElementById('account-detail');
         
         if (summary.is_locked) {
-            statusBadge.textContent = 'Locked';
+            statusBadge.textContent = i18n.t('account.status.locked', { defaultValue: 'Locked' });
             statusBadge.className = 'status-badge status-locked';
-            accountStatus.textContent = 'Locked';
-            accountDetail.textContent = 'Account is temporarily locked';
+            accountStatus.textContent = i18n.t('account.status.locked', { defaultValue: 'Locked' });
+            accountDetail.textContent = i18n.t('account.status.lockedDetail', { defaultValue: 'Account is temporarily locked' });
         } else if (summary.account_status === 'suspended') {
-            statusBadge.textContent = 'Suspended';
+            statusBadge.textContent = i18n.t('account.status.suspended', { defaultValue: 'Suspended' });
             statusBadge.className = 'status-badge status-suspended';
-            accountStatus.textContent = 'Suspended';
-            accountDetail.textContent = 'Account access is suspended';
+            accountStatus.textContent = i18n.t('account.status.suspended', { defaultValue: 'Suspended' });
+            accountDetail.textContent = i18n.t('account.status.suspendedDetail', { defaultValue: 'Account access is suspended' });
         } else {
-            statusBadge.textContent = 'Active';
+            statusBadge.textContent = i18n.t('account.status.active', { defaultValue: 'Active' });
             statusBadge.className = 'status-badge status-active';
-            accountStatus.textContent = 'Active';
-            accountDetail.textContent = 'All systems operational';
+            accountStatus.textContent = i18n.t('account.status.active', { defaultValue: 'Active' });
+            accountDetail.textContent = i18n.t('account.status.okDetail', { defaultValue: 'All systems operational' });
         }
 
         // Risk level
