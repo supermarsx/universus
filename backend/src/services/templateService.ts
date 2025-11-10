@@ -37,14 +37,17 @@ export class TemplateService {
    * Render a template with context data
    */
   static render(res: Response, template: string, context: TemplateContext = {}): void {
-    const defaultContext: TemplateContext = {
+    import { getAvailableLocales } from '../config/localeUtils';
+
+const defaultContext: TemplateContext = {
       brandName: 'Universus',
       version: process.env.APP_VERSION || '1.0.0',
       currentYear: new Date().getFullYear(),
       // Asset helper functions
       getShipAsset,
       getBuildingAsset,
-      getResourceIcon,
+       getResourceIcon,
+       availableLocales: getAvailableLocales(),
     };
 
     const mergedContext = { ...defaultContext, ...context };

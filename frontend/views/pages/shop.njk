@@ -1,11 +1,11 @@
 {% extends "layouts/game.njk" %}
 
-{% set title = "Universus - Premium Shop" %}
+{% set title = ('shop.title' | t) %}
 {% set currentPage = "shop" %}
 {% set bodyClass = "game-body" %}
 
 {% block content %}
-<h2>Premium Shop</h2>
+<h2>{{ 'shop.heading' | t }}</h2>
 
 <div class="shop-layout">
     <!-- Shop Categories -->
@@ -20,7 +20,7 @@
 
         <!-- Active Perks -->
         <div class="active-perks">
-            <h4>Active Perks</h4>
+            <h4>{{ 'shop.active_perks' | t }}</h4>
             <div id="activePerks">
                 <p class="text-muted">{{ 'ui.no_active_perks' | t }}</p>
             </div>
@@ -30,7 +30,7 @@
     <!-- Shop Items -->
     <div class="shop-content">
         <div class="user-dm-display">
-            <span>Dark Matter:</span>
+            <span>{{ 'shop.dark_matter' | t }}</span>
             <strong id="userDM">0</strong>
         </div>
 
@@ -46,7 +46,7 @@
 <!-- Purchase Modal -->
 <div id="purchaseModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="purchaseModalTitle" tabindex="-1" style="display: none;">
     <div class="modal-content">
-        <button class="close" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
+        <button class="close" aria-label="Close dialog"><span class="sr-only">{{ 'ui.close' | t }}</span>&times;</button>
         <h3 id="purchaseModalTitle">{{ 'shop.purchase_item' | t }}</h3>
         <div id="purchaseDetails"></div>
     </div>
@@ -55,7 +55,7 @@
 <!-- Payment Modal -->
 <div id="paymentModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle" tabindex="-1" style="display: none;">
     <div class="modal-content">
-        <button class="close" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
+        <button class="close" aria-label="Close dialog"><span class="sr-only">{{ 'ui.close' | t }}</span>&times;</button>
         <h3 id="paymentModalTitle">{{ 'shop.purchase_dark_matter' | t }}</h3>
         <div id="paymentForm"></div>
     </div>

@@ -1,6 +1,6 @@
 {% extends "layouts/game.njk" %}
 
-{% block title %}Chat - Universus{% endblock %}
+{% block title %}{{ 'chat.title' | t }}{% endblock %}
 
 {% block content %}
 <div class="game-container">
@@ -111,7 +111,7 @@
   <div class="modal-content">
     <div class="modal-header">
       <h3 id="pm-modal-title">{{ 'chat.send_private_message' | t }}</h3>
-      <button class="modal-close" onclick="closePMModal()" aria-label="Close dialog"><span class="sr-only">Close</span>&times;</button>
+      <button class="modal-close" onclick="closePMModal()" aria-label="Close dialog"><span class="sr-only">{{ 'ui.close' | t }}</span>&times;</button>
     </div>
     <div class="modal-body">
       <label for="pm-recipient">{{ 'ui.to' | t }}</label>

@@ -80,10 +80,11 @@
         
         <button id="logoutBtn" class="btn-secondary">{{ 'ui.logout' | t }}</button>
         <div class="lang-switcher" style="display:inline-block;margin-left:1rem;">
-            <select id="languageSelect" aria-label="Select language">
-                <option value="en">English</option>
-                <option value="pt-PT">Português</option>
-            </select>
+<select id="languageSelect" aria-label="Select language">
+  {% for locale in availableLocales %}
+    <option value="{{ locale }}">{{ ('ui.language_' ~ locale|replace({'-':'_'}) ) | t }}</option>
+  {% endfor %}
+</select>
         </div>
     </div>
 </nav>

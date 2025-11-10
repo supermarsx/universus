@@ -31,6 +31,12 @@
     "theme_saved_success": "Theme saved successfully!"
   },
   "ui": {
+    "language_english": "English",
+    "language_portuguese": "Português",
+    "language_fr_FR": "Français",
+    "language_es_ES": "Español",
+    "language_en_UK": "English (UK)",
+    "language_de_DE": "Deutsch",
     "account": "Account",
     "actions": "Actions",
     "activate": "Activate",
@@ -267,7 +273,9 @@
     "username": "Username",
     "users": "Users"
   },
-  "admin": {
+    "admin": {
+      "title_dashboard": "Admin Dashboard - Universus",
+      "title_bots": "Universus - Bot Management",
     "admin": "Admin",
     "admin_access_required": "Admin access required",
     "admin_dashboard": "Admin Dashboard",
@@ -290,6 +298,10 @@
     "view_analytics": "View Analytics"
   },
   "shop": {
+    "title": "Universus - Premium Shop",
+    "heading": "Premium Shop",
+    "active_perks": "Active Perks",
+    "dark_matter": "Dark Matter:",
     "all_items": "All Items",
     "purchase_dark_matter": "Purchase Dark Matter",
     "purchase_item": "Purchase Item",
@@ -328,6 +340,7 @@
     }
   },
   "chat": {
+    "title": "Chat - Universus",
     "announcement_world_chat": "Announcement to world chat",
     "chat_channels": "Chat Channels",
     "message": "Message",
