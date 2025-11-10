@@ -142,7 +142,10 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const server = http.createServer(app);
 
 // Initialize Socket.io
-const io = initializeSocket(server);
+let io: import('socket.io').Server;
+(async () => {
+  io = await initializeSocket(server);
+})();
 
 // Start game loop
 GameLoopService.start();

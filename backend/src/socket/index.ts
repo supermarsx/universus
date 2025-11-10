@@ -16,7 +16,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 
 let realtimeHandler: RealtimeSocketHandler | null = null;
 
-export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
+export async function initializeSocket(httpServer: HTTPServer): Promise<SocketIOServer> {
   const io = new SocketIOServer(httpServer, {
     cors: {
       origin: '*',
@@ -24,7 +24,7 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
     },
   });
 
-  attachRedisAdapter(io);
+  await attachRedisAdapter(io);
 
   // Authentication middleware
   io.use(async (socket: Socket, next) => {
@@ -118,6 +118,11 @@ export function initializeSocket(httpServer: HTTPServer): SocketIOServer {
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${username} (${userId})`);
       // redis.srem('online_users', userId.toString());
+    });
+
+    // --- Cluster-wide test event ---
+    socket.on('ping', (data) => {
+      socket.emit('pong', { data, server: process.env.SERVER_ID || process.pid });
     });
   });
 
