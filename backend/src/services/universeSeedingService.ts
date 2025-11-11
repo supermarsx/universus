@@ -24,24 +24,50 @@ export class UniverseSeedingService {
    * @param request - CreateUniverseRequest with universe options.
    * @returns Result object indicating success and created universe id.
    */
-  async createUniverse(request: CreateUniverseRequest): Promise<{ success: boolean; universeId?: number; message: string }> {
+   async createUniverse(request: CreateUniverseRequest): Promise<{ success: boolean; universeId?: number; message: string }> {
     const client = await pool.connect();
     
     try {
       await client.query('BEGIN');
       
-      const {
-        universeName,
-        universeType,
-        galaxyCount = 9,
-        systemsPerGalaxy = 499,
-        maxPlayers = 10000,
-        botPercentage = 30,
-        resourceMultiplier = 1.0,
-        difficultyCurve = DifficultyCurve.PROGRESSIVE,
-        configuration = {}
-      } = request;
-      
+       const {
+         universeName,
+         universeType,
+         galaxyCount = 9,
+         systemsPerGalaxy = 499,
+         maxPlayers = 10000,
+         botPercentage = 30,
+         resourceMultiplier = 1.0,
+         difficultyCurve = DifficultyCurve.PROGRESSIVE,
+         configuration = {},
+         // New fields for multi-universe management
+         registrationStatus = 'open',
+         registrationOpenAt = null,
+         registrationCloseAt = null,
+         universeOpenAt = null,
+         universeCloseAt = null,
+         isActive = true,
+         closureReason = null,
+         speedMultiplier = 1.0,
+         speedProgressionType = 'static',
+         speedSchedule = null,
+         buildingSpeedMultiplier = 1.0,
+         researchSpeedMultiplier = 1.0,
+         buildingSpeedSchedule = null,
+         researchSpeedSchedule = null,
+         baseStorageRation = null,
+         baseProductionRation = null,
+         isMerging = false,
+         mergeTargetUniverseId = null,
+         mergeScheduledAt = null,
+         endOfUniverseEventAt = null,
+         endOfUniverseType = null,
+         endOfUniverseAnnouncement = null,
+         announcement = null,
+         announcementType = null,
+         announcementExpiresAt = null
+       } = request;
+       
       // Calculate target bot count
       const targetBotCount = Math.floor((maxPlayers * botPercentage) / 100);
       
@@ -50,15 +76,40 @@ export class UniverseSeedingService {
         `INSERT INTO universe_seeds (
           universe_name, universe_type, galaxy_count, systems_per_galaxy,
           max_players, bot_percentage, target_bot_count,
-          resource_multiplier, difficulty_curve, configuration
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING *`,
-        [
-          universeName, universeType, galaxyCount, systemsPerGalaxy,
-          maxPlayers, botPercentage, targetBotCount,
-          resourceMultiplier, difficultyCurve, JSON.stringify(configuration)
-        ]
-      );
+          resource_multiplier, difficulty_curve, configuration,
+          registration_status, registration_open_at, registration_close_at,
+          universe_open_at, universe_close_at, is_active, closure_reason,
+           speed_multiplier, speed_progression_type, speed_schedule,
+           building_speed_multiplier, research_speed_multiplier,
+           building_speed_schedule, research_speed_schedule,
+           base_storage_ration, base_production_ration,
+           is_merging, merge_target_universe_id, merge_scheduled_at,
+           end_of_universe_event_at, end_of_universe_type, end_of_universe_announcement,
+           announcement, announcement_type, announcement_expires_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+           $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34
+         )
+         RETURNING *`,
+         [
+           universeName, universeType, galaxyCount, systemsPerGalaxy,
+           maxPlayers, botPercentage, targetBotCount,
+           resourceMultiplier, difficultyCurve, JSON.stringify(configuration),
+           registrationStatus, registrationOpenAt, registrationCloseAt,
+           universeOpenAt, universeCloseAt, isActive, closureReason,
+            speedMultiplier, speedProgressionType, speedSchedule ? JSON.stringify(speedSchedule) : null,
+            buildingSpeedMultiplier,
+            researchSpeedMultiplier,
+            buildingSpeedSchedule ? JSON.stringify(buildingSpeedSchedule) : null,
+            researchSpeedSchedule ? JSON.stringify(researchSpeedSchedule) : null,
+            baseStorageRation ? JSON.stringify(baseStorageRation) : null,
+            baseProductionRation ? JSON.stringify(baseProductionRation) : null,
+            isMerging, mergeTargetUniverseId, mergeScheduledAt,
+           endOfUniverseEventAt, endOfUniverseType, endOfUniverseAnnouncement,
+           announcement, announcementType, announcementExpiresAt
+         ]
+       );
       
       const universe = result.rows[0] ? this.mapUniverseSeed(result.rows[0]) : null;
       if (!universe) {
@@ -725,6 +776,33 @@ export class UniverseSeedingService {
       seedingStartedAt: row.seeding_started_at,
       seedingCompletedAt: row.seeding_completed_at,
       lastMaintainedAt: row.last_maintained_at,
+       // --- Multi-universe management fields ---
+       registrationStatus: row.registration_status,
+       registrationOpenAt: row.registration_open_at,
+       registrationCloseAt: row.registration_close_at,
+       universeOpenAt: row.universe_open_at,
+       universeCloseAt: row.universe_close_at,
+       isActive: row.is_active,
+       closureReason: row.closure_reason,
+       speedMultiplier: parseFloat(row.speed_multiplier),
+       speedProgressionType: row.speed_progression_type,
+       speedSchedule: row.speed_schedule,
+       buildingSpeedMultiplier: parseFloat(row.building_speed_multiplier),
+       researchSpeedMultiplier: parseFloat(row.research_speed_multiplier),
+       buildingSpeedSchedule: row.building_speed_schedule,
+       researchSpeedSchedule: row.research_speed_schedule,
+       baseStorageRation: row.base_storage_ration,
+       baseProductionRation: row.base_production_ration,
+       isMerging: row.is_merging,
+       mergeTargetUniverseId: row.merge_target_universe_id,
+       mergeScheduledAt: row.merge_scheduled_at,
+       endOfUniverseEventAt: row.end_of_universe_event_at,
+       endOfUniverseType: row.end_of_universe_type,
+       endOfUniverseAnnouncement: row.end_of_universe_announcement,
+       announcement: row.announcement,
+       announcementType: row.announcement_type,
+       announcementExpiresAt: row.announcement_expires_at,
+       // ---
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       createdBy: row.created_by,

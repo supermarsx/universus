@@ -90,6 +90,34 @@ export enum MaintenanceTaskType {
 // MAIN INTERFACES
 // =====================================================
 
+export enum UniverseRegistrationStatus {
+  OPEN = 'open',
+  CLOSED = 'closed',
+  SCHEDULED = 'scheduled',
+  PAUSED = 'paused'
+}
+
+export enum UniverseSpeedProgressionType {
+  STATIC = 'static',
+  SCHEDULED = 'scheduled',
+  DYNAMIC = 'dynamic',
+  DECREASING = 'decreasing'
+}
+
+export enum UniverseEndType {
+  SHUTDOWN = 'shutdown',
+  MERGE = 'merge',
+  ARCHIVE = 'archive',
+  OTHER = 'other'
+}
+
+export enum UniverseAnnouncementType {
+  INFO = 'info',
+  WARNING = 'warning',
+  EVENT = 'event',
+  CLOSURE = 'closure'
+}
+
 export interface UniverseSeed {
   id: number;
   universeName: string;
@@ -112,6 +140,35 @@ export interface UniverseSeed {
   seedingStartedAt?: Date;
   seedingCompletedAt?: Date;
   lastMaintainedAt?: Date;
+  // --- Multi-universe management fields ---
+  registrationStatus: UniverseRegistrationStatus;
+  registrationOpenAt?: Date;
+  registrationCloseAt?: Date;
+  universeOpenAt?: Date;
+  universeCloseAt?: Date;
+  isActive: boolean;
+  closureReason?: string;
+  speedMultiplier: number;
+  speedProgressionType: UniverseSpeedProgressionType;
+  speedSchedule?: Record<string, any>;
+  // Detached building/research speed
+  buildingSpeedMultiplier: number;
+  researchSpeedMultiplier: number;
+  buildingSpeedSchedule?: Record<string, any>;
+  researchSpeedSchedule?: Record<string, any>;
+  // Base rations
+  baseStorageRation?: Record<string, any>;
+  baseProductionRation?: Record<string, any>;
+  isMerging: boolean;
+  mergeTargetUniverseId?: number;
+  mergeScheduledAt?: Date;
+  endOfUniverseEventAt?: Date;
+  endOfUniverseType?: UniverseEndType;
+  endOfUniverseAnnouncement?: string;
+  announcement?: string;
+  announcementType?: UniverseAnnouncementType;
+  announcementExpiresAt?: Date;
+  // ---
   createdAt: Date;
   updatedAt: Date;
   createdBy?: number;
@@ -386,6 +443,32 @@ export interface CreateUniverseRequest {
   resourceMultiplier?: number;
   difficultyCurve?: DifficultyCurve;
   configuration?: Record<string, any>;
+  // Multi-universe management fields
+  registrationStatus?: string;
+  registrationOpenAt?: string | null;
+  registrationCloseAt?: string | null;
+  universeOpenAt?: string | null;
+  universeCloseAt?: string | null;
+  isActive?: boolean;
+  closureReason?: string | null;
+  speedMultiplier?: number;
+  speedProgressionType?: string;
+  speedSchedule?: Record<string, any>;
+  buildingSpeedMultiplier?: number;
+  researchSpeedMultiplier?: number;
+  buildingSpeedSchedule?: Record<string, any>;
+  researchSpeedSchedule?: Record<string, any>;
+  baseStorageRation?: Record<string, any>;
+  baseProductionRation?: Record<string, any>;
+  isMerging?: boolean;
+  mergeTargetUniverseId?: number | null;
+  mergeScheduledAt?: string | null;
+  endOfUniverseEventAt?: string | null;
+  endOfUniverseType?: string | null;
+  endOfUniverseAnnouncement?: string | null;
+  announcement?: string | null;
+  announcementType?: string | null;
+  announcementExpiresAt?: string | null;
 }
 
 export interface SeedUniverseRequest {

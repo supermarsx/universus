@@ -388,4 +388,179 @@ router.get('/:id/stats', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// =====================================================
+// ADVANCED UNIVERSE LIFECYCLE MANAGEMENT ENDPOINTS
+// =====================================================
+
+/**
+ * PATCH /api/universe/:id/registration
+ * Update registration status, open/close times
+ * Admin only
+ */
+router.patch('/:id/registration', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+  try {
+    const universeId = parseInt(req.params.id);
+    const { registrationStatus, registrationOpenAt, registrationCloseAt } = req.body;
+    const result = await require('../config/database').default.query(
+      `UPDATE universe_seeds SET registration_status = $1, registration_open_at = $2, registration_close_at = $3, updated_at = NOW() WHERE id = $4 RETURNING *`,
+      [registrationStatus, registrationOpenAt, registrationCloseAt, universeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Universe not found' });
+    }
+    res.json({ success: true, universe: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating registration:', error);
+    res.status(500).json({ success: false, message: 'Failed to update registration' });
+  }
+});
+
+/**
+ * PATCH /api/universe/:id/lifecycle
+ * Update universe open/close times, is_active, closure_reason
+ * Admin only
+ */
+router.patch('/:id/lifecycle', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+  try {
+    const universeId = parseInt(req.params.id);
+    const { universeOpenAt, universeCloseAt, isActive, closureReason } = req.body;
+    const result = await require('../config/database').default.query(
+      `UPDATE universe_seeds SET universe_open_at = $1, universe_close_at = $2, is_active = $3, closure_reason = $4, updated_at = NOW() WHERE id = $5 RETURNING *`,
+      [universeOpenAt, universeCloseAt, isActive, closureReason, universeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Universe not found' });
+    }
+    res.json({ success: true, universe: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating lifecycle:', error);
+    res.status(500).json({ success: false, message: 'Failed to update lifecycle' });
+  }
+});
+
+/**
+ * PATCH /api/universe/:id/speed
+ * Update speed multiplier and progression
+ * Admin only
+ */
+router.patch('/:id/speed', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+  try {
+    const universeId = parseInt(req.params.id);
+    const {
+      speedMultiplier,
+      speedProgressionType,
+      speedSchedule,
+      buildingSpeedMultiplier,
+      buildingSpeedSchedule,
+      researchSpeedMultiplier,
+      researchSpeedSchedule,
+      baseStorageRation,
+      baseProductionRation
+    } = req.body;
+
+    const result = await require('../config/database').default.query(
+      `UPDATE universe_seeds SET 
+        speed_multiplier = $1,
+        speed_progression_type = $2,
+        speed_schedule = $3,
+        building_speed_multiplier = $4,
+        building_speed_schedule = $5,
+        research_speed_multiplier = $6,
+        research_speed_schedule = $7,
+        base_storage_ration = $8,
+        base_production_ration = $9,
+        updated_at = NOW() 
+      WHERE id = $10 RETURNING *`,
+      [
+        speedMultiplier,
+        speedProgressionType,
+        speedSchedule ? JSON.stringify(speedSchedule) : null,
+        buildingSpeedMultiplier,
+        buildingSpeedSchedule ? JSON.stringify(buildingSpeedSchedule) : null,
+        researchSpeedMultiplier,
+        researchSpeedSchedule ? JSON.stringify(researchSpeedSchedule) : null,
+        baseStorageRation ? JSON.stringify(baseStorageRation) : null,
+        baseProductionRation ? JSON.stringify(baseProductionRation) : null,
+        universeId
+      ]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Universe not found' });
+    }
+    res.json({ success: true, universe: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating speed:', error);
+    res.status(500).json({ success: false, message: 'Failed to update speed' });
+  }
+});
+
+/**
+ * PATCH /api/universe/:id/merge
+ * Schedule or trigger a universe merge
+ * Admin only
+ */
+router.patch('/:id/merge', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+  try {
+    const universeId = parseInt(req.params.id);
+    const { isMerging, mergeTargetUniverseId, mergeScheduledAt } = req.body;
+    const result = await require('../config/database').default.query(
+      `UPDATE universe_seeds SET is_merging = $1, merge_target_universe_id = $2, merge_scheduled_at = $3, updated_at = NOW() WHERE id = $4 RETURNING *`,
+      [isMerging, mergeTargetUniverseId, mergeScheduledAt, universeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Universe not found' });
+    }
+    res.json({ success: true, universe: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating merge:', error);
+    res.status(500).json({ success: false, message: 'Failed to update merge' });
+  }
+});
+
+/**
+ * PATCH /api/universe/:id/end-event
+ * Set end-of-universe event/announcement
+ * Admin only
+ */
+router.patch('/:id/end-event', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+  try {
+    const universeId = parseInt(req.params.id);
+    const { endOfUniverseEventAt, endOfUniverseType, endOfUniverseAnnouncement } = req.body;
+    const result = await require('../config/database').default.query(
+      `UPDATE universe_seeds SET end_of_universe_event_at = $1, end_of_universe_type = $2, end_of_universe_announcement = $3, updated_at = NOW() WHERE id = $4 RETURNING *`,
+      [endOfUniverseEventAt, endOfUniverseType, endOfUniverseAnnouncement, universeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Universe not found' });
+    }
+    res.json({ success: true, universe: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating end event:', error);
+    res.status(500).json({ success: false, message: 'Failed to update end event' });
+  }
+});
+
+/**
+ * PATCH /api/universe/:id/announcement
+ * Set a general announcement for the universe
+ * Admin only
+ */
+router.patch('/:id/announcement', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+  try {
+    const universeId = parseInt(req.params.id);
+    const { announcement, announcementType, announcementExpiresAt } = req.body;
+    const result = await require('../config/database').default.query(
+      `UPDATE universe_seeds SET announcement = $1, announcement_type = $2, announcement_expires_at = $3, updated_at = NOW() WHERE id = $4 RETURNING *`,
+      [announcement, announcementType, announcementExpiresAt, universeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Universe not found' });
+    }
+    res.json({ success: true, universe: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating announcement:', error);
+    res.status(500).json({ success: false, message: 'Failed to update announcement' });
+  }
+});
+
 export default router;
