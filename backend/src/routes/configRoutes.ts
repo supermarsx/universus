@@ -1,26 +1,32 @@
 // Phase 7: Configuration API Routes
 // REST API endpoints for configuration management
 
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
+import { AuthRequest } from '../types';
 import { ConfigurationService } from '../services/configurationService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { requirePermission } from '../middleware/adminAuth';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import { io } from '../index';
+import { getUserId as getUserIdFromUtils } from '../utils/authHelpers';
+
 
 const router = Router();
 const configService = new ConfigurationService(pool, redis, io);
 
 // All routes require admin authentication
-router.use(authenticateToken, requirePermission('config:read'));
+router.use(authenticateToken, assertAuthenticated, requirePermission('config:read'));
+
+const getUserId = getUserIdFromUtils;
+
 
 // ============================================
 // CATEGORIES
 // ============================================
 
 // GET /api/config/categories - Get all configuration categories
-router.get('/categories', async (req: Request, res: Response) => {
+router.get('/categories', async (req: AuthRequest, res: Response) => {
     try {
         const result = await pool.query(`
             SELECT 
@@ -44,7 +50,7 @@ router.get('/categories', async (req: Request, res: Response) => {
 });
 
 // GET /api/config/categories/:category - Get specific category details
-router.get('/categories/:category', async (req: Request, res: Response) => {
+router.get('/categories/:category', async (req: AuthRequest, res: Response) => {
     try {
         const { category } = req.params;
 
@@ -70,7 +76,7 @@ router.get('/categories/:category', async (req: Request, res: Response) => {
 // ============================================
 
 // GET /api/config/parameters - Get all configuration parameters
-router.get('/parameters', async (req: Request, res: Response) => {
+router.get('/parameters', async (req: AuthRequest, res: Response) => {
     try {
         const { category, search } = req.query;
 
@@ -108,7 +114,7 @@ router.get('/parameters', async (req: Request, res: Response) => {
 });
 
 // GET /api/config/parameters/:key - Get specific parameter
-router.get('/parameters/:key', async (req: Request, res: Response) => {
+router.get('/parameters/:key', async (req: AuthRequest, res: Response) => {
     try {
         const { key } = req.params;
 
@@ -133,11 +139,12 @@ router.get('/parameters/:key', async (req: Request, res: Response) => {
 });
 
 // PUT /api/config/parameters/:key - Update parameter value
-router.put('/parameters/:key', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.put('/parameters/:key', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { key } = req.params;
         const { value, reason } = req.body;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const result = await configService.setValue(key, value, userId, reason);
 
@@ -151,10 +158,11 @@ router.put('/parameters/:key', requirePermission('config:write'), async (req: Re
 });
 
 // POST /api/config/parameters/bulk-update - Bulk update parameters
-router.post('/parameters/bulk-update', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/parameters/bulk-update', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { updates, change_reason } = req.body;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const result = await configService.bulkUpdate({ updates, change_reason }, userId);
 
@@ -168,10 +176,11 @@ router.post('/parameters/bulk-update', requirePermission('config:write'), async 
 });
 
 // POST /api/config/parameters/:key/reset - Reset parameter to default
-router.post('/parameters/:key/reset', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/parameters/:key/reset', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { key } = req.params;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         // Get default value
         const paramResult = await pool.query(
@@ -203,7 +212,7 @@ router.post('/parameters/:key/reset', requirePermission('config:write'), async (
 // GAME CONFIG SNAPSHOT
 // ============================================
 
-router.get('/game-config', async (req: Request, res: Response) => {
+router.get('/game-config', async (req: AuthRequest, res: Response) => {
     try {
         const snapshot = await configService.getGameConfigSnapshot();
         res.json({ success: true, config: snapshot });
@@ -213,7 +222,7 @@ router.get('/game-config', async (req: Request, res: Response) => {
     }
 });
 
-router.post('/game-config/refresh', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/game-config/refresh', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const snapshot = await configService.refreshGameConfigSnapshot();
         res.json({ success: true, config: snapshot });
@@ -228,7 +237,7 @@ router.post('/game-config/refresh', requirePermission('config:write'), async (re
 // ============================================
 
 // GET /api/config/history - Get change history
-router.get('/history', async (req: Request, res: Response) => {
+router.get('/history', async (req: AuthRequest, res: Response) => {
     try {
         const { parameter_key, limit = 100 } = req.query;
 
@@ -247,10 +256,11 @@ router.get('/history', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/history/:changeId/rollback - Rollback a change
-router.post('/history/:changeId/rollback', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/history/:changeId/rollback', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { changeId } = req.params;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const success = await configService.rollbackChange(parseInt(changeId), userId);
 
@@ -275,7 +285,7 @@ router.post('/history/:changeId/rollback', requirePermission('config:write'), as
 // ============================================
 
 // GET /api/config/templates - Get all templates
-router.get('/templates', async (req: Request, res: Response) => {
+router.get('/templates', async (req: AuthRequest, res: Response) => {
     try {
         const { public_only } = req.query;
         
@@ -293,10 +303,11 @@ router.get('/templates', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/templates - Create new template
-router.post('/templates', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/templates', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { name, description, categories } = req.body;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const template = await configService.createTemplate(name, description, userId, categories);
 
@@ -310,10 +321,11 @@ router.post('/templates', requirePermission('config:write'), async (req: Request
 });
 
 // POST /api/config/templates/:templateId/apply - Apply template
-router.post('/templates/:templateId/apply', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/templates/:templateId/apply', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { templateId } = req.params;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const result = await configService.applyTemplate(parseInt(templateId), userId);
 
@@ -327,7 +339,7 @@ router.post('/templates/:templateId/apply', requirePermission('config:write'), a
 });
 
 // DELETE /api/config/templates/:templateId - Delete template
-router.delete('/templates/:templateId', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.delete('/templates/:templateId', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { templateId } = req.params;
 
@@ -350,7 +362,7 @@ router.delete('/templates/:templateId', requirePermission('config:write'), async
 // ============================================
 
 // GET /api/config/export - Export configuration
-router.get('/export', async (req: Request, res: Response) => {
+router.get('/export', async (req: AuthRequest, res: Response) => {
     try {
         const { categories, format = 'json' } = req.query;
 
@@ -378,10 +390,11 @@ router.get('/export', async (req: Request, res: Response) => {
 });
 
 // POST /api/config/import - Import configuration
-router.post('/import', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/import', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { config, validate_only = false } = req.body;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         const result = await configService.importConfig(config, userId, validate_only);
 
@@ -395,7 +408,7 @@ router.post('/import', requirePermission('config:write'), async (req: Request, r
 });
 
 // POST /api/config/compare - Compare two configurations
-router.post('/compare', async (req: Request, res: Response) => {
+router.post('/compare', async (req: AuthRequest, res: Response) => {
     try {
         const { config1, config2 } = req.body;
 
@@ -415,10 +428,11 @@ router.post('/compare', async (req: Request, res: Response) => {
 // ============================================
 
 // POST /api/config/reset - Reset configuration
-router.post('/reset', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/reset', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { category, confirm } = req.body;
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
         if (!confirm) {
             return res.status(400).json({
@@ -440,7 +454,7 @@ router.post('/reset', requirePermission('config:write'), async (req: Request, re
 });
 
 // POST /api/config/cache/refresh - Refresh configuration cache
-router.post('/cache/refresh', requirePermission('config:write'), async (req: Request, res: Response) => {
+router.post('/cache/refresh', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         await configService.refreshCache();
 
@@ -454,7 +468,7 @@ router.post('/cache/refresh', requirePermission('config:write'), async (req: Req
 });
 
 // GET /api/config/snapshot - Get current configuration snapshot
-router.get('/snapshot', async (req: Request, res: Response) => {
+router.get('/snapshot', async (req: AuthRequest, res: Response) => {
     try {
         const snapshot = await configService.getSnapshot();
 
@@ -468,7 +482,7 @@ router.get('/snapshot', async (req: Request, res: Response) => {
 });
 
 // GET /api/config/stats - Get configuration statistics
-router.get('/stats', async (req: Request, res: Response) => {
+router.get('/stats', async (req: AuthRequest, res: Response) => {
     try {
         const result = await pool.query(`
             SELECT * FROM v_config_statistics
@@ -505,7 +519,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 });
 
 // GET /api/config/search - Search configuration parameters
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/search', async (req: AuthRequest, res: Response) => {
     try {
         const { q } = req.query;
 

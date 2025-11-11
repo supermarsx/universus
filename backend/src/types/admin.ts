@@ -10,6 +10,10 @@ export interface AdminUser {
   user_id: number;
   role_id: number;
   role_name: string;
+  // Fields populated by authentication middleware
+  username?: string;
+  email?: string;
+  level?: number;
   permissions: string[];
   created_at: Date;
   created_by?: number;
@@ -19,6 +23,13 @@ export interface AdminUser {
   last_login?: Date;
   is_active: boolean;
   notes?: string;
+}
+
+// Minimal admin principal used by middleware when only identity is known
+export interface AdminPrincipal {
+  id: number;
+  username?: string;
+  level?: number;
 }
 
 
@@ -198,11 +209,16 @@ export interface GameEvent {
 
 export interface AdminAuthRequest extends Request {
   user?: User;
-  admin?: AdminUser;
+  admin?: AdminUser | AdminPrincipal;
   adminRole?: string;
   adminPermissions?: string[];
   twoFactorVerified?: boolean;
   adminLevel?: number;
+}
+
+export interface AugmentedAdminAuthRequest extends AdminAuthRequest {
+  admin: AdminUser | AdminPrincipal;
+  adminLevel: number;
 }
 
 // ========================================

@@ -12,8 +12,9 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { requirePermission } from '../middleware/adminAuth';
+import { requirePermission, logAdminAction } from '../middleware/adminAuth';
 import { AdminAuthRequest } from '../types/admin';
+import { getActor as sharedGetActor } from '../utils/getActor';
 
 import { pool } from '../config/database';
 import os from 'os';
@@ -23,24 +24,7 @@ const router = Router();
 
 
 
-/**
- * Log admin action for audit trail
- */
-async function logAdminAction(
-    userId: number,
-    action: string,
-    details: any
-): Promise<void> {
-    try {
-        await pool.query(
-            `INSERT INTO admin_audit_log (user_id, action, details, created_at) 
-             VALUES ($1, $2, $3, NOW())`,
-            [userId, action, JSON.stringify(details)]
-        );
-    } catch (error: unknown) {
-        console.error('Error logging admin action:', error);
-    }
-}
+
 
 /**
  * GET /api/admin/stats
@@ -265,10 +249,21 @@ router.post('/users/:id/ban', authenticateToken, requirePermission('user:ban'), 
             [reason, userId]
         );
 
-        await logAdminAction(req.user!.id, 'USER_BANNED', {
-            targetUserId: userId,
-            reason
-        });
+        {
+            const actor = sharedGetActor(req);
+            if (!actor) return res.status(401).json({ error: 'Authentication required' });
+            await logAdminAction(
+                actor.id,
+                actor.username,
+                'user:ban',
+                'user_management',
+                'user',
+                userId,
+                { reason },
+                'high',
+                true
+            );
+        }
 
         res.json({ success: true, message: 'User banned successfully' });
     } catch (error: unknown) {
@@ -292,9 +287,21 @@ router.post('/users/:id/unban', authenticateToken, requirePermission('user:ban')
             [userId]
         );
 
-        await logAdminAction(req.user!.id, 'USER_UNBANNED', {
-            targetUserId: userId
-        });
+        {
+            const actor = sharedGetActor(req);
+            if (!actor) return res.status(401).json({ error: 'Authentication required' });
+            await logAdminAction(
+                actor.id,
+                actor.username,
+                'user:unban',
+                'user_management',
+                'user',
+                userId,
+                null,
+                'low',
+                true
+            );
+        }
 
         res.json({ success: true, message: 'User unbanned successfully' });
     } catch (error: unknown) {
@@ -482,7 +489,21 @@ router.put('/settings', authenticateToken, requirePermission('game:write'), asyn
             );
         }
 
-        await logAdminAction(req.user!.id, 'SETTINGS_UPDATED', settings);
+        {
+            const actor = sharedGetActor(req);
+            if (!actor) return res.status(401).json({ error: 'Authentication required' });
+            await logAdminAction(
+                actor.id,
+                actor.username,
+                'settings:update',
+                'game_config',
+                null,
+                null,
+                settings,
+                'medium',
+                true
+            );
+        }
 
         res.json({ success: true, message: 'Settings updated successfully' });
     } catch (error: unknown) {

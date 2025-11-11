@@ -9,6 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { TemplateService } from '../services/templateService';
 import { authenticateToken } from '../middleware/auth';
+import { AuthRequest } from '../types';
 
 const router = Router();
 
@@ -191,13 +192,13 @@ export default router;
 // Chat page (Phase 6)
 router.get('/chat', (req: Request, res: Response) => {
   res.render('pages/chat.njk', {
-    user: (req as any).user || null
+    user: (req as AuthRequest).user || null
   });
 });
 
 router.get('/chat.html', (req: Request, res: Response) => {
   res.render('pages/chat.njk', {
-    user: (req as any).user || null
+    user: (req as AuthRequest).user || null
   });
 });
 
@@ -208,56 +209,56 @@ router.get('/chat.html', (req: Request, res: Response) => {
 
 // Account Settings (main page)
 router.get('/account/settings', (req: Request, res: Response) => {
-  res.render('account/account-settings.njk', {
-    user: (req as any).user || null,
+res.render('account/account-settings.njk', {
+    user: (req as AuthRequest).user || null,
     title: 'Account Settings - Universus'
   });
 });
 
 // Security Dashboard
 router.get('/account/security', (req: Request, res: Response) => {
-  res.render('account/security-dashboard.njk', {
-    user: (req as any).user || null,
+res.render('account/security-dashboard.njk', {
+    user: (req as AuthRequest).user || null,
     title: 'Security Dashboard - Universus'
   });
 });
 
 // Two-Factor Authentication Setup
 router.get('/account/2fa', (req: Request, res: Response) => {
-  res.render('account/2fa-setup.njk', {
-    user: (req as any).user || null,
+res.render('account/2fa-setup.njk', {
+    user: (req as AuthRequest).user || null,
     title: '2FA Setup - Universus'
   });
 });
 
 // Email Verification
 router.get('/account/email', (req: Request, res: Response) => {
-  res.render('account/email-verification.njk', {
-    user: (req as any).user || null,
+res.render('account/email-verification.njk', {
+    user: (req as AuthRequest).user || null,
     title: 'Email Verification - Universus'
   });
 });
 
 // Password Recovery
 router.get('/account/password', (req: Request, res: Response) => {
-  res.render('account/password-recovery.njk', {
-    user: (req as any).user || null,
+res.render('account/password-recovery.njk', {
+    user: (req as AuthRequest).user || null,
     title: 'Password Recovery - Universus'
   });
 });
 
 // Privacy & GDPR Compliance
 router.get('/account/privacy', (req: Request, res: Response) => {
-  res.render('account/gdpr-compliance.njk', {
-    user: (req as any).user || null,
+res.render('account/gdpr-compliance.njk', {
+    user: (req as AuthRequest).user || null,
     title: 'Privacy & Data Management - Universus'
   });
 });
 
 // Account Transfer
 router.get('/account/transfer', (req: Request, res: Response) => {
-  res.render('account/account-transfer.njk', {
-    user: (req as any).user || null,
+res.render('account/account-transfer.njk', {
+    user: (req as AuthRequest).user || null,
     title: 'Account Transfer - Universus'
   });
 });
@@ -270,7 +271,7 @@ router.get('/account/transfer', (req: Request, res: Response) => {
 // Alliance Dashboard (main page)
 router.get('/alliance', (req: Request, res: Response) => {
   res.render('pages/alliance-dashboard.njk', {
-    user: (req as any).user || null,
+    user: (req as AuthRequest).user || null,
     title: 'Alliance Dashboard - Universus',
     currentPage: 'alliance'
   });
@@ -278,7 +279,7 @@ router.get('/alliance', (req: Request, res: Response) => {
 
 router.get('/alliance/dashboard', (req: Request, res: Response) => {
   res.render('pages/alliance-dashboard.njk', {
-    user: (req as any).user || null,
+    user: (req as AuthRequest).user || null,
     title: 'Alliance Dashboard - Universus',
     currentPage: 'alliance'
   });
@@ -287,7 +288,7 @@ router.get('/alliance/dashboard', (req: Request, res: Response) => {
 // Alliance Wars
 router.get('/alliance/wars', (req: Request, res: Response) => {
   res.render('pages/alliance-wars.njk', {
-    user: (req as any).user || null,
+    user: (req as AuthRequest).user || null,
     title: 'Alliance Wars - Universus',
     currentPage: 'alliance'
   });
@@ -296,7 +297,7 @@ router.get('/alliance/wars', (req: Request, res: Response) => {
 // Alliance Diplomacy
 router.get('/alliance/diplomacy', (req: Request, res: Response) => {
   res.render('pages/alliance-diplomacy.njk', {
-    user: (req as any).user || null,
+    user: (req as AuthRequest).user || null,
     title: 'Alliance Diplomacy - Universus',
     currentPage: 'alliance'
   });
@@ -305,7 +306,7 @@ router.get('/alliance/diplomacy', (req: Request, res: Response) => {
 // Alliance Management (Leaders only)
 router.get('/alliance/manage', (req: Request, res: Response) => {
   res.render('pages/alliance-management.njk', {
-    user: (req as any).user || null,
+    user: (req as AuthRequest).user || null,
     title: 'Alliance Management - Universus',
     currentPage: 'alliance'
   });

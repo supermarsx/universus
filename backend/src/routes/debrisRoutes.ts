@@ -3,7 +3,8 @@
 // REST API endpoints for debris, salvage, and component systems
 // =====================================================
 
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
+import { AuthRequest } from '../types';
 import debrisService from '../services/debrisService';
 import salvageService from '../services/salvageService';
 import componentService from '../services/componentService';
@@ -15,6 +16,12 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateToken);
 
+// helper to retrieve authenticated user id
+function getUserId(req: AuthRequest): number | null {
+  if (!req.user || !req.user.id) return null;
+  return req.user.id;
+}
+
 // =====================================================
 // DEBRIS FIELD ENDPOINTS
 // =====================================================
@@ -23,7 +30,7 @@ router.use(authenticateToken);
  * GET /api/debris
  * Get all active debris fields
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
     const debrisFields = await debrisService.getActiveDebrisFields(limit);
@@ -46,7 +53,7 @@ router.get('/', async (req: Request, res: Response) => {
  * GET /api/debris/:id
  * Get debris field by ID
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const debrisId = parseInt(req.params.id);
     const debris = await debrisService.getDebrisById(debrisId);
@@ -75,7 +82,7 @@ router.get('/:id', async (req: Request, res: Response) => {
  * GET /api/debris/location/:galaxy/:system/:position
  * Get debris at specific location
  */
-router.get('/location/:galaxy/:system/:position', async (req: Request, res: Response) => {
+router.get('/location/:galaxy/:system/:position', async (req: AuthRequest, res: Response) => {
   try {
     const galaxy = parseInt(req.params.galaxy);
     const system = parseInt(req.params.system);
@@ -101,7 +108,7 @@ router.get('/location/:galaxy/:system/:position', async (req: Request, res: Resp
  * POST /api/debris/search
  * Search debris fields with filters
  */
-router.post('/search', async (req: Request, res: Response) => {
+router.post('/search', async (req: AuthRequest, res: Response) => {
   try {
     const filters = req.body;
     const debrisFields = await debrisService.searchDebrisFields(filters);
@@ -124,7 +131,7 @@ router.post('/search', async (req: Request, res: Response) => {
  * POST /api/debris/generate
  * Generate debris from combat (internal use)
  */
-router.post('/generate', async (req: Request, res: Response) => {
+router.post('/generate', async (req: AuthRequest, res: Response) => {
   try {
     const result = await debrisService.generateDebrisFromCombat(req.body);
     
@@ -145,7 +152,7 @@ router.post('/generate', async (req: Request, res: Response) => {
  * GET /api/debris/stats
  * Get debris system statistics
  */
-router.get('/system/stats', async (req: Request, res: Response) => {
+router.get('/system/stats', async (req: AuthRequest, res: Response) => {
   try {
     const stats = await debrisService.getDebrisSystemStats();
     
@@ -170,9 +177,10 @@ router.get('/system/stats', async (req: Request, res: Response) => {
  * POST /api/debris/salvage/start
  * Start a salvage operation
  */
-router.post('/salvage/start', async (req: Request, res: Response) => {
+router.post('/salvage/start', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
     const request = {
       userId,
@@ -202,7 +210,7 @@ router.post('/salvage/start', async (req: Request, res: Response) => {
  * POST /api/debris/salvage/:id/complete
  * Complete a salvage operation (for testing/admin)
  */
-router.post('/salvage/:id/complete', async (req: Request, res: Response) => {
+router.post('/salvage/:id/complete', async (req: AuthRequest, res: Response) => {
   try {
     const operationId = parseInt(req.params.id);
     const result = await salvageService.completeSalvageOperation(operationId);
@@ -225,10 +233,11 @@ router.post('/salvage/:id/complete', async (req: Request, res: Response) => {
  * POST /api/debris/salvage/:id/cancel
  * Cancel a salvage operation
  */
-router.post('/salvage/:id/cancel', async (req: Request, res: Response) => {
+router.post('/salvage/:id/cancel', async (req: AuthRequest, res: Response) => {
   try {
     const operationId = parseInt(req.params.id);
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
     const success = await salvageService.cancelSalvageOperation(operationId, userId);
     
@@ -256,9 +265,10 @@ router.post('/salvage/:id/cancel', async (req: Request, res: Response) => {
  * GET /api/debris/salvage/user/active
  * Get user's active salvage operations
  */
-router.get('/salvage/user/active', async (req: Request, res: Response) => {
+router.get('/salvage/user/active', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const operations = await salvageService.getUserActiveSalvageOperations(userId);
     
     res.json({
@@ -279,7 +289,7 @@ router.get('/salvage/user/active', async (req: Request, res: Response) => {
  * GET /api/debris/salvage/:id
  * Get salvage operation by ID
  */
-router.get('/salvage/:id', async (req: Request, res: Response) => {
+router.get('/salvage/:id', async (req: AuthRequest, res: Response) => {
   try {
     const operationId = parseInt(req.params.id);
     const operation = await salvageService.getSalvageOperationById(operationId);
@@ -308,9 +318,10 @@ router.get('/salvage/:id', async (req: Request, res: Response) => {
  * GET /api/debris/salvage/profile/:userId
  * Get user salvage profile
  */
-router.get('/salvage/profile', async (req: Request, res: Response) => {
+router.get('/salvage/profile', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const profile = await salvageService.getUserSalvageProfile(userId);
     
     if (!profile) {
@@ -337,7 +348,7 @@ router.get('/salvage/profile', async (req: Request, res: Response) => {
  * GET /api/debris/salvage/leaderboard
  * Get salvage leaderboard
  */
-router.get('/salvage/leaderboard', async (req: Request, res: Response) => {
+router.get('/salvage/leaderboard', async (req: AuthRequest, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
     const leaderboard = await salvageService.getSalvageLeaderboard(limit);
@@ -360,9 +371,10 @@ router.get('/salvage/leaderboard', async (req: Request, res: Response) => {
  * POST /api/debris/salvage/efficiency
  * Calculate salvage efficiency
  */
-router.post('/salvage/efficiency', async (req: Request, res: Response) => {
+router.post('/salvage/efficiency', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const { debrisId, salvageType } = req.body;
     
     const efficiency = await salvageService.calculateSalvageEfficiency(userId, debrisId, salvageType);
@@ -388,7 +400,7 @@ router.post('/salvage/efficiency', async (req: Request, res: Response) => {
  * GET /api/debris/components
  * Get all components (with optional filters)
  */
-router.get('/components', async (req: Request, res: Response) => {
+router.get('/components', async (req: AuthRequest, res: Response) => {
   try {
     const filters = {
       type: req.query.type as any,
@@ -420,7 +432,7 @@ router.get('/components', async (req: Request, res: Response) => {
  * GET /api/debris/components/:id
  * Get component by ID
  */
-router.get('/components/:id', async (req: Request, res: Response) => {
+router.get('/components/:id', async (req: AuthRequest, res: Response) => {
   try {
     const componentId = parseInt(req.params.id);
     const component = await componentService.getComponentById(componentId);
@@ -449,9 +461,10 @@ router.get('/components/:id', async (req: Request, res: Response) => {
  * GET /api/debris/components/inventory/my
  * Get user's component inventory
  */
-router.get('/components/inventory/my', async (req: Request, res: Response) => {
+router.get('/components/inventory/my', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const inventory = await componentService.getPlayerInventory(userId);
     
     res.json({
@@ -472,9 +485,10 @@ router.get('/components/inventory/my', async (req: Request, res: Response) => {
  * GET /api/debris/components/equipped
  * Get user's equipped components
  */
-router.get('/components/equipped', async (req: Request, res: Response) => {
+router.get('/components/equipped', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const equipped = await componentService.getPlayerEquippedComponents(userId);
     
     res.json({
@@ -495,9 +509,10 @@ router.get('/components/equipped', async (req: Request, res: Response) => {
  * POST /api/debris/components/:id/recycle
  * Recycle component for resources
  */
-router.post('/components/:id/recycle', async (req: Request, res: Response) => {
+router.post('/components/:id/recycle', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const componentId = parseInt(req.params.id);
     const recycleAll = req.body.recycleAll || false;
     const quantity = req.body.quantity || 1;
@@ -526,9 +541,10 @@ router.post('/components/:id/recycle', async (req: Request, res: Response) => {
  * POST /api/debris/components/recycle/bulk/:rarity
  * Bulk recycle components by rarity
  */
-router.post('/components/recycle/bulk/:rarity', async (req: Request, res: Response) => {
+router.post('/components/recycle/bulk/:rarity', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const rarity = req.params.rarity as any;
     
     const result = await componentService.bulkRecycleByRarity(userId, rarity);
@@ -550,9 +566,10 @@ router.post('/components/recycle/bulk/:rarity', async (req: Request, res: Respon
  * POST /api/debris/components/:id/equip
  * Equip component to ship
  */
-router.post('/components/:id/equip', async (req: Request, res: Response) => {
+router.post('/components/:id/equip', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const componentId = parseInt(req.params.id);
     const { shipType } = req.body;
     
@@ -589,9 +606,10 @@ router.post('/components/:id/equip', async (req: Request, res: Response) => {
  * POST /api/debris/components/:id/unequip
  * Unequip component
  */
-router.post('/components/:id/unequip', async (req: Request, res: Response) => {
+router.post('/components/:id/unequip', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const componentId = parseInt(req.params.id);
     
     const success = await componentService.unequipComponent(userId, componentId);
@@ -620,9 +638,10 @@ router.post('/components/:id/unequip', async (req: Request, res: Response) => {
  * GET /api/debris/components/bonuses/:shipType
  * Get ship bonuses from equipped components
  */
-router.get('/components/bonuses/:shipType', async (req: Request, res: Response) => {
+router.get('/components/bonuses/:shipType', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const shipType = req.params.shipType;
     
     const bonuses = await componentService.getShipBonuses(userId, shipType);
@@ -644,9 +663,10 @@ router.get('/components/bonuses/:shipType', async (req: Request, res: Response) 
  * POST /api/debris/components/:id/sell
  * Sell component to market
  */
-router.post('/components/:id/sell', async (req: Request, res: Response) => {
+router.post('/components/:id/sell', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const componentId = parseInt(req.params.id);
     const quantity = req.body.quantity || 1;
     
@@ -670,7 +690,7 @@ router.post('/components/:id/sell', async (req: Request, res: Response) => {
  * GET /api/debris/components/stats
  * Get component system statistics
  */
-router.get('/components/stats', async (req: Request, res: Response) => {
+router.get('/components/stats', async (req: AuthRequest, res: Response) => {
   try {
     const stats = await componentService.getComponentStatistics();
     
@@ -691,9 +711,10 @@ router.get('/components/stats', async (req: Request, res: Response) => {
  * GET /api/debris/components/value/my
  * Get total value of user's components
  */
-router.get('/components/value/my', async (req: Request, res: Response) => {
+router.get('/components/value/my', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const totalValue = await componentService.getPlayerComponentValue(userId);
     
     res.json({
@@ -717,9 +738,10 @@ router.get('/components/value/my', async (req: Request, res: Response) => {
  * POST /api/debris/:id/claim
  * Claim a debris field
  */
-router.post('/:id/claim', async (req: Request, res: Response) => {
+router.post('/:id/claim', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const debrisId = parseInt(req.params.id);
     const { claimType, claimDuration, claimReason } = req.body;
     
@@ -750,9 +772,10 @@ router.post('/:id/claim', async (req: Request, res: Response) => {
  * DELETE /api/debris/claims/:id
  * Remove a debris claim
  */
-router.delete('/claims/:id', async (req: Request, res: Response) => {
+router.delete('/claims/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const claimId = parseInt(req.params.id);
     
     const result = await pool.query(
@@ -787,9 +810,10 @@ router.delete('/claims/:id', async (req: Request, res: Response) => {
  * GET /api/debris/claims/my
  * Get user's active claims
  */
-router.get('/claims/my', async (req: Request, res: Response) => {
+router.get('/claims/my', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = (req as any).user.id;
+    const userId = getUserId(req as AuthRequest);
+    if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
     
     const result = await pool.query(
       `SELECT * FROM debris_claims

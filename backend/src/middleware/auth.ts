@@ -75,6 +75,14 @@ export const authenticateToken = async (
   }
 };
 
+export const assertAuthenticated = (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthRequest;
+  if (!authReq.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+  next();
+};
+
 export const requireAdmin = (
   req: Request,
   res: Response,

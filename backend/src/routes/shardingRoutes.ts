@@ -4,12 +4,14 @@
 // =====================================================
 
 import express, { Request, Response } from 'express';
+import { AuthRequest } from '../types';
 import { authenticateToken } from '../middleware/auth';
 import { requireAdmin } from '../middleware/adminAuth';
 import serverDiscoveryService from '../services/serverDiscoveryService';
 import playerRoutingService from '../services/playerRoutingService';
 import crossServerCommunication from '../services/crossServerCommunicationService';
 import globalLeaderboardService from '../services/globalLeaderboardService';
+import { getUserId } from '../utils/authHelpers';
 
 const router = express.Router();
 
@@ -123,10 +125,13 @@ router.get('/servers/stats', requireAdmin, async (req: Request, res: Response) =
 /**
  * POST /api/shards/routing/calculate - Calculate optimal server
  */
-router.post('/routing/calculate', authenticateToken, async (req: Request, res: Response) => {
+router.post('/routing/calculate', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = getUserId(req);
+    if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
     const routing = await playerRoutingService.routePlayer({
-      user_id: (req as any).user.id,
+      user_id: userId,
       ...req.body
     });
     res.json({ success: true, data: routing });
@@ -297,10 +302,13 @@ router.get('/leaderboards/:category', async (req: Request, res: Response) => {
 /**
  * POST /api/shards/leaderboards/update - Update player ranking
  */
-router.post('/leaderboards/update', authenticateToken, async (req: Request, res: Response) => {
+router.post('/leaderboards/update', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const userId = getUserId(req);
+    if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
     await globalLeaderboardService.updatePlayerEntry(
-      (req as any).user.id,
+      userId,
       req.body.server_id,
       req.body.category,
       req.body.score,

@@ -2,6 +2,7 @@
 // REST API endpoints for all account management features
 
 import express, { Request, Response } from 'express';
+import { AuthRequest } from '../types';
 import { authenticateToken } from '../middleware/auth';
 import { AccountSecurityService } from '../services/accountSecurityService';
 import { SessionManagementService } from '../services/sessionManagementService';
@@ -10,6 +11,7 @@ import { PasswordRecoveryService } from '../services/passwordRecoveryService';
 import { TwoFactorAuthService } from '../services/twoFactorAuthService';
 import { GDPRComplianceService } from '../services/gdprComplianceService';
 import { AccountTransferService } from '../services/accountTransferService';
+import { getUserId } from '../utils/authHelpers';
 import {
     SuspensionReason,
     GDPRRequestType,
@@ -25,10 +27,11 @@ const router = express.Router();
 // =====================================================
 
 // Suspend account (admin only)
-router.post('/security/suspend', authenticateToken, async (req: Request, res: Response) => {
+router.post('/security/suspend', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
         const { user_id, reason, expires_at, notes } = req.body;
-        const adminId = (req as any).user.id;
+        const adminId = getUserId(req);
+        if (adminId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         const suspension = await AccountSecurityService.suspendAccount(
             user_id,
@@ -45,10 +48,11 @@ router.post('/security/suspend', authenticateToken, async (req: Request, res: Re
 });
 
 // Lift suspension (admin only)
-router.post('/security/unsuspend', authenticateToken, async (req: Request, res: Response) => {
+router.post('/security/unsuspend', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
         const { user_id } = req.body;
-        const adminId = (req as any).user.id;
+        const adminId = getUserId(req);
+        if (adminId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         await AccountSecurityService.liftSuspension(user_id, adminId);
 
@@ -59,9 +63,10 @@ router.post('/security/unsuspend', authenticateToken, async (req: Request, res: 
 });
 
 // Delete account
-router.delete('/security/delete', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/security/delete', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { reason, soft = true } = req.body;
 
         await AccountSecurityService.deleteAccount(userId, reason, soft);
@@ -73,7 +78,7 @@ router.delete('/security/delete', authenticateToken, async (req: Request, res: R
 });
 
 // Restore deleted account
-router.post('/security/restore', authenticateToken, async (req: Request, res: Response) => {
+router.post('/security/restore', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
         const { user_id } = req.body;
 
@@ -86,7 +91,7 @@ router.post('/security/restore', authenticateToken, async (req: Request, res: Re
 });
 
 // Lock account
-router.post('/security/lock', authenticateToken, async (req: Request, res: Response) => {
+router.post('/security/lock', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
         const { user_id, reason, duration } = req.body;
 
@@ -99,7 +104,7 @@ router.post('/security/lock', authenticateToken, async (req: Request, res: Respo
 });
 
 // Unlock account
-router.post('/security/unlock', authenticateToken, async (req: Request, res: Response) => {
+router.post('/security/unlock', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
         const { user_id } = req.body;
 
@@ -112,9 +117,10 @@ router.post('/security/unlock', authenticateToken, async (req: Request, res: Res
 });
 
 // Get security summary
-router.get('/security/summary', authenticateToken, async (req: Request, res: Response) => {
+router.get('/security/summary', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         const summary = await AccountSecurityService.getSecuritySummary(userId);
 
@@ -125,9 +131,10 @@ router.get('/security/summary', authenticateToken, async (req: Request, res: Res
 });
 
 // Get security logs
-router.get('/security/logs', authenticateToken, async (req: Request, res: Response) => {
+router.get('/security/logs', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const limit = parseInt(req.query.limit as string) || 50;
         const offset = parseInt(req.query.offset as string) || 0;
 
@@ -144,9 +151,10 @@ router.get('/security/logs', authenticateToken, async (req: Request, res: Respon
 // =====================================================
 
 // Get active sessions
-router.get('/sessions', authenticateToken, async (req: Request, res: Response) => {
+router.get('/sessions', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         const sessions = await SessionManagementService.getActiveSessions(userId);
 
@@ -174,9 +182,10 @@ router.post('/sessions/validate', async (req: Request, res: Response) => {
 });
 
 // Terminate specific session
-router.delete('/sessions/:sessionId', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/sessions/:sessionId', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const sessionId = parseInt(req.params.sessionId);
 
         await SessionManagementService.terminateSession(sessionId, userId);
@@ -188,9 +197,10 @@ router.delete('/sessions/:sessionId', authenticateToken, async (req: Request, re
 });
 
 // Terminate all sessions
-router.delete('/sessions', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/sessions', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const exceptSessionId = req.body.except_session_id;
 
         const count = await SessionManagementService.terminateAllSessions(userId, exceptSessionId);
@@ -202,9 +212,10 @@ router.delete('/sessions', authenticateToken, async (req: Request, res: Response
 });
 
 // Get suspicious activities
-router.get('/sessions/suspicious', authenticateToken, async (req: Request, res: Response) => {
+router.get('/sessions/suspicious', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const limit = parseInt(req.query.limit as string) || 20;
 
         const activities = await SessionManagementService.getSuspiciousActivities(userId, limit);
@@ -216,9 +227,10 @@ router.get('/sessions/suspicious', authenticateToken, async (req: Request, res: 
 });
 
 // Update device trust
-router.patch('/sessions/:sessionId/trust', authenticateToken, async (req: Request, res: Response) => {
+router.patch('/sessions/:sessionId/trust', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const sessionId = parseInt(req.params.sessionId);
         const { is_trusted } = req.body;
 
@@ -235,9 +247,10 @@ router.patch('/sessions/:sessionId/trust', authenticateToken, async (req: Reques
 // =====================================================
 
 // Send verification email
-router.post('/email/verify/send', authenticateToken, async (req: Request, res: Response) => {
+router.post('/email/verify/send', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { email } = req.body;
         const ipAddress = req.ip;
         const userAgent = req.headers['user-agent'];
@@ -275,9 +288,10 @@ router.post('/email/verify', async (req: Request, res: Response) => {
 });
 
 // Resend verification email
-router.post('/email/verify/resend', authenticateToken, async (req: Request, res: Response) => {
+router.post('/email/verify/resend', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { email } = req.body;
         const ipAddress = req.ip;
         const userAgent = req.headers['user-agent'];
@@ -296,9 +310,10 @@ router.post('/email/verify/resend', authenticateToken, async (req: Request, res:
 });
 
 // Check verification status
-router.get('/email/verify/status', authenticateToken, async (req: Request, res: Response) => {
+router.get('/email/verify/status', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const email = req.query.email as string;
 
         const status = await EmailVerificationService.checkVerificationStatus(userId, email);
@@ -383,9 +398,10 @@ router.post('/password/reset/cancel', async (req: Request, res: Response) => {
 // =====================================================
 
 // Setup 2FA
-router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response) => {
+router.post('/2fa/setup', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { method = TwoFactorMethod.TOTP, recovery_email } = req.body;
 
         const setup = await TwoFactorAuthService.setup2FA({
@@ -401,9 +417,10 @@ router.post('/2fa/setup', authenticateToken, async (req: Request, res: Response)
 });
 
 // Verify 2FA code (to enable 2FA)
-router.post('/2fa/verify', authenticateToken, async (req: Request, res: Response) => {
+router.post('/2fa/verify', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { code } = req.body;
 
         const verified = await TwoFactorAuthService.verify2FA({
@@ -422,9 +439,10 @@ router.post('/2fa/verify', authenticateToken, async (req: Request, res: Response
 });
 
 // Disable 2FA
-router.post('/2fa/disable', authenticateToken, async (req: Request, res: Response) => {
+router.post('/2fa/disable', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { code } = req.body;
 
         await TwoFactorAuthService.disable2FA(userId, code);
@@ -436,9 +454,10 @@ router.post('/2fa/disable', authenticateToken, async (req: Request, res: Respons
 });
 
 // Get 2FA status
-router.get('/2fa/status', authenticateToken, async (req: Request, res: Response) => {
+router.get('/2fa/status', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         const status = await TwoFactorAuthService.get2FAStatus(userId);
 
@@ -449,9 +468,10 @@ router.get('/2fa/status', authenticateToken, async (req: Request, res: Response)
 });
 
 // Get backup codes
-router.get('/2fa/backup-codes', authenticateToken, async (req: Request, res: Response) => {
+router.get('/2fa/backup-codes', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         const codes = await TwoFactorAuthService.getBackupCodes(userId);
 
@@ -462,9 +482,10 @@ router.get('/2fa/backup-codes', authenticateToken, async (req: Request, res: Res
 });
 
 // Regenerate backup codes
-router.post('/2fa/backup-codes/regenerate', authenticateToken, async (req: Request, res: Response) => {
+router.post('/2fa/backup-codes/regenerate', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { code } = req.body;
 
         const newCodes = await TwoFactorAuthService.regenerateBackupCodes(userId, code);
@@ -480,9 +501,10 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, async (req: Reque
 // =====================================================
 
 // Create GDPR request
-router.post('/gdpr/request', authenticateToken, async (req: Request, res: Response) => {
+router.post('/gdpr/request', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { request_type, notes } = req.body;
 
         const gdprRequest = await GDPRComplianceService.createGDPRRequest({
@@ -498,9 +520,10 @@ router.post('/gdpr/request', authenticateToken, async (req: Request, res: Respon
 });
 
 // Get GDPR requests
-router.get('/gdpr/requests', authenticateToken, async (req: Request, res: Response) => {
+router.get('/gdpr/requests', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const limit = parseInt(req.query.limit as string) || 20;
         const offset = parseInt(req.query.offset as string) || 0;
 
@@ -526,9 +549,10 @@ router.get('/gdpr/download/:code', async (req: Request, res: Response) => {
 });
 
 // Cancel GDPR request
-router.delete('/gdpr/request/:requestId', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/gdpr/request/:requestId', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const requestId = parseInt(req.params.requestId);
 
         await GDPRComplianceService.cancelGDPRRequest(requestId, userId);
@@ -544,9 +568,10 @@ router.delete('/gdpr/request/:requestId', authenticateToken, async (req: Request
 // =====================================================
 
 // Initiate account transfer
-router.post('/transfer/initiate', authenticateToken, async (req: Request, res: Response) => {
+router.post('/transfer/initiate', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { to_email } = req.body;
         const ipAddress = req.ip;
         const userAgent = req.headers['user-agent'];
@@ -580,9 +605,10 @@ router.post('/transfer/verify', async (req: Request, res: Response) => {
 });
 
 // Complete transfer
-router.post('/transfer/complete', authenticateToken, async (req: Request, res: Response) => {
+router.post('/transfer/complete', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const { transfer_id, confirmation_code } = req.body;
 
         await AccountTransferService.completeTransfer(transfer_id, userId, confirmation_code);
@@ -594,9 +620,10 @@ router.post('/transfer/complete', authenticateToken, async (req: Request, res: R
 });
 
 // Cancel transfer
-router.delete('/transfer/:transferId', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/transfer/:transferId', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
         const transferId = parseInt(req.params.transferId);
 
         await AccountTransferService.cancelTransfer(transferId, userId);
@@ -608,9 +635,10 @@ router.delete('/transfer/:transferId', authenticateToken, async (req: Request, r
 });
 
 // Get transfer status
-router.get('/transfer/status', authenticateToken, async (req: Request, res: Response) => {
+router.get('/transfer/status', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
 
         const transfer = await AccountTransferService.getTransferStatus(userId);
 

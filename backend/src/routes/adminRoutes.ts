@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { AugmentedAdminAuthRequest, AdminPrincipal, SettingCategory } from '../types/admin';
 import os from 'os';
 import { AdminAuthRequest } from '../types/admin';
 import { 
@@ -22,6 +23,10 @@ import LeaderboardScheduler from '../services/leaderboardScheduler';
 import { getRealtimeHandler } from '../socket';
 import chatService from '../services/chatService';
 
+import { getActor as sharedGetActor } from '../utils/getActor';
+// Use `sharedGetActor(req)` directly or rely on `attachActor` middleware below to
+// ensure `req.admin` and `req.adminLevel` are populated for downstream handlers.
+
 const router = Router();
 
 // ========================================
@@ -34,6 +39,11 @@ const router = Router();
  */
 router.post('/login', authenticateToken, verifyAdmin2FA, async (req: AdminAuthRequest, res: Response) => {
   try {
+    const actor = sharedGetActor(req);
+    if (!actor) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
     // Get admin user data
     const adminResult = await pool.query(
       `SELECT 
@@ -50,7 +60,7 @@ router.post('/login', authenticateToken, verifyAdmin2FA, async (req: AdminAuthRe
        LEFT JOIN permissions p ON rp.permission_id = p.id
        WHERE au.user_id = $1 AND au.is_active = TRUE
        GROUP BY au.id, u.username, u.email, r.id, r.name`,
-      [req.user!.id]
+      [actor.id]
     );
 
     if (adminResult.rows.length === 0) {
@@ -98,7 +108,11 @@ router.post('/login', authenticateToken, verifyAdmin2FA, async (req: AdminAuthRe
  * Check if 2FA is required for admin access
  */
 router.get('/2fa/status', authenticateToken, async (req: AdminAuthRequest, res: Response) => {
-  try {
+try {
+    const actor = sharedGetActor(req);
+    if (!actor) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     const result = await pool.query(
       `SELECT 
          au.user_id,
@@ -109,8 +123,9 @@ router.get('/2fa/status', authenticateToken, async (req: AdminAuthRequest, res: 
        JOIN roles r ON au.role_id = r.id
        LEFT JOIN two_factor_auth tfa ON tfa.user_id = u.id
        WHERE au.user_id = $1 AND au.is_active = TRUE`,
-      [req.user!.id]
-    );
+    [actor.id]
+      );
+
 
     if (result.rows.length === 0) {
       return res.status(403).json({ error: 'Admin access required' });
@@ -132,9 +147,26 @@ router.get('/2fa/status', authenticateToken, async (req: AdminAuthRequest, res: 
   }
 });
 
+// Attach actor middleware: ensure subsequent routes have a non-optional actor
+const attachActor = (req: any, res: Response, next: any) => {
+  const actor = sharedGetActor(req);
+  if (!actor) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  // Populate req.admin (minimal principal) and req.adminLevel for downstream handlers
+  const principal: AdminPrincipal = { id: actor.id, username: actor.username, level: actor.level };
+  req.admin = req.admin ?? principal;
+  req.adminLevel = req.adminLevel ?? actor.level;
+  next();
+};
+
+router.use(attachActor);
+
 // ========================================
 // ADMIN DASHBOARD
 // ========================================
+
 
 /**
  * GET /api/admin/dashboard
@@ -143,7 +175,7 @@ router.get('/2fa/status', authenticateToken, async (req: AdminAuthRequest, res: 
 router.get(
   '/dashboard',
   requireAdmin,
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const [
         serverHealth,
@@ -162,15 +194,19 @@ router.get(
         pool.query(
           'SELECT * FROM admin_audit_logs ORDER BY timestamp DESC LIMIT 20'
         ),
-        AdminEventsService.getActiveEvents(),
-        AdminMonitoringService.getNotifications(
-          req.user!.id,
-          String(req.adminLevel!),
-          true
-        ),
+      AdminEventsService.getActiveEvents(),
+        ((): Promise<any> => {
+          const actor = sharedGetActor(req);
+          if (!actor) {
+            // If actor missing, return empty notifications
+            return Promise.resolve([]);
+          }
+          return AdminMonitoringService.getNotifications(actor.id, String(actor.level), true);
+        })(),
         AdminMonitoringService.getOnlineAdminsCount(),
       ]);
 
+      const notificationsArray = Array.isArray(notifications) ? notifications as any[] : [];
       res.json({
         server_health: serverHealth,
         user_analytics: userAnalytics,
@@ -179,7 +215,7 @@ router.get(
         recent_audit_logs: recentLogs.rows,
         active_events: activeEvents,
         pending_reports: 0,
-        critical_alerts: notifications.filter((n) => n.priority === 'critical'),
+        critical_alerts: notificationsArray.filter((n) => n.priority === 'critical'),
         online_admins: onlineAdmins,
       });
     } catch (error: unknown) {
@@ -202,7 +238,7 @@ router.get(
   '/users',
   requireAdmin,
   requirePermission('user:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const filter = {
         search: req.query.search as string,
@@ -233,7 +269,7 @@ router.get(
   '/users/:id',
   requireAdmin,
   requirePermission('user:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const userId = parseInt(req.params.id);
       const user = await AdminUserService.getUserDetails(userId);
@@ -255,7 +291,7 @@ router.post(
   requireAdmin,
   requirePermission('user:ban'),
   rateLimit(10, 60000),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const userId = parseInt(req.params.id);
       const action = {
@@ -267,11 +303,14 @@ router.post(
         severity_level: req.body.severity_level,
       };
 
-      const block = await AdminUserService.blockUser(
-        action,
-        req.user!.id,
-        req.user!.username
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       const block = await AdminUserService.blockUser(
+         action,
+         actor.id,
+         actor.username
+       );
 
       res.json({ success: true, block });
     } catch (error: unknown) {
@@ -290,15 +329,18 @@ router.post(
   '/blocks/:id/unblock',
   requireAdmin,
   requirePermission('user:ban'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const blockId = parseInt(req.params.id);
-      await AdminUserService.unblockUser(
-        blockId,
-        req.body.reason,
-        req.user!.id,
-        req.user!.username
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       await AdminUserService.unblockUser(
+         blockId,
+         req.body.reason,
+         actor.id,
+         actor.username
+       );
 
       res.json({ success: true });
     } catch (error: unknown) {
@@ -317,7 +359,7 @@ router.post(
   '/users/:id/tag',
   requireAdmin,
   requirePermission('user:tag'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const userId = parseInt(req.params.id);
       const action = {
@@ -329,11 +371,14 @@ router.post(
         expires_at: req.body.expires_at ? new Date(req.body.expires_at) : undefined,
       };
 
-      const tag = await AdminUserService.tagUser(
-        action,
-        req.user!.id,
-        req.user!.username
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       const tag = await AdminUserService.tagUser(
+         action,
+         actor.id,
+         actor.username
+       );
 
       res.json({ success: true, tag });
     } catch (error: unknown) {
@@ -352,10 +397,12 @@ router.delete(
   '/tags/:id',
   requireAdmin,
   requirePermission('user:tag'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const tagId = parseInt(req.params.id);
-      await AdminUserService.removeTag(tagId, req.user!.id, req.user!.username);
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+       await AdminUserService.removeTag(tagId, actor.id, actor.username);
       res.json({ success: true });
     } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -374,7 +421,7 @@ router.post(
   requireAdmin,
   requirePermission('game:resources'),
   rateLimit(20, 60000),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const userId = parseInt(req.params.id);
       const action = {
@@ -387,11 +434,14 @@ router.post(
         reason: req.body.reason,
       };
 
-      await AdminUserService.adjustResources(
-        action,
-        req.user!.id,
-        req.user!.username
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       await AdminUserService.adjustResources(
+         action,
+         actor.id,
+         actor.username
+       );
 
       res.json({ success: true });
     } catch (error: unknown) {
@@ -411,7 +461,7 @@ router.post(
   requireAdmin,
   requirePermission('user:write'),
   rateLimit(5, 60000),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const action = {
         action: req.body.action,
@@ -420,11 +470,14 @@ router.post(
         reason: req.body.reason,
       };
 
-      const result = await AdminUserService.bulkAction(
-        action,
-        req.user!.id,
-        req.user!.username
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       const result = await AdminUserService.bulkAction(
+         action,
+         actor.id,
+         actor.username
+       );
 
       res.json({ 
         success: true, 
@@ -451,7 +504,7 @@ router.post(
 router.get(
   '/monitoring/health',
   requireAdmin,
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const health = await AdminMonitoringService.getServerHealth();
       res.json(health);
@@ -471,7 +524,7 @@ router.get(
   '/monitoring/metrics/:name',
   requireAdmin,
   requirePermission('monitoring:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const metricName = req.params.name;
       const hours = parseInt(req.query.hours as string) || 24;
@@ -492,7 +545,7 @@ router.get(
 router.get(
   '/monitoring/activity',
   requireAdmin,
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const activity = await AdminMonitoringService.getPlayerActivity();
       res.json(activity);
@@ -512,7 +565,7 @@ router.get(
   '/monitoring/database',
   requireAdmin,
   requirePermission('monitoring:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const stats = await AdminMonitoringService.getDatabaseStats();
       res.json(stats);
@@ -532,7 +585,7 @@ router.get(
   '/monitoring/scaling',
   requireAdmin,
   requirePermission('monitoring:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const handler = getRealtimeHandler();
       const socketStats = handler
@@ -579,7 +632,7 @@ router.post(
   '/monitoring/leaderboard/rebuild',
   requireAdmin,
   requirePermission('monitoring:write'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       await LeaderboardScheduler.triggerRebuild();
       res.json({ success: true, message: 'Leaderboard rebuild triggered.' });
@@ -599,7 +652,7 @@ router.post(
   '/chat/restrictions',
   requireAdmin,
   requirePermission('monitoring:write'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const { userId, restrictionType, reason, durationMinutes, channelId } = req.body || {};
 
@@ -614,14 +667,17 @@ router.post(
         return;
       }
 
-      await chatService.restrictUser(
-        userId,
-        channelId ? Number(channelId) : null,
-        restrictionType,
-        reason,
-        req.user!.id,
-        durationMinutes ? Number(durationMinutes) : undefined
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       await chatService.restrictUser(
+         userId,
+         channelId ? Number(channelId) : null,
+         restrictionType,
+         reason,
+         actor.id,
+         durationMinutes ? Number(durationMinutes) : undefined
+       );
 
       res.json({ success: true, message: 'Restriction applied' });
     } catch (error: unknown) {
@@ -636,7 +692,7 @@ router.delete(
   '/chat/restrictions',
   requireAdmin,
   requirePermission('monitoring:write'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const { userId, restrictionType, channelId } = req.body || {};
       if (!userId || !restrictionType) {
@@ -670,14 +726,17 @@ router.delete(
 router.get(
   '/notifications',
   requireAdmin,
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const unreadOnly = req.query.unread === 'true';
-      const notifications = await AdminMonitoringService.getNotifications(
-        req.user!.id,
-        String(req.adminLevel!),
-        unreadOnly
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       const notifications = await AdminMonitoringService.getNotifications(
+         actor.id,
+         String(actor.level),
+         unreadOnly
+       );
       res.json(notifications);
     } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -694,10 +753,12 @@ router.get(
 router.post(
   '/notifications/:id/read',
   requireAdmin,
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const notificationId = parseInt(req.params.id);
-      await AdminMonitoringService.markNotificationRead(notificationId, req.user!.id);
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+       await AdminMonitoringService.markNotificationRead(notificationId, actor.id);
       res.json({ success: true });
     } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -714,10 +775,12 @@ router.post(
 router.post(
   '/notifications/:id/acknowledge',
   requireAdmin,
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const notificationId = parseInt(req.params.id);
-      await AdminMonitoringService.acknowledgeNotification(notificationId, req.user!.id);
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+       await AdminMonitoringService.acknowledgeNotification(notificationId, actor.id);
       res.json({ success: true });
     } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -739,9 +802,11 @@ router.get(
   '/settings',
   requireAdmin,
   requirePermission('game:config:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
-      const category = req.query.category as any;
+      const rawCategory = typeof req.query.category === 'string' ? req.query.category : undefined;
+      const allowedCategories: SettingCategory[] = ['game_mechanics','economy','combat','limits','server','security','features'];
+      const category = rawCategory && allowedCategories.includes(rawCategory as SettingCategory) ? rawCategory as SettingCategory : undefined;
       const settings = await AdminSettingsService.getAllSettings(category);
       res.json(settings);
     } catch (error: unknown) {
@@ -760,7 +825,7 @@ router.get(
   '/settings/:key',
   requireAdmin,
   requirePermission('game:config:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const setting = await AdminSettingsService.getSetting(req.params.key);
       if (!setting) {
@@ -785,13 +850,16 @@ router.put(
   requireAdmin,
   requirePermission('game:config:write'),
   rateLimit(30, 60000),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
+      const actor = sharedGetActor(req);
+      if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
       const setting = await AdminSettingsService.updateSetting(
         req.params.key,
         req.body.value,
-        req.user!.id,
-        req.user!.username
+        actor.id,
+        actor.username
       );
       res.json(setting);
     } catch (error: unknown) {
@@ -810,7 +878,7 @@ router.get(
   '/settings/:key/history',
   requireAdmin,
   requirePermission('game:config:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 10;
       const history = await AdminSettingsService.getSettingHistory(req.params.key, limit);
@@ -835,7 +903,7 @@ router.get(
   '/events',
   requireAdmin,
   requirePermission('game:events'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const events = await AdminEventsService.getAllEvents(limit);
@@ -857,7 +925,7 @@ router.post(
   requireAdmin,
   requirePermission('game:events'),
   rateLimit(10, 60000),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const action = {
         event_type: req.body.event_type,
@@ -872,11 +940,14 @@ router.post(
         priority: req.body.priority,
       };
 
-      const event = await AdminEventsService.createEvent(
-        action,
-        req.user!.id,
-        req.user!.username
-      );
+       const actor = sharedGetActor(req);
+       if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
+       const event = await AdminEventsService.createEvent(
+         action,
+         actor.id,
+         actor.username
+       );
 
       res.json({ success: true, event });
     } catch (error: unknown) {
@@ -895,10 +966,11 @@ router.post(
   '/events/:id/activate',
   requireAdmin,
   requirePermission('game:events'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const eventId = parseInt(req.params.id);
-      await AdminEventsService.activateEvent(eventId, req.user!.id, req.user!.username);
+      const actor = sharedGetActor(req); if (!actor) return res.status(401).json({ error: 'Authentication required' });
+       await AdminEventsService.activateEvent(eventId, actor.id, actor.username);
       res.json({ success: true });
     } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -916,10 +988,11 @@ router.post(
   '/events/:id/deactivate',
   requireAdmin,
   requirePermission('game:events'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const eventId = parseInt(req.params.id);
-      await AdminEventsService.deactivateEvent(eventId, req.user!.id, req.user!.username);
+      const actor = sharedGetActor(req); if (!actor) return res.status(401).json({ error: 'Authentication required' });
+       await AdminEventsService.deactivateEvent(eventId, actor.id, actor.username);
       res.json({ success: true });
     } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
@@ -941,7 +1014,7 @@ router.get(
   '/analytics/resources',
   requireAdmin,
   requirePermission('reports:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const analytics = await AdminAnalyticsService.getResourceAnalytics();
       res.json(analytics);
@@ -961,7 +1034,7 @@ router.get(
   '/analytics/combat',
   requireAdmin,
   requirePermission('reports:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const analytics = await AdminAnalyticsService.getCombatAnalytics();
       res.json(analytics);
@@ -981,7 +1054,7 @@ router.get(
   '/analytics/audit-stats',
   requireAdmin,
   requirePermission('reports:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const days = parseInt(req.query.days as string) || 30;
       const stats = await AdminAnalyticsService.getAuditStats(days);
@@ -1002,7 +1075,7 @@ router.get(
   '/analytics/top-admins',
   requireAdmin,
   requirePermission('analytics:view'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const days = parseInt(req.query.days as string) || 30;
       const limit = parseInt(req.query.limit as string) || 10;
@@ -1028,7 +1101,7 @@ router.get(
   '/audit-logs',
   requireAdmin,
   requirePermission('monitoring:read'),
-  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+  async (req: AdminAuthRequest, res: Response) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
@@ -1180,8 +1253,11 @@ router.post('/roles', requirePermission('admin:manage'), async (req: AdminAuthRe
     try {
       await client.query('BEGIN');
 
+      const actor = sharedGetActor(req);
+      if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
       // Set session context for audit logging
-      await client.query('SET app.current_admin_id = $1', [req.admin?.id]);
+      await client.query('SET app.current_admin_id = $1', [actor.id]);
       await client.query('SET app.client_ip = $1', [req.ip]);
 
       // Create role
@@ -1255,8 +1331,11 @@ router.put('/roles/:id', requirePermission('admin:manage'), async (req: AdminAut
     try {
       await client.query('BEGIN');
 
+      const actor = sharedGetActor(req);
+      if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
       // Set session context for audit logging
-      await client.query('SET app.current_admin_id = $1', [req.admin?.id]);
+      await client.query('SET app.current_admin_id = $1', [actor.id]);
       await client.query('SET app.client_ip = $1', [req.ip]);
 
       // Update role
@@ -1349,8 +1428,11 @@ router.delete('/roles/:id', requirePermission('admin:manage'), async (req: Admin
     try {
       await client.query('BEGIN');
 
+      const actor = sharedGetActor(req);
+      if (!actor) return res.status(401).json({ error: 'Authentication required' });
+
       // Set session context for audit logging
-      await client.query('SET app.current_admin_id = $1', [req.admin?.id]);
+      await client.query('SET app.current_admin_id = $1', [actor.id]);
       await client.query('SET app.client_ip = $1', [req.ip]);
 
       // Delete role permissions and role
@@ -1476,7 +1558,9 @@ router.put('/users/:userId/role', requirePermission('admin:manage'), async (req:
     const oldRoleId = adminUserResult.rows[0].role_id;
 
     // Set session context for audit logging
-    await pool.query('SET app.current_admin_id = $1', [req.admin?.id]);
+    const actor = sharedGetActor(req);
+    if (!actor) return res.status(401).json({ error: 'Authentication required' });
+    await pool.query('SET app.current_admin_id = $1', [actor.id]);
     await pool.query('SET app.client_ip = $1', [req.ip]);
 
     // Update role
@@ -1616,7 +1700,9 @@ router.post('/users/:userId/promote', requirePermission('admin:manage'), async (
       await client.query('BEGIN');
 
       // Set session context for audit logging
-      await client.query('SET app.current_admin_id = $1', [req.admin?.id]);
+      const actor = sharedGetActor(req);
+      if (!actor) return res.status(401).json({ error: 'Authentication required' });
+      await client.query('SET app.current_admin_id = $1', [actor.id]);
       await client.query('SET app.client_ip = $1', [req.ip]);
 
       // Create admin user record
@@ -1624,7 +1710,7 @@ router.post('/users/:userId/promote', requirePermission('admin:manage'), async (
         INSERT INTO admin_users (user_id, role_id, created_by)
         VALUES ($1, $2, $3)
         RETURNING id
-      `, [userId, roleId, req.admin?.id]);
+      `, [userId, roleId, actor.id]);
 
       // Update user is_admin flag
       await client.query(`
@@ -1666,7 +1752,9 @@ router.post('/users/:userId/demote', requirePermission('admin:manage'), async (r
     const userId = parseInt(req.params.userId);
 
     // Cannot demote yourself
-    if (userId === req.admin?.id) {
+    const actorSelf = sharedGetActor(req);
+    if (!actorSelf) return res.status(401).json({ error: 'Authentication required' });
+    if (userId === actorSelf.id) {
       return res.status(400).json({ error: 'Cannot demote yourself' });
     }
 
@@ -1688,7 +1776,7 @@ router.post('/users/:userId/demote', requirePermission('admin:manage'), async (r
       await client.query('BEGIN');
 
       // Set session context for audit logging
-      await client.query('SET app.current_admin_id = $1', [req.admin?.id]);
+      await client.query('SET app.current_admin_id = $1', [actorSelf.id]);
       await client.query('SET app.client_ip = $1', [req.ip]);
 
       // Delete admin user record

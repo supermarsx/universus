@@ -11,7 +11,9 @@
 // REST API endpoints for universe management
 // =====================================================
 
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
+import { AuthRequest } from '../types';
+import { getUserId } from '../utils/authHelpers';
 import universeSeedingService from '../services/universeSeedingService';
 import playerPlacementService from '../services/playerPlacementService';
 import universeMaintenanceService from '../services/universeMaintenanceService';
@@ -25,6 +27,8 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateToken);
 
+
+
 // =====================================================
 // UNIVERSE MANAGEMENT ENDPOINTS
 // =====================================================
@@ -33,7 +37,7 @@ router.use(authenticateToken);
  * GET /api/universe
  * Get all universes
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const universes = await universeSeedingService.getAllUniverses();
     
@@ -55,7 +59,7 @@ router.get('/', async (req: Request, res: Response) => {
  * GET /api/universe/:id
  * Get universe by ID
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const universe = await universeSeedingService.getUniverseById(universeId);
@@ -84,7 +88,7 @@ router.get('/:id', async (req: Request, res: Response) => {
  * POST /api/universe/create
  * Create a new universe
  */
-router.post('/create', async (req: Request, res: Response) => {
+router.post('/create', async (req: AuthRequest, res: Response) => {
   try {
     const result = await universeSeedingService.createUniverse(req.body);
     
@@ -106,7 +110,7 @@ router.post('/create', async (req: Request, res: Response) => {
  * POST /api/universe/:id/seed
  * Seed a universe with galaxies, bots, etc.
  */
-router.post('/:id/seed', async (req: Request, res: Response) => {
+router.post('/:id/seed', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     
@@ -138,7 +142,7 @@ router.post('/:id/seed', async (req: Request, res: Response) => {
  * GET /api/universe/:id/galaxies
  * Get all galaxies in a universe
  */
-router.get('/:id/galaxies', async (req: Request, res: Response) => {
+router.get('/:id/galaxies', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const galaxies = await universeSeedingService.getGalaxiesForUniverse(universeId);
@@ -165,10 +169,13 @@ router.get('/:id/galaxies', async (req: Request, res: Response) => {
  * POST /api/universe/:id/place-player
  * Place a player in the universe
  */
-router.post('/:id/place-player', async (req: Request, res: Response) => {
+router.post('/:id/place-player', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
-    const userId = (req as any).user.id;
+    const userId = getUserId(req);
+    if (userId === null) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
     
     const placementRequest = {
       universeId,
@@ -200,7 +207,7 @@ router.post('/:id/place-player', async (req: Request, res: Response) => {
  * GET /api/universe/:id/placements
  * Get all player placements in universe
  */
-router.get('/:id/placements', async (req: Request, res: Response) => {
+router.get('/:id/placements', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const placements = await playerPlacementService.getUniversePlacements(universeId);
@@ -223,10 +230,13 @@ router.get('/:id/placements', async (req: Request, res: Response) => {
  * GET /api/universe/:id/my-placement
  * Get current user's placement in universe
  */
-router.get('/:id/my-placement', async (req: Request, res: Response) => {
+router.get('/:id/my-placement', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
-    const userId = (req as any).user.id;
+    const userId = getUserId(req);
+    if (userId === null) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
     
     const placement = await playerPlacementService.getPlayerPlacement(userId, universeId);
     
@@ -258,7 +268,7 @@ router.get('/:id/my-placement', async (req: Request, res: Response) => {
  * POST /api/universe/:id/generate-bots
  * Generate bots for the universe
  */
-router.post('/:id/generate-bots', requirePermission('universe:generate_bots'), async (req: Request, res: Response) => {
+router.post('/:id/generate-bots', requirePermission('universe:generate_bots'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id, 10);
     const targetUrl = `${BOT_SERVICE_URL}/api/admin/bots/universe/${universeId}/generate`;
@@ -296,7 +306,7 @@ router.post('/:id/generate-bots', requirePermission('universe:generate_bots'), a
  * POST /api/universe/:id/maintenance/population-balance
  * Run population balance maintenance
  */
-router.post('/:id/maintenance/population-balance', async (req: Request, res: Response) => {
+router.post('/:id/maintenance/population-balance', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const result = await universeMaintenanceService.runPopulationBalance(universeId);
@@ -315,7 +325,7 @@ router.post('/:id/maintenance/population-balance', async (req: Request, res: Res
  * POST /api/universe/:id/maintenance/start
  * Start automatic maintenance for universe
  */
-router.post('/:id/maintenance/start', async (req: Request, res: Response) => {
+router.post('/:id/maintenance/start', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     
@@ -342,7 +352,7 @@ router.post('/:id/maintenance/start', async (req: Request, res: Response) => {
  * GET /api/universe/:id/stats
  * Get universe statistics
  */
-router.get('/:id/stats', async (req: Request, res: Response) => {
+router.get('/:id/stats', async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     

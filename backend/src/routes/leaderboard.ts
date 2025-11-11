@@ -1,6 +1,6 @@
 import express from 'express';
 import { LeaderboardService } from '../services/leaderboardService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
@@ -10,7 +10,8 @@ const router = express.Router();
 const leaderboardService = new LeaderboardService(pool, redis);
 
 // Apply authentication middleware to all routes
-router.use(authenticateToken);
+router.use(authenticateToken, assertAuthenticated);
+
 
 /**
  * GET /leaderboard/players
@@ -144,13 +145,12 @@ router.get('/player/:userId', async (req: AuthRequest, res) => {
  */
 router.get('/me', async (req: AuthRequest, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const range = parseInt(req.query.range as string) || 5;
 
     const result = await leaderboardService.getPlayerRank(userId, range);
+
 
     res.json({
       success: true,

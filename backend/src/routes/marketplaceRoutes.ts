@@ -1,10 +1,10 @@
 import express, { Request, Response } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { pool } from '../config/database';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
-router.use(authenticateToken);
+router.use(authenticateToken, assertAuthenticated);
 
 // GET /api/marketplace/listings
 router.get('/listings', async (req: AuthRequest, res: Response) => {
@@ -46,10 +46,8 @@ router.get('/listings', async (req: AuthRequest, res: Response) => {
 
 // POST /api/marketplace/listings
 router.post('/listings', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const userId = req.user.id;
+  const authReq = req as AuthRequest;
+  const userId = authReq.user!.id;
   const {
     listing_type = 'resource',
     planet_id,
@@ -159,10 +157,8 @@ router.post('/listings', async (req: AuthRequest, res: Response) => {
 
 // POST /api/marketplace/listings/:id/accept
 router.post('/listings/:id/accept', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const userId = req.user.id;
+  const authReq = req as AuthRequest;
+  const userId = authReq.user!.id;
   const { buyer_planet_id } = req.body;
   const listingId = req.params.id;
   if (!buyer_planet_id) {
@@ -239,10 +235,8 @@ router.post('/listings/:id/accept', async (req: AuthRequest, res: Response) => {
 
 // DELETE /api/marketplace/listings/:id
 router.delete('/listings/:id', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const userId = req.user.id;
+  const authReq = req as AuthRequest;
+  const userId = authReq.user!.id;
   const listingId = req.params.id;
   const client = await pool.connect();
   try {
@@ -289,10 +283,8 @@ router.delete('/listings/:id', async (req: AuthRequest, res: Response) => {
 
 // GET /api/marketplace/my-listings
 router.get('/my-listings', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const userId = req.user.id;
+  const authReq = req as AuthRequest;
+  const userId = authReq.user!.id;
   try {
     const result = await pool.query('SELECT * FROM shard_market_listings WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
     res.json({ listings: result.rows });
@@ -304,10 +296,8 @@ router.get('/my-listings', async (req: AuthRequest, res: Response) => {
 
 // GET /api/marketplace/my-history
 router.get('/my-history', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  const userId = req.user.id;
+  const authReq = req as AuthRequest;
+  const userId = authReq.user!.id;
   try {
     const result = await pool.query(
       `SELECT * FROM shard_market_listings 

@@ -11,6 +11,8 @@
 // =====================================================
 
 import express, { Request, Response } from 'express';
+import { AuthRequest } from '../types';
+import { getUserId } from '../utils/authHelpers';
 import { ThemeService } from '../services/themeService';
 import { authenticateToken } from '../middleware/auth';
 import { requireAdmin } from '../middleware/adminAuth';
@@ -167,9 +169,10 @@ router.get('/key/:key', async (req: Request, res: Response) => {
  * GET /api/themes/preferences
  * Get current user's theme preferences
  */
-router.get('/user/preferences', authenticateToken, async (req: Request, res: Response) => {
+router.get('/user/preferences', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const preferences = await ThemeService.getUserPreferences(userId);
 
         res.json({
@@ -189,9 +192,10 @@ router.get('/user/preferences', authenticateToken, async (req: Request, res: Res
  * PUT /api/themes/preferences
  * Update current user's theme preferences
  */
-router.put('/user/preferences', authenticateToken, async (req: Request, res: Response) => {
+router.put('/user/preferences', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const data: UpdateThemePreferencesRequest = req.body;
 
         const preferences = await ThemeService.updateUserPreferences(userId, data);
@@ -214,9 +218,10 @@ router.put('/user/preferences', authenticateToken, async (req: Request, res: Res
  * GET /api/themes/user/custom-css
  * Retrieve the current user's custom CSS snippet
  */
-router.get('/user/custom-css', authenticateToken, async (req: Request, res: Response) => {
+router.get('/user/custom-css', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const result = await ThemeService.getUserCustomCSS(userId);
 
         res.json({
@@ -237,9 +242,10 @@ router.get('/user/custom-css', authenticateToken, async (req: Request, res: Resp
  * PUT /api/themes/user/custom-css
  * Update the current user's custom CSS
  */
-router.put('/user/custom-css', authenticateToken, async (req: Request, res: Response) => {
+router.put('/user/custom-css', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const css = typeof req.body?.css === 'string' ? req.body.css : '';
 
         const result = await ThemeService.updateUserCustomCSS(userId, css);
@@ -267,9 +273,10 @@ router.put('/user/custom-css', authenticateToken, async (req: Request, res: Resp
  * POST /api/themes
  * Create new theme (Admin only)
  */
-router.post('/', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const data: CreateThemeRequest = req.body;
 
         // Validate required fields
@@ -308,10 +315,11 @@ router.post('/', authenticateToken, requireAdmin, async (req: Request, res: Resp
  * PUT /api/themes/:id
  * Update theme (Admin only)
  */
-router.put('/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
         const themeId = parseInt(req.params.id);
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const data: UpdateThemeRequest = req.body;
 
         const theme = await ThemeService.updateTheme(themeId, data, userId);
@@ -370,10 +378,11 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: Request, res:
  * POST /api/themes/:id/activate
  * Manually activate a theme (Admin only)
  */
-router.post('/:id/activate', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/activate', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
         const themeId = parseInt(req.params.id);
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const { reason } = req.body;
 
         const activation = await ThemeService.activateTheme(
@@ -423,10 +432,11 @@ router.post('/:id/deactivate', authenticateToken, requireAdmin, async (req: Requ
  * POST /api/themes/:id/preview
  * Enable preview mode for a theme (Admin only)
  */
-router.post('/:id/preview', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/preview', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
         const themeId = parseInt(req.params.id);
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
         const theme = await ThemeService.enablePreviewMode(themeId, userId);
 
@@ -448,7 +458,7 @@ router.post('/:id/preview', authenticateToken, requireAdmin, async (req: Request
  * POST /api/themes/:id/preview/disable
  * Disable preview mode (Admin only)
  */
-router.post('/:id/preview/disable', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/:id/preview/disable', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
         const themeId = parseInt(req.params.id);
         await ThemeService.disablePreviewMode(themeId);
@@ -521,9 +531,10 @@ router.get('/admin/schedules/active', authenticateToken, requireAdmin, async (re
  * POST /api/themes/schedules
  * Create new schedule
  */
-router.post('/admin/schedules', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+router.post('/admin/schedules', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const data: CreateThemeScheduleRequest = req.body;
 
         if (!data.theme_id || !data.schedule_name || !data.start_date || !data.end_date) {

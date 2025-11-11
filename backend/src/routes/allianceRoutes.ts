@@ -1,8 +1,10 @@
 // Phase 11: Alliance Management Routes
 // Complete REST API for alliance system
 
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
+import { AuthRequest } from '../types';
 import { authenticateToken } from '../middleware/auth';
+import { getUserId } from '../utils/authHelpers';
 import { AllianceService } from '../services/allianceService';
 import allianceLogisticsService from '../services/allianceLogisticsService';
 import { AllianceWarService } from '../services/allianceWarService';
@@ -18,14 +20,16 @@ const diplomacyService = new AllianceDiplomacyService();
 // All routes require authentication
 router.use(authenticateToken);
 
+
 // ============================================================================
 // ALLIANCE MANAGEMENT ROUTES
 // ============================================================================
 
 // Create alliance
-router.post('/create', async (req: Request, res: Response) => {
+router.post('/create', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const alliance = await allianceService.createAlliance(userId, req.body);
         res.json({ success: true, data: alliance });
     } catch (error: any) {
@@ -34,9 +38,10 @@ router.post('/create', async (req: Request, res: Response) => {
 });
 
 // Get current user's alliance dashboard
-router.get('/my-alliance', async (req: Request, res: Response) => {
+router.get('/my-alliance', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const dashboard = await allianceService.getMyAllianceDashboard(userId);
         res.json({ success: true, data: dashboard });
     } catch (error: any) {
@@ -48,11 +53,11 @@ router.get('/my-alliance', async (req: Request, res: Response) => {
 });
 
 // Get alliance details
-router.get('/:allianceId', async (req: Request, res: Response) => {
+router.get('/:allianceId', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user?.id;
+        const userId = getUserId(req);
         const allianceId = parseInt(req.params.allianceId);
-        const details = await allianceService.getAllianceDetails(allianceId, userId);
+        const details = await allianceService.getAllianceDetails(allianceId, userId ?? undefined);
         res.json({ success: true, data: details });
     } catch (error: any) {
         res.status(400).json({ success: false, error: { message: error.message } });
@@ -60,7 +65,7 @@ router.get('/:allianceId', async (req: Request, res: Response) => {
 });
 
 // Get alliance by tag
-router.get('/tag/:tag', async (req: Request, res: Response) => {
+router.get('/tag/:tag', async (req: AuthRequest, res: Response) => {
     try {
         const alliance = await allianceService.getAllianceByTag(req.params.tag);
         if (!alliance) {
@@ -73,9 +78,10 @@ router.get('/tag/:tag', async (req: Request, res: Response) => {
 });
 
 // Update alliance
-router.put('/:allianceId', async (req: Request, res: Response) => {
+router.put('/:allianceId', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const alliance = await allianceService.updateAlliance(allianceId, userId, req.body);
         res.json({ success: true, data: alliance });
@@ -85,9 +91,10 @@ router.put('/:allianceId', async (req: Request, res: Response) => {
 });
 
 // Disband alliance
-router.delete('/:allianceId', async (req: Request, res: Response) => {
+router.delete('/:allianceId', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.disbandAlliance(allianceId, userId);
         res.json({ success: true, message: 'Alliance disbanded successfully' });
@@ -97,7 +104,7 @@ router.delete('/:allianceId', async (req: Request, res: Response) => {
 });
 
 // Get alliance leaderboard
-router.get('/leaderboard/rankings', async (req: Request, res: Response) => {
+router.get('/leaderboard/rankings', async (req: AuthRequest, res: Response) => {
     try {
         const limit = parseInt(req.query.limit as string) || 100;
         const offset = parseInt(req.query.offset as string) || 0;
@@ -109,7 +116,7 @@ router.get('/leaderboard/rankings', async (req: Request, res: Response) => {
 });
 
 // Get alliance statistics
-router.get('/:allianceId/statistics', async (req: Request, res: Response) => {
+router.get('/:allianceId/statistics', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const stats = await allianceService.getAllianceStatistics(allianceId);
@@ -120,7 +127,7 @@ router.get('/:allianceId/statistics', async (req: Request, res: Response) => {
 });
 
 // Search alliances
-router.get('/search/query', async (req: Request, res: Response) => {
+router.get('/search/query', async (req: AuthRequest, res: Response) => {
     try {
         const query = req.query.q as string;
         const limit = parseInt(req.query.limit as string) || 20;
@@ -136,9 +143,10 @@ router.get('/search/query', async (req: Request, res: Response) => {
 // ============================================================================
 
 // Apply to alliance
-router.post('/:allianceId/apply', async (req: Request, res: Response) => {
+router.post('/:allianceId/apply', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const application = await allianceService.applyToAlliance(userId, {
             alliance_id: allianceId,
@@ -151,9 +159,10 @@ router.post('/:allianceId/apply', async (req: Request, res: Response) => {
 });
 
 // Process application
-router.post('/:allianceId/applications/:applicationId/process', async (req: Request, res: Response) => {
+router.post('/:allianceId/applications/:applicationId/process', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const applicationId = parseInt(req.params.applicationId);
         const accept = req.body.accept === true;
@@ -166,9 +175,10 @@ router.post('/:allianceId/applications/:applicationId/process', async (req: Requ
 });
 
 // List applications
-router.get('/:allianceId/applications', async (req: Request, res: Response) => {
+router.get('/:allianceId/applications', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const applications = await allianceService.getAllianceApplications(allianceId, userId);
         res.json({ success: true, data: applications });
@@ -178,9 +188,10 @@ router.get('/:allianceId/applications', async (req: Request, res: Response) => {
 });
 
 // Leave alliance
-router.post('/:allianceId/leave', async (req: Request, res: Response) => {
+router.post('/:allianceId/leave', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.leaveAlliance(allianceId, userId);
         res.json({ success: true, message: 'Left alliance successfully' });
@@ -190,9 +201,10 @@ router.post('/:allianceId/leave', async (req: Request, res: Response) => {
 });
 
 // Manage member (promote/demote/kick)
-router.post('/:allianceId/members/manage', async (req: Request, res: Response) => {
+router.post('/:allianceId/members/manage', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.manageMember(allianceId, userId, req.body);
         res.json({ success: true, message: 'Member managed successfully' });
@@ -205,7 +217,7 @@ router.post('/:allianceId/members/manage', async (req: Request, res: Response) =
 // ANNOUNCEMENTS & COMMUNICATION
 // ============================================================================
 
-router.get('/:allianceId/announcements', async (req: Request, res: Response) => {
+router.get('/:allianceId/announcements', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const limit = parseInt(req.query.limit as string) || 10;
@@ -216,9 +228,10 @@ router.get('/:allianceId/announcements', async (req: Request, res: Response) => 
     }
 });
 
-router.post('/:allianceId/announcements', async (req: Request, res: Response) => {
+router.post('/:allianceId/announcements', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const announcement = await allianceService.createAnnouncement(allianceId, userId, req.body);
         res.json({ success: true, data: announcement });
@@ -232,9 +245,10 @@ router.post('/:allianceId/announcements', async (req: Request, res: Response) =>
 // ============================================================================
 
 // Contribute resources
-router.post('/:allianceId/resources/contribute', async (req: Request, res: Response) => {
+router.post('/:allianceId/resources/contribute', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.contributeResources(allianceId, userId, req.body);
         res.json({ success: true, message: 'Resources contributed successfully' });
@@ -244,9 +258,10 @@ router.post('/:allianceId/resources/contribute', async (req: Request, res: Respo
 });
 
 // Withdraw resources
-router.post('/:allianceId/resources/withdraw', async (req: Request, res: Response) => {
+router.post('/:allianceId/resources/withdraw', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         await allianceService.withdrawResources(allianceId, userId, req.body);
         res.json({ success: true, message: 'Resources withdrawn successfully' });
@@ -259,9 +274,10 @@ router.post('/:allianceId/resources/withdraw', async (req: Request, res: Respons
 // LOGISTICS ROUTES (Depot & Shared Transport)
 // ============================================================================
 
-router.post('/:allianceId/depot/request', async (req: Request, res: Response) => {
+router.post('/:allianceId/depot/request', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const session = await allianceLogisticsService.requestDepotDock(allianceId, userId, req.body);
         res.json({ success: true, data: session });
@@ -270,9 +286,10 @@ router.post('/:allianceId/depot/request', async (req: Request, res: Response) =>
     }
 });
 
-router.post('/:allianceId/depot/:sessionId/approve', async (req: Request, res: Response) => {
+router.post('/:allianceId/depot/:sessionId/approve', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const sessionId = parseInt(req.params.sessionId);
         const result = await allianceLogisticsService.approveDepotDock(allianceId, userId, {
@@ -285,9 +302,10 @@ router.post('/:allianceId/depot/:sessionId/approve', async (req: Request, res: R
     }
 });
 
-router.post('/:allianceId/depot/:sessionId/cancel', async (req: Request, res: Response) => {
+router.post('/:allianceId/depot/:sessionId/cancel', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const sessionId = parseInt(req.params.sessionId);
         await allianceLogisticsService.cancelDepotSession(allianceId, userId, sessionId);
@@ -297,9 +315,10 @@ router.post('/:allianceId/depot/:sessionId/cancel', async (req: Request, res: Re
     }
 });
 
-router.post('/:allianceId/shared-transport', async (req: Request, res: Response) => {
+router.post('/:allianceId/shared-transport', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         await allianceLogisticsService.createSharedTransport(allianceId, userId, req.body);
         res.json({ success: true, message: 'Shared transport completed' });
@@ -308,9 +327,10 @@ router.post('/:allianceId/shared-transport', async (req: Request, res: Response)
     }
 });
 
-router.get('/:allianceId/depot/sessions', async (req: Request, res: Response) => {
+router.get('/:allianceId/depot/sessions', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const status = req.query.status as string | undefined;
         const sessions = await allianceLogisticsService.getDepotSessions(allianceId, userId, status);
@@ -325,9 +345,10 @@ router.get('/:allianceId/depot/sessions', async (req: Request, res: Response) =>
 // ============================================================================
 
 // Declare war
-router.post('/:allianceId/wars/declare', async (req: Request, res: Response) => {
+router.post('/:allianceId/wars/declare', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const war = await warService.declareWar(allianceId, userId, req.body);
         res.json({ success: true, data: war });
@@ -337,9 +358,10 @@ router.post('/:allianceId/wars/declare', async (req: Request, res: Response) => 
 });
 
 // Accept war declaration
-router.post('/wars/:warId/accept', async (req: Request, res: Response) => {
+router.post('/wars/:warId/accept', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const warId = parseInt(req.params.warId);
         const war = await warService.acceptWarDeclaration(warId, userId);
         res.json({ success: true, data: war });
@@ -349,7 +371,7 @@ router.post('/wars/:warId/accept', async (req: Request, res: Response) => {
 });
 
 // Get war details
-router.get('/wars/:warId', async (req: Request, res: Response) => {
+router.get('/wars/:warId', async (req: AuthRequest, res: Response) => {
     try {
         const warId = parseInt(req.params.warId);
         const details = await warService.getWarDetails(warId);
@@ -360,7 +382,7 @@ router.get('/wars/:warId', async (req: Request, res: Response) => {
 });
 
 // Get alliance wars
-router.get('/:allianceId/wars', async (req: Request, res: Response) => {
+router.get('/:allianceId/wars', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const status = req.query.status as any;
@@ -372,7 +394,7 @@ router.get('/:allianceId/wars', async (req: Request, res: Response) => {
 });
 
 // Record war battle
-router.post('/wars/:warId/battles', async (req: Request, res: Response) => {
+router.post('/wars/:warId/battles', async (req: AuthRequest, res: Response) => {
     try {
         const warId = parseInt(req.params.warId);
         const battle = await warService.recordWarBattle({
@@ -386,9 +408,10 @@ router.post('/wars/:warId/battles', async (req: Request, res: Response) => {
 });
 
 // End war
-router.post('/wars/:warId/end', async (req: Request, res: Response) => {
+router.post('/wars/:warId/end', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const warId = parseInt(req.params.warId);
         await warService.endWar(warId, userId, req.body);
         res.json({ success: true, message: 'War ended successfully' });
@@ -398,9 +421,10 @@ router.post('/wars/:warId/end', async (req: Request, res: Response) => {
 });
 
 // Propose ceasefire
-router.post('/wars/:warId/ceasefire', async (req: Request, res: Response) => {
+router.post('/wars/:warId/ceasefire', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const warId = parseInt(req.params.warId);
         await warService.proposeCeasefire(warId, userId);
         res.json({ success: true, message: 'Ceasefire proposed' });
@@ -410,7 +434,7 @@ router.post('/wars/:warId/ceasefire', async (req: Request, res: Response) => {
 });
 
 // Get active wars
-router.get('/wars/active/all', async (req: Request, res: Response) => {
+router.get('/wars/active/all', async (req: AuthRequest, res: Response) => {
     try {
         const wars = await warService.getActiveWars();
         res.json({ success: true, data: wars });
@@ -420,7 +444,7 @@ router.get('/wars/active/all', async (req: Request, res: Response) => {
 });
 
 // Get war leaderboard
-router.get('/wars/:warId/leaderboard', async (req: Request, res: Response) => {
+router.get('/wars/:warId/leaderboard', async (req: AuthRequest, res: Response) => {
     try {
         const warId = parseInt(req.params.warId);
         const leaderboard = await warService.getWarLeaderboard(warId);
@@ -435,9 +459,10 @@ router.get('/wars/:warId/leaderboard', async (req: Request, res: Response) => {
 // ============================================================================
 
 // Propose diplomacy
-router.post('/:allianceId/diplomacy/propose', async (req: Request, res: Response) => {
+router.post('/:allianceId/diplomacy/propose', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const proposal = await diplomacyService.proposeDiplomacy(allianceId, userId, req.body);
         res.json({ success: true, data: proposal });
@@ -447,9 +472,10 @@ router.post('/:allianceId/diplomacy/propose', async (req: Request, res: Response
 });
 
 // Respond to proposal
-router.post('/diplomacy/proposals/:proposalId/respond', async (req: Request, res: Response) => {
+router.post('/diplomacy/proposals/:proposalId/respond', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const proposalId = parseInt(req.params.proposalId);
         const relation = await diplomacyService.respondToProposal(proposalId, userId, req.body);
         res.json({ success: true, data: relation });
@@ -459,9 +485,10 @@ router.post('/diplomacy/proposals/:proposalId/respond', async (req: Request, res
 });
 
 // Cancel proposal
-router.delete('/diplomacy/proposals/:proposalId', async (req: Request, res: Response) => {
+router.delete('/diplomacy/proposals/:proposalId', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const proposalId = parseInt(req.params.proposalId);
         await diplomacyService.cancelProposal(proposalId, userId);
         res.json({ success: true, message: 'Proposal cancelled' });
@@ -471,7 +498,7 @@ router.delete('/diplomacy/proposals/:proposalId', async (req: Request, res: Resp
 });
 
 // Get diplomatic relations
-router.get('/:allianceId/diplomacy/relations', async (req: Request, res: Response) => {
+router.get('/:allianceId/diplomacy/relations', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const status = req.query.status as any;
@@ -483,7 +510,7 @@ router.get('/:allianceId/diplomacy/relations', async (req: Request, res: Respons
 });
 
 // Get pending proposals
-router.get('/:allianceId/diplomacy/proposals/pending', async (req: Request, res: Response) => {
+router.get('/:allianceId/diplomacy/proposals/pending', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const proposals = await diplomacyService.getPendingProposals(allianceId);
@@ -494,7 +521,7 @@ router.get('/:allianceId/diplomacy/proposals/pending', async (req: Request, res:
 });
 
 // Get sent proposals
-router.get('/:allianceId/diplomacy/proposals/sent', async (req: Request, res: Response) => {
+router.get('/:allianceId/diplomacy/proposals/sent', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const proposals = await diplomacyService.getSentProposals(allianceId);
@@ -505,9 +532,10 @@ router.get('/:allianceId/diplomacy/proposals/sent', async (req: Request, res: Re
 });
 
 // Terminate diplomatic relation
-router.post('/:allianceId/diplomacy/terminate/:targetAllianceId', async (req: Request, res: Response) => {
+router.post('/:allianceId/diplomacy/terminate/:targetAllianceId', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const targetAllianceId = parseInt(req.params.targetAllianceId);
         await diplomacyService.terminateRelation(allianceId, targetAllianceId, userId, req.body.reason);
@@ -518,9 +546,10 @@ router.post('/:allianceId/diplomacy/terminate/:targetAllianceId', async (req: Re
 });
 
 // Update relation terms
-router.put('/:allianceId/diplomacy/terms/:targetAllianceId', async (req: Request, res: Response) => {
+router.put('/:allianceId/diplomacy/terms/:targetAllianceId', async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.id;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, message: 'Unauthorized' });
         const allianceId = parseInt(req.params.allianceId);
         const targetAllianceId = parseInt(req.params.targetAllianceId);
         const relation = await diplomacyService.updateRelationTerms(
@@ -536,7 +565,7 @@ router.put('/:allianceId/diplomacy/terms/:targetAllianceId', async (req: Request
 });
 
 // Get diplomatic history
-router.get('/:allianceId/diplomacy/history', async (req: Request, res: Response) => {
+router.get('/:allianceId/diplomacy/history', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const limit = parseInt(req.query.limit as string) || 50;
@@ -548,7 +577,7 @@ router.get('/:allianceId/diplomacy/history', async (req: Request, res: Response)
 });
 
 // Check if can attack
-router.get('/:allianceId/diplomacy/can-attack/:targetAllianceId', async (req: Request, res: Response) => {
+router.get('/:allianceId/diplomacy/can-attack/:targetAllianceId', async (req: AuthRequest, res: Response) => {
     try {
         const allianceId = parseInt(req.params.allianceId);
         const targetAllianceId = parseInt(req.params.targetAllianceId);

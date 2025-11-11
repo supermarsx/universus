@@ -7,7 +7,7 @@
 
 import express from 'express';
 import { MessagingService, MessageType } from '../services/messagingService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { AllianceService } from '../services/allianceService';
@@ -18,7 +18,8 @@ const messagingService = new MessagingService(pool);
 const allianceService = new AllianceService();
 
 // Apply authentication middleware to all routes
-router.use(authenticateToken);
+router.use(authenticateToken, assertAuthenticated);
+
 
 /**
  * GET /messages/inbox
@@ -26,11 +27,9 @@ router.use(authenticateToken);
  * Query params: limit, offset, type
  */
 router.get('/inbox', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
     const messageType = req.query.type as MessageType | undefined;
@@ -55,17 +54,16 @@ router.get('/inbox', async (req: AuthRequest, res) => {
   }
 });
 
+
 /**
  * GET /messages/sent
  * Get user's sent messages
  * Query params: limit, offset
  */
 router.get('/sent', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 
@@ -89,17 +87,16 @@ router.get('/sent', async (req: AuthRequest, res) => {
   }
 });
 
+
 /**
  * GET /messages/unread-count
  * Get unread message count
  * Query params: type (optional)
  */
 router.get('/unread-count', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const messageType = req.query.type as MessageType | undefined;
 
     const count = await messagingService.getUnreadCount(userId, messageType);
@@ -117,16 +114,15 @@ router.get('/unread-count', async (req: AuthRequest, res) => {
   }
 });
 
+
 /**
  * GET /messages/:id
  * Get a specific message
  */
 router.get('/:id', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const messageId = parseInt(req.params.id);
 
     const message = await messagingService.getMessage(messageId, userId);
@@ -155,6 +151,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
     });
   }
 });
+
 
 /**
  * POST /messages/send

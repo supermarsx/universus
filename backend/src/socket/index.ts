@@ -7,6 +7,12 @@
  */
 
 import { Server as SocketIOServer, Socket } from 'socket.io';
+
+interface AuthSocket extends Socket {
+  userId?: number;
+  username?: string;
+}
+
 import { Server as HTTPServer } from 'http';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/database';
@@ -47,8 +53,8 @@ export async function initializeSocket(httpServer: HTTPServer): Promise<SocketIO
         return next(new Error('User not found or banned'));
       }
 
-      (socket as any).userId = decoded.userId;
-      (socket as any).username = result.rows[0].username;
+(socket as AuthSocket).userId = decoded.userId;
+      (socket as AuthSocket).username = result.rows[0].username;
       
       next();
     } catch (error) {
@@ -61,8 +67,8 @@ export async function initializeSocket(httpServer: HTTPServer): Promise<SocketIO
 
   // Legacy connection handler (for backwards compatibility)
   io.on('connection', (socket: Socket) => {
-    const userId = (socket as any).userId;
-    const username = (socket as any).username;
+const userId = (socket as AuthSocket).userId;
+    const username = (socket as AuthSocket).username;
     
     console.log(`User connected: ${username} (${userId})`);
 

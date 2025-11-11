@@ -2,11 +2,13 @@
 // REST API endpoints for the enhanced shop system with Matrix theme
 
 import express, { Router, Request, Response } from 'express';
+import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { EnhancedShopService } from '../services/enhancedShopService';
 import { authenticateToken } from '../middleware/auth';
 import { requirePermission } from '../middleware/adminAuth';
 import { redis } from '../config/redis';
+import { getUserId } from '../utils/authHelpers';
 
 const router = Router();
 const shopService = new EnhancedShopService(
@@ -51,9 +53,10 @@ router.get('/cosmetics/:id', async (req: Request, res: Response) => {
 });
 
 // GET /api/shop/my-cosmetics - Get user's owned cosmetics
-router.get('/my-cosmetics', authenticateToken, async (req: Request, res: Response) => {
+router.get('/my-cosmetics', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const cosmetics = await shopService.getUserCosmetics(userId);
         res.json({ success: true, data: cosmetics });
     } catch (error: any) {
@@ -62,9 +65,10 @@ router.get('/my-cosmetics', authenticateToken, async (req: Request, res: Respons
 });
 
 // POST /api/shop/cosmetics/purchase - Purchase a cosmetic item
-router.post('/cosmetics/purchase', authenticateToken, async (req: Request, res: Response) => {
+router.post('/cosmetics/purchase', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const { cosmetic_item_id, payment_method, promo_code } = req.body;
 
         const purchase = await shopService.purchaseCosmetic({
@@ -81,9 +85,10 @@ router.post('/cosmetics/purchase', authenticateToken, async (req: Request, res: 
 });
 
 // POST /api/shop/cosmetics/equip - Equip a cosmetic item
-router.post('/cosmetics/equip', authenticateToken, async (req: Request, res: Response) => {
+router.post('/cosmetics/equip', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const { cosmetic_item_id } = req.body;
 
         await shopService.equipCosmetic(userId, cosmetic_item_id);
@@ -108,9 +113,10 @@ router.get('/promotions', async (req: Request, res: Response) => {
 });
 
 // POST /api/shop/promotions/validate - Validate and apply promotion code
-router.post('/promotions/validate', authenticateToken, async (req: Request, res: Response) => {
+router.post('/promotions/validate', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const { promo_code, cart_items } = req.body;
 
         const result = await shopService.applyPromotion({
@@ -155,9 +161,10 @@ router.get('/bundles', async (req: Request, res: Response) => {
 // =====================================================
 
 // POST /api/shop/gifts/send - Send a gift
-router.post('/gifts/send', authenticateToken, async (req: Request, res: Response) => {
+router.post('/gifts/send', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const { recipient_email, item_type, item_id, quantity, personal_message } = req.body;
 
         const gift = await shopService.sendGift({
@@ -180,9 +187,10 @@ router.post('/gifts/send', authenticateToken, async (req: Request, res: Response
 });
 
 // POST /api/shop/gifts/claim - Claim a gift
-router.post('/gifts/claim', authenticateToken, async (req: Request, res: Response) => {
+router.post('/gifts/claim', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const { gift_code } = req.body;
 
         await shopService.claimGift({
@@ -201,9 +209,10 @@ router.post('/gifts/claim', authenticateToken, async (req: Request, res: Respons
 // =====================================================
 
 // GET /api/shop/matrix/progress - Get user's Matrix theme progress
-router.get('/matrix/progress', authenticateToken, async (req: Request, res: Response) => {
+router.get('/matrix/progress', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const progress = await shopService.getMatrixProgress(userId);
         res.json({ success: true, data: progress });
     } catch (error: any) {
@@ -212,9 +221,10 @@ router.get('/matrix/progress', authenticateToken, async (req: Request, res: Resp
 });
 
 // POST /api/shop/matrix/unlock - Unlock Matrix theme
-router.post('/matrix/unlock', authenticateToken, async (req: Request, res: Response) => {
+router.post('/matrix/unlock', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         await shopService.unlockMatrixTheme(userId);
         res.json({ 
             success: true, 
@@ -226,9 +236,10 @@ router.post('/matrix/unlock', authenticateToken, async (req: Request, res: Respo
 });
 
 // POST /api/shop/matrix/points - Add Matrix points
-router.post('/matrix/points', authenticateToken, async (req: Request, res: Response) => {
+router.post('/matrix/points', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const { points } = req.body;
 
         await shopService.addMatrixPoints(userId, points);
@@ -243,9 +254,10 @@ router.post('/matrix/points', authenticateToken, async (req: Request, res: Respo
 // =====================================================
 
 // GET /api/shop/profile - Get user's complete shop profile
-router.get('/profile', authenticateToken, async (req: Request, res: Response) => {
+router.get('/profile', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const profile = await shopService.getUserShopProfile(userId);
         res.json({ success: true, data: profile });
     } catch (error: any) {
@@ -254,9 +266,10 @@ router.get('/profile', authenticateToken, async (req: Request, res: Response) =>
 });
 
 // GET /api/shop/recommendations - Get personalized recommendations
-router.get('/recommendations', authenticateToken, async (req: Request, res: Response) => {
+router.get('/recommendations', authenticateToken, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = (req as any).user.userId;
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
         const limit = req.query.limit ? parseInt(req.query.limit as string) : 6;
         
         const recommendations = await shopService.getRecommendations(userId, limit);

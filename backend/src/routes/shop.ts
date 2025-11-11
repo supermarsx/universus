@@ -1,6 +1,6 @@
 import express from 'express';
 import { ShopService } from '../services/shopService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 
@@ -17,7 +17,10 @@ router.use((req, res, next) => {
   if (req.path === '/webhook') {
     next();
   } else {
-    authenticateToken(req, res, next);
+    authenticateToken(req, res, (err?: any) => {
+      if (err) return next(err);
+      assertAuthenticated(req, res, next);
+    });
   }
 });
 
@@ -49,10 +52,8 @@ router.get('/catalog', async (req: AuthRequest, res) => {
  */
 router.post('/create-payment-intent', async (req: AuthRequest, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const { shopItemId } = req.body;
 
     if (!shopItemId) {
@@ -115,10 +116,8 @@ router.post(
  */
 router.get('/perks', async (req: AuthRequest, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
 
     const perks = await shopService.getUserPerks(userId);
 
@@ -141,10 +140,8 @@ router.get('/perks', async (req: AuthRequest, res) => {
  */
 router.get('/purchases', async (req: AuthRequest, res) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const limit = parseInt(req.query.limit as string) || 50;
 
     const purchases = await shopService.getPurchaseHistory(userId, limit);

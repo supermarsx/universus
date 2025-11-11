@@ -1,19 +1,18 @@
 import express, { Request, Response } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import playerBlockService, { BlockScope } from '../services/playerBlockService';
 import { pool } from '../config/database';
 
 const router = express.Router();
 
-router.use(authenticateToken);
+router.use(authenticateToken, assertAuthenticated);
+
 
 router.get('/', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const blocks = await playerBlockService.listBlocks(userId);
     res.json({ success: true, data: blocks });
   } catch (error: any) {
@@ -22,12 +21,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+
 router.post('/', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const { blockedUserId, username, scope = 'all', reason } = req.body || {};
 
     let targetId = blockedUserId ? parseInt(blockedUserId, 10) : null;
@@ -60,12 +58,11 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+
 router.delete('/:targetIdentifier', async (req: AuthRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.id;
     const identifier = req.params.targetIdentifier;
     let targetId = parseInt(identifier, 10);
 
@@ -94,5 +91,6 @@ router.delete('/:targetIdentifier', async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, error: 'Failed to unblock player' });
   }
 });
+
 
 export default router;
