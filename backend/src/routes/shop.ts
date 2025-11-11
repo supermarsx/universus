@@ -49,7 +49,10 @@ router.get('/catalog', async (req: AuthRequest, res) => {
  */
 router.post('/create-payment-intent', async (req: AuthRequest, res) => {
   try {
-    const userId = req.user!.id;
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const userId = req.user.id;
     const { shopItemId } = req.body;
 
     if (!shopItemId) {
@@ -112,7 +115,10 @@ router.post(
  */
 router.get('/perks', async (req: AuthRequest, res) => {
   try {
-    const userId = req.user!.id;
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const userId = req.user.id;
 
     const perks = await shopService.getUserPerks(userId);
 
@@ -135,7 +141,10 @@ router.get('/perks', async (req: AuthRequest, res) => {
  */
 router.get('/purchases', async (req: AuthRequest, res) => {
   try {
-    const userId = req.user!.id;
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const userId = req.user.id;
     const limit = parseInt(req.query.limit as string) || 50;
 
     const purchases = await shopService.getPurchaseHistory(userId, limit);

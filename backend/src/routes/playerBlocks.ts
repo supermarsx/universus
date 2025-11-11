@@ -9,8 +9,11 @@ const router = express.Router();
 router.use(authenticateToken);
 
 router.get('/', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
   try {
-    const userId = req.user!.id;
+    const userId = req.user.id;
     const blocks = await playerBlockService.listBlocks(userId);
     res.json({ success: true, data: blocks });
   } catch (error: any) {
@@ -20,8 +23,11 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 router.post('/', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
   try {
-    const userId = req.user!.id;
+    const userId = req.user.id;
     const { blockedUserId, username, scope = 'all', reason } = req.body || {};
 
     let targetId = blockedUserId ? parseInt(blockedUserId, 10) : null;
@@ -55,8 +61,11 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 });
 
 router.delete('/:targetIdentifier', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Authentication required' });
+  }
   try {
-    const userId = req.user!.id;
+    const userId = req.user.id;
     const identifier = req.params.targetIdentifier;
     let targetId = parseInt(identifier, 10);
 

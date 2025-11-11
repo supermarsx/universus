@@ -376,6 +376,11 @@ export class GlobalLeaderboardService {
    * Start automatic leaderboard updates
    */
   startAutomaticUpdates(): void {
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+      console.log('Global leaderboard automatic updates skipped (test mode or SKIP_SERVER_START=true)');
+      return;
+    }
+
     if (this.updateInterval) {
       console.log('Leaderboard updates already running');
       return;

@@ -18,7 +18,12 @@ export class LeaderboardScheduler {
   static start(intervalMs: number = 60 * 60 * 1000): LeaderboardScheduler {
     if (!LeaderboardScheduler.instance) {
       LeaderboardScheduler.instance = new LeaderboardScheduler(intervalMs);
-      LeaderboardScheduler.instance.startLoop();
+      // Do not start automatic loops during tests or when SKIP_SERVER_START is set
+      if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+        console.log('[LeaderboardScheduler] Start skipped (test mode or SKIP_SERVER_START)');
+      } else {
+        LeaderboardScheduler.instance.startLoop();
+      }
     }
     return LeaderboardScheduler.instance;
   }

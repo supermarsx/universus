@@ -361,6 +361,11 @@ export class DebrisService {
    * Start automatic debris cleanup scheduler
    */
   startAutomaticCleanup(intervalMinutes: number = 60): void {
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+      console.log('[Debris Cleanup] Auto-cleanup skipped (test mode or SKIP_SERVER_START=true)');
+      return;
+    }
+
     setInterval(async () => {
       console.log('[Debris Cleanup] Running automatic cleanup...');
       

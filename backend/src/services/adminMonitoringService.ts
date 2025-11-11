@@ -346,7 +346,13 @@ export class AdminMonitoringService {
  * Start monitoring interval
  * Call this when server starts to begin automatic metric collection
  */
-export function startMonitoring(intervalMs: number = 60000): NodeJS.Timeout {
+export function startMonitoring(intervalMs: number = 60000): NodeJS.Timeout | null {
+  // Prevent automatic monitoring during tests or when SKIP_SERVER_START is set
+  if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+    console.log('Server monitoring skipped (test mode or SKIP_SERVER_START)');
+    return null;
+  }
+
   console.log('Starting server monitoring...');
   
   // Collect metrics immediately

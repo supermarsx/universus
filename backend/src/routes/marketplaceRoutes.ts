@@ -1,13 +1,15 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { pool } from '../config/database';
+import { AuthRequest } from '../types';
 
 const router = express.Router();
 router.use(authenticateToken);
 
 // GET /api/marketplace/listings
-router.get('/listings', async (req, res) => {
+router.get('/listings', async (req: AuthRequest, res: Response) => {
   // Query params: type, resource_type, fleet_type, wanted_type, min, max, page, pageSize
+  const rawQuery = req.query || {};
   const {
     type,
     resource_type,
@@ -15,9 +17,9 @@ router.get('/listings', async (req, res) => {
     wanted_type,
     min,
     max,
-    page = 1,
-    pageSize = 20
-  } = req.query;
+  } = rawQuery;
+  const page = parseInt((rawQuery.page as string) || '1', 10);
+  const pageSize = parseInt((rawQuery.pageSize as string) || '20', 10);
   const filters = ['status = \'active\''];
   const params = [];
   let idx = 1;
@@ -28,7 +30,7 @@ router.get('/listings', async (req, res) => {
   if (min) { filters.push(`wanted_amount >= $${idx++}`); params.push(min); }
   if (max) { filters.push(`wanted_amount <= $${idx++}`); params.push(max); }
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-  const offset = (parseInt(page) - 1) * parseInt(pageSize);
+  const offset = (page - 1) * pageSize;
   try {
     const listingsResult = await pool.query(
       `SELECT * FROM shard_market_listings ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
@@ -37,13 +39,16 @@ router.get('/listings', async (req, res) => {
     const countResult = await pool.query(`SELECT COUNT(*) FROM shard_market_listings ${where}`, params);
     res.json({ listings: listingsResult.rows, total: parseInt(countResult.rows[0].count) });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
 
 // POST /api/marketplace/listings
-router.post('/listings', async (req, res) => {
+router.post('/listings', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   const userId = req.user.id;
   const {
     listing_type = 'resource',
@@ -145,7 +150,7 @@ router.post('/listings', async (req, res) => {
     res.json({ listing: listingResult.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   } finally {
     client.release();
   }
@@ -153,7 +158,10 @@ router.post('/listings', async (req, res) => {
 
 
 // POST /api/marketplace/listings/:id/accept
-router.post('/listings/:id/accept', async (req, res) => {
+router.post('/listings/:id/accept', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   const userId = req.user.id;
   const { buyer_planet_id } = req.body;
   const listingId = req.params.id;
@@ -222,7 +230,7 @@ router.post('/listings/:id/accept', async (req, res) => {
     res.json({ success: true, delivery_eta, transaction: { listing_id: listingId, buyer_id: userId, buyer_planet_id, seller_id: listing.user_id, seller_planet_id: listing.planet_id } });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   } finally {
     client.release();
   }
@@ -230,7 +238,10 @@ router.post('/listings/:id/accept', async (req, res) => {
 
 
 // DELETE /api/marketplace/listings/:id
-router.delete('/listings/:id', async (req, res) => {
+router.delete('/listings/:id', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   const userId = req.user.id;
   const listingId = req.params.id;
   const client = await pool.connect();
@@ -269,7 +280,7 @@ router.delete('/listings/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   } finally {
     client.release();
   }
@@ -277,19 +288,25 @@ router.delete('/listings/:id', async (req, res) => {
 
 
 // GET /api/marketplace/my-listings
-router.get('/my-listings', async (req, res) => {
+router.get('/my-listings', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   const userId = req.user.id;
   try {
     const result = await pool.query('SELECT * FROM shard_market_listings WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
     res.json({ listings: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
 
 // GET /api/marketplace/my-history
-router.get('/my-history', async (req, res) => {
+router.get('/my-history', async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
   const userId = req.user.id;
   try {
     const result = await pool.query(
@@ -300,13 +317,13 @@ router.get('/my-history', async (req, res) => {
     );
     res.json({ transactions: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
 
 // GET /api/marketplace/listings/:id
-router.get('/listings/:id', async (req, res) => {
+router.get('/listings/:id', async (req: AuthRequest, res: Response) => {
   const listingId = req.params.id;
   try {
     const result = await pool.query('SELECT * FROM shard_market_listings WHERE id = $1', [listingId]);
@@ -315,7 +332,7 @@ router.get('/listings/:id', async (req, res) => {
     }
     res.json({ listing: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

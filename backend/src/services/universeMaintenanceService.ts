@@ -72,6 +72,12 @@ export class UniverseMaintenanceService {
    * Start automatic maintenance scheduler
    */
   startAutomaticMaintenance(universeId: number): void {
+    // Prevent automatic maintenance during tests or when SKIP_SERVER_START is set
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+      console.log(`[Universe ${universeId}] Automatic maintenance skipped (test mode or SKIP_SERVER_START)`);
+      return;
+    }
+
     // Run maintenance every hour
     setInterval(async () => {
       console.log(`[Universe ${universeId}] Running maintenance tasks...`);

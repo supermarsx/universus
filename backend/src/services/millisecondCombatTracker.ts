@@ -39,7 +39,10 @@ export class MillisecondCombatTracker {
 
     constructor(dbPool: Pool) {
         this.pool = dbPool;
-        this.startEventFlusher();
+        // Don't start background flusher during tests or when server start is skipped
+        if (process.env.NODE_ENV !== 'test' && process.env.SKIP_SERVER_START !== 'true') {
+            this.startEventFlusher();
+        }
     }
 
     /**

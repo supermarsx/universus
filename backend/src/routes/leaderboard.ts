@@ -144,7 +144,10 @@ router.get('/player/:userId', async (req: AuthRequest, res) => {
  */
 router.get('/me', async (req: AuthRequest, res) => {
   try {
-    const userId = req.user!.id;
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const userId = req.user.id;
     const range = parseInt(req.query.range as string) || 5;
 
     const result = await leaderboardService.getPlayerRank(userId, range);

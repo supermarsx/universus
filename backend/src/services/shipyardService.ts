@@ -242,9 +242,7 @@ export class ShipyardService {
         const target = this.resolveQueueTarget(queue);
 
         await pool.query(
-          `UPDATE ${target.table}
-           SET ${queue.unit_type} = ${queue.unit_type} + $1
-           WHERE id = $2`,
+          `UPDATE ${target.table} SET ${queue.unit_type} = ${queue.unit_type} + $1 WHERE id = $2`,
           [queue.quantity, target.id]
         );
 

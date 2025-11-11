@@ -12,6 +12,8 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
+import { requirePermission } from '../middleware/adminAuth';
+import { AdminAuthRequest } from '../types/admin';
 
 import { pool } from '../config/database';
 import os from 'os';

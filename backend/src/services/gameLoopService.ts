@@ -10,6 +10,10 @@ export class GameLoopService {
    * This method is idempotent—the loop will not be started twice.
    */
   static start(): void {
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+      console.log('Game loop start skipped (test mode or SKIP_SERVER_START=true)');
+      return;
+    }
     console.log('Starting game loop...');
 
     // Run every 10 seconds

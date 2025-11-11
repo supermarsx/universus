@@ -30,6 +30,7 @@ module.exports = (() => {
     moduleFileExtensions: ['ts', 'js', 'json'],
     verbose: true,
     testTimeout: 10000,
+    setupFiles: ['<rootDir>/tests/setup-jest-env.ts'],
     // When integration tests are not included, ignore the integration test folder
     testPathIgnorePatterns: includeIntegration ? [] : ['/tests/integration/'],
   };

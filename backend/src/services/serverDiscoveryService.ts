@@ -261,6 +261,12 @@ export class ServerDiscoveryService {
       return;
     }
 
+    // Prevent health monitoring when running tests or SKIP_SERVER_START is set
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+      console.log('Server health monitoring start skipped (test mode or SKIP_SERVER_START)');
+      return;
+    }
+
     console.log('Starting server health monitoring...');
     
     this.healthCheckInterval = setInterval(async () => {

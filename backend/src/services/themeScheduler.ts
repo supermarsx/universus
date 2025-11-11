@@ -26,6 +26,12 @@ export class ThemeScheduler {
             return;
         }
 
+        // Prevent automatic scheduling during tests or when SKIP_SERVER_START is set
+        if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+            console.log('[ThemeScheduler] Start skipped (test mode or SKIP_SERVER_START)');
+            return;
+        }
+
         console.log(`[ThemeScheduler] Starting theme scheduler (interval: ${this.checkIntervalMs}ms)`);
         
         // Run immediately on start

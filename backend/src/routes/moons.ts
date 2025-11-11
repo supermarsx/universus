@@ -13,13 +13,16 @@ router.use(authenticateToken);
 
 router.get('/:planetId', async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
     const planetId = parseInt(req.params.planetId, 10);
     const moon = await moonService.getMoonByPlanetId(planetId);
     if (!moon) {
       return res.status(404).json({ success: false, error: 'Moon not found' });
     }
 
-    if (moon.user_id !== req.user!.id) {
+    if (moon.user_id !== req.user.id) {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
@@ -52,7 +55,10 @@ router.get('/:planetId', async (req: AuthRequest, res: Response) => {
 
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const moons = await moonService.listMoonsByUser(req.user!.id);
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    const moons = await moonService.listMoonsByUser(req.user.id);
     res.json({ success: true, data: moons });
   } catch (error: any) {
     console.error('List moons error:', error);
@@ -62,6 +68,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
 router.post('/:moonId/phalanx', async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
     const moonId = parseInt(req.params.moonId, 10);
     const targetGalaxy = parseInt(req.body.targetGalaxy, 10);
     const targetSystem = parseInt(req.body.targetSystem, 10);
@@ -76,7 +85,7 @@ router.post('/:moonId/phalanx', async (req: AuthRequest, res: Response) => {
     }
 
     const result = await phalanxService.performScan({
-      userId: req.user!.id,
+      userId: req.user.id,
       moonId,
       targetGalaxy,
       targetSystem,
@@ -93,12 +102,15 @@ router.post('/:moonId/phalanx', async (req: AuthRequest, res: Response) => {
 // POST /api/moons/:moonId/jump-gate
 router.post('/:moonId/jump-gate', async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
     const fromMoonId = parseInt(req.params.moonId, 10);
     const { toMoonId, fleetIds } = req.body;
     if (!Number.isFinite(toMoonId) || !Array.isArray(fleetIds) || fleetIds.length === 0) {
       return res.status(400).json({ success: false, error: 'Invalid request' });
     }
-    const result = await jumpGateService.jumpFleet(req.user!.id, fromMoonId, toMoonId, fleetIds);
+    const result = await jumpGateService.jumpFleet(req.user.id, fromMoonId, toMoonId, fleetIds);
     if (!result.success) {
       return res.status(400).json({ success: false, error: result.error });
     }
@@ -112,13 +124,16 @@ router.post('/:moonId/jump-gate', async (req: AuthRequest, res: Response) => {
 // POST /api/moons/:moonId/destroy
 router.post('/:moonId/destroy', async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
     const moonId = parseInt(req.params.moonId, 10);
     const { numDeathstars } = req.body;
     if (!Number.isFinite(numDeathstars) || numDeathstars < 1) {
       return res.status(400).json({ success: false, error: 'Invalid number of Deathstars' });
     }
     // TODO: Validate attacker owns the Deathstars and they are present at the moon
-    const result = await (await import('../services/destroyMoonService')).default.attemptDestruction(req.user!.id, moonId, numDeathstars);
+    const result = await (await import('../services/destroyMoonService')).default.attemptDestruction(req.user.id, moonId, numDeathstars);
     if (result.error) {
       return res.status(400).json({ success: false, error: result.error });
     }

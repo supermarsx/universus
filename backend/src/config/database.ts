@@ -94,8 +94,17 @@ pool.on('connect', () => {
  *
  * @param {Error} err - The error emitted by the pool/client
  */
+// Pool error handler
+// During tests we avoid exiting the process to prevent Jest from being terminated
+// by unexpected DB errors. In non-test environments we preserve the previous
+// behavior to fail fast when the process is in a degraded DB state.
 pool.on('error', (err: Error) => {
   console.error('Unexpected error on idle client', err);
+  if (process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true') {
+    // Log and do not exit during tests or when server start is intentionally skipped
+    return;
+  }
+  // In production or normal runs, exit to avoid running in a degraded state
   process.exit(-1);
 });
 
