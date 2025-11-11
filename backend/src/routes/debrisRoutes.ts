@@ -308,9 +308,9 @@ router.get('/salvage/:id', async (req: Request, res: Response) => {
  * GET /api/debris/salvage/profile/:userId
  * Get user salvage profile
  */
-router.get('/salvage/profile/:userId?', async (req: Request, res: Response) => {
+router.get('/salvage/profile', async (req: Request, res: Response) => {
   try {
-    const userId = req.params.userId ? parseInt(req.params.userId) : (req as any).user.id;
+    const userId = (req as any).user.id;
     const profile = await salvageService.getUserSalvageProfile(userId);
     
     if (!profile) {

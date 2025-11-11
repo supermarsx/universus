@@ -150,4 +150,17 @@ class MoonService {
   }
 }
 
-export default new MoonService();
+const moonService = new MoonService();
+
+// Export named helper functions delegating to the instance. This makes the
+// module easier to mock in Jest (named functions become mockable by
+// `jest.mock(...)`), while preserving the default instance export for
+// runtime consumers.
+export const getMoonById = moonService.getMoonById.bind(moonService);
+export const getMoonByPlanetId = moonService.getMoonByPlanetId.bind(moonService);
+export const tryCreateMoonFromDebris = moonService.tryCreateMoonFromDebris.bind(moonService);
+export const listMoonsByUser = moonService.listMoonsByUser.bind(moonService);
+export const deductResources = moonService.deductResources.bind(moonService);
+export const addResources = moonService.addResources.bind(moonService);
+
+export default moonService;

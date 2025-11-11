@@ -129,7 +129,7 @@ interface RawSystemData {
 const CACHE_TTL_SECONDS = 15;
 
 export class GalaxyService {
-  private static config = GameConfigAdapter.getInstance();
+  private static get config() { return GameConfigAdapter.getInstance(); }
 
   /**
    * Build a complete snapshot for a given system as visible to a user.

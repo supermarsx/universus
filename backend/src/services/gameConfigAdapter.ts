@@ -22,13 +22,14 @@ export class GameConfigAdapter {
         
         // Subscribe to configuration changes to invalidate cache
         if (redis) {
-            redis.subscribe('config:changed', (err) => {
+            // Cast to any to avoid ioredis overload typing conflicts in test/no-op client
+            (redis as any).subscribe('config:changed', (err?: any, _count?: number) => {
                 if (err) {
                     console.error('Failed to subscribe to config changes:', err);
                 }
             });
             
-            redis.on('message', (channel, message) => {
+            redis.on('message', (channel: string, message: string) => {
                 if (channel === 'config:changed') {
                     try {
                         const change = JSON.parse(message);

@@ -12,72 +12,66 @@ dotenv.config();
  * export and the `redisClient` named export) configured from environment
  * variables with sensible defaults for local development.
  *
- * Important behavior notes:
- * - A `retryStrategy` is provided to control reconnect backoff. It receives
- *   the number of retry attempts and should return the delay (ms) before the
- *   next attempt or a non-number to stop retrying.
- * - Connection errors are logged; the library handles reconnection according
- *   to the `retryStrategy` and internal policies.
+ * For unit tests we avoid creating a real network connection by exporting a
+ * lightweight no-op client when running under the test environment. This
+ * prevents connection attempts and open handles during Jest runs.
  */
 
-/**
- * Shared Redis client instance.
- *
- * Configuration is read from environment variables with defaults:
- * - REDIS_HOST (default: 'localhost')
- * - REDIS_PORT (default: '6379')
- *
- * The client uses a small linear backoff capped at 2s to avoid tight retry
- * loops while preserving responsiveness during transient outages.
- *
- * @example
- *   import redis, { redisClient } from './config/redis';
- *   await redisClient.set('key', 'value');
- *
- * @constant {Redis}
- */
-export const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  retryStrategy: (times) => {
-    // Linear backoff: 50ms per attempt, capped to 2000ms
-    const delay = Math.min(times * 50, 2000);
-    return delay;
-  },
-});
+const isTest = process.env.NODE_ENV === 'test' || !!process.env.JEST_WORKER_ID;
 
-/**
- * Log when a connection is successfully established. Useful for local
- * development logs and startup diagnostics.
- */
-redis.on('connect', () => {
-  console.log('Connected to Redis');
-});
+let client: Redis;
 
-/**
- * Global error handler for the Redis client.
- *
- * Note: ioredis will emit `error` for connection and protocol errors. The
- * current behavior logs the error to stderr. In production you may want to
- * forward these to structured logging/monitoring systems or implement
- * additional restart policies.
- */
-redis.on('error', (err) => {
-  console.error('Redis error:', err);
-});
+if (isTest) {
+  // Minimal no-op client for tests. Provide a broader surface of async
+  // methods used across the codebase so imports that call `subscribe`,
+  // `duplicate`, `publish`, etc. will not throw. Methods return harmless
+  // resolved promises or sensible defaults. Duplicate returns another
+  // no-op client so code calling `redis.duplicate()` continues to operate.
+  const noopAsync = async (..._args: any[]) => null;
+  const noop = (..._args: any[]) => null;
 
-/**
- * Backwards-compatible named export.
- *
- * Some modules import the client under the name `redisClient`. Keep this
- * alias to avoid breaking changes while allowing the default export usage
- * for modern ES module patterns.
- */
-export const redisClient = redis;
+  const noOpClient: any = {
+    get: noopAsync,
+    set: async (_k: string, _v: any) => 'OK',
+    del: noopAsync,
+    // Pub/Sub
+    subscribe: async (_channel: string | string[]) => 0,
+    psubscribe: async (_pattern: string | string[]) => 0,
+    unsubscribe: async (_channel?: string) => 0,
+    punsubscribe: async (_pattern?: string) => 0,
+    publish: async (_channel: string, _message: string) => 0,
+    // Key helpers
+    keys: async (_pattern: string) => [],
+    setex: async (_key: string, _ttl: number, _val: any) => 'OK',
+    exists: async (_key: string) => 0,
+    expire: async (_key: string, _ttl: number) => 0,
+    // Client utility
+    duplicate: () => noOpClient,
+    on: noop,
+    off: noop,
+    once: noop,
+    quit: async () => null,
+    disconnect: () => null,
+  };
 
-/**
- * Default export: the shared Redis instance.
- *
- * Prefer named imports for clarity where possible.
- */
-export default redis;
+  client = noOpClient as Redis;
+} else {
+  client = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    retryStrategy: (times) => Math.min(times * 50, 2000),
+  });
+
+  client.on('connect', () => {
+    console.log('Connected to Redis');
+  });
+
+  client.on('error', (err) => {
+    console.error('Redis error:', err);
+  });
+}
+
+export const redisClient = client;
+export const redis = client;
+export default client;
+

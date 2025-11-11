@@ -131,6 +131,7 @@ export interface AdminNotification {
   message: string;
   data?: Record<string, any>;
   target_admin_role?: string;
+  target_admin_level?: string;
   target_admin_ids?: number[];
   created_at: Date;
   expires_at?: Date;

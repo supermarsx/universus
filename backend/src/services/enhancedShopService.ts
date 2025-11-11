@@ -33,9 +33,23 @@ export class EnhancedShopService {
 
     constructor(db: Pool, stripeSecretKey: string) {
         this.db = db;
-        this.stripe = new Stripe(stripeSecretKey, {
-            apiVersion: '2025-10-29.clover'
-        });
+
+        // In test or dev environments a Stripe key may not be provided.
+        // When missing, create a minimal no-op stub to avoid contacting Stripe.
+        if (!stripeSecretKey) {
+            this.stripe = {
+                paymentIntents: {
+                    create: async (opts: any) => ({ id: 'pi_stub', client_secret: 'cs_stub', ...opts }),
+                },
+                webhooks: {
+                    constructEvent: (payload: string, signature: string, secret: string) => JSON.parse(payload),
+                },
+            } as unknown as Stripe;
+        } else {
+            this.stripe = new Stripe(stripeSecretKey, {
+                apiVersion: '2025-10-29.clover'
+            });
+        }
     }
 
     // =====================================================

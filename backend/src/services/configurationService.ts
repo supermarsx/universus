@@ -63,7 +63,11 @@ export class ConfigurationService {
         this.redis = redis;
         this.io = io;
         this.configCache = new Map();
-        this.initializeCache();
+
+        // Avoid initializing DB/Redis caches during unit tests or when explicitly disabled
+        if (process.env.NODE_ENV !== 'test' && process.env.SKIP_CONFIG_INIT !== 'true') {
+            this.initializeCache();
+        }
     }
 
     // ============================================
@@ -143,7 +147,8 @@ export class ConfigurationService {
             alliance,
             gameplay,
             notifications,
-        };
+        } as unknown as GameConfiguration;
+
     }
 
     async getGameConfigSnapshot(force = false): Promise<GameConfiguration> {

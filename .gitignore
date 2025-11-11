@@ -21,3 +21,6 @@ Thumbs.db
 
 # Docker
 .dockerignore
+
+# Coverage
+backend/coverage/

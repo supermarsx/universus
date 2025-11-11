@@ -343,15 +343,6 @@ export class AllianceLogisticsService {
     );
   }
 
-  async cancelDepotSessionByFleet(fleetId: number): Promise<void> {
-    await pool.query(
-      `UPDATE alliance_depot_sessions
-          SET status = 'cancelled'
-        WHERE fleet_id = $1 AND status IN ('pending', 'active')`,
-      [fleetId]
-    );
-  }
-
   async getDepotSessions(
     allianceId: number,
     userId: number,

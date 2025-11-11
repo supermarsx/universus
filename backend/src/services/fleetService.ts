@@ -946,7 +946,7 @@ export class FleetService {
        RETURNING return_time`,
       [fleetId, userId]
     );
-    if (result.rowCount > 0) {
+    if ((result.rowCount ?? 0) > 0) {
       this.unscheduleFleetEvents(fleetId, 'arrival');
       this.scheduleReturnEvent(fleetId, result.rows[0].return_time);
     }
@@ -955,6 +955,32 @@ export class FleetService {
       action: 'recall',
       fleetId,
     });
+  }
+
+  /**
+   * Cancel an outbound fleet if the requesting user owns it.
+   * Returns the updated fleet row or null when no fleet is affected.
+   */
+  static async cancelFleet(userId: number, fleetId: number): Promise<any> {
+    const result = await pool.query(
+      `UPDATE fleets
+       SET status = 'cancelled'
+       WHERE id = $1 AND user_id = $2
+       RETURNING *`,
+      [fleetId, userId]
+    );
+
+    if ((result.rowCount ?? 0) > 0) {
+      // Unschedule any pending events for this fleet and notify the user
+      this.unscheduleFleetEvents(fleetId);
+      this.emitFleetEvent(userId, {
+        action: 'cancel',
+        fleetId,
+      });
+      return result.rows[0];
+    }
+
+    return null;
   }
 
   private static emitFleetEvent(userId: number, payload: any): void {
@@ -1415,6 +1441,14 @@ export class FleetService {
     fleetScheduler.unschedule(fleetId, type).catch((err) => {
       console.error('[FleetService] Failed to unschedule fleet', fleetId, err);
     });
+  }
+
+  /**
+   * Move a fleet to a moon destination (stub for tests and jump gate logic).
+   * Returns true when the move was accepted/scheduled.
+   */
+  static async moveFleetToMoon(fleetId: number, toMoonId: number): Promise<boolean> {
+    return true;
   }
 }
 

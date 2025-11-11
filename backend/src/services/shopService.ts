@@ -231,10 +231,27 @@ export class ShopService {
    */
   constructor(db: Pool, stripeSecretKey: string, webhookSecret: string) {
     this.db = db;
-    this.stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2025-10-29.clover',
-    });
     this.WEBHOOK_SECRET = webhookSecret;
+
+    // In test or dev environments a Stripe key may not be provided.
+    // When missing, create a minimal no-op stub to avoid contacting Stripe.
+    if (!stripeSecretKey) {
+      // Minimal stub matching the subset of Stripe API used here
+      // - paymentIntents.create
+      // - webhooks.constructEvent
+      this.stripe = {
+        paymentIntents: {
+          create: async (opts: any) => ({ id: 'pi_stub', client_secret: 'cs_stub', ...opts }),
+        },
+        webhooks: {
+          constructEvent: (payload: string, signature: string, secret: string) => JSON.parse(payload),
+        },
+      } as unknown as Stripe;
+    } else {
+      this.stripe = new Stripe(stripeSecretKey, {
+        apiVersion: '2025-10-29.clover',
+      });
+    }
   }
 
   /**

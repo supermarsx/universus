@@ -1,6 +1,7 @@
 import { LeaderboardService } from '../../src/services/leaderboardService';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
+import { createRedisMock } from '../setup/redisMock';
 
 // Mock dependencies
 jest.mock('pg');
@@ -14,25 +15,13 @@ describe('LeaderboardService', () => {
   beforeEach(() => {
     // Create mock pool
     mockPool = {
-      query: jest.fn(),
+      // Default to empty rows for any query unless overridden in a test
+      query: jest.fn().mockResolvedValue({ rows: [] }),
       connect: jest.fn(),
     };
 
-    // Create mock redis
-    mockRedis = {
-      exists: jest.fn(),
-      zrevrange: jest.fn(),
-      zadd: jest.fn(),
-      del: jest.fn(),
-      expire: jest.fn(),
-      pipeline: jest.fn(() => ({
-        del: jest.fn().mockReturnThis(),
-        zadd: jest.fn().mockReturnThis(),
-        expire: jest.fn().mockReturnThis(),
-        exec: jest.fn().mockResolvedValue([]),
-      })),
-      zrevrank: jest.fn(),
-    };
+    // Create mock redis using centralized helper
+    mockRedis = createRedisMock();
 
     leaderboardService = new LeaderboardService(mockPool, mockRedis);
   });
@@ -309,6 +298,12 @@ describe('LeaderboardService', () => {
     it('should return top alliances from cache', async () => {
       mockRedis.exists.mockResolvedValue(1);
       mockRedis.zrevrange.mockResolvedValue([
+        'alliance:1',
+        '1000000',
+      ]);
+
+      // hmget should return the alliance lookup JSON
+      mockRedis.hmget.mockResolvedValue([
         JSON.stringify({
           allianceId: 1,
           allianceName: 'Top Alliance',
@@ -317,7 +312,6 @@ describe('LeaderboardService', () => {
           memberCount: 20,
           averageScore: 50000,
         }),
-        '1000000',
       ]);
 
       const result = await leaderboardService.getTopAlliances(10, 0);

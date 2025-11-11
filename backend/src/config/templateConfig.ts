@@ -55,19 +55,24 @@ export function configureTemplateEngine(app: express.Application): nunjucks.Envi
      noCache: process.env.NODE_ENV === 'development',
    });
 
-   // --- i18n translation filter ---
-    const fs = require('fs');
-    // Load English translations (default)
-    let translations: Record<string, string> = {};
-    try {
-      const enPath = path.join(__dirname, '../../frontend/locales/en.json');
-      translations = JSON.parse(fs.readFileSync(enPath, 'utf8'));
-    } catch (e) {
-      console.error('Failed to load translations:', e);
-    }
-    env.addFilter('t', (key: string) => {
-      return translations[key] || key;
-    });
+    // --- i18n translation filter ---
+     const fs = require('fs');
+     // Load English translations (default)
+     let translations: Record<string, string> = {};
+     // During tests or when server startup is skipped, avoid reading locale files
+     if (process.env.NODE_ENV !== 'test' && process.env.SKIP_SERVER_START !== 'true') {
+       try {
+         const enPath = path.join(__dirname, '../../frontend/locales/en.json');
+         translations = JSON.parse(fs.readFileSync(enPath, 'utf8'));
+       } catch (e) {
+         if (process.env.NODE_ENV !== 'test') {
+           console.error('Failed to load translations:', e);
+         }
+       }
+     }
+     env.addFilter('t', (key: string) => {
+       return translations[key] || key;
+     });
 
 
   /**

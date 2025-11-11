@@ -141,87 +141,98 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Create HTTP server
 const server = http.createServer(app);
 
-// Initialize Socket.io
-let io: import('socket.io').Server;
-(async () => {
-  io = await initializeSocket(server);
-})();
+// Top-level `io` declaration so it can be exported safely. When server
+// start is skipped (tests), `io` will remain `undefined`.
+let io: import('socket.io').Server | undefined;
 
-// Start game loop
-GameLoopService.start();
-fleetScheduler.start().catch((error) => console.error('Fleet scheduler failed to start', error));
+// Skip starting background services when running unit tests or when explicitly requested
+const skipServerStart = process.env.NODE_ENV === 'test' || process.env.SKIP_SERVER_START === 'true';
 
-// Start admin monitoring service (collect metrics every minute)
-startMonitoring(60000);
-console.log('Admin monitoring service started');
+if (!skipServerStart) {
+  // Initialize Socket.io
+  (async () => {
+    io = await initializeSocket(server);
+  })();
 
-// Auto-expire user blocks every 5 minutes
-setInterval(() => {
-  autoExpireBlocks().catch(console.error);
-}, 300000);
-console.log('Block expiration scheduler started');
+  // Start game loop
+  GameLoopService.start();
+  fleetScheduler.start().catch((error) => console.error('Fleet scheduler failed to start', error));
 
-// Start debris cleanup service (auto-decay and cleanup every hour)
-debrisService.startAutomaticCleanup(60);
-console.log('Debris cleanup service started');
+  // Start admin monitoring service (collect metrics every minute)
+  startMonitoring(60000);
+  console.log('Admin monitoring service started');
 
-// Phase 6: Start chat and notification cleanup services
-setInterval(() => {
-  chatService.autoExpireRestrictions().catch(console.error);
-  notificationService.performScheduledCleanup().catch(console.error);
-}, 3600000); // Run every hour
-console.log('Chat and notification cleanup services started');
+  // Auto-expire user blocks every 5 minutes
+  setInterval(() => {
+    autoExpireBlocks().catch(console.error);
+  }, 300000);
+  console.log('Block expiration scheduler started');
 
-// Phase 8: Start theme scheduler (check every minute)
-themeScheduler.start();
-console.log('Theme scheduler started');
+  // Start debris cleanup service (auto-decay and cleanup every hour)
+  debrisService.startAutomaticCleanup(60);
+  console.log('Debris cleanup service started');
 
-// Leaderboard rebuild scheduler
-LeaderboardScheduler.start(
-  parseInt(process.env.LEADERBOARD_REFRESH_MS || '', 10) || 10 * 60 * 1000
-);
-console.log('Leaderboard scheduler started');
+  // Phase 6: Start chat and notification cleanup services
+  setInterval(() => {
+    chatService.autoExpireRestrictions().catch(console.error);
+    notificationService.performScheduledCleanup().catch(console.error);
+  }, 3600000); // Run every hour
+  console.log('Chat and notification cleanup services started');
 
-// Phase 5: Initialize sharding services
-if (process.env.ENABLE_SHARDING === 'true') {
-  // Initialize cross-server communication
-  crossServerCommunication.initialize()
-    .then(() => {
-      console.log('Cross-server communication initialized');
-      
-      // Start server health monitoring
-      serverDiscoveryService.startHealthMonitoring();
-      console.log('Server health monitoring started');
-      
-      // Start automatic leaderboard updates
-      globalLeaderboardService.startAutomaticUpdates();
-      console.log('Global leaderboard updates started');
-      
-      // Register this server if SERVER_ID is set
-      if (process.env.SERVER_ID) {
-        serverDiscoveryService.registerServer({
-          server_id: process.env.SERVER_ID,
-          server_name: process.env.SERVER_NAME || `Universus Server ${process.env.SERVER_ID}`,
-          server_type: 'game' as any,
-          region: (process.env.SERVER_REGION as any) || 'us-east',
-          host_address: process.env.SERVER_HOST || 'localhost',
-          port: parseInt(process.env.PORT || '3000'),
-          websocket_port: parseInt(process.env.WS_PORT || '3001'),
-          capacity: parseInt(process.env.SERVER_CAPACITY || '1000')
-        }).then(() => {
-          console.log(`Server registered: ${process.env.SERVER_ID}`);
-        }).catch(err => {
-          console.error('Failed to register server:', err);
-        });
-      }
-    })
-    .catch(err => {
-      console.error('Failed to initialize sharding services:', err);
-      console.log('Sharding services disabled');
-    });
+  // Phase 8: Start theme scheduler (check every minute)
+  themeScheduler.start();
+  console.log('Theme scheduler started');
+
+  // Leaderboard rebuild scheduler
+  LeaderboardScheduler.start(
+    parseInt(process.env.LEADERBOARD_REFRESH_MS || '', 10) || 10 * 60 * 1000
+  );
+  console.log('Leaderboard scheduler started');
+
+  // Phase 5: Initialize sharding services
+  if (process.env.ENABLE_SHARDING === 'true') {
+    // Initialize cross-server communication
+    crossServerCommunication.initialize()
+      .then(() => {
+        console.log('Cross-server communication initialized');
+        
+        // Start server health monitoring
+        serverDiscoveryService.startHealthMonitoring();
+        console.log('Server health monitoring started');
+        
+        // Start automatic leaderboard updates
+        globalLeaderboardService.startAutomaticUpdates();
+        console.log('Global leaderboard updates started');
+        
+        // Register this server if SERVER_ID is set
+        if (process.env.SERVER_ID) {
+          serverDiscoveryService.registerServer({
+            server_id: process.env.SERVER_ID,
+            server_name: process.env.SERVER_NAME || `Universus Server ${process.env.SERVER_ID}`,
+            server_type: 'game' as any,
+            region: (process.env.SERVER_REGION as any) || 'us-east',
+            host_address: process.env.SERVER_HOST || 'localhost',
+            port: parseInt(process.env.PORT || '3000'),
+            websocket_port: parseInt(process.env.WS_PORT || '3001'),
+            capacity: parseInt(process.env.SERVER_CAPACITY || '1000')
+          }).then(() => {
+            console.log(`Server registered: ${process.env.SERVER_ID}`);
+          }).catch(err => {
+            console.error('Failed to register server:', err);
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Failed to initialize sharding services:', err);
+        console.log('Sharding services disabled');
+      });
+  } else {
+    console.log('Sharding disabled (set ENABLE_SHARDING=true to enable)');
+  }
 } else {
-  console.log('Sharding disabled (set ENABLE_SHARDING=true to enable)');
+  console.log('Server start skipped (test mode or SKIP_SERVER_START=true)');
 }
+
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

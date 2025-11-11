@@ -763,18 +763,21 @@ export class AllianceService {
         const announcements = await this.getAnnouncements(allianceId, 10);
 
         const members = membersResult.rows.map((row) => ({
+            id: row.user_id,
+            alliance_id: allianceId,
             user_id: row.user_id,
-            username: row.username,
-            alliance_role: (row.rank || '').toUpperCase(),
+            rank: row.rank,
+            metal_contributed: Number(row.metal_contributed || 0),
+            crystal_contributed: Number(row.crystal_contributed || 0),
+            deuterium_contributed: Number(row.deuterium_contributed || 0),
+            wars_participated: Number(row.wars_participated || 0),
+            battles_won: Number(row.battles_won || 0),
             joined_at: row.joined_at,
-            power: Number(row.power || 0),
-            contribution_points: Number(
-                (row.metal_contributed || 0) +
-                (row.crystal_contributed || 0) +
-                (row.deuterium_contributed || 0)
-            ),
-            avatar_url: row.avatar_url,
-            is_online: Boolean(row.is_online)
+            promoted_at: row.promoted_at,
+            last_contribution_at: row.last_contribution_at,
+            username: row.username,
+            user_score: Number(row.power || 0),
+            alliance: undefined
         }));
 
         const recentActivity = historyResult.rows.map((row) => ({
@@ -797,6 +800,7 @@ export class AllianceService {
             total_members: Number(allianceRow.total_members || members.length),
             total_power: Number(allianceRow.total_score || 0),
             rank: rankResult.rows[0]?.rank_position || null,
+            leaderboard_position: Number(rankResult.rows[0]?.rank_position || 0),
             war_points: Number(allianceRow.war_points || 0),
             territories_count: Number(territoryCountResult.rows[0]?.count || 0),
             diplomatic_relations_count: Number(diplomacyCountResult.rows[0]?.count || 0),

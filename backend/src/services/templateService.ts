@@ -5,6 +5,7 @@ import {
   getBuildingAsset,
   getResourceIcon,
 } from '../config/assetMappings';
+import { getAvailableLocales } from '../config/localeUtils';
 
 export interface TemplateContext {
   title?: string;
@@ -37,8 +38,6 @@ export class TemplateService {
    * Render a template with context data
    */
   static render(res: Response, template: string, context: TemplateContext = {}): void {
-    import { getAvailableLocales } from '../config/localeUtils';
-
 const defaultContext: TemplateContext = {
       brandName: 'Universus',
       version: process.env.APP_VERSION || '1.0.0',
