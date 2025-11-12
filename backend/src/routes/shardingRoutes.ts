@@ -5,7 +5,7 @@
 
 import express, { Request, Response } from 'express';
 import { AuthRequest } from '../types';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated } from '../middleware/auth';
 import { requireAdmin } from '../middleware/adminAuth';
 import serverDiscoveryService from '../services/serverDiscoveryService';
 import playerRoutingService from '../services/playerRoutingService';
@@ -22,7 +22,7 @@ const router = express.Router();
 /**
  * GET /api/shards/servers - List all servers
  */
-router.get('/servers', requireAdmin, async (req: Request, res: Response) => {
+router.get('/servers', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const servers = await serverDiscoveryService.getAllServers();
     res.json({ success: true, data: servers });
@@ -34,7 +34,7 @@ router.get('/servers', requireAdmin, async (req: Request, res: Response) => {
 /**
  * POST /api/shards/servers/register - Register new server
  */
-router.post('/servers/register', requireAdmin, async (req: Request, res: Response) => {
+router.post('/servers/register', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const server = await serverDiscoveryService.registerServer(req.body);
     res.json({ success: true, data: server });
@@ -46,7 +46,7 @@ router.post('/servers/register', requireAdmin, async (req: Request, res: Respons
 /**
  * GET /api/shards/servers/:id/health - Get server health
  */
-router.get('/servers/:id/health', requireAdmin, async (req: Request, res: Response) => {
+router.get('/servers/:id/health', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const health = await serverDiscoveryService.checkServerHealth(req.params.id);
     res.json({ success: true, data: health });
@@ -58,7 +58,7 @@ router.get('/servers/:id/health', requireAdmin, async (req: Request, res: Respon
 /**
  * PUT /api/shards/servers/:id/config - Update server config
  */
-router.put('/servers/:id/config', requireAdmin, async (req: Request, res: Response) => {
+router.put('/servers/:id/config', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const server = await serverDiscoveryService.updateServerConfig(req.params.id, req.body);
     res.json({ success: true, data: server });
@@ -97,7 +97,7 @@ router.put('/servers/:id/health', async (req: Request, res: Response) => {
 /**
  * DELETE /api/shards/servers/:id - Deregister server
  */
-router.delete('/servers/:id', requireAdmin, async (req: Request, res: Response) => {
+router.delete('/servers/:id', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     await serverDiscoveryService.deregisterServer(req.params.id);
     res.json({ success: true });
@@ -109,7 +109,7 @@ router.delete('/servers/:id', requireAdmin, async (req: Request, res: Response) 
 /**
  * GET /api/shards/servers/stats - Get server statistics
  */
-router.get('/servers/stats', requireAdmin, async (req: Request, res: Response) => {
+router.get('/servers/stats', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const stats = await serverDiscoveryService.getServerStatistics();
     res.json({ success: true, data: stats });
@@ -143,7 +143,7 @@ router.post('/routing/calculate', authenticateToken, async (req: AuthRequest, re
 /**
  * POST /api/shards/routing/migrate - Migrate player
  */
-router.post('/routing/migrate', requireAdmin, async (req: Request, res: Response) => {
+router.post('/routing/migrate', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const result = await playerRoutingService.migratePlayer(req.body);
     res.json({ success: true, data: result });
@@ -179,7 +179,7 @@ router.get('/routing/servers/available', async (req: Request, res: Response) => 
 /**
  * POST /api/shards/routing/balance - Auto-balance players
  */
-router.post('/routing/balance', requireAdmin, async (req: Request, res: Response) => {
+router.post('/routing/balance', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const count = await playerRoutingService.autoBalancePlayers();
     res.json({ success: true, data: { migrated_count: count } });
@@ -191,7 +191,7 @@ router.post('/routing/balance', requireAdmin, async (req: Request, res: Response
 /**
  * GET /api/shards/routing/stats - Routing statistics
  */
-router.get('/routing/stats', requireAdmin, async (req: Request, res: Response) => {
+router.get('/routing/stats', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const stats = await playerRoutingService.getRoutingStatistics();
     res.json({ success: true, data: stats });
@@ -207,7 +207,7 @@ router.get('/routing/stats', requireAdmin, async (req: Request, res: Response) =
 /**
  * POST /api/shards/messages/broadcast - Broadcast message
  */
-router.post('/messages/broadcast', requireAdmin, async (req: Request, res: Response) => {
+router.post('/messages/broadcast', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     await crossServerCommunication.broadcastToAllServers(
       req.body.message_type,
@@ -223,7 +223,7 @@ router.post('/messages/broadcast', requireAdmin, async (req: Request, res: Respo
 /**
  * POST /api/shards/messages/send - Send to specific servers
  */
-router.post('/messages/send', requireAdmin, async (req: Request, res: Response) => {
+router.post('/messages/send', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     await crossServerCommunication.sendToServers(
       req.body.target_servers,
@@ -240,7 +240,7 @@ router.post('/messages/send', requireAdmin, async (req: Request, res: Response) 
 /**
  * GET /api/shards/messages/history - Event history
  */
-router.get('/messages/history', requireAdmin, async (req: Request, res: Response) => {
+router.get('/messages/history', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const history = await crossServerCommunication.getEventHistory(
       parseInt(req.query.limit as string) || 100,
@@ -256,7 +256,7 @@ router.get('/messages/history', requireAdmin, async (req: Request, res: Response
 /**
  * GET /api/shards/messages/stats - Messaging statistics
  */
-router.get('/messages/stats', requireAdmin, async (req: Request, res: Response) => {
+router.get('/messages/stats', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const stats = await crossServerCommunication.getMessagingStatistics();
     res.json({ success: true, data: stats });
@@ -268,7 +268,7 @@ router.get('/messages/stats', requireAdmin, async (req: Request, res: Response) 
 /**
  * GET /api/shards/messages/status - Communication status
  */
-router.get('/messages/status', requireAdmin, async (req: Request, res: Response) => {
+router.get('/messages/status', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const status = crossServerCommunication.getStatus();
     res.json({ success: true, data: status });
@@ -353,7 +353,7 @@ router.get('/leaderboards/:category/top', async (req: Request, res: Response) =>
 /**
  * POST /api/shards/leaderboards/snapshot - Create snapshot
  */
-router.post('/leaderboards/snapshot', requireAdmin, async (req: Request, res: Response) => {
+router.post('/leaderboards/snapshot', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     await globalLeaderboardService.createDailySnapshot();
     res.json({ success: true });
@@ -365,7 +365,7 @@ router.post('/leaderboards/snapshot', requireAdmin, async (req: Request, res: Re
 /**
  * GET /api/shards/leaderboards/stats - Leaderboard statistics
  */
-router.get('/leaderboards/stats', requireAdmin, async (req: Request, res: Response) => {
+router.get('/leaderboards/stats', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const stats = await globalLeaderboardService.getStatistics();
     res.json({ success: true, data: stats });
@@ -404,7 +404,7 @@ router.get('/health/overview', async (req: Request, res: Response) => {
 /**
  * GET /api/shards/health/servers - All server health
  */
-router.get('/health/servers', requireAdmin, async (req: Request, res: Response) => {
+router.get('/health/servers', authenticateToken, assertAuthenticated, requireAdmin, async (req: Request, res: Response) => {
   try {
     const servers = await serverDiscoveryService.getAllServers();
     const healthChecks = await Promise.all(

@@ -12,6 +12,7 @@ import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { AllianceService } from '../services/allianceService';
 import { AlliancePermission } from '../types/alliance';
+import { getUserId } from '../utils/authHelpers';
 
 const router = express.Router();
 const messagingService = new MessagingService(pool);
@@ -28,8 +29,7 @@ router.use(authenticateToken, assertAuthenticated);
  */
 router.get('/inbox', async (req: AuthRequest, res) => {
   try {
-    const authReq = req as AuthRequest;
-    const userId = authReq.user!.id;
+    const userId = getUserId(req)!;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
     const messageType = req.query.type as MessageType | undefined;
@@ -62,8 +62,7 @@ router.get('/inbox', async (req: AuthRequest, res) => {
  */
 router.get('/sent', async (req: AuthRequest, res) => {
   try {
-    const authReq = req as AuthRequest;
-    const userId = authReq.user!.id;
+    const userId = getUserId(req)!;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = parseInt(req.query.offset as string) || 0;
 
@@ -95,8 +94,7 @@ router.get('/sent', async (req: AuthRequest, res) => {
  */
 router.get('/unread-count', async (req: AuthRequest, res) => {
   try {
-    const authReq = req as AuthRequest;
-    const userId = authReq.user!.id;
+    const userId = getUserId(req)!;
     const messageType = req.query.type as MessageType | undefined;
 
     const count = await messagingService.getUnreadCount(userId, messageType);
@@ -121,8 +119,7 @@ router.get('/unread-count', async (req: AuthRequest, res) => {
  */
 router.get('/:id', async (req: AuthRequest, res) => {
   try {
-    const authReq = req as AuthRequest;
-    const userId = authReq.user!.id;
+    const userId = getUserId(req)!;
     const messageId = parseInt(req.params.id);
 
     const message = await messagingService.getMessage(messageId, userId);
@@ -159,11 +156,8 @@ router.get('/:id', async (req: AuthRequest, res) => {
  * Body: { toUserId, subject, content }
  */
 router.post('/send', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const fromUserId = req.user.id;
+    const fromUserId = getUserId(req)!;
     const { toUserId, subject, content } = req.body;
 
     if (!toUserId || !subject || !content) {
@@ -210,11 +204,8 @@ router.post('/send', async (req: AuthRequest, res) => {
  * Mark a message as read
  */
 router.put('/:id/read', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const userId = getUserId(req)!;
     const messageId = parseInt(req.params.id);
 
     const success = await messagingService.markAsRead(messageId, userId);
@@ -245,11 +236,8 @@ router.put('/:id/read', async (req: AuthRequest, res) => {
  * Query params: type (optional)
  */
 router.put('/mark-all-read', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const userId = getUserId(req)!;
     const messageType = req.query.type as MessageType | undefined;
 
     const count = await messagingService.markAllAsRead(userId, messageType);
@@ -273,11 +261,8 @@ router.put('/mark-all-read', async (req: AuthRequest, res) => {
  * Delete a message
  */
 router.delete('/:id', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const userId = getUserId(req)!;
     const messageId = parseInt(req.params.id);
 
     const success = await messagingService.deleteMessage(messageId, userId);
@@ -308,11 +293,8 @@ router.delete('/:id', async (req: AuthRequest, res) => {
  * Body: { subject, content }
  */
 router.post('/alliance-circular', async (req: AuthRequest, res) => {
-  if (!req.user) {
-    return res.status(401).json({ success: false, error: 'Authentication required' });
-  }
   try {
-    const userId = req.user.id;
+    const userId = getUserId(req)!;
     const { subject, content } = req.body;
 
     if (!subject || !content) {
@@ -369,3 +351,5 @@ router.post('/alliance-circular', async (req: AuthRequest, res) => {
 });
 
 export default router;
+
+

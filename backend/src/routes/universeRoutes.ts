@@ -18,14 +18,14 @@ import universeSeedingService from '../services/universeSeedingService';
 import playerPlacementService from '../services/playerPlacementService';
 import universeMaintenanceService from '../services/universeMaintenanceService';
 import { authenticateToken } from '../middleware/auth';
-import { requirePermission } from '../middleware/adminAuth';
+import { requireAdmin, requirePermission } from '../middleware/adminAuth';
 
 const BOT_SERVICE_URL = process.env.BOT_SERVICE_URL || 'http://bot-service:4001';
 
 const router = express.Router();
 
 // All routes require authentication
-router.use(authenticateToken);
+router.use(authenticateToken, requireAdmin);
 
 
 
@@ -268,7 +268,7 @@ router.get('/:id/my-placement', async (req: AuthRequest, res: Response) => {
  * POST /api/universe/:id/generate-bots
  * Generate bots for the universe
  */
-router.post('/:id/generate-bots', requirePermission('universe:generate_bots'), async (req: AuthRequest, res: Response) => {
+router.post('/:id/generate-bots', requireAdmin, requirePermission('universe:generate_bots'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id, 10);
     const targetUrl = `${BOT_SERVICE_URL}/api/admin/bots/universe/${universeId}/generate`;
@@ -397,7 +397,7 @@ router.get('/:id/stats', async (req: AuthRequest, res: Response) => {
  * Update registration status, open/close times
  * Admin only
  */
-router.patch('/:id/registration', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/registration', requireAdmin, requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { registrationStatus, registrationOpenAt, registrationCloseAt } = req.body;
@@ -420,7 +420,7 @@ router.patch('/:id/registration', requirePermission('universe:manage'), async (r
  * Update universe open/close times, is_active, closure_reason
  * Admin only
  */
-router.patch('/:id/lifecycle', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/lifecycle', requireAdmin, requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { universeOpenAt, universeCloseAt, isActive, closureReason } = req.body;
@@ -443,7 +443,7 @@ router.patch('/:id/lifecycle', requirePermission('universe:manage'), async (req:
  * Update speed multiplier and progression
  * Admin only
  */
-router.patch('/:id/speed', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/speed', requireAdmin, requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const {
@@ -499,7 +499,7 @@ router.patch('/:id/speed', requirePermission('universe:manage'), async (req: Aut
  * Schedule or trigger a universe merge
  * Admin only
  */
-router.patch('/:id/merge', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/merge', requireAdmin, requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { isMerging, mergeTargetUniverseId, mergeScheduledAt } = req.body;
@@ -522,7 +522,7 @@ router.patch('/:id/merge', requirePermission('universe:manage'), async (req: Aut
  * Set end-of-universe event/announcement
  * Admin only
  */
-router.patch('/:id/end-event', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/end-event', requireAdmin, requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { endOfUniverseEventAt, endOfUniverseType, endOfUniverseAnnouncement } = req.body;
@@ -545,7 +545,7 @@ router.patch('/:id/end-event', requirePermission('universe:manage'), async (req:
  * Set a general announcement for the universe
  * Admin only
  */
-router.patch('/:id/announcement', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
+router.patch('/:id/announcement', requireAdmin, requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { announcement, announcementType, announcementExpiresAt } = req.body;

@@ -6,7 +6,7 @@ import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { EnhancedShopService } from '../services/enhancedShopService';
 import { authenticateToken } from '../middleware/auth';
-import { requirePermission } from '../middleware/adminAuth';
+import { requireAdmin, requirePermission } from '../middleware/adminAuth';
 import { redis } from '../config/redis';
 import { getUserId } from '../utils/authHelpers';
 
@@ -284,7 +284,7 @@ router.get('/recommendations', authenticateToken, async (req: AuthRequest, res: 
 // =====================================================
 
 // GET /api/shop/analytics/dashboard - Get shop analytics dashboard
-router.get('/analytics/dashboard', authenticateToken, requirePermission('shop:analytics'), async (req: Request, res: Response) => {
+router.get('/analytics/dashboard', authenticateToken, requireAdmin, requirePermission('shop:analytics'), async (req: Request, res: Response) => {
     try {
         const dashboard = await shopService.getShopAnalyticsDashboard();
         res.json({ success: true, data: dashboard });

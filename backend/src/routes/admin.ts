@@ -12,7 +12,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { requirePermission, logAdminAction } from '../middleware/adminAuth';
+import { requireAdmin, requirePermission, logAdminAction } from '../middleware/adminAuth';
 import { AdminAuthRequest } from '../types/admin';
 import { getActor as sharedGetActor } from '../utils/getActor';
 
@@ -21,6 +21,9 @@ import os from 'os';
 
 
 const router = Router();
+
+// Ensure admin metadata is loaded for all admin routes
+router.use(authenticateToken, requireAdmin);
 
 
 

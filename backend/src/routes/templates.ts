@@ -8,7 +8,7 @@
 
 import { Router, Request, Response } from 'express';
 import { TemplateService } from '../services/templateService';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, assertAuthenticated, requireAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 
 const router = Router();
@@ -33,6 +33,16 @@ router.get('/index.html', (req: Request, res: Response) => {
  * For now, we'll render templates without strict auth enforcement
  * The client-side JavaScript will handle authentication checks
  */
+
+// Require authentication for all game pages (everything after this point)
+// Home/login/register remain public above.
+router.use(authenticateToken, assertAuthenticated);
+
+// Additional scoping for admin pages that require admin role
+router.use(['/chat', '/chat.html'], (req, res, next) => next()); // chat already covered by global auth
+router.use('/account', (req, res, next) => next()); // account covered by global auth
+router.use('/alliance', (req, res, next) => next()); // alliance covered by global auth
+router.use('/admin', requireAdmin);
 
 // Overview page
 router.get('/overview', (req: Request, res: Response) => {

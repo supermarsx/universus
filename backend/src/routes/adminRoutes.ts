@@ -147,6 +147,9 @@ try {
   }
 });
 
+// Ensure auth token is parsed for all admin routes that follow
+router.use(authenticateToken);
+
 // Attach actor middleware: ensure subsequent routes have a non-optional actor
 const attachActor = (req: any, res: Response, next: any) => {
   const actor = sharedGetActor(req);
@@ -162,6 +165,9 @@ const attachActor = (req: any, res: Response, next: any) => {
 };
 
 router.use(attachActor);
+
+// Ensure admin principal and permissions are attached for all admin routes
+router.use(requireAdmin);
 
 // ========================================
 // ADMIN DASHBOARD

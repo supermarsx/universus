@@ -17,6 +17,9 @@ import { pool } from '../config/database';
 
 const router = Router();
 
+// Ensure full admin metadata is attached before any permission checks
+router.use(requireAdmin);
+
 // ========================================
 // ADMIN DASHBOARD
 // ========================================

@@ -6,9 +6,11 @@
  * and permission checks. Injects admin metadata into the request object.
  */
 
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { AdminAuthRequest } from '../types/admin';
+import { AuthRequest } from '../types';
+import { authenticateToken } from './auth';
 import * as speakeasy from 'speakeasy';
 /**
  * Ensure the current request is performed by an active admin user.
@@ -26,35 +28,37 @@ import * as speakeasy from 'speakeasy';
  * @param next - Express next function to continue the middleware chain
  */
 export const requireAdmin = async (
-  req: AdminAuthRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  try {
-    if (!req.user) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
+  // This middleware assumes `authenticateToken` has already run and injected `req.user`.
+  const authReq = req as AuthRequest;
+  if (!authReq.user) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
 
-// Query admin user data, role, permissions, and 2FA status
+  try {
+    // Query admin user data, role, permissions, and 2FA status
     const adminResult = await pool.query(
       `SELECT 
-         au.*, 
-         u.username, 
-         u.email, 
-         r.id as role_id, 
-         r.name as role_name, 
-         ARRAY_REMOVE(ARRAY_AGG(p.name), NULL) as permissions,
-         COALESCE(tfa.is_enabled, FALSE) as two_factor_enabled
-       FROM admin_users au
-       JOIN users u ON au.user_id = u.id
-       JOIN roles r ON au.role_id = r.id
-       LEFT JOIN role_permissions rp ON r.id = rp.role_id
-       LEFT JOIN permissions p ON rp.permission_id = p.id
-       LEFT JOIN two_factor_auth tfa ON tfa.user_id = u.id
-       WHERE au.user_id = $1 AND au.is_active = TRUE
-       GROUP BY au.id, u.username, u.email, r.id, r.name, tfa.is_enabled`,
-      [req.user.id]
+        au.*, 
+        u.username, 
+        u.email, 
+        r.id as role_id, 
+        r.name as role_name, 
+        ARRAY_REMOVE(ARRAY_AGG(p.name), NULL) as permissions,
+        COALESCE(tfa.is_enabled, FALSE) as two_factor_enabled
+      FROM admin_users au
+      JOIN users u ON au.user_id = u.id
+      JOIN roles r ON au.role_id = r.id
+      LEFT JOIN role_permissions rp ON r.id = rp.role_id
+      LEFT JOIN permissions p ON rp.permission_id = p.id
+      LEFT JOIN two_factor_auth tfa ON tfa.user_id = u.id
+      WHERE au.user_id = $1 AND au.is_active = TRUE
+      GROUP BY au.id, u.username, u.email, r.id, r.name, tfa.is_enabled`,
+      [authReq.user.id]
     );
 
     if (adminResult.rows.length === 0) {
@@ -62,7 +66,7 @@ export const requireAdmin = async (
       return;
     }
 
-const admin = adminResult.rows[0];
+    const admin = adminResult.rows[0];
 
     // Enforce 2FA for admin accounts
     if (!admin.two_factor_enabled) {
@@ -75,11 +79,11 @@ const admin = adminResult.rows[0];
 
     // Check IP whitelist if configured
     if (admin.ip_whitelist && admin.ip_whitelist.length > 0) {
-      const clientIp = req.ip || req.connection.remoteAddress || '';
+      const clientIp = authReq.ip || (authReq as any).connection?.remoteAddress || '';
       if (!admin.ip_whitelist.includes(clientIp)) {
         await logAdminAction(
-          req.user.id,
-          req.user.username,
+          authReq.user.id,
+          authReq.user.username,
           'access_denied_ip',
           'security',
           null,
@@ -100,9 +104,10 @@ const admin = adminResult.rows[0];
     );
 
     // Inject admin data into request
-    req.admin = admin;
-    req.adminRole = admin.role_name;
-    req.adminPermissions = Array.isArray(admin.permissions) ? admin.permissions : [];
+    const adminReq = authReq as AdminAuthRequest;
+    adminReq.admin = admin;
+    adminReq.adminRole = admin.role_name;
+    adminReq.adminPermissions = Array.isArray(admin.permissions) ? admin.permissions : [];
 
     next();
   } catch (error) {
@@ -110,6 +115,7 @@ const admin = adminResult.rows[0];
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
 
 /**
  * Verify 2FA token for admin access

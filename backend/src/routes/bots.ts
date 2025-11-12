@@ -7,12 +7,12 @@
 
 import express, { Router } from 'express';
 import { authenticateToken } from '../middleware/auth';
-import { requirePermission } from '../middleware/adminAuth';
+import { requireAdmin, requirePermission } from '../middleware/adminAuth';
 
 const router: Router = express.Router();
 const BOT_SERVICE_URL = process.env.BOT_SERVICE_URL || 'http://bot-service:4001';
 
-router.use(authenticateToken, requirePermission('bot:manage'));
+router.use(authenticateToken, requireAdmin, requirePermission('bot:manage'));
 
 router.use(async (req, res) => {
   try {

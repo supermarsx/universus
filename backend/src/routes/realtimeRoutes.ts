@@ -5,6 +5,8 @@
 
 import express from 'express';
 import { authenticateToken } from '../middleware/auth';
+import { AuthRequest } from '../types';
+import { getUserId } from '../utils/authHelpers';
 import chatService from '../services/chatService';
 import notificationService from '../services/notificationService';
 import { pool } from '../config/database';
@@ -25,17 +27,18 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateToken);
 
-const resolveAuthUser = (req: any) => {
-  const user = req.user || {};
+const resolveAuthUser = (req: AuthRequest) => {
+  const userId = getUserId(req)!;
+  const user = (req as any).user || {};
   const adminLevel = user.admin_level ?? user.adminLevel ?? null;
   return {
-    id: user.id ?? user.userId,
+    id: userId,
     isAdmin: user.is_admin ?? user.isAdmin ?? false,
     isModerator:
       user.is_moderator ??
       user.isModerator ??
       (adminLevel ? ['moderator', 'game_admin', 'super_admin'].includes(adminLevel) : false),
-  };
+  } as { id: number; isAdmin: boolean; isModerator: boolean };
 };
 
 // =====================================================

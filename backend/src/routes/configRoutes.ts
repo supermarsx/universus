@@ -5,7 +5,7 @@ import { Router, Response } from 'express';
 import { AuthRequest } from '../types';
 import { ConfigurationService } from '../services/configurationService';
 import { authenticateToken, assertAuthenticated } from '../middleware/auth';
-import { requirePermission } from '../middleware/adminAuth';
+import { requireAdmin, requirePermission } from '../middleware/adminAuth';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
 import { io } from '../index';
@@ -16,7 +16,7 @@ const router = Router();
 const configService = new ConfigurationService(pool, redis, io);
 
 // All routes require admin authentication
-router.use(authenticateToken, assertAuthenticated, requirePermission('config:read'));
+router.use(authenticateToken, assertAuthenticated, requireAdmin, requirePermission('config:read'));
 
 const getUserId = getUserIdFromUtils;
 
