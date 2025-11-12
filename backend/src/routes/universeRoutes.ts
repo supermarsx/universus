@@ -397,7 +397,7 @@ router.get('/:id/stats', async (req: AuthRequest, res: Response) => {
  * Update registration status, open/close times
  * Admin only
  */
-router.patch('/:id/registration', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+router.patch('/:id/registration', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { registrationStatus, registrationOpenAt, registrationCloseAt } = req.body;
@@ -420,7 +420,7 @@ router.patch('/:id/registration', requirePermission('universe:manage'), async (r
  * Update universe open/close times, is_active, closure_reason
  * Admin only
  */
-router.patch('/:id/lifecycle', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+router.patch('/:id/lifecycle', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { universeOpenAt, universeCloseAt, isActive, closureReason } = req.body;
@@ -443,7 +443,7 @@ router.patch('/:id/lifecycle', requirePermission('universe:manage'), async (req:
  * Update speed multiplier and progression
  * Admin only
  */
-router.patch('/:id/speed', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+router.patch('/:id/speed', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const {
@@ -499,7 +499,7 @@ router.patch('/:id/speed', requirePermission('universe:manage'), async (req: Req
  * Schedule or trigger a universe merge
  * Admin only
  */
-router.patch('/:id/merge', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+router.patch('/:id/merge', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { isMerging, mergeTargetUniverseId, mergeScheduledAt } = req.body;
@@ -522,7 +522,7 @@ router.patch('/:id/merge', requirePermission('universe:manage'), async (req: Req
  * Set end-of-universe event/announcement
  * Admin only
  */
-router.patch('/:id/end-event', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+router.patch('/:id/end-event', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { endOfUniverseEventAt, endOfUniverseType, endOfUniverseAnnouncement } = req.body;
@@ -545,7 +545,7 @@ router.patch('/:id/end-event', requirePermission('universe:manage'), async (req:
  * Set a general announcement for the universe
  * Admin only
  */
-router.patch('/:id/announcement', requirePermission('universe:manage'), async (req: Request, res: Response) => {
+router.patch('/:id/announcement', requirePermission('universe:manage'), async (req: AuthRequest, res: Response) => {
   try {
     const universeId = parseInt(req.params.id);
     const { announcement, announcementType, announcementExpiresAt } = req.body;
