@@ -1,0 +1,34 @@
+name: backend-core CI
+
+on:
+  push:
+    paths:
+      - 'backend-core/**'
+  pull_request:
+    paths:
+      - 'backend-core/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+      - name: Build
+        run: cargo build --manifest-path backend-core/Cargo.toml --release
+      - name: Run tests
+        run: cargo test --manifest-path backend-core/Cargo.toml

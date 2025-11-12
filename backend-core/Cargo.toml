@@ -1,0 +1,24 @@
+[package]
+name = "backend-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Universus <dev@local>"]
+build = "build.rs"
+
+[dependencies]
+# async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+# gRPC server
+tonic = { version = "0.9", features = ["transport"] }
+# Protobuf runtime
+prost = "0.11"
+prost-types = "0.11"
+# logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+anyhow = "1.0"
+# concurrent map for simple state
+dashmap = "5"
+
+[build-dependencies]
+tonic-build = "0.9"

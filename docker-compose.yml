@@ -121,6 +121,21 @@ services:
       - "4001:4001"
     restart: unless-stopped
 
+  backend-core:
+    build:
+      context: ./backend-core
+      dockerfile: Dockerfile
+    container_name: universus_backend_core
+    depends_on:
+      - redis
+      - database
+    environment:
+      CORE_BIND_ADDR: 0.0.0.0:50051
+      RUST_LOG: info
+    ports:
+      - "50051:50051"
+    restart: unless-stopped
+
   admin-service:
     build:
       context: ./backend-admin-service

@@ -1,0 +1,26 @@
+syntax = "proto3";
+package core;
+
+option java_package = "com.universus.core";
+option go_package = "corepb";
+
+message BattleRequest {
+  string battle_id = 1;
+  repeated string player_ids = 2;
+}
+
+message StepRequest {
+  string battle_id = 1;
+}
+
+message BattleState {
+  string battle_id = 1;
+  int32 tick = 2;
+  string json_state = 3;
+}
+
+service GameLoop {
+  rpc StartBattle(BattleRequest) returns (BattleState);
+  rpc StepBattle(StepRequest) returns (BattleState);
+  rpc StreamBattle(StepRequest) returns (stream BattleState);
+}
