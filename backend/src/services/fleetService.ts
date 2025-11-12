@@ -525,7 +525,9 @@ export class FleetService {
         crystal: targetPlanet.crystal,
         deuterium: targetPlanet.deuterium,
       },
-      targetPlanet.id
+      targetPlanet.id,
+      // Use fleet id as the deterministic seed for reproducible combat outcomes
+      fleet.id
     );
 
     if (combatResult.winner === 'attacker') {

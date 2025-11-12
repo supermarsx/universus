@@ -14,12 +14,24 @@ import { getRealtimeHandler } from '../socket';
 import { CombatAlertType } from '../types/realtime';
 import { gameConfig } from './gameConfigAdapter';
 
+// Lightweight seeded PRNG (Mulberry32)
+function mulberry32(seed: number) {
+  return function() {
+    let t = seed += 0x6D2B79F5;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 interface CombatUnit {
   type: string;
   count: number;
   shield: number;
   weapon: number;
   hull: number;
+  maxShield?: number;
+  maxHull?: number;
   rapidFire?: { [key: string]: number };
 }
 
@@ -49,6 +61,7 @@ export class CombatService {
    * @param defenderTech - research/tech levels for defender
    * @param planetResources - resources available on the defended planet
    * @param planetId - optional planet id used for logging/tracking
+   * @param seed - optional numeric seed for deterministic simulations
    */
   static async simulateBattle(
     attackerShips: { [key: string]: number },
@@ -57,7 +70,8 @@ export class CombatService {
     attackerTech: any,
     defenderTech: any,
     planetResources: { metal: number; crystal: number; deuterium: number },
-    planetId?: number
+    planetId?: number,
+    seed?: number
   ): Promise<CombatResult> {
     // Start combat tracking with millisecond precision
     let combatId: number | undefined;
@@ -68,6 +82,10 @@ export class CombatService {
         console.error('Failed to start combat tracking:', error);
       }
     }
+
+    // Seeded RNG for deterministic behavior. Preference: explicit seed -> combatId -> timestamp
+    const rngSeed = typeof seed === 'number' ? seed : (typeof combatId === 'number' ? combatId : Date.now());
+    const rand = mulberry32(Math.floor(rngSeed));
 
     // Convert to combat units
     const attackerUnits: CombatUnit[] = this.prepareCombatUnits(
@@ -92,7 +110,7 @@ export class CombatService {
         break;
       }
 
-      const roundResult = this.simulateRound(attackerUnits, defenderUnits);
+      const roundResult = this.simulateRound(attackerUnits, defenderUnits, rand);
       rounds.push(roundResult);
 
       // Log round with millisecond precision
@@ -109,7 +127,7 @@ export class CombatService {
         }
       }
 
-      // Regenerate shields
+      // Regenerate shields (preserve tech-modified shield values)
       this.regenerateShields(attackerUnits);
       this.regenerateShields(defenderUnits);
     }
@@ -173,7 +191,7 @@ export class CombatService {
   private static getShipCounts(units: CombatUnit[]): { [key: string]: number } {
     const counts: { [key: string]: number } = {};
     for (const unit of units) {
-      counts[unit.type] = (counts[unit.type] || 0) + 1;
+      counts[unit.type] = (counts[unit.type] || 0) + (unit.count || 1);
     }
     return counts;
   }
@@ -189,12 +207,16 @@ export class CombatService {
       if (count > 0 && SHIPS[type]) {
         const ship = SHIPS[type];
         for (let i = 0; i < count; i++) {
+          const maxShield = ship.shieldPower * (1 + (tech.shielding_technology || 0) * 0.1);
+          const maxHull = ship.structurePoints * (1 + (tech.armor_technology || 0) * 0.1);
           units.push({
             type,
             count: 1,
-            shield: ship.shieldPower * (1 + (tech.shielding_technology || 0) * 0.1),
+            shield: maxShield,
             weapon: ship.weaponPower * (1 + (tech.weapons_technology || 0) * 0.1),
-            hull: ship.structurePoints * (1 + (tech.armor_technology || 0) * 0.1),
+            hull: maxHull,
+            maxShield,
+            maxHull,
             rapidFire: ship.rapidFire,
           });
         }
@@ -205,12 +227,16 @@ export class CombatService {
       if (count > 0 && DEFENSES[type]) {
         const defense = DEFENSES[type];
         for (let i = 0; i < count; i++) {
+          const maxShield = defense.shieldPower * (1 + (tech.shielding_technology || 0) * 0.1);
+          const maxHull = defense.structurePoints * (1 + (tech.armor_technology || 0) * 0.1);
           units.push({
             type,
             count: 1,
-            shield: defense.shieldPower * (1 + (tech.shielding_technology || 0) * 0.1),
+            shield: maxShield,
             weapon: defense.weaponPower * (1 + (tech.weapons_technology || 0) * 0.1),
-            hull: defense.structurePoints * (1 + (tech.armor_technology || 0) * 0.1),
+            hull: maxHull,
+            maxShield,
+            maxHull,
             rapidFire: defense.rapidFire,
           });
         }
@@ -222,7 +248,8 @@ export class CombatService {
 
   private static simulateRound(
     attackers: CombatUnit[],
-    defenders: CombatUnit[]
+    defenders: CombatUnit[],
+    rand: () => number
   ): any {
     /**
      * Simulate a single combat round where attackers then defenders fire.
@@ -240,8 +267,8 @@ export class CombatService {
     for (const attacker of attackers) {
       if (defenders.length === 0) break;
       
-      const target = defenders[Math.floor(Math.random() * defenders.length)];
-      this.shoot(attacker, target, defenders);
+      const target = defenders[Math.floor(rand() * defenders.length)];
+      this.shoot(attacker, target, defenders, rand);
       roundData.attackerShots++;
     }
 
@@ -252,8 +279,8 @@ export class CombatService {
     for (const defender of defenders) {
       if (attackers.length === 0) break;
       
-      const target = attackers[Math.floor(Math.random() * attackers.length)];
-      this.shoot(defender, target, attackers);
+      const target = attackers[Math.floor(rand() * attackers.length)];
+      this.shoot(defender, target, attackers, rand);
       roundData.defenderShots++;
     }
 
@@ -266,7 +293,8 @@ export class CombatService {
   private static shoot(
     shooter: CombatUnit,
     target: CombatUnit,
-    targetArray: CombatUnit[]
+    targetArray: CombatUnit[],
+    rand: () => number
   ): void {
     /**
      * Apply shooter damage to a single target, handling shields, hull and
@@ -295,10 +323,10 @@ export class CombatService {
       // Check for explosion chance
       if (target.hull <= 0) {
         target.hull = 0;
-      } else if (target.hull < target.hull * 0.7) {
-        // Chance of explosion based on remaining hull
-        const explosionChance = 1 - target.hull / (target.hull * 0.7);
-        if (Math.random() < explosionChance) {
+      } else if (typeof target.maxHull === 'number' && target.hull < target.maxHull * 0.7) {
+        // Chance of explosion based on remaining hull relative to 70% threshold
+        const explosionChance = 1 - (target.hull / (target.maxHull * 0.7));
+        if (rand() < explosionChance) {
           target.hull = 0;
         }
       }
@@ -307,9 +335,9 @@ export class CombatService {
     // Rapid fire
     if (shooter.rapidFire && shooter.rapidFire[target.type]) {
       const rfChance = 1 - 1 / shooter.rapidFire[target.type];
-      if (Math.random() < rfChance && targetArray.length > 0) {
-        const newTarget = targetArray[Math.floor(Math.random() * targetArray.length)];
-        this.shoot(shooter, newTarget, targetArray);
+      if (rand() < rfChance && targetArray.length > 0) {
+        const newTarget = targetArray[Math.floor(rand() * targetArray.length)];
+        this.shoot(shooter, newTarget, targetArray, rand);
       }
     }
   }
@@ -331,13 +359,15 @@ export class CombatService {
 
   private static regenerateShields(units: CombatUnit[]): void {
     /**
-     * Reset shields to their full config value between rounds.
+     * Reset shields to their full (tech-modified) value between rounds.
      * @private
      */
     for (const unit of units) {
-      const config = SHIPS[unit.type] || DEFENSES[unit.type];
-      if (config) {
-        unit.shield = config.shieldPower;
+      if (typeof unit.maxShield === 'number') {
+        unit.shield = unit.maxShield;
+      } else {
+        const config = SHIPS[unit.type] || DEFENSES[unit.type];
+        if (config) unit.shield = config.shieldPower;
       }
     }
   }
@@ -531,3 +561,4 @@ export class CombatService {
     }
   }
 }
+
