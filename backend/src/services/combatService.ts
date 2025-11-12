@@ -49,6 +49,10 @@ export class CombatService {
   /**
    * Simulate a full fleet/defense battle.
    *
+   * By default this runs the TypeScript implementation. If `CORE_ENGINE=rust`
+   * the method will delegate to the Rust backend via gRPC. The Rust response is
+   * expected to return a JSON-serialized CombatResult (string) in `json_result`.
+   *
    * This method executes the configured number of rounds or until one side
    * is eliminated. It returns a detailed CombatResult describing rounds,
    * losses, debris and loot. Optionally logs rounds to the millisecond
@@ -73,6 +77,23 @@ export class CombatService {
     planetId?: number,
     seed?: number
   ): Promise<CombatResult> {
+    // If CORE_ENGINE is set to 'rust', delegate to the Rust service
+    if (process.env.CORE_ENGINE === 'rust') {
+      try {
+        // Lazy import so tests can mock the module path easily
+        const { simulateBattleRust } = require('../coreAdapter/rustCoreClient');
+        const result = await simulateBattleRust(String(planetId || 'local'), Object.keys(attackerShips).concat(Object.keys(defenderShips)), seed ? String(seed) : undefined);
+        // If the rust service returns the full CombatResult object, use it directly
+        if (result && result.winner) {
+          return result as CombatResult;
+        }
+        // Otherwise attempt to parse
+        return JSON.parse(result) as CombatResult;
+      } catch (error) {
+        console.error('Rust core call failed, falling back to TS implementation:', error);
+        // fallback to JS implementation
+      }
+    }
     // Start combat tracking with millisecond precision
     let combatId: number | undefined;
     if (planetId) {

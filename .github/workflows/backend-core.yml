@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - 'backend-core/**'
+      - 'backend/**'
   pull_request:
     paths:
       - 'backend-core/**'
+      - 'backend/**'
 
 jobs:
-  build:
+  rust-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,5 +32,23 @@ jobs:
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
       - name: Build
         run: cargo build --manifest-path backend-core/Cargo.toml --release
-      - name: Run tests
+      - name: Run Rust tests
         run: cargo test --manifest-path backend-core/Cargo.toml
+
+  node-tests:
+    runs-on: ubuntu-latest
+    needs: rust-build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: |
+          cd backend
+          npm ci
+      - name: Run unit tests
+        run: |
+          cd backend
+          npm test --silent

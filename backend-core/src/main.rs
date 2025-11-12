@@ -8,7 +8,10 @@ pub mod core {
 }
 
 use core::game_loop_server::{GameLoop, GameLoopServer};
-use core::{BattleRequest, StepRequest, BattleState};
+use core::{BattleRequest, StepRequest, BattleState, SimulateRequest, CombatResult};
+
+mod sim;
+use sim::simulate_combat;
 
 #[derive(Debug, Default)]
 struct Battle {
@@ -68,6 +71,13 @@ impl GameLoop for CoreService {
             }
         });
         Ok(Response::new(rx))
+    }
+
+    async fn simulate_battle(&self, req: Request<SimulateRequest>) -> Result<Response<CombatResult>, Status> {
+        let r = req.into_inner();
+        // run deterministic simulation
+        let result = simulate_combat(&r);
+        Ok(Response::new(result))
     }
 }
 

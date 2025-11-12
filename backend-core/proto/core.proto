@@ -19,8 +19,50 @@ message BattleState {
   string json_state = 3;
 }
 
+message SimulateRequest {
+  string battle_id = 1;
+  map<string,int32> attacker_ships = 2;
+  map<string,int32> defender_ships = 3;
+  map<string,int32> defender_defenses = 4;
+  // simple techs as map<string,int32>
+  map<string,int32> attacker_tech = 5;
+  map<string,int32> defender_tech = 6;
+  int64 planet_metal = 7;
+  int64 planet_crystal = 8;
+  int64 planet_deuterium = 9;
+  string seed = 10;
+}
+
+message RoundResult {
+  int32 attacker_shots = 1;
+  int32 defender_shots = 2;
+  int32 attacker_destroyed = 3;
+  int32 defender_destroyed = 4;
+}
+
+message Loot {
+  int64 metal = 1;
+  int64 crystal = 2;
+  int64 deuterium = 3;
+}
+
+message Debris {
+  int64 metal = 1;
+  int64 crystal = 2;
+}
+
+message CombatResult {
+  string winner = 1; // 'attacker' | 'defender' | 'draw'
+  repeated RoundResult rounds = 2;
+  map<string,int32> attacker_losses = 3;
+  map<string,int32> defender_losses = 4;
+  Loot loot = 5;
+  Debris debris = 6;
+}
+
 service GameLoop {
   rpc StartBattle(BattleRequest) returns (BattleState);
   rpc StepBattle(StepRequest) returns (BattleState);
   rpc StreamBattle(StepRequest) returns (stream BattleState);
+  rpc SimulateBattle(SimulateRequest) returns (CombatResult);
 }
