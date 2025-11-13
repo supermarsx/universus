@@ -13,8 +13,10 @@ use std::thread;
 fn spawn_worker_and_prewarm() {
     // Use current exe (test runner) is not desirable; instead run `cargo run` to ensure binary
     // available. We'll spawn `cargo run --package backend-core -- --worker --universe default --prewarm`.
-    let mut child = Command::new("cargo")
-        .args(&["run", "-p", "backend-core", "--", "--worker", "--universe", "default", "--prewarm"]) 
+    // prefer explicit binary path via BACKEND_CORE_BIN env var, else use ../target/debug/backend-core
+    let bin = std::env::var("BACKEND_CORE_BIN").unwrap_or_else(|_| "../target/debug/backend-core".to_string());
+    let mut child = Command::new(bin)
+        .args(&["--worker", "--universe", "default", "--prewarm"])
         .spawn()
         .expect("spawn worker process");
 
