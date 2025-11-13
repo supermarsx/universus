@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use std::process::Stdio;
 use serde::{Serialize, Deserialize};
 use std::io::BufRead;
+use std::sync::atomic::AtomicBool;
 use prometheus::Encoder;
 
 pub mod core {
@@ -142,9 +143,36 @@ impl Manager {
                                         }
                                     }
                                 }
-                                // also probe TCP port with short timeout; if unreachable, drop it
+                                // probe TCP port with short timeout; if unreachable, attempt drain then wait and drop
                                 if let Ok(addr) = format!("127.0.0.1:{}", wh.port).parse::<std::net::SocketAddr>() {
                                     if let Err(_) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200)) {
+                                        // attempt to tell worker to drain (best-effort)
+                                        if let Ok(mut s) = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500)) {
+                                            use std::io::Write;
+                                            let ctl = serde_json::to_string(&IPCSimulateRequest { cmd: Some("drain".to_string()), battle_id: "".to_string(), attacker_ships: std::collections::HashMap::new(), defender_ships: std::collections::HashMap::new(), defender_defenses: std::collections::HashMap::new(), attacker_tech: std::collections::HashMap::new(), defender_tech: std::collections::HashMap::new(), planet_metal: 0, planet_crystal: 0, planet_deuterium: 0, seed: "".to_string(), universe: k.clone() }).unwrap_or_default();
+                                            let _ = s.write_all(ctl.as_bytes());
+                                        }
+                                        // try to wait up to 3 seconds for the child to exit
+                                        if let Ok(mut guard) = wh._child.try_lock() {
+                                            if let Some(child) = guard.as_mut() {
+                                                let start = std::time::Instant::now();
+                                                loop {
+                                                    match child.try_wait() {
+                                                        Ok(Some(_)) => break,
+                                                        Ok(None) => {
+                                                            if start.elapsed() > std::time::Duration::from_secs(3) {
+                                                                // try to kill the child
+                                                                let _ = child.kill();
+                                                                break;
+                                                            }
+                                                            std::thread::sleep(std::time::Duration::from_millis(50));
+                                                            continue;
+                                                        }
+                                                        Err(_) => break,
+                                                    }
+                                                }
+                                            }
+                                        }
                                         return false;
                                     }
                                 }
@@ -431,17 +459,18 @@ async fn handle_conn(mut socket: TcpStream, last_req: Arc<tokio::sync::Mutex<Ins
     let mut reader = BufReader::new(r);
     let mut writer = w; // move writer into this scope once
     let mut line = String::new();
+    // drain flag: when set, worker should stop accepting new simulate requests and exit when current ones finish
+    let draining = Arc::new(AtomicBool::new(false));
+    let draining_for_spawn = draining.clone();
     while reader.read_line(&mut line).await? > 0 {
         let req: IPCSimulateRequest = serde_json::from_str(&line)?;
         // update last_req
         {
             let mut lr = last_req.lock().await; *lr = Instant::now();
         }
-        // run simulation in blocking task
-        // allow special control commands from manager, e.g., prewarm or health-check
+        // control commands
         if let Some(cmd) = req.cmd.as_ref() {
             if cmd == "prewarm" {
-                // perform prewarm: load ship defs for universe
                 let _ = ships::load_ships_for_universe(&req.universe);
                 let status = IPCCombatResult { winner: "".to_string(), rounds: vec![], attacker_losses: std::collections::HashMap::new(), defender_losses: std::collections::HashMap::new(), loot: None, debris: None, status: Some("prewarmed".to_string()) };
                 let mut out = serde_json::to_string(&status)?;
@@ -449,8 +478,27 @@ async fn handle_conn(mut socket: TcpStream, last_req: Arc<tokio::sync::Mutex<Ins
                 writer.write_all(out.as_bytes()).await?;
                 line.clear();
                 continue;
+            } else if cmd == "drain" {
+                draining.store(true, std::sync::atomic::Ordering::SeqCst);
+                let status = IPCCombatResult { winner: "".to_string(), rounds: vec![], attacker_losses: std::collections::HashMap::new(), defender_losses: std::collections::HashMap::new(), loot: None, debris: None, status: Some("draining".to_string()) };
+                let mut out = serde_json::to_string(&status)?;
+                out.push('\n');
+                writer.write_all(out.as_bytes()).await?;
+                line.clear();
+                continue;
             }
         }
+        // if we're draining, refuse new simulation requests
+        if draining.load(std::sync::atomic::Ordering::SeqCst) {
+            let status = IPCCombatResult { winner: "".to_string(), rounds: vec![], attacker_losses: std::collections::HashMap::new(), defender_losses: std::collections::HashMap::new(), loot: None, debris: None, status: Some("serving-drain".to_string()) };
+            let mut out = serde_json::to_string(&status)?;
+            out.push('\n');
+            writer.write_all(out.as_bytes()).await?;
+            line.clear();
+            continue;
+        }
+        // run simulation in blocking task
+        let draining_clone = draining.clone();
         let res = tokio::task::spawn_blocking(move || {
             // convert IPCSimulateRequest into core::SimulateRequest
             let mut proto_req = core::SimulateRequest::default();
@@ -476,6 +524,12 @@ async fn handle_conn(mut socket: TcpStream, last_req: Arc<tokio::sync::Mutex<Ins
         out.push('\n');
         writer.write_all(out.as_bytes()).await?;
         line.clear();
+        // after responding, if draining and no more in-flight tasks, exit
+        if draining_clone.load(std::sync::atomic::Ordering::SeqCst) {
+            // give a small grace period then exit
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            std::process::exit(0);
+        }
     }
     Ok(())
 }
