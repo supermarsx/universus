@@ -6,6 +6,7 @@
  */
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import logger from './logger';
 
 dotenv.config();
 
@@ -40,7 +41,7 @@ export default pool;
  * Logs a message when the pool connects to the database.
  */
 pool.on('connect', () => {
-  console.log('Connected to PostgreSQL database');
+  logger.info('Connected to PostgreSQL database');
 });
 
 /**
@@ -49,7 +50,7 @@ pool.on('connect', () => {
  * @param {Error} err - The error object.
  */
 pool.on('error', (err: Error) => {
-  console.error('Unexpected error on idle client', err);
+  logger.error('Unexpected error on idle client', { error: err });
   process.exit(-1);
 });
 
@@ -65,6 +66,6 @@ export const query = async (text: string, params?: any[]) => {
   const start = Date.now();
   const res = await pool.query(text, params);
   const duration = Date.now() - start;
-  console.log('Executed query', { text, duration, rows: res.rowCount });
+  logger.debug('Executed query', { text, duration, rows: res.rowCount });
   return res;
 };
