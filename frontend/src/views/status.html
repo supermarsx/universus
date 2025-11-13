@@ -1,0 +1,33 @@
+<!-- Public status page -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Status - Universus</title>
+  <link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+  <div class="container">
+    <h1>System Status</h1>
+    <div id="overallStatus" class="status-banner">Loading...</div>
+
+    <section id="incidentsSection">
+      <h2>Active Incidents</h2>
+      <div id="incidentsList">Loading incidents...</div>
+    </section>
+
+    <section id="maintenanceSection">
+      <h2>Upcoming Maintenance</h2>
+      <div id="maintenanceList">Loading maintenance windows...</div>
+    </section>
+
+    <div id="adminControls" style="display:none; margin-top:20px;">
+      <h3>Admin Controls</h3>
+      <button id="createIncidentBtn">Create Incident</button>
+      <button id="createMaintenanceBtn">Create Maintenance Window</button>
+    </div>
+  </div>
+
+  <script src="/js/status.js"></script>
+</body>
+</html>

@@ -341,6 +341,138 @@ router.get(
   }
 );
 
+// ========================================
+// STATUS & INCIDENTS
+// ========================================
+
+import { AdminStatusService } from '../services/adminStatusService';
+
+/**
+ * GET /api/admin/status/incidents
+ * List incidents (admin view)
+ */
+router.get(
+  '/status/incidents',
+  requireAdmin,
+  requirePermission('status:read'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const incidents = await AdminStatusService.getIncidents(limit);
+      res.json(incidents);
+    } catch (error: any) {
+      console.error('Get incidents error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/status/incidents
+ * Create incident (admin)
+ */
+router.post(
+  '/status/incidents',
+  requireAdmin,
+  requirePermission('status:write'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const payload = {
+        title: req.body.title,
+        description: req.body.description,
+        status: req.body.status || 'detected',
+        severity: req.body.severity || 'medium',
+        affected_components: req.body.affected_components || [],
+        start_time: req.body.start_time,
+        end_time: req.body.end_time,
+      };
+      const incident = await AdminStatusService.createIncident(payload, req.user!.id, req.user!.username);
+      res.json(incident);
+    } catch (error: any) {
+      console.error('Create incident error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
+ * PUT /api/admin/status/incidents/:id
+ * Update incident (admin)
+ */
+router.put(
+  '/status/incidents/:id',
+  requireAdmin,
+  requirePermission('status:write'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = {
+        title: req.body.title,
+        description: req.body.description,
+        status: req.body.status,
+        severity: req.body.severity,
+        affected_components: req.body.affected_components,
+        start_time: req.body.start_time,
+        end_time: req.body.end_time,
+      };
+
+      const incident = await AdminStatusService.updateIncident(id, updates, req.user!.id, req.user!.username);
+      res.json(incident);
+    } catch (error: any) {
+      console.error('Update incident error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/status/maintenance
+ * List maintenance windows
+ */
+router.get(
+  '/status/maintenance',
+  requireAdmin,
+  requirePermission('status:read'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const windows = await AdminStatusService.getMaintenanceWindows(limit);
+      res.json(windows);
+    } catch (error: any) {
+      console.error('Get maintenance windows error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/status/maintenance
+ * Create maintenance window
+ */
+router.post(
+  '/status/maintenance',
+  requireAdmin,
+  requirePermission('status:write'),
+  async (req: AdminAuthRequest, res: Response): Promise<void> => {
+    try {
+      const payload = {
+        name: req.body.name,
+        description: req.body.description,
+        start_time: req.body.start_time,
+        end_time: req.body.end_time,
+        created_by: req.user!.id,
+        created_by_username: req.user!.username,
+      };
+
+      const win = await AdminStatusService.createMaintenanceWindow(payload);
+      res.json(win);
+    } catch (error: any) {
+      console.error('Create maintenance window error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
 /**
  * GET /api/admin/monitoring/metrics/:name
  * Get metrics history

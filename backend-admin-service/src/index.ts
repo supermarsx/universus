@@ -18,6 +18,18 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok', service: 'admin', timestamp: new Date().toISOString() });
 });
 
+// Public status endpoint (read-only)
+import { AdminStatusService } from './services/adminStatusService';
+app.get('/status', async (_, res) => {
+  try {
+    const status = await AdminStatusService.getPublicStatus();
+    res.json(status);
+  } catch (err: any) {
+    console.error('Public status error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin', adminApiRoutes);
 
