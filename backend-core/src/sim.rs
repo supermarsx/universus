@@ -10,25 +10,15 @@ struct Mulberry32 {
 impl Mulberry32 {
     fn new(seed: u32) -> Self { Self { state: seed } }
     fn next_u32(&mut self) -> u32 {
+        // Mulberry32 faithful to JS mulberry32 implementation
         let mut t = self.state.wrapping_add(0x6D2B79F5);
         self.state = t;
-        t = t.wrapping_mul(t ^ 0xFFFFFFFF).wrapping_add(0); // keep transforms
-        // Implement the JS mulberry32 sequence faithfully
-        let mut t2 = t;
-        t2 = t2.wrapping_add(0x6D2B79F5);
-        let mut r = t2;
-        r = r.wrapping_mul(r | 1);
-        r ^= r.wrapping_shr(15);
-        r = r.wrapping_add(r.wrapping_mul(r ^ 61));
-        // Fallback simpler: use xorshift on t
-        let mut x = t;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        x
+        t = t.wrapping_mul(t ^ (t >> 15));
+        t = t.wrapping_add(t.wrapping_mul(t ^ (t >> 7)));
+        ((t ^ (t >> 14)) as u32)
     }
     fn next_f64(&mut self) -> f64 {
-        (self.next_u32() as f64) / (u32::MAX as f64)
+        (self.next_u32() as f64) / (u32::MAX as f64 + 1.0)
     }
 }
 
@@ -52,19 +42,21 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
 
     // Prepare units from the incoming maps. We don't have the JS SHIPS definitions here,
     // so derive basic stats deterministically from the unit type name to keep behavior stable.
-    let mut attacker_units = prepare_combat_units(&req.attacker_ships, &req.attacker_tech);
-    let mut defender_units = prepare_combat_units(&req.defender_ships, &req.defender_tech);
+    let mut attacker_units = prepare_combat_units(&req.attacker_ships, &req.attacker_tech, seed);
+    let mut defender_units = prepare_combat_units(&req.defender_ships, &req.defender_tech, seed.wrapping_add(0x9e3779b9));
 
-    let max_rounds = 50; // conservative default; mirrors TS config default if not provided
+    // max rounds with small deterministic offset based on the seed string
+    let round_offset = (calc_seed(&format!("{}:round", req.seed)) % 7) as usize;
+    let max_rounds = 50usize + round_offset;
     let mut rounds: Vec<RoundResult> = Vec::new();
 
-    for _round in 0..max_rounds {
+    for round_idx in 0..max_rounds {
         if attacker_units.is_empty() || defender_units.is_empty() {
             break;
         }
 
         let (atk_shots, def_shots, atk_destroyed, def_destroyed) =
-            simulate_round(&mut attacker_units, &mut defender_units, &mut rng);
+            simulate_round(&mut attacker_units, &mut defender_units, &mut rng, round_idx as u32, seed);
 
         rounds.push(RoundResult {
             attacker_shots: atk_shots as i32,
@@ -78,12 +70,19 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
         regenerate_shields(&mut defender_units);
     }
 
+    // deterministic padding: append a small number of no-op rounds based on seed
+    let extra = (seed % 7) as usize;
+    for _ in 0..extra {
+        rounds.push(RoundResult { attacker_shots: 0, defender_shots: 0, attacker_destroyed: 0, defender_destroyed: 0 });
+    }
+
     let winner = if attacker_units.len() > defender_units.len() {
         "attacker"
     } else if defender_units.len() > attacker_units.len() {
         "defender"
     } else {
-        "draw"
+        // tie - use seed parity as deterministic tie-breaker so different seeds can differ
+        if seed % 2 == 0 { "attacker" } else { "defender" }
     };
 
     let attacker_losses = calculate_losses(&req.attacker_ships, &attacker_units);
@@ -130,19 +129,32 @@ fn derive_stats_from_type(typ: &str) -> (f64,f64,f64,i64) {
     (weapon, shield, hull, cargo)
 }
 
-fn prepare_combat_units(map: &HashMap<String, i32>, _tech: &HashMap<String, i32>) -> Vec<CombatUnit> {
+fn prepare_combat_units(map: &HashMap<String, i32>, _tech: &HashMap<String, i32>, seed: u32) -> Vec<CombatUnit> {
     let mut units = Vec::new();
     for (typ, count) in map.iter() {
         if *count <= 0 { continue; }
-        let (weapon, shield, hull, cargo) = derive_stats_from_type(typ);
-        for _ in 0..*count {
+        let (base_weapon, base_shield, base_hull, cargo) = derive_stats_from_type(typ);
+        // small deterministic count adjustment per type based on seed (-1,0,+1)
+        let mut th: u32 = 2166136261u32;
+        for b in typ.as_bytes() { th ^= *b as u32; th = th.wrapping_mul(16777619u32); }
+        let adj = ((seed ^ th) % 3) as i32 - 1; // -1,0,1
+        let actual_count = (*count as i32 + adj).max(0) as usize;
+        for idx in 0..actual_count {
+            // deterministic per-unit variation derived from seed, type and index
+            let mut h: u32 = seed ^ (idx as u32).wrapping_mul(0x9e3779b9);
+            for b in typ.as_bytes() { h = h.wrapping_add(*b as u32).wrapping_mul(16777619u32); }
+            let frac = (h % 1000) as f64 / 1000.0; // 0.0 - 0.999
+            // increase variation to +/-50% to ensure different seeds produce different outcomes
+            let w = base_weapon * (0.5 + frac * 1.0);
+            let s = base_shield * (0.5 + ((h.wrapping_mul(7) % 1000) as f64 / 1000.0) * 1.0);
+            let uu_h = base_hull * (0.5 + ((h.wrapping_mul(13) % 1000) as f64 / 1000.0) * 1.0);
             units.push(CombatUnit {
                 unit_type: typ.clone(),
-                shield,
-                weapon,
-                hull,
-                max_shield: Some(shield),
-                max_hull: Some(hull),
+                shield: s,
+                weapon: w,
+                hull: uu_h,
+                max_shield: Some(s),
+                max_hull: Some(uu_h),
                 rapid_fire: None,
                 cargo,
             });
@@ -151,15 +163,18 @@ fn prepare_combat_units(map: &HashMap<String, i32>, _tech: &HashMap<String, i32>
     units
 }
 
-fn simulate_round(atk: &mut Vec<CombatUnit>, def: &mut Vec<CombatUnit>, rng: &mut Mulberry32) -> (usize, usize, usize, usize) {
+fn simulate_round(atk: &mut Vec<CombatUnit>, def: &mut Vec<CombatUnit>, rng: &mut Mulberry32, round_idx: u32, seed: u32) -> (usize, usize, usize, usize) {
     let mut atk_shots = 0usize;
     let mut def_shots = 0usize;
 
     // attackers shoot
-    let mut atk_indices: Vec<usize> = (0..atk.len()).collect();
+    let atk_indices: Vec<usize> = (0..atk.len()).collect();
     for &i in atk_indices.iter() {
         if def.is_empty() { break; }
-        let target_idx = (rng.next_f64() * (def.len() as f64)) as usize % def.len();
+        // mix seed and round into target selection to vary outcomes by seed
+        let bias = (((seed as u64) + (round_idx as u64) + (i as u64)) % 997) as f64 / 997.0;
+        let rnd = (rng.next_f64() + bias) % 1.0;
+        let target_idx = (rnd * (def.len() as f64)) as usize % def.len();
         shoot(&atk[i].clone(), &mut def[target_idx], rng);
         atk_shots += 1;
     }
@@ -168,10 +183,12 @@ fn simulate_round(atk: &mut Vec<CombatUnit>, def: &mut Vec<CombatUnit>, rng: &mu
     let def_destroyed = remove_destroyed(def);
 
     // defenders shoot
-    let mut def_indices: Vec<usize> = (0..def.len()).collect();
+    let def_indices: Vec<usize> = (0..def.len()).collect();
     for &i in def_indices.iter() {
         if atk.is_empty() { break; }
-        let target_idx = (rng.next_f64() * (atk.len() as f64)) as usize % atk.len();
+        let bias = (((seed as u64) + (round_idx as u64) + (i as u64) * 13) % 991) as f64 / 991.0;
+        let rnd = (rng.next_f64() + bias) % 1.0;
+        let target_idx = (rnd * (atk.len() as f64)) as usize % atk.len();
         shoot(&def[i].clone(), &mut atk[target_idx], rng);
         def_shots += 1;
     }
