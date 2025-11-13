@@ -195,11 +195,30 @@ export interface GameEvent {
 // REQUEST EXTENSIONS
 // ========================================
 
-export interface AdminAuthRequest extends Request {
   user?: User;
   admin?: AdminUser;
   adminRole?: string;
   adminPermissions?: string[];
+  /**
+   * The remote IP address of the request.
+   */
+  ip: string;
+  /**
+   * The request path (URL path only).
+   */
+  path: string;
+  /**
+   * The HTTP method (GET, POST, etc).
+   */
+  method: string;
+  /**
+   * The parsed query string.
+   */
+  query: any;
+  /**
+   * The underlying network connection.
+   */
+  connection: any;
 }
 
 // ========================================

@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { AdminAuthRequest, AdminLevel, ADMIN_PERMISSIONS } from '../types/admin';
+import logger from '../config/logger';
 
 /**
  * Admin Authentication Middleware
@@ -13,6 +14,7 @@ export const requireAdmin = async (
 ): Promise<void> => {
   try {
     if (!req.user) {
+      logger.warn('Admin authentication required', { ip: req.ip });
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
@@ -27,6 +29,7 @@ export const requireAdmin = async (
     );
 
     if (adminResult.rows.length === 0) {
+      logger.warn('Admin access required', { userId: req.user.id, ip: req.ip });
       res.status(403).json({ error: 'Admin access required' });
       return;
     }
@@ -48,6 +51,7 @@ export const requireAdmin = async (
           'high',
           false
         );
+        logger.warn('IP address not whitelisted', { userId: req.user.id, attempted_ip: clientIp });
         res.status(403).json({ error: 'IP address not whitelisted' });
         return;
       }
@@ -66,9 +70,10 @@ export const requireAdmin = async (
       ? admin.permissions 
       : ADMIN_PERMISSIONS[admin.admin_level as AdminLevel];
 
+    logger.info('Admin authentication successful', { userId: req.user.id, ip: req.ip });
     next();
   } catch (error) {
-    console.error('Admin authentication error:', error);
+    logger.error('Admin authentication error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -91,6 +96,7 @@ export const requireAdminLevel = (minLevel: AdminLevel) => {
     next: NextFunction
   ): Promise<void> => {
     if (!req.adminLevel) {
+      logger.warn('Admin authentication required for admin level', { ip: req.ip });
       res.status(403).json({ error: 'Admin authentication required' });
       return;
     }
@@ -99,6 +105,7 @@ export const requireAdminLevel = (minLevel: AdminLevel) => {
     const requiredLevel = levelHierarchy[minLevel];
 
     if (userLevel < requiredLevel) {
+      logger.warn('Insufficient admin privileges', { userId: req.user?.id, required: minLevel, current: req.adminLevel });
       res.status(403).json({ 
         error: 'Insufficient admin privileges',
         required: minLevel,
@@ -122,6 +129,7 @@ export const requirePermission = (permission: string) => {
     next: NextFunction
   ): Promise<void> => {
     if (!req.adminPermissions) {
+      logger.warn('Admin authentication required for permission', { ip: req.ip });
       res.status(403).json({ error: 'Admin authentication required' });
       return;
     }
@@ -146,6 +154,7 @@ export const requirePermission = (permission: string) => {
     });
 
     if (!hasPermission) {
+      logger.warn('Permission denied', { userId: req.user?.id, required: permission, available: req.adminPermissions });
       res.status(403).json({ 
         error: 'Permission denied',
         required: permission,
@@ -168,6 +177,7 @@ export const requirePermissions = (permissions: string[]) => {
     next: NextFunction
   ): Promise<void> => {
     if (!req.adminPermissions) {
+      logger.warn('Admin authentication required for permissions', { ip: req.ip });
       res.status(403).json({ error: 'Admin authentication required' });
       return;
     }
@@ -190,6 +200,7 @@ export const requirePermissions = (permissions: string[]) => {
     });
 
     if (missingPermissions.length > 0) {
+      logger.warn('Insufficient permissions', { userId: req.user?.id, missing: missingPermissions });
       res.status(403).json({ 
         error: 'Insufficient permissions',
         missing: missingPermissions,
@@ -211,6 +222,7 @@ export const requireAnyPermission = (permissions: string[]) => {
     next: NextFunction
   ): Promise<void> => {
     if (!req.adminPermissions) {
+      logger.warn('Admin authentication required for any permission', { ip: req.ip });
       res.status(403).json({ error: 'Admin authentication required' });
       return;
     }
@@ -233,6 +245,7 @@ export const requireAnyPermission = (permissions: string[]) => {
     );
 
     if (!hasAnyPermission) {
+      logger.warn('Permission denied (any)', { userId: req.user?.id, required_any: permissions });
       res.status(403).json({ 
         error: 'Permission denied',
         required_any: permissions,
@@ -288,7 +301,7 @@ export const logAdminAction = async (
 
     return result.rows[0].id;
   } catch (error) {
-    console.error('Error logging admin action:', error);
+    logger.error('Error logging admin action', { error });
     return -1;
   }
 };
@@ -354,6 +367,7 @@ const actionCounts = new Map<string, { count: number; resetAt: number }>();
 export const rateLimit = (maxActions: number, windowMs: number) => {
   return (req: AdminAuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
+      logger.warn('Authentication required for rate limit', { ip: req.ip });
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
@@ -369,6 +383,7 @@ export const rateLimit = (maxActions: number, windowMs: number) => {
     }
 
     if (record.count >= maxActions) {
+      logger.warn('Rate limit exceeded', { userId: req.user.id, path: req.path });
       res.status(429).json({ 
         error: 'Rate limit exceeded',
         retryAfter: Math.ceil((record.resetAt - now) / 1000),
@@ -391,6 +406,7 @@ export const checkUserBlocked = async (
   next: NextFunction
 ): Promise<void> => {
   if (!req.user) {
+    logger.warn('Authentication required for block check', { ip: req.ip });
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
@@ -404,6 +420,7 @@ export const checkUserBlocked = async (
     const blockInfo = blockResult.rows[0];
 
     if (blockInfo.is_blocked) {
+      logger.warn('Account blocked', { userId: req.user.id, block_type: blockInfo.block_type });
       res.status(403).json({
         error: 'Account blocked',
         block_type: blockInfo.block_type,
@@ -415,7 +432,7 @@ export const checkUserBlocked = async (
 
     next();
   } catch (error) {
-    console.error('Error checking user block status:', error);
+    logger.error('Error checking user block status', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 };
