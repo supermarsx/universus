@@ -19,6 +19,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1.0"
 # concurrent map for simple state
 dashmap = "5"
+# small helpers for converting mpsc::Receiver into a Stream
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 [build-dependencies]
 tonic-build = "0.9"

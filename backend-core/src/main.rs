@@ -1,7 +1,7 @@
 use tonic::{transport::Server, Request, Response, Status};
-use tonic::transport::ServerTlsConfig;
 use tokio::sync::{mpsc, Mutex};
 use std::sync::Arc;
+use tokio_stream::wrappers::ReceiverStream;
 
 pub mod core {
     tonic::include_proto!("core");
@@ -13,7 +13,7 @@ use core::{BattleRequest, StepRequest, BattleState, SimulateRequest, CombatResul
 mod sim;
 use sim::simulate_combat;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Battle {
     id: String,
     tick: i32,
@@ -48,7 +48,7 @@ impl GameLoop for CoreService {
         }
     }
 
-    type StreamBattleStream = mpsc::Receiver<Result<BattleState, Status>>;
+    type StreamBattleStream = ReceiverStream<Result<BattleState, Status>>;
 
     async fn stream_battle(&self, req: Request<StepRequest>) -> Result<Response<Self::StreamBattleStream>, Status> {
         let r = req.into_inner();
@@ -70,7 +70,7 @@ impl GameLoop for CoreService {
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
         });
-        Ok(Response::new(rx))
+        Ok(Response::new(ReceiverStream::new(rx)))
     }
 
     async fn simulate_battle(&self, req: Request<SimulateRequest>) -> Result<Response<CombatResult>, Status> {
