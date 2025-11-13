@@ -401,6 +401,7 @@ mod tests {
             planet_crystal: 5000,
             planet_deuterium: 1000,
             seed: seed.to_string(),
+            universe: "default".to_string(),
         }
     }
 

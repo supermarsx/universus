@@ -18,26 +18,25 @@ pub struct ShipDef {
 pub fn load_ships_for_universe(universe: &str) -> HashMap<String, ShipDef> {
     // For now we only support the "default" universe and keep the JSON embedded.
     // In future this can read `assets/<universe>/ships.json` or similar.
-    let json = match universe {
-        "default" | "" => r#"
-        {
-            "fighter": { "name": "fighter", "weapon": 100.0, "shield": 50.0, "hull": 200.0, "cargo": 5, "metal_cost": 300, "crystal_cost": 100, "deuterium_cost": 0 },
-            "bomber": { "name": "bomber", "weapon": 400.0, "shield": 150.0, "hull": 600.0, "cargo": 20, "metal_cost": 1200, "crystal_cost": 800, "deuterium_cost": 0, "rapid_fire": {"defender": 2} },
-            "defender": { "name": "defender", "weapon": 150.0, "shield": 80.0, "hull": 400.0, "cargo": 0, "metal_cost": 800, "crystal_cost": 300, "deuterium_cost": 0 },
-            "turret": { "name": "turret", "weapon": 300.0, "shield": 200.0, "hull": 900.0, "cargo": 0, "metal_cost": 2000, "crystal_cost": 1200, "deuterium_cost": 0, "rapid_fire": {"fighter": 3} }
-        }
-        "#,
-        _ => {
-            // unknown universe: fall back to default
-            r#"
-            {
-                "fighter": { "name": "fighter", "weapon": 100.0, "shield": 50.0, "hull": 200.0, "cargo": 5, "metal_cost": 300, "crystal_cost": 100, "deuterium_cost": 0 }
-            }
-            "#
-        }
-    };
+    // Try to load from assets/<universe>/ships.json relative to crate root. Fall back
+    // to embedded JSON if the file can't be read or parsed.
+    let assets_path = format!("{}/assets/{}/ships.json", env!("CARGO_MANIFEST_DIR"), universe);
+    if let Ok(s) = std::fs::read_to_string(&assets_path) {
+        if let Ok(m) = serde_json::from_str(&s) { return m; }
+    }
+
+    // Embedded fallback
+    let json = r#"
+    {
+        "fighter": { "name": "fighter", "weapon": 100.0, "shield": 50.0, "hull": 200.0, "cargo": 5, "metal_cost": 300, "crystal_cost": 100, "deuterium_cost": 0 },
+        "bomber": { "name": "bomber", "weapon": 400.0, "shield": 150.0, "hull": 600.0, "cargo": 20, "metal_cost": 1200, "crystal_cost": 800, "deuterium_cost": 0, "rapid_fire": {"defender": 2} },
+        "defender": { "name": "defender", "weapon": 150.0, "shield": 80.0, "hull": 400.0, "cargo": 0, "metal_cost": 800, "crystal_cost": 300, "deuterium_cost": 0 },
+        "turret": { "name": "turret", "weapon": 300.0, "shield": 200.0, "hull": 900.0, "cargo": 0, "metal_cost": 2000, "crystal_cost": 1200, "deuterium_cost": 0, "rapid_fire": {"fighter": 3} }
+    }
+    "#;
     serde_json::from_str(json).expect("ships json parse")
 }
+
 
 /// Convenience loader for the default universe
 pub fn load_default_ships() -> HashMap<String, ShipDef> { load_ships_for_universe("default") }
