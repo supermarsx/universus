@@ -10,6 +10,7 @@ pub mod core {
 use core::game_loop_server::{GameLoop, GameLoopServer};
 use core::{BattleRequest, StepRequest, BattleState, SimulateRequest, CombatResult};
 
+mod ships;
 mod sim;
 use sim::simulate_combat;
 
