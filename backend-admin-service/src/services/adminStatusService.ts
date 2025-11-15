@@ -1,4 +1,6 @@
 /**
+ * @module services/adminStatusService
+ *
  * AdminStatusService
  * ------------------
  * Service responsible for creating, updating and querying status incidents
@@ -17,23 +19,24 @@ import { logAdminAction } from '../middleware/adminAuth';
 
 /**
  * Allowed severity levels for incidents.
- * @typedef {'low'|'medium'|'high'|'critical'} IncidentSeverity
+ * @typedef {"low"|"medium"|"high"|"critical"} IncidentSeverity
  */
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 /**
  * Incident record returned by the service.
- * @typedef {Object} Incident
+ *
+ * @interface Incident
  * @property {number} id - Unique incident identifier (DB sequence)
  * @property {string} title - Short human readable incident title
- * @property {string|null} description - Longer description / updates
+ * @property {(string|null)} description - Longer description / updates
  * @property {string} status - Lifecycle status (detected|investigating|identified|monitoring|resolved)
  * @property {IncidentSeverity} severity - Severity level
  * @property {string[]} affected_components - List of affected logical components
  * @property {string} start_time - ISO timestamp when incident started
- * @property {string|null} end_time - ISO timestamp when incident ended (or null)
- * @property {number|null} created_by - Admin user id who created the incident (null for auto)
- * @property {string|null} created_by_username - Admin username or null
+ * @property {(string|null)} end_time - ISO timestamp when incident ended (or null)
+ * @property {(number|null)} created_by - Admin user id who created the incident (null for auto)
+ * @property {(string|null)} created_by_username - Admin username or null
  * @property {string} created_at - ISO timestamp when DB row was created
  * @property {string} updated_at - ISO timestamp when DB row was last updated
  */
@@ -63,14 +66,15 @@ export class AdminStatusService {
    * If called with no admin information this will create an incident attributed
    * to the system (useful for automated incident creation from alerting).
    *
+   * @async
    * @param {Partial<Incident>} payload - Partial incident fields (title required)
    * @param {number} [adminId] - Optional admin user id creating the incident
    * @param {string} [adminUsername] - Optional admin username creating the incident
    * @returns {Promise<Incident>} Newly created incident, converted to the Incident interface
    * @throws {Error} If database insertion fails or required fields are missing
-   *
    * @example
    * await AdminStatusService.createIncident({ title: 'Database latency', severity: 'high' }, 12, 'alice');
+   * @see {@link logAdminAction} for audit log behavior
    */
   static async createIncident(
     payload: Partial<Incident>,
@@ -99,7 +103,7 @@ export class AdminStatusService {
 
     // Audit log for admin action
     await logAdminAction(
-      adminId || null,
+      adminId ?? undefined,
       adminUsername || (adminId ? 'admin' : 'system') || 'system',
       'create_incident',
       'status',
@@ -116,15 +120,16 @@ export class AdminStatusService {
    * Update an existing incident and record an audit entry.
    * Only provided fields are updated; other fields are left unchanged.
    *
+   * @async
    * @param {number} id - Incident id to update
    * @param {Partial<Incident>} updates - Fields to update
    * @param {number} [adminId] - Admin id performing the update
    * @param {string} [adminUsername] - Admin username performing the update
    * @returns {Promise<Incident>} The updated incident
    * @throws {Error} If the incident does not exist or the DB operation fails
-   *
    * @example
    * await AdminStatusService.updateIncident(42, { status: 'resolved', end_time: new Date().toISOString() }, 5, 'bob');
+   * @see {@link logAdminAction} for audit logging of before/after state
    */
   static async updateIncident(
     id: number,
@@ -163,7 +168,7 @@ export class AdminStatusService {
 
     // Audit log including before/after state for traceability
     await logAdminAction(
-      adminId || null,
+      adminId ?? undefined,
       adminUsername || 'admin',
       'update_incident',
       'status',
@@ -189,6 +194,8 @@ export class AdminStatusService {
    * @param {number} [limit=50] - Maximum number of incidents to return
    * @param {string} [since] - Optional ISO timestamp filter (future use)
    * @returns {Promise<Incident[]>} Array of incidents
+   * @example
+   * const recent = await AdminStatusService.getIncidents(25);
    */
   static async getIncidents(limit = 50, since?: string): Promise<Incident[]> {
     // Note: `since` parameter kept for API parity; current simple implementation ignores it.
@@ -208,6 +215,9 @@ export class AdminStatusService {
    * @param {number} [payload.created_by] - Admin id creating it
    * @param {string} [payload.created_by_username] - Admin username
    * @returns {Promise<any>} Inserted DB row for the maintenance window
+   * @throws {Error} On DB insertion failure
+   * @example
+   * await AdminStatusService.createMaintenanceWindow({ name: 'Weekly Patch', start_time: '2025-11-14T02:00:00Z', end_time: '2025-11-14T04:00:00Z' }, 5, 'admin');
    */
   static async createMaintenanceWindow(
     payload: {
@@ -236,7 +246,7 @@ export class AdminStatusService {
     const row = result.rows[0];
 
     await logAdminAction(
-      payload.created_by || null,
+      payload.created_by ?? undefined,
       payload.created_by_username || 'admin',
       'create_maintenance',
       'status',
@@ -254,6 +264,8 @@ export class AdminStatusService {
    *
    * @param {number} [limit=50] - Maximum number of windows to return
    * @returns {Promise<any[]>} Array of DB rows representing maintenance windows
+   * @example
+   * const windows = await AdminStatusService.getMaintenanceWindows(10);
    */
   static async getMaintenanceWindows(limit = 50): Promise<any[]> {
     const res = await pool.query('SELECT * FROM status_maintenance_windows ORDER BY start_time DESC LIMIT $1', [limit]);
@@ -265,7 +277,10 @@ export class AdminStatusService {
    * Logic: if any active non-resolved incidents or active maintenance windows
    * exist, overall status becomes `degraded`, otherwise `good`.
    *
+   * @async
    * @returns {Promise<Object>} Public status snapshot containing `overall_status`, `incidents`, `maintenance`, and `last_updated`.
+   * @example
+   * const status = await AdminStatusService.getPublicStatus();
    */
   static async getPublicStatus(): Promise<any> {
     const incidentsRes = await pool.query(

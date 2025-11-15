@@ -92,16 +92,16 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/admin/bots', botRoutes);
-app.use('/api/debris', debrisRoutes); // Debris & Salvage System
-app.use('/api/universe', universeRoutes); // Universe Seeding System
-app.use('/api/shards', shardingRoutes); // Phase 5: Server Sharding System
-app.use('/api/realtime', realtimeRoutes); // Phase 6: Real-time Communication System
-app.use('/api/config', configRoutes); // Phase 7: Configuration System
-app.use('/api/themes', themeRoutes); // Phase 8: Seasonal Theme System
-app.use('/api/acs', acsRoutes); // ACS coordination
-app.use('/api/account', accountRoutes); // Phase 9: Advanced Account Management System
-app.use('/api/shop-enhanced', enhancedShopRoutes); // Phase 10: Enhanced Shop & Matrix Theme
-app.use('/api/alliances', allianceRoutes); // Phase 11: Enhanced Alliance Management System
+app.use('/api/debris', debrisRoutes);
+app.use('/api/universe', universeRoutes);
+app.use('/api/shards', shardingRoutes);
+app.use('/api/realtime', realtimeRoutes);
+app.use('/api/config', configRoutes);
+app.use('/api/themes', themeRoutes);
+app.use('/api/acs', acsRoutes);
+app.use('/api/account', accountRoutes);
+app.use('/api/shop-enhanced', enhancedShopRoutes);
+app.use('/api/alliances', allianceRoutes);
 app.use('/api/moons', moonRoutes);
 app.use('/api/player-blocks', playerBlockRoutes);
 app.use('/api/analytics', analyticsRoutes);

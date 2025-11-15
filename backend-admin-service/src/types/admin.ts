@@ -195,30 +195,12 @@ export interface GameEvent {
 // REQUEST EXTENSIONS
 // ========================================
 
+export interface AdminAuthRequest extends Request {
   user?: User;
   admin?: AdminUser;
   adminRole?: string;
+  adminLevel?: AdminLevel;
   adminPermissions?: string[];
-  /**
-   * The remote IP address of the request.
-   */
-  ip: string;
-  /**
-   * The request path (URL path only).
-   */
-  path: string;
-  /**
-   * The HTTP method (GET, POST, etc).
-   */
-  method: string;
-  /**
-   * The parsed query string.
-   */
-  query: any;
-  /**
-   * The underlying network connection.
-   */
-  connection: any;
 }
 
 // ========================================
@@ -339,7 +321,32 @@ export interface AdminDashboard {
 // ========================================
 // PERMISSION DEFINITIONS
 // ========================================
+ 
+export type AdminLevel = 'support' | 'moderator' | 'game_admin' | 'super_admin';
 
+/**
+ * Default permission sets for each admin level. Keys represent admin levels
+ * and values are arrays of permission strings. These are used as a fallback
+ * when an admin record does not provide explicit permissions.
+ */
+export const ADMIN_PERMISSIONS: Record<AdminLevel, string[]> = {
+  support: [
+    'user:read',
+    'monitoring:read',
+  ],
+  moderator: [
+    'user:read',
+    'user:tag',
+    'user:ban',
+    'monitoring:read',
+  ],
+  game_admin: [
+    '*', // full access for convenience; adjust as needed
+  ],
+  super_admin: [
+    '*',
+  ],
+};
 
 // ========================================
 // UTILITY TYPES

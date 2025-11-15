@@ -15,6 +15,7 @@ import { authenticateToken, requireAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import os from 'os';
+import logger from '../config/logger';
 
 const router = Router();
 
@@ -39,7 +40,7 @@ const verifyAdminRole = async (req: AuthRequest, res: Response, next: NextFuncti
 
         next();
     } catch (error) {
-        console.error('Error verifying admin role:', error);
+        logger.error('Error verifying admin role', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -59,7 +60,7 @@ async function logAdminAction(
             [userId, action, JSON.stringify(details)]
         );
     } catch (error) {
-        console.error('Error logging admin action:', error);
+        logger.error('Error logging admin action', { error, userId });
     }
 }
 
@@ -118,7 +119,7 @@ router.get('/stats', authenticateToken, verifyAdminRole, async (req: AuthRequest
 
         res.json(stats);
     } catch (error) {
-        console.error('Error fetching admin stats:', error);
+        logger.error('Error fetching admin stats', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to fetch statistics' });
     }
 });
@@ -186,7 +187,7 @@ router.get('/users', authenticateToken, verifyAdminRole, async (req: AuthRequest
             planetCount: parseInt(row.planet_count)
         })));
     } catch (error) {
-        console.error('Error fetching users:', error);
+        logger.error('Error fetching users', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to fetch users' });
     }
 });
@@ -251,7 +252,7 @@ router.get('/users/:id', authenticateToken, verifyAdminRole, async (req: AuthReq
             recentActivity: activityQuery.rows
         });
     } catch (error) {
-        console.error('Error fetching user details:', error);
+        logger.error('Error fetching user details', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to fetch user details' });
     }
 });
@@ -293,7 +294,7 @@ router.post('/users/:id/ban', authenticateToken, verifyAdminRole, async (req: Au
 
         res.json({ success: true, message: 'User banned successfully' });
     } catch (error) {
-        console.error('Error banning user:', error);
+        logger.error('Error banning user', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to ban user' });
     }
 });
@@ -319,7 +320,7 @@ router.post('/users/:id/unban', authenticateToken, verifyAdminRole, async (req: 
 
         res.json({ success: true, message: 'User unbanned successfully' });
     } catch (error) {
-        console.error('Error unbanning user:', error);
+        logger.error('Error unbanning user', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to unban user' });
     }
 });
@@ -368,7 +369,7 @@ router.get('/server-status', authenticateToken, verifyAdminRole, async (req: Aut
 
         res.json(status);
     } catch (error) {
-        console.error('Error fetching server status:', error);
+        logger.error('Error fetching server status', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to fetch server status' });
     }
 });
@@ -401,7 +402,7 @@ router.get('/logs', authenticateToken, verifyAdminRole, async (req: AuthRequest,
 
         res.json(result.rows);
     } catch (error) {
-        console.error('Error fetching logs:', error);
+        logger.error('Error fetching logs', { error, userId: req.user?.id });
         // Return empty array if table doesn't exist yet
         res.json([]);
     }
@@ -452,7 +453,7 @@ router.get('/database-stats', authenticateToken, verifyAdminRole, async (req: Au
 
         res.json(tableStats);
     } catch (error) {
-        console.error('Error fetching database stats:', error);
+        logger.error('Error fetching database stats', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to fetch database statistics' });
     }
 });
@@ -474,7 +475,7 @@ router.get('/settings', authenticateToken, verifyAdminRole, async (req: AuthRequ
 
         res.json(settingsObj);
     } catch (error) {
-        console.error('Error fetching settings:', error);
+        logger.error('Error fetching settings', { error, userId: req.user?.id });
         // Return default settings if table doesn't exist
         res.json({
             maintenanceMode: false,
@@ -507,7 +508,7 @@ router.put('/settings', authenticateToken, verifyAdminRole, async (req: AuthRequ
 
         res.json({ success: true, message: 'Settings updated successfully' });
     } catch (error) {
-        console.error('Error updating settings:', error);
+        logger.error('Error updating settings', { error, userId: req.user?.id });
         res.status(500).json({ error: 'Failed to update settings' });
     }
 });
@@ -532,7 +533,7 @@ router.get('/audit-log', authenticateToken, verifyAdminRole, async (req: AuthReq
 
         res.json(logs.rows);
     } catch (error) {
-        console.error('Error fetching audit log:', error);
+        logger.error('Error fetching audit log', { error, userId: req.user?.id });
         res.json([]);
     }
 });

@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { AdminAuthRequest } from '../types/admin';
-import { 
+import {
   requireAdmin,
   requirePermission,
   requirePermissions,
@@ -8,12 +8,13 @@ import {
 } from '../middleware/adminAuth';
 import { AdminUserService } from '../services/adminUserService';
 import { AdminMonitoringService } from '../services/adminMonitoringService';
-import { 
+import {
   AdminSettingsService,
   AdminEventsService,
   AdminAnalyticsService,
 } from '../services/adminSettingsService';
 import { pool } from '../config/database';
+import logger from '../config/logger';
 
 const router = Router();
 
@@ -71,7 +72,7 @@ router.get(
         online_admins: onlineAdmins,
       });
     } catch (error: any) {
-      console.error('Dashboard error:', error);
+      logger.error('Dashboard error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -105,7 +106,7 @@ router.get(
       const result = await AdminUserService.getUsers(filter);
       res.json(result);
     } catch (error: any) {
-      console.error('Get users error:', error);
+      logger.error('Get users error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -125,7 +126,7 @@ router.get(
       const user = await AdminUserService.getUserDetails(userId);
       res.json(user);
     } catch (error: any) {
-      console.error('Get user details error:', error);
+      logger.error('Get user details error', { error, userId: req.user?.id });
       res.status(404).json({ error: error.message });
     }
   }
@@ -160,7 +161,7 @@ router.post(
 
       res.json({ success: true, block });
     } catch (error: any) {
-      console.error('Block user error:', error);
+      logger.error('Block user error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -186,7 +187,7 @@ router.post(
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Unblock user error:', error);
+      logger.error('Unblock user error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -220,7 +221,7 @@ router.post(
 
       res.json({ success: true, tag });
     } catch (error: any) {
-      console.error('Tag user error:', error);
+      logger.error('Tag user error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -240,7 +241,7 @@ router.delete(
       await AdminUserService.removeTag(tagId, req.user!.id, req.user!.username);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Remove tag error:', error);
+      logger.error('Remove tag error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -276,7 +277,7 @@ router.post(
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Adjust resources error:', error);
+      logger.error('Adjust resources error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -313,7 +314,7 @@ router.post(
         errors: result.errors 
       });
     } catch (error: any) {
-      console.error('Bulk action error:', error);
+      logger.error('Bulk action error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -335,7 +336,7 @@ router.get(
       const health = await AdminMonitoringService.getServerHealth();
       res.json(health);
     } catch (error: any) {
-      console.error('Get health error:', error);
+      logger.error('Get health error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -361,7 +362,7 @@ router.get(
       const incidents = await AdminStatusService.getIncidents(limit);
       res.json(incidents);
     } catch (error: any) {
-      console.error('Get incidents error:', error);
+      logger.error('Get incidents error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -389,7 +390,7 @@ router.post(
       const incident = await AdminStatusService.createIncident(payload, req.user!.id, req.user!.username);
       res.json(incident);
     } catch (error: any) {
-      console.error('Create incident error:', error);
+      logger.error('Create incident error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -419,7 +420,7 @@ router.put(
       const incident = await AdminStatusService.updateIncident(id, updates, req.user!.id, req.user!.username);
       res.json(incident);
     } catch (error: any) {
-      console.error('Update incident error:', error);
+      logger.error('Update incident error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -439,7 +440,7 @@ router.get(
       const windows = await AdminStatusService.getMaintenanceWindows(limit);
       res.json(windows);
     } catch (error: any) {
-      console.error('Get maintenance windows error:', error);
+      logger.error('Get maintenance windows error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -467,7 +468,7 @@ router.post(
       const win = await AdminStatusService.createMaintenanceWindow(payload);
       res.json(win);
     } catch (error: any) {
-      console.error('Create maintenance window error:', error);
+      logger.error('Create maintenance window error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -488,7 +489,7 @@ router.get(
       const metrics = await AdminMonitoringService.getMetricsHistory(metricName, hours);
       res.json(metrics);
     } catch (error: any) {
-      console.error('Get metrics error:', error);
+      logger.error('Get metrics error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -506,7 +507,7 @@ router.get(
       const activity = await AdminMonitoringService.getPlayerActivity();
       res.json(activity);
     } catch (error: any) {
-      console.error('Get activity error:', error);
+      logger.error('Get activity error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -525,7 +526,7 @@ router.get(
       const stats = await AdminMonitoringService.getDatabaseStats();
       res.json(stats);
     } catch (error: any) {
-      console.error('Get database stats error:', error);
+      logger.error('Get database stats error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -552,7 +553,7 @@ router.get(
       );
       res.json(notifications);
     } catch (error: any) {
-      console.error('Get notifications error:', error);
+      logger.error('Get notifications error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -571,7 +572,7 @@ router.post(
       await AdminMonitoringService.markNotificationRead(notificationId, req.user!.id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Mark read error:', error);
+      logger.error('Mark read error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -590,7 +591,7 @@ router.post(
       await AdminMonitoringService.acknowledgeNotification(notificationId, req.user!.id);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Acknowledge error:', error);
+      logger.error('Acknowledge error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -614,7 +615,7 @@ router.get(
       const settings = await AdminSettingsService.getAllSettings(category);
       res.json(settings);
     } catch (error: any) {
-      console.error('Get settings error:', error);
+      logger.error('Get settings error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -637,7 +638,7 @@ router.get(
       }
       res.json(setting);
     } catch (error: any) {
-      console.error('Get setting error:', error);
+      logger.error('Get setting error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -662,7 +663,7 @@ router.put(
       );
       res.json(setting);
     } catch (error: any) {
-      console.error('Update setting error:', error);
+      logger.error('Update setting error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -682,7 +683,7 @@ router.get(
       const history = await AdminSettingsService.getSettingHistory(req.params.key, limit);
       res.json(history);
     } catch (error: any) {
-      console.error('Get history error:', error);
+      logger.error('Get history error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -706,7 +707,7 @@ router.get(
       const events = await AdminEventsService.getAllEvents(limit);
       res.json(events);
     } catch (error: any) {
-      console.error('Get events error:', error);
+      logger.error('Get events error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -744,7 +745,7 @@ router.post(
 
       res.json({ success: true, event });
     } catch (error: any) {
-      console.error('Create event error:', error);
+      logger.error('Create event error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -764,7 +765,7 @@ router.post(
       await AdminEventsService.activateEvent(eventId, req.user!.id, req.user!.username);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Activate event error:', error);
+      logger.error('Activate event error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -784,7 +785,7 @@ router.post(
       await AdminEventsService.deactivateEvent(eventId, req.user!.id, req.user!.username);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Deactivate event error:', error);
+      logger.error('Deactivate event error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -807,7 +808,7 @@ router.get(
       const analytics = await AdminAnalyticsService.getResourceAnalytics();
       res.json(analytics);
     } catch (error: any) {
-      console.error('Get resource analytics error:', error);
+      logger.error('Get resource analytics error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -826,7 +827,7 @@ router.get(
       const analytics = await AdminAnalyticsService.getCombatAnalytics();
       res.json(analytics);
     } catch (error: any) {
-      console.error('Get combat analytics error:', error);
+      logger.error('Get combat analytics error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -846,7 +847,7 @@ router.get(
       const stats = await AdminAnalyticsService.getAuditStats(days);
       res.json(stats);
     } catch (error: any) {
-      console.error('Get audit stats error:', error);
+      logger.error('Get audit stats error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -867,7 +868,7 @@ router.get(
       const topAdmins = await AdminAnalyticsService.getTopAdmins(days, limit);
       res.json(topAdmins);
     } catch (error: any) {
-      console.error('Get top admins error:', error);
+      logger.error('Get top admins error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }
@@ -938,7 +939,7 @@ router.get(
         totalPages: Math.ceil(total / limit),
       });
     } catch (error: any) {
-      console.error('Get audit logs error:', error);
+      logger.error('Get audit logs error', { error, userId: req.user?.id });
       res.status(500).json({ error: error.message });
     }
   }

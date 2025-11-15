@@ -84,4 +84,7 @@ export interface ResearchQueue {
 
 export interface AuthRequest extends Request {
   user?: User;
+  query: any;
+  params: any;
+  body: any;
 }

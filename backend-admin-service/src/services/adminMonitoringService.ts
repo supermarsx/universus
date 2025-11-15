@@ -7,6 +7,7 @@ import {
 } from '../types/admin';
 import { logAdminAction } from '../middleware/adminAuth';
 import os from 'os';
+import logger from '../config/logger';
 
 /**
  * Admin Monitoring Service
@@ -109,7 +110,7 @@ export class AdminMonitoringService {
         title: `${metric.metric_name} Threshold Exceeded`,
         message: `${metric.metric_name} is at ${metric.metric_value.toFixed(2)}${metric.metric_unit} (threshold: ${threshold}${metric.metric_unit})`,
         data: { metric },
-        target_admin_level: 'game_admin',
+        target_admin_role: 'game_admin',
         requires_acknowledgment: true,
       });
     }
@@ -190,7 +191,7 @@ export class AdminMonitoringService {
     const result = await pool.query(
       `INSERT INTO admin_notifications (
         notification_type, priority, title, message, data,
-        target_admin_level, target_admin_ids, action_url,
+        target_admin_role, target_admin_ids, action_url,
         requires_acknowledgment, expires_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *`,
@@ -200,7 +201,7 @@ export class AdminMonitoringService {
         notification.title,
         notification.message,
         notification.data ? JSON.stringify(notification.data) : null,
-        notification.target_admin_level || null,
+        notification.target_admin_role || null,
         notification.target_admin_ids || null,
         notification.action_url || null,
         notification.requires_acknowledgment || false,
@@ -225,8 +226,8 @@ export class AdminMonitoringService {
     let query = `
       SELECT * FROM admin_notifications
       WHERE (
-        target_admin_level IS NULL
-        OR target_admin_level = $2
+        target_admin_role IS NULL
+        OR target_admin_role = $2
         OR target_admin_ids @> ARRAY[$1]::INTEGER[]
       )
       AND (expires_at IS NULL OR expires_at > NOW())
@@ -346,15 +347,15 @@ export class AdminMonitoringService {
  * Start monitoring interval
  * Call this when server starts to begin automatic metric collection
  */
-export function startMonitoring(intervalMs: number = 60000): NodeJS.Timeout {
-  console.log('Starting server monitoring...');
-  
+export function startMonitoring(intervalMs: number = 60000): ReturnType<typeof setInterval> {
+  logger.info('Starting server monitoring');
+
   // Collect metrics immediately
-  AdminMonitoringService.collectServerMetrics().catch(console.error);
-  
+  AdminMonitoringService.collectServerMetrics().catch((err) => logger.error('collectServerMetrics immediate error', { error: err }));
+
   // Then collect every interval
   return setInterval(() => {
-    AdminMonitoringService.collectServerMetrics().catch(console.error);
+    AdminMonitoringService.collectServerMetrics().catch((err) => logger.error('collectServerMetrics interval error', { error: err }));
   }, intervalMs);
 }
 
@@ -370,7 +371,7 @@ export async function autoExpireBlocks(): Promise<void> {
   const expired = result.rows[0].auto_expire_blocks;
   
   if (expired > 0) {
-    console.log(`Auto-expired ${expired} user blocks`);
+    logger.info('Auto-expired user blocks', { count: expired });
     await AdminMonitoringService.createNotification({
       notification_type: 'system',
       priority: 'low',
