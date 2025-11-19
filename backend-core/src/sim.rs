@@ -1,15 +1,86 @@
-use crate::core::{SimulateRequest, CombatResult, RoundResult, Loot, Debris};
+/// Simulation engine for the Universus combat core.
+///
+/// This module contains a deterministic, seedable combat simulator that is
+/// Determinism and seeding:
+/// - The simulator uses a Mulberry32 PRNG implementation seeded from the
+///   request `seed` string (stable FNV-1a -> u32 hash) so identical requests
+/// - Small deterministic offsets (round padding, unit count adjustments)
+///   are applied to ensure variations between seed values while keeping the
+///   overall behavior reproducible.
+/// Worker and embedding notes:
+/// - The simulator loads ship metadata via `ships::load_ships_for_universe`.
+///   Callers are encouraged to pre-warm or cache ship definitions for
+///   performance in hot paths (the manager/worker model does this).
+///
+/// The implementation intentionally favors readability over micro-optimised
+/// inner loops because the heavy lifting is typically done by worker
+/// processes which can be horizontally scaled.
+///
+/// Small, fast PRNG (Mulberry32) used for deterministic randomness.
+///
+/// This implementation mirrors the JavaScript `mulberry32` used elsewhere
+/// in the project so seeds produce equivalent streams across languages.
+/// Internal representation of a combat unit during simulation.
+///
+/// Fields are stored as floating point values for shield/hull/weapon to
+/// simplify fractional damage and probabilistic effects. `rapid_fire` is an
+/// optional mapping taken from ship definitions and used by the rapid-fire
+/// logic.
+/// Entry point used by the gRPC handler.
+///
+/// Converts the protobuf `SimulateRequest` into internal units, runs up to
+/// ~50 rounds of combat (plus deterministic padding), computes losses,
+/// debris and loot, and returns a `CombatResult`.
+///
+/// Deterministic behavior is achieved by deriving a 32-bit seed from the
+/// request's `seed` string and consistently using the Mulberry32 PRNG for
+/// all random choices.
+/// Derive base stats (weapon, shield, hull, cargo) for a unit type.
+///
+/// This function prefers values from `ship_defs` when present; otherwise it
+/// deterministically derives plausible defaults from the type name so that
+/// different type strings yield different but stable stats.
+///
+/// Simulate a single round of combat.
+///
+/// Returns a tuple `(atk_shots, def_shots, atk_destroyed, def_destroyed)`
+/// describing the number of shots fired and units removed during the round.
+///
+/// Apply a single shot's damage from `shooter` to `target`.
+/// This function consumes damage against shield and then hull. It also
+/// applies a chance of catastrophic explosion when hull drops below 70% of
+/// `max_hull` (if known).
+/// Perform primary shot plus probabilistic rapid-fire follow-ups.
+///
+/// Returns the number of shots performed (including the primary shot).
+/// Compute per-type losses by comparing initial counts with remaining units.
+///
+/// Returns a map of ship type -> number lost (only types with positive
+/// losses are included).
+///
+/// Compute debris produced by destroyed ships.
+/// Uses ship metadata when available to compute debris fractions, otherwise
+/// falls back to conservative per-unit estimates.
+use crate::core::{CombatResult, Debris, Loot, RoundResult, SimulateRequest};
 use crate::ships;
 use std::collections::HashMap;
 
-// Mulberry32 PRNG to mirror TS mulberry32 implementation
+/// Small, fast PRNG (Mulberry32) used for deterministic randomness.
+///
+/// This implementation mirrors the JavaScript `mulberry32` used elsewhere
+/// in the project so seeds produce equivalent streams across languages.
 #[derive(Clone, Copy)]
 struct Mulberry32 {
     state: u32,
 }
 
 impl Mulberry32 {
-    fn new(seed: u32) -> Self { Self { state: seed } }
+    /// Create a new PRNG seeded with the provided 32-bit value.
+    fn new(seed: u32) -> Self {
+        Self { state: seed }
+    }
+
+    /// Produce the next 32-bit pseudo-random value.
     fn next_u32(&mut self) -> u32 {
         // Mulberry32 faithful to JS mulberry32 implementation
         let mut t = self.state.wrapping_add(0x6D2B79F5);
@@ -18,11 +89,19 @@ impl Mulberry32 {
         t = t.wrapping_add(t.wrapping_mul(t ^ (t >> 7)));
         ((t ^ (t >> 14)) as u32)
     }
+
+    /// Produce a floating point value in [0.0, 1.0).
     fn next_f64(&mut self) -> f64 {
         (self.next_u32() as f64) / (u32::MAX as f64 + 1.0)
     }
 }
 
+/// Internal representation of a combat unit during simulation.
+///
+/// Fields are stored as floating point values for shield/hull/weapon to
+/// simplify fractional damage and probabilistic effects. `rapid_fire` is an
+/// optional mapping taken from ship definitions and used by the rapid-fire
+/// logic.
 #[derive(Clone)]
 struct CombatUnit {
     unit_type: String,
@@ -35,7 +114,15 @@ struct CombatUnit {
     cargo: i64,
 }
 
-// Entry point used by the gRPC handler
+/// Entry point used by the gRPC handler.
+///
+/// Converts the protobuf `SimulateRequest` into internal units, runs up to
+/// ~50 rounds of combat (plus deterministic padding), computes losses,
+/// debris and loot, and returns a `CombatResult`.
+///
+/// Deterministic behavior is achieved by deriving a 32-bit seed from the
+/// request's `seed` string and consistently using the Mulberry32 PRNG for
+/// all random choices.
 pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
     // Seed selection: use provided seed string hashed to u32
     let seed = calc_seed(&req.seed);
@@ -45,8 +132,14 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
     // allow future selection of universe via request; default to "default"
     let universe = "default";
     let ship_defs = ships::load_ships_for_universe(universe);
-    let mut attacker_units = prepare_combat_units(&req.attacker_ships, &req.attacker_tech, seed, &ship_defs);
-    let mut defender_units = prepare_combat_units(&req.defender_ships, &req.defender_tech, seed.wrapping_add(0x9e3779b9), &ship_defs);
+    let mut attacker_units =
+        prepare_combat_units(&req.attacker_ships, &req.attacker_tech, seed, &ship_defs);
+    let mut defender_units = prepare_combat_units(
+        &req.defender_ships,
+        &req.defender_tech,
+        seed.wrapping_add(0x9e3779b9),
+        &ship_defs,
+    );
 
     // max rounds with small deterministic offset based on the seed string
     let round_offset = (calc_seed(&format!("{}:round", req.seed)) % 7) as usize;
@@ -58,8 +151,13 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
             break;
         }
 
-        let (atk_shots, def_shots, atk_destroyed, def_destroyed) =
-            simulate_round(&mut attacker_units, &mut defender_units, &mut rng, round_idx as u32, seed);
+        let (atk_shots, def_shots, atk_destroyed, def_destroyed) = simulate_round(
+            &mut attacker_units,
+            &mut defender_units,
+            &mut rng,
+            round_idx as u32,
+            seed,
+        );
 
         rounds.push(RoundResult {
             attacker_shots: atk_shots as i32,
@@ -76,7 +174,12 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
     // deterministic padding: append a small number of no-op rounds based on seed
     let extra = (seed % 7) as usize;
     for _ in 0..extra {
-        rounds.push(RoundResult { attacker_shots: 0, defender_shots: 0, attacker_destroyed: 0, defender_destroyed: 0 });
+        rounds.push(RoundResult {
+            attacker_shots: 0,
+            defender_shots: 0,
+            attacker_destroyed: 0,
+            defender_destroyed: 0,
+        });
     }
 
     let winner = if attacker_units.len() > defender_units.len() {
@@ -85,7 +188,11 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
         "defender"
     } else {
         // tie - use seed parity as deterministic tie-breaker so different seeds can differ
-        if seed % 2 == 0 { "attacker" } else { "defender" }
+        if seed % 2 == 0 {
+            "attacker"
+        } else {
+            "defender"
+        }
     };
 
     let attacker_losses = calculate_losses(&req.attacker_ships, &attacker_units);
@@ -100,20 +207,33 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
         let available_d = (req.planet_deuterium as f64 * 0.5).floor() as i64;
         // compute surviving attackers' cargo
         let mut surviving_cargo: i64 = 0;
-        for u in attacker_units.iter() { surviving_cargo += u.cargo as i64; }
+        for u in attacker_units.iter() {
+            surviving_cargo += u.cargo as i64;
+        }
         if surviving_cargo == 0 {
-            Loot { metal: 0, crystal: 0, deuterium: 0 }
+            Loot {
+                metal: 0,
+                crystal: 0,
+                deuterium: 0,
+            }
         } else {
             let total_available = available_m + available_c + available_d;
             let capacity_used = std::cmp::min(surviving_cargo, total_available);
             Loot {
-                metal: ((available_m as f64 / total_available as f64) * (capacity_used as f64)).floor() as i64,
-                crystal: ((available_c as f64 / total_available as f64) * (capacity_used as f64)).floor() as i64,
-                deuterium: ((available_d as f64 / total_available as f64) * (capacity_used as f64)).floor() as i64,
+                metal: ((available_m as f64 / total_available as f64) * (capacity_used as f64))
+                    .floor() as i64,
+                crystal: ((available_c as f64 / total_available as f64) * (capacity_used as f64))
+                    .floor() as i64,
+                deuterium: ((available_d as f64 / total_available as f64) * (capacity_used as f64))
+                    .floor() as i64,
             }
         }
     } else {
-        Loot { metal: 0, crystal: 0, deuterium: 0 }
+        Loot {
+            metal: 0,
+            crystal: 0,
+            deuterium: 0,
+        }
     };
 
     CombatResult {
@@ -133,10 +253,22 @@ fn calc_seed(seed: &str) -> u32 {
         hash ^= *b as u32;
         hash = hash.wrapping_mul(0x01000193);
     }
-    if hash == 0 { 0x9e3779b9 } else { hash }
+    if hash == 0 {
+        0x9e3779b9
+    } else {
+        hash
+    }
 }
 
-fn derive_stats_from_type(typ: &str, ship_defs: &std::collections::HashMap<String, ships::ShipDef>) -> (f64,f64,f64,i64) {
+/// Derive base stats (weapon, shield, hull, cargo) for a unit type.
+///
+/// This function prefers values from `ship_defs` when present; otherwise it
+/// deterministically derives plausible defaults from the type name so that
+/// different type strings yield different but stable stats.
+fn derive_stats_from_type(
+    typ: &str,
+    ship_defs: &std::collections::HashMap<String, ships::ShipDef>,
+) -> (f64, f64, f64, i64) {
     // Deterministically derive weapon, shield, hull, cargo from the type name
     // If we have a ship definition, prefer those values for deterministic behavior
     if let Some(def) = ship_defs.get(typ) {
@@ -159,26 +291,38 @@ fn derive_stats_from_type(typ: &str, ship_defs: &std::collections::HashMap<Strin
     (weapon, shield, hull, cargo)
 }
 
-fn prepare_combat_units(map: &HashMap<String, i32>, _tech: &HashMap<String, i32>, seed: u32, ship_defs: &HashMap<String, ships::ShipDef>) -> Vec<CombatUnit> {
+fn prepare_combat_units(
+    map: &HashMap<String, i32>,
+    _tech: &HashMap<String, i32>,
+    seed: u32,
+    ship_defs: &HashMap<String, ships::ShipDef>,
+) -> Vec<CombatUnit> {
     let mut units = Vec::new();
     // iterate in sorted order to ensure deterministic behavior
     let mut keys: Vec<&String> = map.keys().collect();
     keys.sort();
     for typ in keys.iter() {
         let count = map.get(*typ).unwrap();
-        if *count <= 0 { continue; }
+        if *count <= 0 {
+            continue;
+        }
         let (base_weapon, base_shield, base_hull, cargo) = derive_stats_from_type(typ, ship_defs);
         // small deterministic count adjustment per type based on seed (-1,0,+1)
         let mut th: u32 = 2166136261u32;
-        for b in typ.as_bytes() { th ^= *b as u32; th = th.wrapping_mul(16777619u32); }
+        for b in typ.as_bytes() {
+            th ^= *b as u32;
+            th = th.wrapping_mul(16777619u32);
+        }
         let adj = ((seed ^ th) % 3) as i32 - 1; // -1,0,1
         let actual_count = (*count as i32 + adj).max(0) as usize;
         for idx in 0..actual_count {
             // deterministic per-unit variation derived from seed, type and index
             let mut h: u32 = seed ^ (idx as u32).wrapping_mul(0x9e3779b9);
-            for b in typ.as_bytes() { h = h.wrapping_add(*b as u32).wrapping_mul(16777619u32); }
+            for b in typ.as_bytes() {
+                h = h.wrapping_add(*b as u32).wrapping_mul(16777619u32);
+            }
             let frac = (h % 1000) as f64 / 1000.0; // 0.0 - 0.999
-            // increase variation to +/-50% to ensure different seeds produce different outcomes
+                                                   // increase variation to +/-50% to ensure different seeds produce different outcomes
             let w = base_weapon * (0.5 + frac * 1.0);
             let s = base_shield * (0.5 + ((h.wrapping_mul(7) % 1000) as f64 / 1000.0) * 1.0);
             let uu_h = base_hull * (0.5 + ((h.wrapping_mul(13) % 1000) as f64 / 1000.0) * 1.0);
@@ -199,21 +343,32 @@ fn prepare_combat_units(map: &HashMap<String, i32>, _tech: &HashMap<String, i32>
     units
 }
 
-fn simulate_round(atk: &mut Vec<CombatUnit>, def: &mut Vec<CombatUnit>, rng: &mut Mulberry32, round_idx: u32, seed: u32) -> (usize, usize, usize, usize) {
+/// Simulate a single round of combat.
+///
+/// Returns a tuple `(atk_shots, def_shots, atk_destroyed, def_destroyed)`
+/// describing the number of shots fired and units removed during the round.
+fn simulate_round(
+    atk: &mut Vec<CombatUnit>,
+    def: &mut Vec<CombatUnit>,
+    rng: &mut Mulberry32,
+    round_idx: u32,
+    seed: u32,
+) -> (usize, usize, usize, usize) {
     let mut atk_shots = 0usize;
     let mut def_shots = 0usize;
 
     // attackers shoot
     let atk_indices: Vec<usize> = (0..atk.len()).collect();
     for &i in atk_indices.iter() {
-        if def.is_empty() { break; }
+        if def.is_empty() {
+            break;
+        }
         // mix seed and round into target selection to vary outcomes by seed
         let bias = (((seed as u64) + (round_idx as u64) + (i as u64)) % 997) as f64 / 997.0;
         let rnd = (rng.next_f64() + bias) % 1.0;
         let target_idx = (rnd * (def.len() as f64)) as usize % def.len();
         // perform primary shot and possible rapid-fire followups
         atk_shots += shoot_with_rapid(&atk[i].clone(), &mut def[target_idx], rng);
-
     }
 
     // remove destroyed defenders
@@ -222,12 +377,13 @@ fn simulate_round(atk: &mut Vec<CombatUnit>, def: &mut Vec<CombatUnit>, rng: &mu
     // defenders shoot
     let def_indices: Vec<usize> = (0..def.len()).collect();
     for &i in def_indices.iter() {
-        if atk.is_empty() { break; }
+        if atk.is_empty() {
+            break;
+        }
         let bias = (((seed as u64) + (round_idx as u64) + (i as u64) * 13) % 991) as f64 / 991.0;
         let rnd = (rng.next_f64() + bias) % 1.0;
         let target_idx = (rnd * (atk.len() as f64)) as usize % atk.len();
         def_shots += shoot_with_rapid(&def[i].clone(), &mut atk[target_idx], rng);
-
     }
 
     // remove destroyed attackers
@@ -236,6 +392,11 @@ fn simulate_round(atk: &mut Vec<CombatUnit>, def: &mut Vec<CombatUnit>, rng: &mu
     (atk_shots, def_shots, atk_destroyed, def_destroyed)
 }
 
+/// Apply a single shot's damage from `shooter` to `target`.
+///
+/// This function consumes damage against shield and then hull. It also
+/// applies a chance of catastrophic explosion when hull drops below 70% of
+/// `max_hull` (if known).
 fn shoot(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mulberry32) {
     let mut damage = shooter.weapon;
 
@@ -269,6 +430,9 @@ fn shoot(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mulberry32) {
     // Rapid fire not implemented here; handled by shoot_with_rapid
 }
 
+/// Perform primary shot plus probabilistic rapid-fire follow-ups.
+///
+/// Returns the number of shots performed (including the primary shot).
 fn shoot_with_rapid(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mulberry32) -> usize {
     // returns number of shots performed (including primary)
     // perform primary shot
@@ -284,8 +448,10 @@ fn shoot_with_rapid(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mul
                 // For each potential extra shot, roll probability derived from multiplier
                 // p_extra approx = 1 - (1 / n)
                 let p_extra = 1.0 - (1.0 / (n as f64));
-                for _ in 0..(n-1) {
-                    if target.hull <= 0.0 { break; }
+                for _ in 0..(n - 1) {
+                    if target.hull <= 0.0 {
+                        break;
+                    }
                     if rng.next_f64() < p_extra {
                         shoot(shooter, target, rng);
                         shots += 1;
@@ -298,7 +464,6 @@ fn shoot_with_rapid(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mul
     }
     shots
 }
-
 
 fn remove_destroyed(units: &mut Vec<CombatUnit>) -> usize {
     let mut destroyed = 0usize;
@@ -322,21 +487,37 @@ fn regenerate_shields(units: &mut Vec<CombatUnit>) {
     }
 }
 
-fn calculate_losses(initial: &HashMap<String,i32>, remaining: &Vec<CombatUnit>) -> HashMap<String,i32> {
-    let mut losses: HashMap<String,i32> = HashMap::new();
-    let mut remaining_counts: HashMap<String,i32> = HashMap::new();
+/// Compute per-type losses by comparing initial counts with remaining units.
+///
+/// Returns a map of ship type -> number lost (only types with positive
+/// losses are included).
+fn calculate_losses(
+    initial: &HashMap<String, i32>,
+    remaining: &Vec<CombatUnit>,
+) -> HashMap<String, i32> {
+    let mut losses: HashMap<String, i32> = HashMap::new();
+    let mut remaining_counts: HashMap<String, i32> = HashMap::new();
     for u in remaining.iter() {
         *remaining_counts.entry(u.unit_type.clone()).or_insert(0) += 1;
     }
     for (typ, init_count) in initial.iter() {
         let rem = remaining_counts.get(typ).copied().unwrap_or(0);
         let lost = init_count - rem;
-        if lost > 0 { losses.insert(typ.clone(), lost); }
+        if lost > 0 {
+            losses.insert(typ.clone(), lost);
+        }
     }
     losses
 }
 
-fn calculate_debris(attacker_losses: &HashMap<String,i32>, defender_losses: &HashMap<String,i32>) -> Debris {
+/// Compute debris produced by destroyed ships.
+///
+/// Uses ship metadata when available to compute debris fractions, otherwise
+/// falls back to conservative per-unit estimates.
+fn calculate_debris(
+    attacker_losses: &HashMap<String, i32>,
+    defender_losses: &HashMap<String, i32>,
+) -> Debris {
     // Use ship metadata to compute debris; fall back to rough per-unit estimate.
     // Default fractions: 30% of metal, 15% of crystal become debris unless ship-specific info exists.
     let ship_defs = ships::load_default_ships();
@@ -356,8 +537,12 @@ fn calculate_debris(attacker_losses: &HashMap<String,i32>, defender_losses: &Has
     Debris { metal, crystal }
 }
 
-
-fn calculate_loot(metal: i64, crystal: i64, deuterium: i64, attacker_units: &Vec<CombatUnit>) -> Loot {
+fn calculate_loot(
+    metal: i64,
+    crystal: i64,
+    deuterium: i64,
+    attacker_units: &Vec<CombatUnit>,
+) -> Loot {
     // Use ship metadata to compute cargo capacity more accurately
     // Note: attacker_units already include cargo from ship_defs when prepared
     let mut cargo_capacity: i64 = 0;
@@ -368,15 +553,23 @@ fn calculate_loot(metal: i64, crystal: i64, deuterium: i64, attacker_units: &Vec
     let max_loot_crystal = (crystal as f64 * 0.5).floor() as i64;
     let max_loot_deut = (deuterium as f64 * 0.5).floor() as i64;
     let total_available = max_loot_metal + max_loot_crystal + max_loot_deut;
-    if total_available == 0 || cargo_capacity == 0 { return Loot { metal: 0, crystal: 0, deuterium: 0 }; }
+    if total_available == 0 || cargo_capacity == 0 {
+        return Loot {
+            metal: 0,
+            crystal: 0,
+            deuterium: 0,
+        };
+    }
     let capacity_used = std::cmp::min(cargo_capacity, total_available);
     Loot {
-        metal: ((max_loot_metal as f64 / total_available as f64) * (capacity_used as f64)).floor() as i64,
-        crystal: ((max_loot_crystal as f64 / total_available as f64) * (capacity_used as f64)).floor() as i64,
-        deuterium: ((max_loot_deut as f64 / total_available as f64) * (capacity_used as f64)).floor() as i64,
+        metal: ((max_loot_metal as f64 / total_available as f64) * (capacity_used as f64)).floor()
+            as i64,
+        crystal: ((max_loot_crystal as f64 / total_available as f64) * (capacity_used as f64))
+            .floor() as i64,
+        deuterium: ((max_loot_deut as f64 / total_available as f64) * (capacity_used as f64))
+            .floor() as i64,
     }
 }
-
 
 #[cfg(test)]
 mod tests {

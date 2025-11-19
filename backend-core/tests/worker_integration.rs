@@ -1,8 +1,8 @@
-use std::io::{Write, Read};
-use std::time::Duration;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::process::Command;
 use std::thread;
+use std::time::Duration;
 
 // This is an integration test that is ignored by default because it spawns
 // subprocesses and requires a build of the binary. Run with:
@@ -14,7 +14,8 @@ fn spawn_worker_and_prewarm() {
     // Use current exe (test runner) is not desirable; instead run `cargo run` to ensure binary
     // available. We'll spawn `cargo run --package backend-core -- --worker --universe default --prewarm`.
     // prefer explicit binary path via BACKEND_CORE_BIN env var, else use ../target/debug/backend-core
-    let bin = std::env::var("BACKEND_CORE_BIN").unwrap_or_else(|_| "../target/debug/backend-core".to_string());
+    let bin = std::env::var("BACKEND_CORE_BIN")
+        .unwrap_or_else(|_| "../target/debug/backend-core".to_string());
     let mut child = Command::new(bin)
         .args(&["--worker", "--universe", "default", "--prewarm"])
         .spawn()
@@ -27,7 +28,10 @@ fn spawn_worker_and_prewarm() {
     // try to connect to common candidate ports (the worker binds ephemeral). We'll try a few ports.
     let mut connected = false;
     for port in 50000..50100 {
-        if let Ok(mut s) = TcpStream::connect_timeout(&format!("127.0.0.1:{}", port).parse().unwrap(), Duration::from_millis(50)) {
+        if let Ok(mut s) = TcpStream::connect_timeout(
+            &format!("127.0.0.1:{}", port).parse().unwrap(),
+            Duration::from_millis(50),
+        ) {
             // send a prewarm control
             let req = "{\"cmd\":\"prewarm\",\"battle_id\":\"\",\"attacker_ships\":{},\"defender_ships\":{},\"defender_defenses\":{},\"attacker_tech\":{},\"defender_tech\":{},\"planet_metal\":0,\"planet_crystal\":0,\"planet_deuterium\":0,\"seed\":\"\",\"universe\":\"default\"}".as_bytes();
             let _ = s.write_all(req);
