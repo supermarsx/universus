@@ -11,13 +11,15 @@ import { PasswordRecoveryService } from '../services/passwordRecoveryService';
 import { TwoFactorAuthService } from '../services/twoFactorAuthService';
 import { GDPRComplianceService } from '../services/gdprComplianceService';
 import { AccountTransferService } from '../services/accountTransferService';
+import { SmsVerificationService } from '../services/smsVerificationService';
 import { getUserId } from '../utils/authHelpers';
 import {
     SuspensionReason,
     GDPRRequestType,
     BlockType,
     ActivityType,
-    TwoFactorMethod
+    TwoFactorMethod,
+    SmsVerificationChannel
 } from '../types/accountManagement';
 
 const router = express.Router();
@@ -319,6 +321,118 @@ router.get('/email/verify/status', authenticateToken, async (req: AuthRequest, r
         const status = await EmailVerificationService.checkVerificationStatus(userId, email);
 
         res.json({ success: true, ...status });
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// =====================================================
+// PHONE / SMS VERIFICATION ENDPOINTS
+// =====================================================
+
+router.post('/phone/verify/send', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
+        if (!SmsVerificationService.isEnabled()) {
+            return res.status(503).json({ error: 'SMS verification is disabled' });
+        }
+        const { phone_number, channel } = req.body;
+
+        if (!phone_number) {
+            return res.status(400).json({ error: 'Phone number is required' });
+        }
+
+        const verification = await SmsVerificationService.sendVerificationCode({
+            userId,
+            phoneNumber: phone_number,
+            channel: channel as SmsVerificationChannel | undefined,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({
+            success: true,
+            verification: {
+                id: verification.id,
+                channel: verification.channel,
+                expires_at: verification.expires_at
+            }
+        });
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+router.post('/phone/verify', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
+        if (!SmsVerificationService.isEnabled()) {
+            return res.status(503).json({ error: 'SMS verification is disabled' });
+        }
+        const { code } = req.body;
+
+        if (!code) {
+            return res.status(400).json({ error: 'Verification code is required' });
+        }
+
+        await SmsVerificationService.verifyCode({
+            userId,
+            code,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({ success: true, message: 'Phone verified successfully' });
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+router.post('/phone/verify/resend', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
+        if (!SmsVerificationService.isEnabled()) {
+            return res.status(503).json({ error: 'SMS verification is disabled' });
+        }
+        const { phone_number, channel } = req.body;
+
+        if (!phone_number) {
+            return res.status(400).json({ error: 'Phone number is required' });
+        }
+
+        const verification = await SmsVerificationService.resendVerification({
+            userId,
+            phoneNumber: phone_number,
+            channel: channel as SmsVerificationChannel | undefined,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent']
+        });
+
+        res.json({
+            success: true,
+            verification: {
+                id: verification.id,
+                channel: verification.channel,
+                expires_at: verification.expires_at
+            }
+        });
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+router.get('/phone/verify/status', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = getUserId(req);
+        if (userId === null) return res.status(401).json({ error: 'Unauthorized' });
+        const disabled = !SmsVerificationService.isEnabled();
+
+        const status = await SmsVerificationService.checkStatus(userId);
+
+        res.json({ success: true, disabled, ...status });
     } catch (error: any) {
         res.status(400).json({ error: error.message });
     }

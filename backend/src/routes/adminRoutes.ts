@@ -9,6 +9,7 @@ import {
   rateLimit,
   verifyAdmin2FA,
 } from '../middleware/adminAuth';
+import { logAdminAction } from '../middleware/adminAuth';
 import { authenticateToken } from '../middleware/auth';
 import { AdminUserService } from '../services/adminUserService';
 import { AdminMonitoringService } from '../services/adminMonitoringService';
@@ -22,12 +23,24 @@ import { redis } from '../config/redis';
 import LeaderboardScheduler from '../services/leaderboardScheduler';
 import { getRealtimeHandler } from '../socket';
 import chatService from '../services/chatService';
+import { SmsServiceConfigService, SmsServiceConfig } from '../services/smsServiceConfigService';
+import { canonicalizeSmsChannel, normalizeChannelList } from '../constants/smsChannels';
+import fetch from 'node-fetch';
 
 import { getActor as sharedGetActor } from '../utils/getActor';
 // Use `sharedGetActor(req)` directly or rely on `attachActor` middleware below to
 // ensure `req.admin` and `req.adminLevel` are populated for downstream handlers.
 
 const router = Router();
+
+const serializeSmsConfig = (config: SmsServiceConfig) => ({
+  service_url: config.service_url,
+  default_channel: config.default_channel,
+  fallback_channels: config.fallback_channels || [],
+  api_key_set: Boolean(config.api_key),
+  updated_at: config.updated_at,
+  updated_by: config.updated_by
+});
 
 // ========================================
 // ADMIN AUTHENTICATION
@@ -1833,6 +1846,163 @@ import path from 'path';
  * GET /api/admin/locales
  * List all available locale codes
  */
+// =====================================================
+// SMS SERVICE CONFIGURATION
+// =====================================================
+
+router.get(
+  '/sms-service/config',
+  requirePermission('notifications:sms:read'),
+  async (_req: AdminAuthRequest, res: Response) => {
+    try {
+      const config = await SmsServiceConfigService.getConfig();
+      res.json({ success: true, config: serializeSmsConfig(config) });
+    } catch (error: any) {
+      console.error('Failed to load SMS service config:', error);
+      res.status(500).json({ success: false, error: 'Unable to load SMS service configuration' });
+    }
+  }
+);
+
+router.put(
+  '/sms-service/config',
+  requirePermission('notifications:sms:write'),
+  async (req: AdminAuthRequest, res: Response) => {
+    try {
+      const actor = sharedGetActor(req);
+      if (!actor) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const { service_url, api_key, default_channel, fallback_channels } = req.body;
+
+      const update: any = {};
+
+      if (service_url !== undefined) {
+        if (typeof service_url !== 'string' || service_url.trim().length === 0) {
+          return res.status(400).json({ success: false, error: 'service_url must be a non-empty string' });
+        }
+        update.service_url = service_url.trim();
+      }
+
+      if (api_key !== undefined) {
+        if (api_key !== null && typeof api_key !== 'string') {
+          return res.status(400).json({ success: false, error: 'api_key must be a string or null' });
+        }
+        update.api_key = api_key ? api_key : null;
+      }
+
+      if (default_channel !== undefined) {
+        try {
+          update.default_channel = canonicalizeSmsChannel(default_channel);
+        } catch (error: any) {
+          return res.status(400).json({ success: false, error: error?.message || 'Invalid default channel' });
+        }
+      }
+
+      if (fallback_channels !== undefined) {
+        if (!Array.isArray(fallback_channels)) {
+          return res.status(400).json({ success: false, error: 'fallback_channels must be an array' });
+        }
+        try {
+          update.fallback_channels = normalizeChannelList(fallback_channels);
+        } catch (error: any) {
+          return res.status(400).json({ success: false, error: error?.message || 'Invalid fallback channels' });
+        }
+      }
+
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ success: false, error: 'No configuration values provided' });
+      }
+
+      const before = await SmsServiceConfigService.getConfig();
+      const updated = await SmsServiceConfigService.updateConfig(update, actor.id);
+
+      await logAdminAction(
+        actor.id,
+        actor.username,
+        'sms_service_config_updated',
+        'notifications',
+        null,
+        null,
+        {
+          before: {
+            service_url: before.service_url,
+            default_channel: before.default_channel,
+            fallback_channels: before.fallback_channels
+          },
+          after: {
+            service_url: updated.service_url,
+            default_channel: updated.default_channel,
+            fallback_channels: updated.fallback_channels
+          }
+        },
+        'medium',
+        true
+      );
+
+      res.json({ success: true, config: serializeSmsConfig(updated) });
+    } catch (error: any) {
+      console.error('Failed to update SMS service config:', error);
+      res.status(500).json({ success: false, error: 'Failed to update SMS service configuration' });
+    }
+  }
+);
+
+router.get(
+  '/sms-service/metrics',
+  requirePermission('notifications:sms:read'),
+  async (_req: AdminAuthRequest, res: Response) => {
+    try {
+      const config = await SmsServiceConfigService.getConfig();
+      const endpoint = `${(config.service_url || '').replace(/\/$/, '') || process.env.SMS_SERVICE_URL || 'http://localhost:4700'}/metrics`;
+      const headers: Record<string, string> = {};
+      const apiKey = config.api_key || process.env.SMS_SERVICE_API_KEY;
+      if (apiKey) headers['x-api-key'] = apiKey;
+
+      const response = await fetch(endpoint, { headers });
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(body || `SMS service metrics failed (${response.status})`);
+      }
+      const payload = await response.json();
+      res.json(payload);
+    } catch (error: any) {
+      console.error('Failed to fetch SMS metrics:', error);
+      res.status(500).json({ success: false, error: error?.message || 'Unable to load metrics' });
+    }
+  }
+);
+
+router.get(
+  '/sms-service/permissions',
+  requirePermission('notifications:sms:read'),
+  async (_req: AdminAuthRequest, res: Response) => {
+    try {
+      const query = `
+        SELECT r.name as role_name, ARRAY_AGG(p.name) as permissions
+        FROM roles r
+        JOIN role_permissions rp ON r.id = rp.role_id
+        JOIN permissions p ON rp.permission_id = p.id
+        WHERE p.name IN ('notifications:sms:read', 'notifications:sms:write')
+        GROUP BY r.name
+        ORDER BY r.name ASC
+      `;
+      const result = await pool.query(query);
+      res.json({
+        success: true,
+        roles: result.rows.map((row) => ({
+          name: row.role_name,
+          permissions: row.permissions
+        }))
+      });
+    } catch (error: any) {
+      console.error('Failed to load SMS permissions:', error);
+      res.status(500).json({ success: false, error: 'Unable to load permissions' });
+    }
+  }
+);
+
 router.get('/locales', requireAdmin, requirePermission('game:config:write'), (req: AdminAuthRequest, res: Response) => {
   try {
     const locales = getAvailableLocales();

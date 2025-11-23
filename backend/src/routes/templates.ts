@@ -187,6 +187,10 @@ router.get('/admin/audit', (req: Request, res: Response) => {
   res.render('pages/admin/audit.njk');
 });
 
+router.get('/admin/sms-service', (req: Request, res: Response) => {
+  res.render('pages/admin/sms-service.njk');
+});
+
 // Bot management page
 router.get('/admin/bots', (req: Request, res: Response) => {
   TemplateService.renderBotManagement(res);

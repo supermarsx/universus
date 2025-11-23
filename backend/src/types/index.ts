@@ -5,6 +5,9 @@ export interface User {
   username: string;
   email: string;
   email_verified?: boolean;
+  phone_number?: string | null;
+  phone_verified?: boolean;
+  phone_verified_at?: Date | null;
   dark_matter: number;
   created_at: Date;
   last_login?: Date;

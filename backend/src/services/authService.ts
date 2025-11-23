@@ -59,7 +59,7 @@ export class AuthService {
       const userResult = await client.query(
         `INSERT INTO users (username, email, password_hash, dark_matter, last_login)
          VALUES ($1, $2, $3, 0, NOW())
-         RETURNING id, username, email, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified`,
+         RETURNING id, username, email, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified, phone_number, phone_verified, phone_verified_at`,
         [username, email, passwordHash]
       );
 
@@ -123,9 +123,9 @@ export class AuthService {
     const normalizedIdentifier = identifier.trim();
     const isEmail = normalizedIdentifier.includes('@');
     const query = isEmail
-      ? `SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified 
+      ? `SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified, phone_number, phone_verified, phone_verified_at 
          FROM users WHERE LOWER(email) = LOWER($1)`
-      : `SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified 
+      : `SELECT id, username, email, password_hash, dark_matter, created_at, last_login, is_admin, is_banned, alliance_id, email_verified, phone_number, phone_verified, phone_verified_at 
          FROM users WHERE username = $1`;
 
     const lookupValue = isEmail ? normalizedIdentifier.toLowerCase() : normalizedIdentifier;

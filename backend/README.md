@@ -34,6 +34,15 @@ This backend uses [Socket.IO](https://socket.io/) with the [Redis adapter](https
 ### Environment Variables
 See `.env.example` for all options.
 
+### SMS / Messaging Verification
+Outbound messaging runs through the dedicated `backend-sms-service`, letting the main API remain agnostic of transport details.
+
+- Set `SMS_SERVICE_URL`/`SMS_SERVICE_API_KEY` so the backend can reach the detached service.
+- Choose preferred channels via `SMS_VERIFICATION_CHANNEL` and `SMS_VERIFICATION_FALLBACK_CHANNELS`; toggle the feature with `SMS_VERIFICATION_ENABLED=false`.
+- The SMS service handles Twilio SMS/WhatsApp, Baileys WhatsApp pairing, Telegram bots, Discord bots, and custom HTTP gateways (configure credentials inside the `backend-sms-service`).
+- Use `/api/account/phone/verify/*` endpoints on the main backend to send, verify, resend, and query verification states. The backend forwards the request details to the SMS service and stores the normalized destination returned from it.
+- Admins with `notifications:sms:read|write` permissions can manage the SMS connection details via `/api/admin/sms-service/config`, so changes no longer require redeploying environment variables.
+
 ### Notes
 - Uses `ioredis` for robust Redis connections.
 - Redis adapter is required for multi-node real-time scaling.

@@ -53,6 +53,18 @@ export enum TwoFactorMethod {
     EMAIL = 'email'
 }
 
+export type SmsVerificationChannel =
+    | 'sms'
+    | 'sms_twilio'
+    | 'sms_http'
+    | 'whatsapp'
+    | 'whatsapp_twilio'
+    | 'whatsapp_baileys'
+    | 'telegram'
+    | 'discord'
+    | 'custom'
+    | 'custom_http';
+
 export enum SessionStatus {
     ACTIVE = 'active',
     EXPIRED = 'expired',
@@ -76,7 +88,9 @@ export enum SecurityEventType {
     SUSPICIOUS_ACTIVITY = 'suspicious_activity',
     GDPR_REQUEST = 'gdpr_request',
     DATA_EXPORT = 'data_export',
-    DATA_DELETE = 'data_delete'
+    DATA_DELETE = 'data_delete',
+    PHONE_VERIFICATION_SENT = 'phone_verification_sent',
+    PHONE_VERIFIED = 'phone_verified'
 }
 
 export enum SecurityEventSeverity {
@@ -161,6 +175,23 @@ export interface EmailVerification {
     user_id: number;
     email: string;
     verification_token: string;
+    status: VerificationStatus;
+    sent_at: Date;
+    verified_at?: Date;
+    expires_at: Date;
+    attempts: number;
+    ip_address?: string;
+    user_agent?: string;
+    created_at: Date;
+    updated_at: Date;
+}
+
+export interface SmsVerification {
+    id: number;
+    user_id: number;
+    phone_number: string;
+    channel: SmsVerificationChannel;
+    verification_code: string;
     status: VerificationStatus;
     sent_at: Date;
     verified_at?: Date;

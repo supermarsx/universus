@@ -13,8 +13,10 @@ import { authThrottleService } from '../services/authThrottleService';
 import { EmailVerificationService } from '../services/emailVerificationService';
 import { pool } from '../config/database';
 import { analyticsService } from '../services/analyticsService';
+import { SmsVerificationService } from '../services/smsVerificationService';
 
 const router = express.Router();
+const enforcePhoneVerification = process.env.REQUIRE_PHONE_VALIDATION === 'true';
 
 const getClientIp = (req: Request): string => {
   const forwarded = req.headers['x-forwarded-for'];
@@ -73,7 +75,7 @@ router.post('/register', async (req: Request, res: Response) => {
   const clientIp = getClientIp(req);
 
   try {
-    const { username, email, password, bot_challenge } = req.body;
+    const { username, email, password, bot_challenge, phone_number, sms_channel } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -113,12 +115,37 @@ router.post('/register', async (req: Request, res: Response) => {
       console.error('Failed to send verification email:', verificationError);
     }
 
+    const smsVerificationEnabled = SmsVerificationService.isEnabled();
+    let smsVerificationRequired = false;
+    let smsVerificationSent = false;
+
+    if (smsVerificationEnabled && phone_number) {
+      smsVerificationRequired = true;
+      try {
+        await SmsVerificationService.sendVerificationCode({
+          userId: result.user.id,
+          phoneNumber: phone_number,
+          channel: sms_channel,
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent') || undefined
+        });
+        smsVerificationSent = true;
+      } catch (smsError) {
+        console.error('Failed to send SMS verification:', smsError);
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Account created. Please verify your email before logging in.',
       email_verification: {
         required: true,
         sent: verificationSent
+      },
+      sms_verification: {
+        enabled: smsVerificationEnabled,
+        required: smsVerificationRequired,
+        sent: smsVerificationSent
       }
     });
 
@@ -179,6 +206,22 @@ router.post('/login', async (req: Request, res: Response) => {
         pending_verification: status.pending_verification,
         can_resend: status.can_resend,
         email: result.user.email
+      });
+    }
+
+    if (
+      enforcePhoneVerification &&
+      SmsVerificationService.isEnabled() &&
+      result.user.phone_number &&
+      !result.user.phone_verified
+    ) {
+      recordAnalyticsEvent(req, 'login_blocked_phone', result.user.id, {
+        method: 'password'
+      });
+      return res.status(403).json({
+        error: 'Phone number not verified. Please complete SMS verification.',
+        code: 'phone_not_verified',
+        phone_number: result.user.phone_number
       });
     }
 
