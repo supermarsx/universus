@@ -1318,7 +1318,19 @@ function openNotifications() {
 }
 
 function closePMModal() {
-  document.getElementById('pm-modal').style.display = 'none';
+  const modal = document.getElementById('pm-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  const recipientInput = document.getElementById('pm-recipient');
+  const messageInput = document.getElementById('pm-message');
+  if (recipientInput) {
+    recipientInput.value = '';
+    delete recipientInput.dataset.recipientId;
+  }
+  if (messageInput) {
+    messageInput.value = '';
+  }
 }
 
 function sendPrivateMessage() {
