@@ -34,12 +34,24 @@ class PhalanxService {
     try {
       await client.query('BEGIN');
 
-      const moon = await moonService.getMoonById(params.moonId);
-      if (!moon || moon.user_id !== params.userId) {
-        throw new Error('Moon not found or access denied');
-      }
+       const moon = await moonService.getMoonById(params.moonId);
+       if (!moon || moon.user_id !== params.userId) {
+         throw new Error('Moon not found or access denied');
+       }
 
-      const sensorLevel = moon.sensor_phalanx || 0;
+       const scanNow = new Date();
+       const today = scanNow.toISOString().split('T')[0];
+       if (moon.last_reset_day !== today) {
+         await client.query('UPDATE moons SET daily_scan_count = 0, last_reset_day = $1 WHERE id = $2', [today, params.moonId]);
+       }
+       if ((moon.daily_scan_count || 0) >= 100) {
+         throw new Error('Daily phalanx scan limit reached for this moon');
+       }
+       if (moon.last_scan_time && scanNow.getTime() - new Date(moon.last_scan_time).getTime() < 3000) {
+         throw new Error('Phalanx scan cooldown active (3 seconds)');
+       }
+
+       const sensorLevel = moon.sensor_phalanx || 0;
       if (sensorLevel <= 0) {
         throw new Error('Sensor Phalanx required on this moon');
       }
@@ -69,9 +81,11 @@ class PhalanxService {
         throw new Error('Insufficient deuterium on moon to power scan');
       }
 
-      await moonService.deductResources(moon.id, { deuterium: cost });
+       await moonService.deductResources(moon.id, { deuterium: cost });
 
-      const targetPlanetResult = await client.query(
+       await client.query('UPDATE moons SET last_scan_time = $1, daily_scan_count = daily_scan_count + 1 WHERE id = $2', [scanNow.toISOString(), params.moonId]);
+
+       const targetPlanetResult = await client.query(
         `SELECT p.id, p.name, p.user_id, u.username
          FROM planets p
          LEFT JOIN users u ON u.id = p.user_id
@@ -81,93 +95,107 @@ class PhalanxService {
 
       const targetPlanet = targetPlanetResult.rows[0] || null;
 
-      const inboundFleets = await client.query(
-         `SELECT f.id,
-                f.user_id,
-                u.username,
-                f.mission_type,
-                f.origin_planet_id,
-                op.galaxy AS origin_galaxy,
-                op.system AS origin_system,
-                op.position AS origin_position,
-                f.target_galaxy,
-                f.target_system,
-                f.target_position,
-                f.departure_time,
-                f.arrival_time,
-                f.return_time,
-                f.status
-         FROM fleets f
-         LEFT JOIN users u ON u.id = f.user_id
-         LEFT JOIN planets op ON op.id = f.origin_planet_id
-         WHERE f.target_galaxy = $1
-           AND f.target_system = $2
-           AND f.target_position = $3
-           AND f.status = 'outbound'
-         ORDER BY f.arrival_time ASC`,
-        [params.targetGalaxy, params.targetSystem, params.targetPosition]
-      );
+       const inboundFleets = await client.query(
+          `SELECT f.id,
+                 f.user_id,
+                 u.username,
+                 f.mission_type,
+                 f.origin_planet_id,
+                 op.galaxy AS origin_galaxy,
+                 op.system AS origin_system,
+                 op.position AS origin_position,
+                 f.target_galaxy,
+                 f.target_system,
+                 f.target_position,
+                 f.departure_time,
+                 f.arrival_time,
+                 f.return_time,
+                 f.status
+          FROM fleets f
+          LEFT JOIN users u ON u.id = f.user_id
+          LEFT JOIN planets op ON op.id = f.origin_planet_id
+          LEFT JOIN moons om ON om.galaxy = op.galaxy AND om.system = op.system AND om.position = op.position
+          LEFT JOIN moons tm ON tm.galaxy = f.target_galaxy AND tm.system = f.target_system AND tm.position = f.target_position
+          WHERE f.target_galaxy = $1
+            AND f.target_system = $2
+            AND f.target_position = $3
+            AND f.status = 'outbound'
+            AND om.id IS NULL
+            AND tm.id IS NULL
+          ORDER BY f.arrival_time ASC`,
+         [params.targetGalaxy, params.targetSystem, params.targetPosition]
+       );
 
       let outboundRows: any[] = [];
       if (targetPlanet) {
         const outbound = await client.query(
-          `SELECT f.id,
-                  f.user_id,
-                  u.username,
-                  f.mission_type,
-                  f.origin_planet_id,
-                  op.galaxy AS origin_galaxy,
-                  op.system AS origin_system,
-                  op.position AS origin_position,
-                  f.target_galaxy,
-                  f.target_system,
-                  f.target_position,
-                  f.departure_time,
-                  f.arrival_time,
-                  f.return_time,
-                  f.status
-           FROM fleets f
-           LEFT JOIN users u ON u.id = f.user_id
-           LEFT JOIN planets op ON op.id = f.origin_planet_id
-           WHERE f.origin_planet_id = $1
-             AND f.status IN ('outbound', 'returning')
-           ORDER BY f.arrival_time ASC`,
-          [targetPlanet.id]
-        );
+           `SELECT f.id,
+                   f.user_id,
+                   u.username,
+                   f.mission_type,
+                   f.origin_planet_id,
+                   op.galaxy AS origin_galaxy,
+                   op.system AS origin_system,
+                   op.position AS origin_position,
+                   f.target_galaxy,
+                   f.target_system,
+                   f.target_position,
+                   f.departure_time,
+                   f.arrival_time,
+                   f.return_time,
+                   f.status
+            FROM fleets f
+            LEFT JOIN users u ON u.id = f.user_id
+            LEFT JOIN planets op ON op.id = f.origin_planet_id
+            LEFT JOIN moons om ON om.galaxy = op.galaxy AND om.system = op.system AND om.position = op.position
+            LEFT JOIN moons tm ON tm.galaxy = f.target_galaxy AND tm.system = f.target_system AND tm.position = f.target_position
+            WHERE f.origin_planet_id = $1
+              AND f.status IN ('outbound', 'returning')
+              AND om.id IS NULL
+              AND tm.id IS NULL
+            ORDER BY f.arrival_time ASC`,
+           [targetPlanet.id]
+         );
         outboundRows = outbound.rows;
       }
 
       await client.query('COMMIT');
 
       const now = Date.now();
-      const mapFleet = (row: any) => {
-        const arrivalSource =
-          row.status === 'returning' && row.return_time ? row.return_time : row.arrival_time;
-        return {
-          id: row.id,
-          ownerId: row.user_id,
-          owner: row.username,
-          mission: row.mission_type,
-          status: row.status,
-        origin: row.origin_galaxy
-          ? {
-              galaxy: row.origin_galaxy,
-              system: row.origin_system,
-              position: row.origin_position,
-            }
-          : null,
-        target: {
-          galaxy: row.target_galaxy ?? params.targetGalaxy,
-          system: row.target_system ?? params.targetSystem,
-          position: row.target_position ?? params.targetPosition,
-        },
-        arrivalTime: arrivalSource,
-        departureTime: row.departure_time,
-        etaSeconds: arrivalSource
-          ? Math.max(0, Math.floor((new Date(arrivalSource).getTime() - now) / 1000))
-          : null,
-      };
-      };
+       const mapFleet = (row: any) => {
+         const arrivalSource =
+           row.status === 'returning' && row.return_time ? row.return_time : row.arrival_time;
+         const jitter = Math.floor(Math.random() * 3) - 1; // -1, 0, 1 second
+         let etaSeconds = arrivalSource
+           ? Math.max(0, Math.floor((new Date(arrivalSource).getTime() - now) / 1000))
+           : null;
+         if (etaSeconds !== null) {
+           etaSeconds += jitter;
+           etaSeconds = Math.max(0, etaSeconds);
+         }
+         return {
+           id: row.id,
+           ownerId: row.user_id,
+           owner: row.username,
+           mission: row.mission_type,
+           status: row.status,
+         origin: row.origin_galaxy
+           ? {
+               galaxy: row.origin_galaxy,
+               system: row.origin_system,
+               position: row.origin_position,
+             }
+           : null,
+         target: {
+           galaxy: row.target_galaxy ?? params.targetGalaxy,
+           system: row.target_system ?? params.targetSystem,
+           position: row.target_position ?? params.targetPosition,
+         },
+         arrivalTime: arrivalSource,
+         departureTime: row.departure_time,
+         etaSeconds,
+       };
+       };
 
       return {
         target: {

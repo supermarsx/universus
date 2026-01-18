@@ -19,6 +19,7 @@ import moonService from './moonService';
 import { ResearchService } from './researchService';
 import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
+import { getMoonById } from './moonService';
 
 interface FleetParticipant {
   fleet: Fleet;
@@ -1446,11 +1447,68 @@ export class FleetService {
   }
 
   /**
-   * Move a fleet to a moon destination (stub for tests and jump gate logic).
-   * Returns true when the move was accepted/scheduled.
+   * Move a fleet to a moon destination via Jump Gate.
+   * Strips all resources from the fleet and clears any active orders.
+   * Returns true when the move was successful.
    */
-  static async moveFleetToMoon(fleetId: number, toMoonId: number): Promise<boolean> {
-    return true;
+  static async moveFleetToMoon(userId: number, fromMoonId: number, fleetId: number, toMoonId: number): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Get fleet and validate
+      const fleetResult = await client.query('SELECT * FROM fleets WHERE id = $1', [fleetId]);
+      const fleet = fleetResult.rows[0];
+      if (!fleet || fleet.user_id !== userId) {
+        throw new Error('Fleet not found or access denied');
+      }
+
+      // Get moons
+      const fromMoon = await getMoonById(fromMoonId);
+      const toMoon = await getMoonById(toMoonId);
+      if (!fromMoon || !toMoon) {
+        throw new Error('Invalid moon(s)');
+      }
+
+      // Get destination planet coords
+      const toPlanetResult = await client.query('SELECT galaxy, system, position FROM planets WHERE id = $1', [toMoon.planet_id]);
+      const toPlanet = toPlanetResult.rows[0];
+      if (!toPlanet) {
+        throw new Error('Destination moon planet not found');
+      }
+
+      // Strip resources from fleet
+      await client.query(
+        'UPDATE fleets SET metal = 0, crystal = 0, deuterium = 0 WHERE id = $1',
+        [fleetId]
+      );
+
+      // Clear fleet orders and set idle
+      await client.query(
+        `UPDATE fleets SET 
+          mission_type = NULL,
+          status = 'idle',
+          departure_time = NULL,
+          arrival_time = NULL,
+          return_time = NULL,
+          target_galaxy = $1,
+          target_system = $2,
+          target_position = $3
+        WHERE id = $4`,
+        [toPlanet.galaxy, toPlanet.system, toPlanet.position, fleetId]
+      );
+
+      // Unschedule any events
+      FleetService.unscheduleFleetEvents(fleetId);
+
+      await client.query('COMMIT');
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

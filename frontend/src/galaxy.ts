@@ -282,8 +282,6 @@ class GalaxyController {
       inlineTargetMission: document.getElementById('inlineMissionSelect'),
       inlineTargetBtn: document.getElementById('inlineTargetBtn'),
       originPlanetLabel: document.getElementById('originPlanetLabel'),
-      phalanxScanBtn: document.getElementById('phalanxScanBtn'),
-      phalanxStatus: document.getElementById('phalanxStatus'),
       phalanxModal: document.getElementById('phalanxModal'),
       phalanxResults: document.getElementById('phalanxResults'),
       closePhalanxModal: document.getElementById('closePhalanxModal'),

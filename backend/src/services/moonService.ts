@@ -48,12 +48,10 @@ export interface Moon {
   cruiser: number;
   battleship: number;
   colony_ship: number;
-  recycler: number;
-  espionage_probe: number;
-  bomber: number;
-  destroyer: number;
-  deathstar: number;
-  last_jump_time: Date | null;
+  last_scan_time?: Date;
+  daily_scan_count?: number;
+  last_reset_day?: string;
+  last_jump_time?: Date;
 }
 
 class MoonService {
