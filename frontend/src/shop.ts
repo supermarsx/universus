@@ -338,7 +338,7 @@ class ShopManager {
             const purchaseCard = document.createElement('div');
             purchaseCard.className = 'purchase-card';
             
-            const date = new Date(purchase.createdAt).toLocaleDateString();
+            const date = this.formatDate(purchase.createdAt);
             const amount = (purchase.amount / 100).toFixed(2);
             
             purchaseCard.innerHTML = `
@@ -378,7 +378,41 @@ class ShopManager {
     }
     
     formatNumber(num) {
-        return new Intl.NumberFormat('en-US').format(Math.floor(num || 0));
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+            return new Intl.NumberFormat(locale).format(Math.floor(num || 0));
+        }
+        return Math.floor(num || 0).toLocaleString();
+    }
+
+    formatDate(value) {
+        const date = value ? new Date(value) : new Date();
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+            }).format(date);
+        }
+        return date.toLocaleDateString();
+    }
+
+    getLocale() {
+        try {
+            if (i18n && i18n.language) {
+                return i18n.language;
+            }
+        } catch (error) {
+            // ignore i18n access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
     
     showNotification(message, type = 'info') {

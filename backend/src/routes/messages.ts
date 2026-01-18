@@ -112,6 +112,49 @@ router.get('/unread-count', async (req: AuthRequest, res) => {
   }
 });
 
+/**
+ * GET /messages/resolve-recipient
+ * Resolve a username to user id for composing messages
+ * Query params: username
+ */
+router.get('/resolve-recipient', async (req: AuthRequest, res) => {
+  try {
+    const username = (req.query.username as string | undefined)?.trim();
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing username',
+      });
+    }
+
+    const result = await pool.query(
+      'SELECT id, username FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1',
+      [username]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Recipient not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: result.rows[0].id,
+        username: result.rows[0].username,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error resolving recipient:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resolve recipient',
+    });
+  }
+});
+
 
 /**
  * GET /messages/:id
@@ -351,5 +394,4 @@ router.post('/alliance-circular', async (req: AuthRequest, res) => {
 });
 
 export default router;
-
 

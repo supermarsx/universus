@@ -37,7 +37,7 @@ Status legend: [done] implemented and verified, [partial] present but needs audi
 - [partial] Account transfer exists (`backend/src/services/accountTransferService.ts`) with completion email wired; delivery verification pending.
 
 ### Messaging and notifications
-- [partial] Messaging service/UI exists (`backend/src/services/messagingService.ts`, `frontend/src/messages.ts`) and chat PM send is wired; username lookup and UX audit needed.
+- [partial] Messaging service/UI exists (`backend/src/services/messagingService.ts`, `frontend/src/messages.ts`) and chat PM send is wired; username lookup now resolves via `backend/src/routes/messages.ts` but UX audit needed.
 - [partial] Notification service exists (`backend/src/services/notificationService.ts`), but email/offline notifications and alert channels not verified.
 
 ### In-game shop and monetization

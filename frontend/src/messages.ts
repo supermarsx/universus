@@ -517,7 +517,7 @@ function closeComposeModal() {
 async function handleCompose(e) {
     e.preventDefault();
 
-    const recipientInput = document.getElementById('recipientUsername').value;
+    const recipientInput = document.getElementById('recipientUsername').value.trim();
     const subject = document.getElementById('messageSubject').value;
     const content = document.getElementById('messageContent').value;
 
@@ -527,10 +527,8 @@ async function handleCompose(e) {
         if (/^\d+$/.test(recipientInput)) {
             toUserId = parseInt(recipientInput);
         } else {
-            // We need to look up the user by username
-            // For now, we'll just show an error - ideally we'd have an endpoint for this
-            alert(i18n.t('messages.pleaseEnterNumericId', { defaultValue: 'Please enter a numeric user ID. Username lookup not yet implemented.' }));
-            return;
+            const recipient = await resolveRecipient(recipientInput);
+            toUserId = recipient.id;
         }
 
         const response = await fetch(`${API_BASE_URL}/messages/send`, {
@@ -563,6 +561,26 @@ async function handleCompose(e) {
         console.error('Error sending message:', error);
             alert(i18n.t('messages.failedToSend', { error: error.message, defaultValue: 'Failed to send message: ' + error.message }));
     }
+}
+
+async function resolveRecipient(username) {
+    if (!username) {
+        throw new Error(i18n.t('messages.missingRecipient', { defaultValue: 'Please enter a recipient.' }));
+    }
+
+    const response = await fetch(`${API_BASE_URL}/messages/resolve-recipient?username=${encodeURIComponent(username)}`, {
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+    });
+
+    const payload = await response.json();
+    if (!response.ok || !payload?.data?.id) {
+        const message = payload?.error || i18n.t('messages.recipientNotFound', { defaultValue: 'Recipient not found.' });
+        throw new Error(message);
+    }
+
+    return payload.data;
 }
 
 /**
