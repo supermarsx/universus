@@ -543,7 +543,7 @@ class ConfigurationManager {
             div.innerHTML = `
                 <div class="history-header">
                     <div class="history-param">${item.parameter_name}</div>
-                    <div class="history-time">${new Date(item.applied_at).toLocaleString()}</div>
+                    <div class="history-time">${this.formatDateTime(item.applied_at)}</div>
                 </div>
                 <div class="history-change">
                     <div class="value-box value-old">${item.old_value}</div>
@@ -723,6 +723,38 @@ class ConfigurationManager {
     }
 
     // Utility Methods
+    formatDateTime(value) {
+        const date = value ? new Date(value) : new Date();
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(date);
+        }
+        return date.toLocaleString();
+    }
+
+    getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
+    }
+
     showModal(modalId) {
         document.getElementById(modalId).classList.add('active');
     }

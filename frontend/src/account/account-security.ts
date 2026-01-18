@@ -339,7 +339,34 @@
 
     function formatDateTime(dateString) {
         const date = new Date(dateString);
+        const locale = getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(date);
+        }
         return date.toLocaleString();
+    }
+
+    function getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 
     function formatEventType(type) {

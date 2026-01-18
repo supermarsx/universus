@@ -118,9 +118,9 @@ class GDPRComplianceManager {
                     <span class="badge badge-${statusClass}">${request.status}</span>
                 </div>
                 <div class="request-details">
-                    <p><strong>Requested:</strong> ${new Date(request.created_at).toLocaleString()}</p>
-                    ${request.completed_at ? `<p><strong>Completed:</strong> ${new Date(request.completed_at).toLocaleString()}</p>` : ''}
-                    ${request.expires_at ? `<p><strong>Expires:</strong> ${new Date(request.expires_at).toLocaleString()}</p>` : ''}
+                    <p><strong>Requested:</strong> ${this.formatDateTime(request.created_at)}</p>
+                    ${request.completed_at ? `<p><strong>Completed:</strong> ${this.formatDateTime(request.completed_at)}</p>` : ''}
+                    ${request.expires_at ? `<p><strong>Expires:</strong> ${this.formatDateTime(request.expires_at)}</p>` : ''}
                 </div>
                 <div class="request-actions">
                     ${request.status === 'completed' && request.request_type === 'data_export' ? 
@@ -437,6 +437,38 @@ class GDPRComplianceManager {
      */
     getToken() {
         return localStorage.getItem('token') || '';
+    }
+
+    formatDateTime(value) {
+        const date = value ? new Date(value) : new Date();
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(date);
+        }
+        return date.toLocaleString();
+    }
+
+    getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 }
 

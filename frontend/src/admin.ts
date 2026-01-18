@@ -260,7 +260,7 @@ function updateDashboardStats(stats) {
         const container = document.getElementById('recentActivity');
         container.innerHTML = stats.recentActivity.map(activity => `
             <div class="log-entry log-level-info">
-                <div class="log-timestamp">${new Date(activity.timestamp).toLocaleString()}</div>
+                <div class="log-timestamp">${formatDateTime(activity.timestamp)}</div>
                 <div class="log-message">${activity.type}: ${activity.username || activity.details || ''}</div>
             </div>
         `).join('');
@@ -314,7 +314,7 @@ function renderUsers(usersToRender) {
                 </span>
                 ${user.is_admin ? '<span class="status-badge" style="background: #9c27b0;">ADMIN</span>' : ''}
             </td>
-            <td>${user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</td>
+            <td>${user.last_login ? formatDateTime(user.last_login) : 'Never'}</td>
             <td>
                 <button class="action-btn btn-view" onclick="viewUser(${user.id})">View</button>
                 ${user.status === 'active' && !user.is_admin ? 
@@ -404,11 +404,11 @@ function showUserDetail(user) {
         </div>
         <div class="form-group">
             <label>Account Created:</label>
-            <div style="color: #fff; padding: 10px; background: #2a2a3e; border-radius: 6px;">${new Date(user.created_at).toLocaleString()}</div>
+            <div style="color: #fff; padding: 10px; background: #2a2a3e; border-radius: 6px;">${formatDateTime(user.created_at)}</div>
         </div>
         <div class="form-group">
             <label>Last Login:</label>
-            <div style="color: #fff; padding: 10px; background: #2a2a3e; border-radius: 6px;">${user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'}</div>
+            <div style="color: #fff; padding: 10px; background: #2a2a3e; border-radius: 6px;">${user.last_login ? formatDateTime(user.last_login) : 'Never'}</div>
         </div>
         <div class="form-group">
             <label>Total Planets:</label>
@@ -587,7 +587,7 @@ function renderLogs(logs) {
     
     container.innerHTML = logs.map(log => `
         <div class="log-entry log-level-${log.level}">
-            <div class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</div>
+            <div class="log-timestamp">${formatDateTime(log.timestamp)}</div>
             <div class="log-message">[${log.level.toUpperCase()}] ${escapeHtml(log.message)}</div>
         </div>
     `).join('');
@@ -634,7 +634,7 @@ function renderDatabaseStats(tables) {
             <td>${escapeHtml(table.table_name)}</td>
             <td>${formatNumber(table.row_count || 0)}</td>
             <td>${table.size || '0 KB'}</td>
-            <td>${table.last_modified ? new Date(table.last_modified).toLocaleString() : 'N/A'}</td>
+            <td>${table.last_modified ? formatDateTime(table.last_modified) : 'N/A'}</td>
         </tr>
     `).join('');
 }
@@ -710,7 +710,43 @@ async function saveSettings() {
  */
 function formatNumber(num) {
     if (typeof num !== 'number') return '0';
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+        return new Intl.NumberFormat(locale).format(num);
+    }
     return num.toLocaleString();
+}
+
+function formatDateTime(value) {
+    const date = value ? new Date(value) : new Date();
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        }).format(date);
+    }
+    return date.toLocaleString();
+}
+
+function getLocale() {
+    try {
+        if (window.i18next && window.i18next.language) {
+            return window.i18next.language;
+        }
+    } catch (error) {
+        // ignore i18next access errors
+    }
+    try {
+        const stored = localStorage.getItem('preferredLanguage');
+        if (stored) return stored;
+    } catch (error) {
+        // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
 }
 
 /**

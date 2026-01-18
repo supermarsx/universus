@@ -296,9 +296,9 @@ class PasswordRecoveryManager {
         list.innerHTML = requests.map(req => `
             <div class="request-item">
                 <div class="request-info">
-                    <strong>Requested:</strong> ${new Date(req.created_at).toLocaleString()}
+                    <strong>Requested:</strong> ${this.formatDateTime(req.created_at)}
                     <br>
-                    <strong>Expires:</strong> ${new Date(req.expires_at).toLocaleString()}
+                    <strong>Expires:</strong> ${this.formatDateTime(req.expires_at)}
                 </div>
                 <button class="btn btn-sm btn-danger" onclick="passwordRecovery.cancelRequest('${req.id}')">
                     Cancel
@@ -493,6 +493,38 @@ class PasswordRecoveryManager {
      */
     getToken() {
         return localStorage.getItem('token') || '';
+    }
+
+    formatDateTime(value) {
+        const date = value ? new Date(value) : new Date();
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(date);
+        }
+        return date.toLocaleString();
+    }
+
+    getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 }
 

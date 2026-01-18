@@ -80,7 +80,7 @@ function updateSummaryCards() {
 
     document.getElementById('totalBots').textContent = allBots.length;
     document.getElementById('activeBots').textContent = activeBots;
-    document.getElementById('totalAttacks').textContent = totalAttacks.toLocaleString();
+    document.getElementById('totalAttacks').textContent = formatCount(totalAttacks);
     document.getElementById('totalPlunder').textContent = formatNumber(totalPlunder);
 }
 
@@ -105,7 +105,7 @@ function createBotCard(bot) {
     const statusClass = bot.is_active ? 'active' : 'inactive';
     const cardClass = bot.is_active ? '' : 'inactive';
     const winRate = bot.win_rate || 0;
-    const lastAction = bot.last_action_at ? new Date(bot.last_action_at).toLocaleString() : 'Never';
+    const lastAction = bot.last_action_at ? formatDateTime(bot.last_action_at) : 'Never';
 
     return `
         <div class="bot-card ${cardClass}">
@@ -470,6 +470,46 @@ function formatNumber(num) {
     if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
     return num.toString();
+}
+
+function formatCount(num) {
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+        return new Intl.NumberFormat(locale).format(num || 0);
+    }
+    return (num || 0).toLocaleString();
+}
+
+function formatDateTime(value) {
+    const date = value ? new Date(value) : new Date();
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        }).format(date);
+    }
+    return date.toLocaleString();
+}
+
+function getLocale() {
+    try {
+        if (window.i18next && window.i18next.language) {
+            return window.i18next.language;
+        }
+    } catch (error) {
+        // ignore i18next access errors
+    }
+    try {
+        const stored = localStorage.getItem('preferredLanguage');
+        if (stored) return stored;
+    } catch (error) {
+        // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
 }
 
 /**

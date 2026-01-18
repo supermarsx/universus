@@ -271,7 +271,7 @@
                 </head>
                 <body>
                     <h1>Universus Space Empire - 2FA Backup Codes</h1>
-                    <p>Generated: ${new Date().toLocaleString()}</p>
+                    <p>Generated: ${formatDateTime(new Date())}</p>
                     ${setupData.backupCodes.map((code, i) => `<div class="code">${i + 1}. ${code}</div>`).join('')}
                     <p style="margin-top: 20px;">Keep these codes safe. Each can only be used once.</p>
                 </body>
@@ -341,6 +341,38 @@
 
     function getAuthToken() {
         return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    }
+
+    function formatDateTime(value) {
+        const date = value instanceof Date ? value : new Date(value);
+        const locale = getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(date);
+        }
+        return date.toLocaleString();
+    }
+
+    function getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 
     window.twoFASetup = {

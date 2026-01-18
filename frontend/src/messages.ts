@@ -235,7 +235,7 @@ function renderMessageList() {
         const isUnread = !msg.isRead;
         const isSelected = msg.id === selectedMessageId;
         const senderName = msg.fromUsername || 'System';
-        const date = new Date(msg.createdAt).toLocaleString();
+        const date = formatDateTime(msg.createdAt);
         const preview = msg.content.substring(0, 100);
 
         const typeBadge = getMessageTypeBadge(msg.messageType);
@@ -286,7 +286,7 @@ async function viewMessage(messageId) {
     const listEl = document.getElementById('messagesList');
 
     const senderName = message.fromUsername || 'System';
-    const date = new Date(message.createdAt).toLocaleString();
+    const date = formatDateTime(message.createdAt);
 
     let bodyContent = escapeHtml(message.content);
 
@@ -618,6 +618,21 @@ function formatNumber(num) {
         return new Intl.NumberFormat(locale).format(num);
     }
     return num.toLocaleString();
+}
+
+function formatDateTime(value) {
+    const date = value ? new Date(value) : new Date();
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        }).format(date);
+    }
+    return date.toLocaleString();
 }
 
 function getLocale() {

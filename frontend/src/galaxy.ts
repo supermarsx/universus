@@ -1115,7 +1115,7 @@ wrapper.innerHTML = `
       const activity = slot.owner?.activity?.label || i18n.t('galaxy.unknown', { defaultValue: 'unknown' });
       const relation = slot.owner?.relation || i18n.t('galaxy.unknown', { defaultValue: 'unknown' });
       const lastSeen = slot.owner?.lastSeen
-      ? new Date(slot.owner.lastSeen).toLocaleString()
+      ? this.formatDateTime(slot.owner.lastSeen)
       : i18n.t('galaxy.unknown', { defaultValue: 'Unknown' });
 
     this.elements.planetModalContent.innerHTML = `

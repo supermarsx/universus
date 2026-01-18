@@ -81,7 +81,7 @@ function populateForm(config) {
         apiKeyStatus.className = `badge ${config.api_key_set ? 'badge-success' : 'badge-danger'}`;
     }
     if (updatedAt) {
-        updatedAt.textContent = config.updated_at ? new Date(config.updated_at).toLocaleString() : '—';
+        updatedAt.textContent = config.updated_at ? formatDateTime(config.updated_at) : '-';
     }
 
     renderFallbackPreview();
@@ -244,7 +244,7 @@ async function loadMetrics(manual = false) {
         if (!response.ok) throw new Error('Failed to load metrics');
         const data = await response.json();
         renderMetrics(data);
-        if (status) status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        if (status) status.textContent = `Updated ${formatTime(new Date())}`;
     } catch (error) {
         console.error('Metrics fetch failed', error);
         if (status) status.textContent = error.message || 'Failed to load metrics';
@@ -282,4 +282,49 @@ function renderMetrics(payload) {
 function setText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
+}
+
+function formatDateTime(value) {
+    const date = value ? new Date(value) : new Date();
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        }).format(date);
+    }
+    return date.toLocaleString();
+}
+
+function formatTime(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        }).format(date);
+    }
+    return date.toLocaleTimeString();
+}
+
+function getLocale() {
+    try {
+        if (window.i18next && window.i18next.language) {
+            return window.i18next.language;
+        }
+    } catch (error) {
+        // ignore i18next access errors
+    }
+    try {
+        const stored = localStorage.getItem('preferredLanguage');
+        if (stored) return stored;
+    } catch (error) {
+        // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
 }
