@@ -59,7 +59,7 @@ class NotificationPage {
           <div class="notification-content">
             <div class="notification-title">${notif.title}</div>
             <div class="notification-message">${notif.message}</div>
-            <div class="notification-meta">${new Date(notif.created_at || Date.now()).toLocaleString()}</div>
+            <div class="notification-meta">${this.formatDateTime(notif.created_at)}</div>
             <div class="notification-actions">
               ${
                 notif.action_url
@@ -116,6 +116,38 @@ class NotificationPage {
     } catch (error) {
       console.error('Failed to mark all read:', error);
     }
+  }
+
+  formatDateTime(value?: string) {
+    const date = value ? new Date(value) : new Date();
+    const locale = this.getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+      return new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date);
+    }
+    return date.toLocaleString();
+  }
+
+  getLocale() {
+    try {
+      if (window.i18next && window.i18next.language) {
+        return window.i18next.language;
+      }
+    } catch (error) {
+      // ignore i18next access errors
+    }
+    try {
+      const stored = localStorage.getItem('preferredLanguage');
+      if (stored) return stored;
+    } catch (error) {
+      // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
   }
 
   iconFor(category?: string) {

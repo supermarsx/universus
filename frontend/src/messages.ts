@@ -613,7 +613,28 @@ function showNotification(message) {
  */
 function formatNumber(num) {
     if (typeof num !== 'number') return '0';
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+        return new Intl.NumberFormat(locale).format(num);
+    }
     return num.toLocaleString();
+}
+
+function getLocale() {
+    try {
+        if (window.i18next && window.i18next.language) {
+            return window.i18next.language;
+        }
+    } catch (error) {
+        // ignore i18next access errors
+    }
+    try {
+        const stored = localStorage.getItem('preferredLanguage');
+        if (stored) return stored;
+    } catch (error) {
+        // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
 }
 
 /**

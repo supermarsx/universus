@@ -101,7 +101,7 @@ class AccountSettingsManager {
     displayAccountInfo(data) {
         if (data.createdAt) {
             document.getElementById('accountCreated').textContent = 
-                new Date(data.createdAt).toLocaleDateString();
+                this.formatDate(new Date(data.createdAt));
         }
 
         if (data.lastLogin) {
@@ -162,7 +162,47 @@ class AccountSettingsManager {
         }
         if (data.language) {
             document.getElementById('language').value = data.language;
+            try {
+                localStorage.setItem('preferredLanguage', data.language);
+                if (document && document.documentElement) {
+                    document.documentElement.lang = data.language;
+                }
+                if (window.i18next) {
+                    window.i18next.changeLanguage(data.language);
+                }
+            } catch (error) {
+                console.warn('Failed to apply preferred language', error);
+            }
         }
+    }
+
+    formatDate(date) {
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            }).format(date);
+        }
+        return date.toLocaleDateString(locale || 'en-US');
+    }
+
+    getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 
     /**
@@ -202,6 +242,17 @@ class AccountSettingsManager {
             }
 
             this.showSuccess('Profile updated successfully');
+            try {
+                localStorage.setItem('preferredLanguage', profileData.language);
+                if (document && document.documentElement) {
+                    document.documentElement.lang = profileData.language;
+                }
+                if (window.i18next) {
+                    window.i18next.changeLanguage(profileData.language);
+                }
+            } catch (error) {
+                console.warn('Failed to persist preferred language', error);
+            }
 
         } catch (error) {
             console.error('Error saving profile:', error);

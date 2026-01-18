@@ -80,7 +80,7 @@
         
         <button id="logoutBtn" class="btn-secondary">{{ 'ui.logout' | t }}</button>
         <div class="lang-switcher" style="display:inline-block;margin-left:1rem;">
-<select id="languageSelect" aria-label="Select language">
+<select id="languageSelect" aria-label="{{ 'ui.select_language' | t }}">
   {% for locale in availableLocales %}
     <option value="{{ locale }}">{{ ('ui.language_' ~ locale|replace({'-':'_'}) ) | t }}</option>
   {% endfor %}
@@ -94,9 +94,16 @@ if (window.i18next) {
     document.addEventListener('DOMContentLoaded', function() {
         var langSelect = document.getElementById('languageSelect');
         if (langSelect) {
-            langSelect.value = window.i18next.language || 'en';
+            var storedLang = null;
+            try { storedLang = localStorage.getItem('preferredLanguage'); } catch (e) {}
+            langSelect.value = storedLang || window.i18next.language || 'en-US';
             langSelect.addEventListener('change', function() {
-                window.i18next.changeLanguage(langSelect.value, function() {
+                var nextLang = langSelect.value;
+                try { localStorage.setItem('preferredLanguage', nextLang); } catch (e) {}
+                if (document && document.documentElement) {
+                    document.documentElement.lang = nextLang;
+                }
+                window.i18next.changeLanguage(nextLang, function() {
                     window.location.reload();
                 });
             });

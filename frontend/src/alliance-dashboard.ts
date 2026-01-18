@@ -199,7 +199,7 @@
                     <span class="css-icon icon-view"></span>
                 </button>
                 ${canManageMembers() ? `
-                <button class="btn-icon" onclick="showMemberManageMenu(${member.user_id})" title="Manage">
+                <button class="btn-icon" onclick="showMemberManageMenu(${member.user_id}, event)" title="Manage">
                     <span class="css-icon icon-settings"></span>
                 </button>
                 ` : ''}
@@ -534,6 +534,9 @@
         if (acsForm) {
             acsForm.addEventListener('submit', handleCreateAcsGroup);
         }
+
+        document.addEventListener('click', handleMemberMenuOutsideClick);
+        document.addEventListener('keydown', handleMemberMenuKeydown);
     }
 
     /**
@@ -749,10 +752,20 @@
     /**
      * Show member manage menu
      */
-    window.showMemberManageMenu = function(userId) {
-        // TODO: Implement member management dropdown
-        console.log('[Alliance Dashboard] Manage member:', userId);
-        showNotification('Member management coming soon', 'info');
+    window.showMemberManageMenu = function(userId, event) {
+        const member = (currentAlliance?.members || []).find((entry) => entry.user_id === userId);
+        if (!member) {
+            showNotification('Member not found', 'error');
+            return;
+        }
+        currentMember = member;
+
+        const menu = getMemberManageMenu();
+        renderMemberManageMenu(menu, member);
+
+        const anchor = event?.currentTarget || event?.target;
+        positionMemberManageMenu(menu, anchor, userId);
+        menu.classList.add('active');
     };
 
     /**
@@ -796,6 +809,190 @@
     function canManageMembers() {
         if (!currentAlliance || !currentAlliance.current_member_role) return false;
         return ['FOUNDER', 'LEADER', 'OFFICER'].includes(currentAlliance.current_member_role);
+    }
+
+    function getMemberRank(member) {
+        const raw = member?.rank || member?.alliance_role || member?.alliance_role_display || '';
+        return String(raw || '').toLowerCase();
+    }
+
+    function getRankOptions() {
+        return [
+            { value: 'leader', label: 'Leader' },
+            { value: 'officer', label: 'Officer' },
+            { value: 'member', label: 'Member' },
+            { value: 'recruit', label: 'Recruit' }
+        ];
+    }
+
+    function getMemberManageMenu() {
+        let menu = document.getElementById('memberManageMenu');
+        if (!menu) {
+            menu = document.createElement('div');
+            menu.id = 'memberManageMenu';
+            menu.className = 'member-manage-menu';
+            document.body.appendChild(menu);
+        }
+        return menu;
+    }
+
+    function renderMemberManageMenu(menu, member) {
+        const canKick = hasAlliancePermission('kick_members');
+        const canManageRanks = hasAlliancePermission('manage_ranks');
+        const rankOptions = getRankOptions()
+            .map((option) => `<option value="${option.value}">${option.label}</option>`)
+            .join('');
+        const displayName = escapeHtml(member.username || 'Member');
+        const currentRank = getMemberRank(member);
+
+        menu.innerHTML = `
+            <div class="menu-header">Manage ${displayName}</div>
+            ${canManageRanks ? `
+                <div class="menu-section">
+                    <label class="menu-label">Rank</label>
+                    <select id="memberRankSelect" class="menu-select">${rankOptions}</select>
+                    <button class="btn btn-sm btn-primary menu-action" data-action="apply-rank">Apply Rank</button>
+                </div>
+            ` : ''}
+            ${canKick ? `
+                <div class="menu-section">
+                    <button class="btn btn-sm btn-danger menu-action" data-action="kick">Kick Member</button>
+                </div>
+            ` : ''}
+            <div class="menu-section">
+                <button class="btn btn-sm btn-secondary menu-action" data-action="close">Close</button>
+            </div>
+        `;
+
+        const select = menu.querySelector('#memberRankSelect');
+        if (select) {
+            const option = Array.from(select.options).find((opt) => opt.value === currentRank);
+            if (option) option.selected = true;
+        }
+
+        menu.querySelectorAll('.menu-action').forEach((button) => {
+            button.addEventListener('click', async (e) => {
+                const action = e.currentTarget?.getAttribute('data-action');
+                if (action === 'apply-rank') {
+                    await submitMemberRankChange(member);
+                } else if (action === 'kick') {
+                    await submitKickMember(member);
+                } else {
+                    closeMemberManageMenu();
+                }
+            });
+        });
+    }
+
+    function positionMemberManageMenu(menu, anchor, userId) {
+        const anchorEl = anchor || document.querySelector(`.member-card[data-member-id="${userId}"] .btn-icon`);
+        if (!anchorEl) {
+            menu.style.top = '30%';
+            menu.style.left = '50%';
+            menu.style.transform = 'translate(-50%, -30%)';
+            return;
+        }
+        const rect = anchorEl.getBoundingClientRect();
+        menu.style.transform = 'none';
+        menu.style.top = `${window.scrollY + rect.bottom + 8}px`;
+        menu.style.left = `${window.scrollX + rect.left - 120}px`;
+    }
+
+    function closeMemberManageMenu() {
+        const menu = document.getElementById('memberManageMenu');
+        if (menu) {
+            menu.classList.remove('active');
+        }
+    }
+
+    function handleMemberMenuOutsideClick(event) {
+        const menu = document.getElementById('memberManageMenu');
+        if (!menu || !menu.classList.contains('active')) return;
+        if (menu.contains(event.target)) return;
+        if (event.target.closest('.member-actions')) return;
+        closeMemberManageMenu();
+    }
+
+    function handleMemberMenuKeydown(event) {
+        if (event.key !== 'Escape') return;
+        const menu = document.getElementById('memberManageMenu');
+        if (menu?.classList.contains('active')) {
+            closeMemberManageMenu();
+        }
+    }
+
+    async function submitMemberRankChange(member) {
+        if (!currentAlliance) return;
+        const select = document.getElementById('memberRankSelect');
+        const newRank = select?.value;
+        const currentRank = getMemberRank(member);
+        if (!newRank || newRank === currentRank) {
+            showNotification('Member is already at that rank', 'info');
+            return;
+        }
+
+        const rankOrder = ['recruit', 'member', 'officer', 'leader', 'founder'];
+        const action =
+            rankOrder.indexOf(newRank) > rankOrder.indexOf(currentRank) ? 'promote' : 'demote';
+
+        try {
+            const response = await fetch(`${API_BASE}/${currentAlliance.alliance_id}/members/manage`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({
+                    user_id: member.user_id,
+                    action,
+                    new_rank: newRank,
+                }),
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload?.error?.message || payload?.message || 'Failed to update rank');
+            }
+
+            showNotification('Member rank updated', 'success');
+            closeMemberManageMenu();
+            await loadAllianceData();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Rank update failed:', error);
+            showNotification(error.message || 'Failed to update rank', 'error');
+        }
+    }
+
+    async function submitKickMember(member) {
+        if (!currentAlliance) return;
+        const confirmKick = confirm(`Kick ${member.username}?`);
+        if (!confirmKick) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/${currentAlliance.alliance_id}/members/manage`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`,
+                },
+                body: JSON.stringify({
+                    user_id: member.user_id,
+                    action: 'kick',
+                }),
+            });
+
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload?.error?.message || payload?.message || 'Failed to kick member');
+            }
+
+            showNotification('Member removed', 'success');
+            closeMemberManageMenu();
+            await loadAllianceData();
+        } catch (error) {
+            console.error('[Alliance Dashboard] Kick failed:', error);
+            showNotification(error.message || 'Failed to kick member', 'error');
+        }
     }
 
     function hasAlliancePermission(permission) {
@@ -1133,6 +1330,10 @@
      * Utility: Format number with commas
      */
     function formatNumber(num) {
+        const locale = getLocale();
+        if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+            return new Intl.NumberFormat(locale).format(num);
+        }
         return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
@@ -1141,11 +1342,36 @@
      */
     function formatDate(dateString) {
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
+        const locale = getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            }).format(date);
+        }
+        return date.toLocaleDateString(locale || 'en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
         });
+    }
+
+    function getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 
     /**

@@ -200,8 +200,8 @@ class AccountTransferManager {
                 <div class="transfer-info">
                     <h4>Transfer to ${transfer.to_email}</h4>
                     <p><strong>Status:</strong> <span class="badge badge-warning">${transfer.status}</span></p>
-                    <p><strong>Initiated:</strong> ${new Date(transfer.created_at).toLocaleString()}</p>
-                    <p><strong>Expires:</strong> ${new Date(transfer.expires_at).toLocaleString()}</p>
+                    <p><strong>Initiated:</strong> ${this.formatDateTime(transfer.created_at)}</p>
+                    <p><strong>Expires:</strong> ${this.formatDateTime(transfer.expires_at)}</p>
                     ${transfer.reason ? `<p><strong>Reason:</strong> ${transfer.reason}</p>` : ''}
                 </div>
                 <div class="transfer-actions">
@@ -256,8 +256,8 @@ class AccountTransferManager {
                 <div class="transfer-info">
                     <h4>Account from ${transfer.from_email}</h4>
                     <p><strong>Status:</strong> <span class="badge badge-info">${transfer.status}</span></p>
-                    <p><strong>Received:</strong> ${new Date(transfer.created_at).toLocaleString()}</p>
-                    <p><strong>Expires:</strong> ${new Date(transfer.expires_at).toLocaleString()}</p>
+                    <p><strong>Received:</strong> ${this.formatDateTime(transfer.created_at)}</p>
+                    <p><strong>Expires:</strong> ${this.formatDateTime(transfer.expires_at)}</p>
                     ${transfer.reason ? `<p><strong>Reason:</strong> ${transfer.reason}</p>` : ''}
                 </div>
                 <div class="transfer-actions">
@@ -309,8 +309,8 @@ class AccountTransferManager {
                 <h4>Transfer Details</h4>
                 <p><strong>From:</strong> ${transfer.from_email}</p>
                 <p><strong>To:</strong> ${transfer.to_email}</p>
-                <p><strong>Initiated:</strong> ${new Date(transfer.created_at).toLocaleString()}</p>
-                <p><strong>Expires:</strong> ${new Date(transfer.expires_at).toLocaleString()}</p>
+                <p><strong>Initiated:</strong> ${this.formatDateTime(transfer.created_at)}</p>
+                <p><strong>Expires:</strong> ${this.formatDateTime(transfer.expires_at)}</p>
                 ${transfer.reason ? `<p><strong>Reason:</strong> ${transfer.reason}</p>` : ''}
             </div>
         `;
@@ -487,7 +487,7 @@ class AccountTransferManager {
                 </div>
                 <div class="history-meta">
                     <span class="badge badge-${this.getStatusClass(item.status)}">${item.status}</span>
-                    <span class="history-date">${new Date(item.completed_at || item.created_at).toLocaleString()}</span>
+                    <span class="history-date">${this.formatDateTime(item.completed_at || item.created_at)}</span>
                 </div>
             </div>
         `).join('');
@@ -512,6 +512,38 @@ class AccountTransferManager {
     validateEmail(email) {
         const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return re.test(email);
+    }
+
+    formatDateTime(value) {
+        const date = value ? new Date(value) : new Date();
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+            return new Intl.DateTimeFormat(locale, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            }).format(date);
+        }
+        return date.toLocaleString();
+    }
+
+    getLocale() {
+        try {
+            if (window.i18next && window.i18next.language) {
+                return window.i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 
     /**

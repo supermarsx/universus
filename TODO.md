@@ -77,15 +77,15 @@ Status legend: [done] implemented and verified, [partial] present but needs audi
 
 ## i18n and a11y spec (spec-i18n-a11y.md)
 - [done] Locale files exist (`frontend/locales/*.json`), i18next configured (`frontend/src/i18n.ts`), templates use `| t`, and language switcher UI present (`frontend/views/partials/nav.njk`).
-- [partial] Language preference is not persisted (nav switcher only reloads; no cookie/localStorage/user setting wiring) and some labels remain hardcoded (e.g., `aria-label="Select language"` in `frontend/views/partials/nav.njk`).
-- [partial] Date/number/currency formatting and pluralization helpers not implemented; audit frontend code for raw literals.
+- [partial] Language preference now persists via localStorage and updates i18next (`frontend/src/i18n.ts`, `frontend/views/partials/nav.njk`, `frontend/src/account/account-settings.ts`), but server-side persistence/cookies and remaining hardcoded labels need alignment.
+- [partial] Locale-aware number/date helpers added in key screens (`frontend/src/game.ts`, `frontend/src/leaderboard.ts`, `frontend/src/messages.ts`, `frontend/src/alliance-dashboard.ts`); audit remaining `toLocaleString`/`toLocaleDateString` uses.
 - [partial] Translation workflow for new locales and translator docs absent; admin locale editor (`frontend/views/pages/admin/locales.njk`) lacks backend/API hooks verification.
 - [partial] Accessibility: jest-axe covers snippets only; no page-level tests for key flows, no focus-trap/keyboard tests for modals, contrast/focus indicators not validated.
 - [missing] CI workflows are missing, so i18n/a11y tests are not enforced automatically.
 - [missing] RTL support, screen-reader live regions, skip links, and accessible notifications (attack/build complete) not found.
 
 ## Pending TODOs in code
-- [missing] `frontend/src/alliance-dashboard.ts` - implement member management dropdown.
+- None found in tracked source files.
 
 ## Validation / next steps
 - Add contract + integration tests for moon APIs (phalanx, jump gate, destroy) and fleet mission paths involving moons; backfill coverage for combat rules and debris handling.
