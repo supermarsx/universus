@@ -107,9 +107,8 @@ app.use('/api/player-blocks', playerBlockRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 // Prometheus metrics endpoint
-import client from 'prom-client';
-const register = new client.Registry();
-client.collectDefaultMetrics({ register });
+import { register } from './config/metrics';
+
 app.get('/metrics', async (req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());

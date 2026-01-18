@@ -10,7 +10,9 @@
     "lint": "eslint \"js/**/*.js\" \"views/**/*.njk\"",
     "format": "prettier --write \"js/**/*.js\" \"css/**/*.css\" \"views/**/*.njk\"",
     "prepare": "npm run build",
-  "test": "jest --ci --runInBand"
+    "test": "jest --ci --runInBand",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
@@ -21,6 +23,7 @@
     "jest": "^29.7.0",
     "jest-axe": "^10.0.0",
     "jest-environment-jsdom": "^29.7.0",
-    "@types/jest": "^29.5.11"
+    "@types/jest": "^29.5.11",
+    "@playwright/test": "^1.40.0"
   }
 }

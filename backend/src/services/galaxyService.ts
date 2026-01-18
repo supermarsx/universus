@@ -138,6 +138,15 @@ export class GalaxyService {
    * @param context - Request context containing user and coordinates
    */
   static async getSystemSnapshot(context: GalaxyRequestContext): Promise<GalaxySnapshot> {
+    const cacheKey = `galaxy:snapshot:${context.userId}:${context.galaxy}:${context.system}:${context.originPlanetId || 'none'}`;
+
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    }
+
     const [galaxyCount, systemsPerGalaxy, positionsPerSystem] = await Promise.all([
       this.config.getGalaxyCount(),
       this.config.getSystemsPerGalaxy(),
@@ -177,7 +186,7 @@ export class GalaxyService {
       requesterAllianceId,
     });
 
-    return {
+    const snapshot: GalaxySnapshot = {
       coordinates: {
         galaxy: normalizedGalaxy,
         system: normalizedSystem,
@@ -200,6 +209,12 @@ export class GalaxyService {
       },
       planets: slots,
     };
+
+    if (redis) {
+      await redis.set(cacheKey, JSON.stringify(snapshot), 'EX', CACHE_TTL_SECONDS);
+    }
+
+    return snapshot;
   }
 
     /**

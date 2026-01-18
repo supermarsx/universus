@@ -1,6 +1,7 @@
 import express from 'express';
 import { LeaderboardService } from '../services/leaderboardService';
 import { authenticateToken, assertAuthenticated } from '../middleware/auth';
+import { metricsMiddleware } from '../middleware/metrics';
 import { AuthRequest } from '../types';
 import { pool } from '../config/database';
 import { redis } from '../config/redis';
@@ -11,6 +12,7 @@ const leaderboardService = new LeaderboardService(pool, redis);
 
 // Apply authentication middleware to all routes
 router.use(authenticateToken, assertAuthenticated);
+router.use(metricsMiddleware);
 
 
 /**

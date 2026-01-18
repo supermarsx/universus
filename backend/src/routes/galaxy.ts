@@ -1,11 +1,13 @@
 import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
+import { metricsMiddleware } from '../middleware/metrics';
 import { AuthRequest } from '../types';
 import GalaxyService from '../services/galaxyService';
 
 const router = express.Router();
 
 router.use(authenticateToken);
+router.use(metricsMiddleware);
 
 router.get('/', async (req: Request, res: Response) => {
   try {
