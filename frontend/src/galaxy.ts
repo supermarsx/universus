@@ -282,9 +282,12 @@ class GalaxyController {
       inlineTargetMission: document.getElementById('inlineMissionSelect'),
       inlineTargetBtn: document.getElementById('inlineTargetBtn'),
       originPlanetLabel: document.getElementById('originPlanetLabel'),
-      phalanxModal: document.getElementById('phalanxModal'),
-      phalanxResults: document.getElementById('phalanxResults'),
-      closePhalanxModal: document.getElementById('closePhalanxModal'),
+       phalanxModal: document.getElementById('phalanxModal'),
+       phalanxResults: document.getElementById('phalanxResults'),
+       closePhalanxModal: document.getElementById('closePhalanxModal'),
+       moonOverviewModal: document.getElementById('moonOverviewModal'),
+       moonOverviewContent: document.getElementById('moonOverviewContent'),
+       closeMoonOverviewModal: document.getElementById('closeMoonOverviewModal'),
     };
   }
 
@@ -321,12 +324,17 @@ class GalaxyController {
       const slot = this.planets.find((p) => p.position === position);
       if (!slot) return;
 
-      if (action === 'details') {
-        this.openPlanetDetails(slot);
-        return;
-      }
+       if (action === 'details') {
+         this.openPlanetDetails(slot);
+         return;
+       }
 
-      this.openMissionDrawer(slot, action);
+       if (action === 'moon-overview') {
+         this.openMoonOverview(slot.moon);
+         return;
+       }
+
+       this.openMissionDrawer(slot, action);
     });
 
     const closeModal = this.elements.planetModal?.querySelector('.close');
@@ -350,13 +358,19 @@ class GalaxyController {
       }
     });
 
-    this.elements.phalanxScanBtn?.addEventListener('click', () => this.handlePhalanxScan());
-    this.elements.closePhalanxModal?.addEventListener('click', () => this.togglePhalanxModal(false));
-    this.elements.phalanxModal?.addEventListener('click', (event) => {
-      if (event.target === this.elements.phalanxModal) {
-        this.togglePhalanxModal(false);
-      }
-    });
+     this.elements.phalanxScanBtn?.addEventListener('click', () => this.handlePhalanxScan());
+     this.elements.closePhalanxModal?.addEventListener('click', () => this.togglePhalanxModal(false));
+     this.elements.phalanxModal?.addEventListener('click', (event) => {
+       if (event.target === this.elements.phalanxModal) {
+         this.togglePhalanxModal(false);
+       }
+     });
+     this.elements.closeMoonOverviewModal?.addEventListener('click', () => this.closeMoonOverviewModal());
+     this.elements.moonOverviewModal?.addEventListener('click', (event) => {
+       if (event.target === this.elements.moonOverviewModal) {
+         this.closeMoonOverviewModal();
+       }
+     });
   }
 
   bootstrapFromGlobals() {
@@ -851,9 +865,15 @@ container.innerHTML = entries
       );
     }
 
-    buttons.push(
-      `<button class="btn-tertiary" data-action="details" data-position="${slot.position}">${i18n.t('galaxy.details', { defaultValue: 'Details' })}</button>`
-    );
+     buttons.push(
+       `<button class="btn-tertiary" data-action="details" data-position="${slot.position}">${i18n.t('galaxy.details', { defaultValue: 'Details' })}</button>`
+     );
+
+     if (slot.moon) {
+       buttons.push(
+         `<button class="btn-tertiary" data-action="moon-overview" data-position="${slot.position}">${i18n.t('galaxy.moonOverview', { defaultValue: 'Moon Overview' })}</button>`
+       );
+     }
 
     return buttons.join('');
   }
@@ -1398,11 +1418,62 @@ getMissionLabel(mission: string) {
     `;
   }
 
-  togglePhalanxModal(show: boolean) {
-    const modal = this.elements.phalanxModal as HTMLElement | null;
-    if (!modal) return;
-    modal.style.display = show ? 'block' : 'none';
-  }
+   togglePhalanxModal(show: boolean) {
+     const modal = this.elements.phalanxModal as HTMLElement | null;
+     if (!modal) return;
+     modal.style.display = show ? 'block' : 'none';
+   }
+
+   closeMoonOverviewModal() {
+     if (this.elements.moonOverviewModal) {
+       this.elements.moonOverviewModal.style.display = 'none';
+     }
+   }
+
+   async openMoonOverview(moon: any) {
+     if (!this.elements.moonOverviewModal || !this.elements.moonOverviewContent) return;
+
+     // For now, assume moon data is available in slot.moon; in future, fetch if needed
+     const fieldsUsed = moon.fields_used || 0;
+     const fieldsTotal = moon.fields_total || 1;
+     const fieldsPercentage = Math.round((fieldsUsed / fieldsTotal) * 100);
+
+     const jumpGateDestination = moon.jump_gate_destination || null;
+     const jumpGateCooldown = moon.jump_gate_cooldown || 0;
+
+     const phalanxScans = moon.phalanx_scans || []; // Assume recent scans array
+
+     this.elements.moonOverviewContent.innerHTML = `
+       <div class="moon-overview-header">
+         <h3>${moon.name || 'Moon'} [${this.currentGalaxy}:${this.currentSystem}:${moon.position || '—'}]</h3>
+         <p>Diameter: ${this.formatNumber(moon.diameter || 0)} km</p>
+       </div>
+       <div class="moon-overview-fields">
+         <h4>Fields</h4>
+         <div class="progress-bar">
+           <div class="progress-fill" style="width: ${fieldsPercentage}%"></div>
+         </div>
+         <p>${fieldsUsed}/${fieldsTotal} (${fieldsPercentage}%)</p>
+       </div>
+       <div class="moon-overview-jump-gate">
+         <h4>Jump Gate</h4>
+         <p>Destination: ${jumpGateDestination ? `[${jumpGateDestination.galaxy}:${jumpGateDestination.system}:${jumpGateDestination.position}]` : 'Not set'}</p>
+         <p>Cooldown: ${this.formatCountdown(jumpGateCooldown)}</p>
+         <button class="btn-secondary">Set Destination</button>
+       </div>
+       <div class="moon-overview-phalanx">
+         <h4>Sensor Phalanx</h4>
+         <p>Level: ${moon.sensor_phalanx || 0}</p>
+         <button class="btn-secondary scan-btn">Scan</button>
+         <div class="scan-log">
+           <h5>Recent Scans</h5>
+           ${phalanxScans.length > 0 ? phalanxScans.map(scan => `<p>${scan.timestamp}: ${scan.target}</p>`).join('') : '<p>No recent scans</p>'}
+         </div>
+       </div>
+     `;
+
+     this.elements.moonOverviewModal.style.display = 'block';
+   }
 }
 
 let galaxyController: GalaxyController | null = null;

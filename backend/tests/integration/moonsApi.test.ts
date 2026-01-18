@@ -3,15 +3,42 @@ import app from '../../src/app'; // Adjust if your express app is exported elsew
 import moonService from '../../src/services/moonService';
 import jumpGateService from '../../src/services/jumpGateService';
 import destroyMoonService from '../../src/services/destroyMoonService';
+import phalanxService from '../../src/services/phalanxService';
 
 jest.mock('../../src/services/moonService');
 jest.mock('../../src/services/jumpGateService');
 jest.mock('../../src/services/destroyMoonService');
+jest.mock('../../src/services/phalanxService');
 
 describe('Moons API', () => {
   const token = 'test.jwt.token';
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('POST /api/moons/:moonId/phalanx', () => {
+    it('should return 200 on success', async () => {
+      (phalanxService.performScan as jest.Mock).mockResolvedValue({
+        target: { galaxy: 1, system: 1, position: 1 },
+        sensor: { level: 1, range: 0, cost: 5000 },
+        fleets: { inbound: [], outbound: [] }
+      });
+      const res = await request(app)
+        .post('/api/moons/1/phalanx')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ targetGalaxy: 1, targetSystem: 1, targetPosition: 1 });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+    it('should return 400 on error', async () => {
+      (phalanxService.performScan as jest.Mock).mockRejectedValue(new Error('No Sensor Phalanx'));
+      const res = await request(app)
+        .post('/api/moons/1/phalanx')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ targetGalaxy: 1, targetSystem: 1, targetPosition: 1 });
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
   });
 
   describe('POST /api/moons/:moonId/jump-gate', () => {
