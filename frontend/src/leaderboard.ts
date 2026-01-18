@@ -536,10 +536,10 @@ async function loadLeaderboardStatus() {
         const scheduler = payload.scheduler;
 
         document.getElementById('playersCacheStatus').textContent = players?.lastBuild
-            ? new Date(players.lastBuild).toLocaleTimeString()
+            ? formatTime(players.lastBuild)
             : 'pending';
         document.getElementById('alliancesCacheStatus').textContent = alliances?.lastBuild
-            ? new Date(alliances.lastBuild).toLocaleTimeString()
+            ? formatTime(alliances.lastBuild)
             : 'pending';
 
         document.getElementById('playersCacheTTL').textContent = `TTL: ${formatTTL(players?.ttlSeconds)}`;
@@ -548,7 +548,7 @@ async function loadLeaderboardStatus() {
         document.getElementById('schedulerStatus').textContent = scheduler?.running ? 'Running' : 'Idle';
         if (scheduler?.lastRun && scheduler?.intervalMs) {
             const nextRun = new Date(new Date(scheduler.lastRun).getTime() + scheduler.intervalMs);
-            document.getElementById('schedulerNextRun').textContent = `Next run: ${nextRun.toLocaleTimeString()}`;
+            document.getElementById('schedulerNextRun').textContent = `Next run: ${formatTime(nextRun)}`;
         } else {
             document.getElementById('schedulerNextRun').textContent = 'Next run: --';
         }
@@ -587,6 +587,19 @@ function formatNumber(num) {
         return new Intl.NumberFormat(locale).format(num);
     }
     return num.toLocaleString();
+}
+
+function formatTime(value) {
+    const date = value instanceof Date ? value : new Date(value);
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        }).format(date);
+    }
+    return date.toLocaleTimeString();
 }
 
 function getLocale() {

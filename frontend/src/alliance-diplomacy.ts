@@ -521,11 +521,32 @@ document.addEventListener('click', (e) => {
 function formatDate(dateString) {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
-    });
+    const locale = getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+        return new Intl.DateTimeFormat(locale, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        }).format(date);
+    }
+    return date.toLocaleDateString(locale || 'en-US');
+}
+
+function getLocale() {
+    try {
+        if (window.i18next && window.i18next.language) {
+            return window.i18next.language;
+        }
+    } catch (error) {
+        // ignore i18next access errors
+    }
+    try {
+        const stored = localStorage.getItem('preferredLanguage');
+        if (stored) return stored;
+    } catch (error) {
+        // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
 }
 
 function formatTimeAgo(dateString) {

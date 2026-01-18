@@ -281,9 +281,7 @@ card.innerHTML = `
       card.className = 'acs-group-card';
       const coords = `${group.target_galaxy}:${group.target_system}:${group.target_position}`;
 const windowLabel = group.departure_window_start
-        ? `${new Date(group.departure_window_start).toLocaleTimeString()} - ${new Date(
-            group.departure_window_end
-          ).toLocaleTimeString()}`
+        ? `${this.formatTime(group.departure_window_start)} - ${this.formatTime(group.departure_window_end)}`
         : i18n.t('fleet.flexibleWindow', { defaultValue: 'Flexible window' });
       const selected = this.selectedAcsGroupId === group.id;
 card.innerHTML = `
@@ -678,7 +676,7 @@ card.innerHTML = `
             <strong>${entry.title}</strong>
             <p>${entry.message}</p>
           </div>
-          <small>${new Date(entry.timestamp).toLocaleTimeString()}</small>
+          <small>${this.formatTime(entry.timestamp)}</small>
         </div>`
       )
       .join('');
@@ -750,6 +748,19 @@ card.innerHTML = `
       return new Intl.NumberFormat(locale).format(Math.floor(value || 0));
     }
     return Math.floor(value || 0).toLocaleString();
+  }
+
+  formatTime(value) {
+    const date = value ? new Date(value) : new Date();
+    const locale = this.getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+      return new Intl.DateTimeFormat(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).format(date);
+    }
+    return date.toLocaleTimeString();
   }
 
   formatDateTime(value) {

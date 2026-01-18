@@ -726,6 +726,8 @@
     "failedToDelete": "Failed to delete message",
     "messageSent": "Message sent successfully",
     "failedToSend": "Failed to send message: {{error}}",
+    "missingRecipient": "Please enter a recipient.",
+    "recipientNotFound": "Recipient not found.",
     "pleaseEnterNumericId": "Please enter a numeric user ID. Username lookup not yet implemented.",
     "areYouSureDelete": "Are you sure you want to delete this message?",
     "markAsRead": "Mark as Read",

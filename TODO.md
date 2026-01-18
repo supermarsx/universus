@@ -73,12 +73,12 @@ Status legend: [done] implemented and verified, [partial] present but needs audi
 - [partial] Moon destruction: simplified formula + per-ship loss loop (`backend/src/services/destroyMoonService.ts`) diverge from spec math; no cleanup of queues/ships/defenses or debris/result logging.
 - [partial] Moon visibility/galaxy map indicators and moon-only build roster enforcement not validated in UI/API.
 - [partial] Phalanx counters (moon legs invisible, jitter, cooldown spam control) and RIP spam controls not enforced.
-- [missing] API surface from spec (`/moons/{id}/scan`, `/jump`) lacks contract tests and response schemas; no public moon info endpoint (`GET /moons/{id}`) found.
+- [partial] API surface from spec (`/moons/{id}/scan`, `/jump`) lacks contract tests and response schemas; moon info is available via `GET /api/moons/id/:moonId` (spec path still not matched).
 
 ## i18n and a11y spec (spec-i18n-a11y.md)
 - [done] Locale files exist (`frontend/locales/*.json`), i18next configured (`frontend/src/i18n.ts`), templates use `| t`, and language switcher UI present (`frontend/views/partials/nav.njk`).
 - [partial] Language preference now persists via localStorage and updates i18next (`frontend/src/i18n.ts`, `frontend/views/partials/nav.njk`, `frontend/src/account/account-settings.ts`), but server-side persistence/cookies and remaining hardcoded labels need alignment.
-- [partial] Locale-aware number/date helpers added in key screens (`frontend/src/game.ts`, `frontend/src/leaderboard.ts`, `frontend/src/messages.ts`, `frontend/src/alliance-dashboard.ts`); audit remaining `toLocaleString`/`toLocaleDateString` uses.
+- [partial] Locale-aware number/date helpers added across key screens; direct `toLocaleString`/`toLocaleDateString` usage replaced in UI render paths, with fallback calls retained inside helpers.
 - [partial] Translation workflow for new locales and translator docs absent; admin locale editor (`frontend/views/pages/admin/locales.njk`) lacks backend/API hooks verification.
 - [partial] Accessibility: jest-axe covers snippets only; no page-level tests for key flows, no focus-trap/keyboard tests for modals, contrast/focus indicators not validated.
 - [missing] CI workflows are missing, so i18n/a11y tests are not enforced automatically.

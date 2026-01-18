@@ -65,6 +65,50 @@ router.get('/', async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.get('/id/:moonId', async (req: AuthRequest, res: Response) => {
+  try {
+    const moonId = parseInt(req.params.moonId, 10);
+    if (!Number.isFinite(moonId)) {
+      return res.status(400).json({ success: false, error: 'Invalid moon id' });
+    }
+
+    const moon = await moonService.getMoonById(moonId);
+    if (!moon) {
+      return res.status(404).json({ success: false, error: 'Moon not found' });
+    }
+
+    const authReq = req as AuthRequest;
+    if (moon.user_id !== authReq.user!.id) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+
+    const [constructionQueue, shipyardQueue] = await Promise.all([
+      BuildingService.getConstructionQueue({
+        planetId: moon.planet_id,
+        locationType: 'moon',
+        moonId: moon.id,
+      }),
+      ShipyardService.getQueue({
+        planetId: moon.planet_id,
+        locationType: 'moon',
+        moonId: moon.id,
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        moon,
+        constructionQueue,
+        shipyardQueue,
+      },
+    });
+  } catch (error: any) {
+    console.error('Get moon by id error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load moon' });
+  }
+});
+
 router.post('/:moonId/phalanx', async (req: AuthRequest, res: Response) => {
   try {
     const moonId = parseInt(req.params.moonId, 10);
