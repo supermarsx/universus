@@ -18,12 +18,18 @@ class JumpGateService {
     const toMoon = await getMoonById(toMoonId);
     if (!fromMoon || !toMoon) return { success: false, error: 'Invalid moon(s)' };
     if (fromMoon.user_id !== userId) return { success: false, error: 'Not your moon' };
+    if (toMoon.user_id !== userId) return { success: false, error: 'Destination moon not owned by user' };
+    if (fromMoonId === toMoonId) return { success: false, error: 'Destination moon must be different' };
     if (fromMoon.jump_gate < 1 || toMoon.jump_gate < 1) return { success: false, error: 'Both moons must have Jump Gates' };
     if (!(await this.canJump(fromMoonId))) return { success: false, error: 'Jump Gate is on cooldown' };
 
     // Move fleets (use FleetService.moveFleetToMoon)
-    for (const fleetId of fleetIds) {
-      await FleetService.moveFleetToMoon(fleetId, toMoonId);
+    try {
+      for (const fleetId of fleetIds) {
+        await FleetService.moveFleetToMoon(userId, fromMoonId, fleetId, toMoonId);
+      }
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Failed to move fleet(s)' };
     }
 
     // Set cooldown (skip actual DB write during tests)
