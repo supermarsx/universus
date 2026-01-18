@@ -134,7 +134,25 @@ export class GDPRComplianceService {
                 metadata: { request_id: requestId, data_size: dataSize }
             });
 
-            // TODO: Send email notification with download link
+            try {
+                const userResult = await pool.query(
+                    'SELECT email, username FROM users WHERE id = $1',
+                    [userId]
+                );
+                const user = userResult.rows[0];
+                if (user?.email) {
+                    const { EmailService } = await import('./emailService');
+                    const expiresAt = new Date(Date.now() + this.EXPORT_EXPIRY);
+                    await EmailService.sendGdprExportReady(
+                        user.email,
+                        downloadUrl,
+                        expiresAt,
+                        user.username
+                    );
+                }
+            } catch (error) {
+                console.error('Failed to send GDPR export email:', error);
+            }
         } catch (error) {
             // Update status to failed
             await pool.query(

@@ -453,11 +453,27 @@ export class EnhancedShopService {
             ]
         );
 
-        // TODO: Send email notification to recipient
-
         if (result.rows.length === 0) {
             throw new Error('Gift creation failed');
         }
+
+        try {
+            const senderResult = await this.db.query(
+                'SELECT username FROM users WHERE id = $1',
+                [request.sender_user_id]
+            );
+            const senderName = senderResult.rows[0]?.username;
+            const { EmailService } = await import('./emailService');
+            await EmailService.sendGiftNotification(
+                request.recipient_email,
+                giftCode,
+                senderName,
+                request.personal_message
+            );
+        } catch (error) {
+            console.error('Failed to send gift notification email:', error);
+        }
+
         return result.rows[0];
     }
 

@@ -416,6 +416,213 @@ export class EmailService {
         ]);
     }
 
+    // Account transfer completion notification
+    static async sendAccountTransferCompleted(
+        toEmail: string,
+        fromEmail?: string,
+        locale: string = 'en'
+    ): Promise<void> {
+        const settingsUrl = `${process.env.APP_URL}/account/security`;
+        const context = {
+            to_email: toEmail,
+            from_email: fromEmail || '',
+            settings_link: settingsUrl
+        };
+
+        const defaultHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: #10b981; color: white; padding: 20px; text-align: center; }
+                    .content { padding: 30px; background: #f9fafb; }
+                    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
+                    .button { display: inline-block; padding: 12px 30px; background: #10b981; color: white; text-decoration: none; border-radius: 5px; margin: 16px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Account Transfer Complete</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hello,</p>
+                        <p>Your Universus Space Empire account is now linked to this email address.</p>
+                        ${fromEmail ? `<p>Previous email: <strong>${fromEmail}</strong></p>` : ''}
+                        <p>If you did not authorize this change, please secure your account immediately.</p>
+                        <p style="text-align: center;">
+                            <a href="${settingsUrl}" class="button">Review Account Security</a>
+                        </p>
+                    </div>
+                    <div class="footer">
+                        <p>&copy; 2025 Universus Space Empire. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const defaults = {
+            subject: 'Account Transfer Complete - Universus Space Empire',
+            html: defaultHtml,
+            text: `Your account transfer is complete. Review security settings at ${settingsUrl}.`
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('account_transfer_completed', defaults, context, locale, notificationConfig);
+
+        await this.send({
+            to: toEmail,
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'account_transfer_completed',
+            context
+        }, notificationConfig);
+    }
+
+    // GDPR export ready notification
+    static async sendGdprExportReady(
+        email: string,
+        downloadUrl: string,
+        expiresAt?: Date | null,
+        userName?: string,
+        locale: string = 'en'
+    ): Promise<void> {
+        const context = {
+            username: userName || 'Commander',
+            download_link: `${process.env.APP_URL}${downloadUrl}`,
+            expires_at: expiresAt ? expiresAt.toISOString() : ''
+        };
+
+        const defaultHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: #2563eb; color: white; padding: 20px; text-align: center; }
+                    .content { padding: 30px; background: #f9fafb; }
+                    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
+                    .button { display: inline-block; padding: 12px 30px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; margin: 16px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>Your Data Export Is Ready</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hello${userName ? ' ' + userName : ''},</p>
+                        <p>Your GDPR data export is ready for download.</p>
+                        <p style="text-align: center;">
+                            <a href="${context.download_link}" class="button">Download Data</a>
+                        </p>
+                        <p>Download link: ${context.download_link}</p>
+                        ${context.expires_at ? `<p>This link expires on ${context.expires_at}.</p>` : ''}
+                    </div>
+                    <div class="footer">
+                        <p>&copy; 2025 Universus Space Empire. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const defaults = {
+            subject: 'Your Universus Data Export Is Ready',
+            html: defaultHtml,
+            text: `Your data export is ready: ${context.download_link}`
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('gdpr_export_ready', defaults, context, locale, notificationConfig);
+
+        await this.send({
+            to: email,
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'gdpr_export_ready',
+            context
+        }, notificationConfig);
+    }
+
+    // Gift notification
+    static async sendGiftNotification(
+        recipientEmail: string,
+        giftCode: string,
+        senderName?: string,
+        personalMessage?: string,
+        locale: string = 'en'
+    ): Promise<void> {
+        const redeemUrl = `${process.env.APP_URL}/shop/gifts/redeem`;
+        const context = {
+            sender_name: senderName || 'Commander',
+            gift_code: giftCode,
+            redeem_link: redeemUrl,
+            personal_message: personalMessage || ''
+        };
+
+        const defaultHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: #7c3aed; color: white; padding: 20px; text-align: center; }
+                    .content { padding: 30px; background: #f9fafb; }
+                    .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
+                    .code { font-size: 20px; font-weight: bold; letter-spacing: 2px; color: #7c3aed; }
+                    .button { display: inline-block; padding: 12px 30px; background: #7c3aed; color: white; text-decoration: none; border-radius: 5px; margin: 16px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>You Received a Gift</h1>
+                    </div>
+                    <div class="content">
+                        <p>Hello,</p>
+                        <p>${context.sender_name} sent you a gift in Universus Space Empire.</p>
+                        ${context.personal_message ? `<p>Message: ${context.personal_message}</p>` : ''}
+                        <p>Your gift code:</p>
+                        <div class="code">${context.gift_code}</div>
+                        <p style="text-align: center;">
+                            <a href="${redeemUrl}" class="button">Redeem Gift</a>
+                        </p>
+                    </div>
+                    <div class="footer">
+                        <p>&copy; 2025 Universus Space Empire. All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const defaults = {
+            subject: 'You Received a Gift - Universus Space Empire',
+            html: defaultHtml,
+            text: `Gift code: ${giftCode}. Redeem at ${redeemUrl}`
+        };
+
+        const notificationConfig = await this.resolveNotificationConfig();
+        const rendered = await this.renderTemplateContent('gift_received', defaults, context, locale, notificationConfig);
+
+        await this.send({
+            to: recipientEmail,
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+            template: 'gift_received',
+            context
+        }, notificationConfig);
+    }
+
     // 2FA enabled notification
     static async send2FAEnabled(email: string, userName?: string, locale: string = 'en'): Promise<void> {
         const context = {

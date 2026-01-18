@@ -282,7 +282,12 @@ export class AccountTransferService {
 
             await client.query('COMMIT');
 
-            // TODO: Send confirmation email to new address
+            try {
+                const { EmailService } = await import('./emailService');
+                await EmailService.sendAccountTransferCompleted(transfer.to_email, transfer.from_email);
+            } catch (error) {
+                console.error('Failed to send transfer completion email:', error);
+            }
         } catch (error) {
             await client.query('ROLLBACK');
             throw error;

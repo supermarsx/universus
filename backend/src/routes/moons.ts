@@ -6,6 +6,7 @@ import { BuildingService } from '../services/buildingService';
 import { ShipyardService } from '../services/shipyardService';
 import phalanxService from '../services/phalanxService';
 import jumpGateService from '../services/jumpGateService';
+import { pool } from '../config/database';
 
 const router = express.Router();
 
@@ -128,8 +129,20 @@ router.post('/:moonId/destroy', async (req: AuthRequest, res: Response) => {
     if (!Number.isFinite(numDeathstars) || numDeathstars < 1) {
       return res.status(400).json({ success: false, error: 'Invalid number of Deathstars' });
     }
-    // TODO: Validate attacker owns the Deathstars and they are present at the moon
     const authReq = req as AuthRequest;
+    const moonResult = await pool.query(
+      'SELECT deathstar FROM moons WHERE id = $1 AND user_id = $2',
+      [moonId, authReq.user!.id]
+    );
+
+    if (moonResult.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Moon access denied' });
+    }
+
+    const available = parseInt(moonResult.rows[0]?.deathstar || '0', 10);
+    if (available < numDeathstars) {
+      return res.status(400).json({ success: false, error: 'Insufficient Deathstars at moon' });
+    }
     const result = await (await import('../services/destroyMoonService')).default.attemptDestruction(authReq.user!.id, moonId, numDeathstars);
 
     if (result.error) {

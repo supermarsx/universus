@@ -586,53 +586,199 @@ router.post('/trade/offers/:offerId/accept', async (req, res) => {
     const { id: userId } = resolveAuthUser(req);
     const offerId = parseInt(req.params.offerId);
 
-    // Get trade offer
-    const offerResult = await pool.query(
-      `SELECT * FROM trade_offers WHERE id = $1 AND status = 'active'`,
-      [offerId]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    if (offerResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Trade offer not found or expired' });
+      // Get trade offer
+      const offerResult = await client.query(
+        `SELECT * FROM trade_offers WHERE id = $1 AND status = 'active' FOR UPDATE`,
+        [offerId]
+      );
+
+      if (offerResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Trade offer not found or expired' });
+      }
+
+      const offer = offerResult.rows[0];
+
+      if (offer.seller_id === userId) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Cannot accept your own trade offer' });
+      }
+
+      if (offer.expires_at && new Date(offer.expires_at).getTime() <= Date.now()) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Trade offer not found or expired' });
+      }
+
+      const resourceColumns: Record<string, 'metal' | 'crystal' | 'deuterium'> = {
+        metal: 'metal',
+        crystal: 'crystal',
+        deuterium: 'deuterium',
+      };
+
+      const offeredType = offer.resource_offered;
+      const wantedType = offer.resource_wanted;
+      const amountOffered = Number(offer.amount_offered);
+      const amountWanted = Number(offer.amount_wanted);
+
+      const buyerPlanetResult = await client.query(
+        `SELECT id, metal, crystal, deuterium
+         FROM planets
+         WHERE user_id = $1
+         ORDER BY id
+         LIMIT 1
+         FOR UPDATE`,
+        [userId]
+      );
+      const sellerPlanetResult = await client.query(
+        `SELECT id, metal, crystal, deuterium
+         FROM planets
+         WHERE user_id = $1
+         ORDER BY id
+         LIMIT 1
+         FOR UPDATE`,
+        [offer.seller_id]
+      );
+
+      const buyerPlanet = buyerPlanetResult.rows[0];
+      const sellerPlanet = sellerPlanetResult.rows[0];
+
+      if (!buyerPlanet || !sellerPlanet) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Trade requires both users to have a planet' });
+      }
+
+      if (resourceColumns[wantedType]) {
+        const buyerValue = Number(buyerPlanet[resourceColumns[wantedType]] || 0);
+        if (buyerValue < amountWanted) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Insufficient resources to accept offer' });
+        }
+      } else if (wantedType === 'dark_matter') {
+        const buyerUser = await client.query(
+          'SELECT dark_matter FROM users WHERE id = $1 FOR UPDATE',
+          [userId]
+        );
+        const buyerDarkMatter = parseInt(buyerUser.rows[0]?.dark_matter || '0', 10);
+        if (buyerDarkMatter < amountWanted) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Insufficient resources to accept offer' });
+        }
+      }
+
+      if (resourceColumns[offeredType]) {
+        const sellerValue = Number(sellerPlanet[resourceColumns[offeredType]] || 0);
+        if (sellerValue < amountOffered) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Seller no longer has the offered resources' });
+        }
+      } else if (offeredType === 'dark_matter') {
+        const sellerUser = await client.query(
+          'SELECT dark_matter FROM users WHERE id = $1 FOR UPDATE',
+          [offer.seller_id]
+        );
+        const sellerDarkMatter = parseInt(sellerUser.rows[0]?.dark_matter || '0', 10);
+        if (sellerDarkMatter < amountOffered) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Seller no longer has the offered resources' });
+        }
+      }
+
+      if (resourceColumns[wantedType]) {
+        const column = resourceColumns[wantedType];
+        await client.query(
+          `UPDATE planets
+           SET ${column} = ${column} - $1
+           WHERE id = $2`,
+          [amountWanted, buyerPlanet.id]
+        );
+        await client.query(
+          `UPDATE planets
+           SET ${column} = ${column} + $1
+           WHERE id = $2`,
+          [amountWanted, sellerPlanet.id]
+        );
+      } else if (wantedType === 'dark_matter') {
+        await client.query(
+          `UPDATE users
+           SET dark_matter = dark_matter - $1
+           WHERE id = $2`,
+          [amountWanted, userId]
+        );
+        await client.query(
+          `UPDATE users
+           SET dark_matter = dark_matter + $1
+           WHERE id = $2`,
+          [amountWanted, offer.seller_id]
+        );
+      }
+
+      if (resourceColumns[offeredType]) {
+        const column = resourceColumns[offeredType];
+        await client.query(
+          `UPDATE planets
+           SET ${column} = ${column} - $1
+           WHERE id = $2`,
+          [amountOffered, sellerPlanet.id]
+        );
+        await client.query(
+          `UPDATE planets
+           SET ${column} = ${column} + $1
+           WHERE id = $2`,
+          [amountOffered, buyerPlanet.id]
+        );
+      } else if (offeredType === 'dark_matter') {
+        await client.query(
+          `UPDATE users
+           SET dark_matter = dark_matter - $1
+           WHERE id = $2`,
+          [amountOffered, offer.seller_id]
+        );
+        await client.query(
+          `UPDATE users
+           SET dark_matter = dark_matter + $1
+           WHERE id = $2`,
+          [amountOffered, userId]
+        );
+      }
+
+      // Mark offer as completed
+      await client.query(
+        `UPDATE trade_offers 
+         SET status = 'completed', buyer_id = $1, completed_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [userId, offerId]
+      );
+
+      // Create transaction record
+      await client.query(
+        `INSERT INTO trade_transactions 
+         (trade_offer_id, seller_id, buyer_id, resource_given, amount_given, 
+          resource_received, amount_received, exchange_rate)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          offerId,
+          offer.seller_id,
+          userId,
+          offer.resource_offered,
+          offer.amount_offered,
+          offer.resource_wanted,
+          offer.amount_wanted,
+          offer.exchange_rate,
+        ]
+      );
+
+      await client.query('COMMIT');
+      res.json({ success: true });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const offer = offerResult.rows[0];
-
-    if (offer.seller_id === userId) {
-      return res.status(400).json({ error: 'Cannot accept your own trade offer' });
-    }
-
-    // TODO: Verify buyer has enough resources
-    // TODO: Deduct resources from buyer, add to seller
-    // TODO: Add resources to buyer according to the offer
-
-    // Mark offer as completed
-    await pool.query(
-      `UPDATE trade_offers 
-       SET status = 'completed', buyer_id = $1, completed_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
-      [userId, offerId]
-    );
-
-    // Create transaction record
-    await pool.query(
-      `INSERT INTO trade_transactions 
-       (trade_offer_id, seller_id, buyer_id, resource_given, amount_given, 
-        resource_received, amount_received, exchange_rate)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        offerId,
-        offer.seller_id,
-        userId,
-        offer.resource_offered,
-        offer.amount_offered,
-        offer.resource_wanted,
-        offer.amount_wanted,
-        offer.exchange_rate,
-      ]
-    );
-
-    res.json({ success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

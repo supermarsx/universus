@@ -164,7 +164,7 @@ class UniversusChat {
     container.innerHTML = `
       <div class="online-count">${i18n.t('chat.playersOnline', { defaultValue: `${count} player${count !== 1 ? 's' : ''} online` })}</div>
       ${this.onlinePlayers.slice(0, 20).map(player => `
-        <div class="player-item" onclick="chat.startPrivateMessage('${player.username}')">
+        <div class="player-item" onclick="chat.startPrivateMessage(${player.user_id}, '${player.username}')">
           <span class="player-status status-${player.status}"></span>
           ${player.username}
           ${player.alliance_tag ? `<span style="color: var(--secondary-color); font-size: 10px;">[${player.alliance_tag}]</span>` : ''}
@@ -976,13 +976,101 @@ class UniversusChat {
     }
   }
 
-  startPrivateMessage(username) {
-    // Find or create conversation
-    // For now, just show a simple prompt
-    const message = prompt(i18n.t('chat.pmPrompt', { defaultValue: `Send message to ${username}:` }));
-    if (message && message.trim()) {
-      // TODO: Implement creating new conversation
-      alert(i18n.t('chat.pmComingSoon', { defaultValue: 'Private messaging feature coming soon!' }));
+  startPrivateMessage(userId, username) {
+    if (!userId || userId === this.currentUserId) {
+      return;
+    }
+
+    const existing = this.conversations.find(
+      (conv) => conv.other_user_id === userId || conv.other_username === username
+    );
+    if (existing) {
+      this.selectConversation(existing.id);
+      return;
+    }
+
+    this.openPrivateMessageModal(userId, username);
+  }
+
+  openPrivateMessageModal(userId, username) {
+    const modal = document.getElementById('pm-modal');
+    if (!modal) return;
+    const recipientInput = document.getElementById('pm-recipient');
+    const messageInput = document.getElementById('pm-message');
+    if (recipientInput) {
+      recipientInput.value = username || '';
+      if (userId) {
+        recipientInput.dataset.recipientId = String(userId);
+      } else {
+        delete recipientInput.dataset.recipientId;
+      }
+    }
+    if (messageInput) {
+      messageInput.value = '';
+      messageInput.focus();
+    }
+    modal.style.display = 'block';
+  }
+
+  resolveRecipientId(username) {
+    const normalized = String(username || '').trim().toLowerCase();
+    if (!normalized) return null;
+
+    const onlineMatch = this.onlinePlayers.find(
+      (player) => player.username?.toLowerCase() === normalized
+    );
+    if (onlineMatch?.user_id) {
+      return onlineMatch.user_id;
+    }
+
+    const conversationMatch = this.conversations.find(
+      (conv) => conv.other_username?.toLowerCase() === normalized
+    );
+    if (conversationMatch?.other_user_id) {
+      return conversationMatch.other_user_id;
+    }
+
+    return null;
+  }
+
+  async sendPrivateMessageFromModal() {
+    const recipientInput = document.getElementById('pm-recipient');
+    const messageInput = document.getElementById('pm-message');
+    if (!recipientInput || !messageInput) return;
+
+    const message = messageInput.value.trim();
+    if (!message) return;
+
+    let recipientId = parseInt(recipientInput.dataset.recipientId || '0', 10);
+    if (!recipientId) {
+      recipientId = this.resolveRecipientId(recipientInput.value) || 0;
+    }
+
+    if (!recipientId) {
+      alert(i18n.t('chat.userNotFound', { defaultValue: 'User not found. Try an online player or existing conversation.' }));
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/realtime/chat/private', {
+        method: 'POST',
+        headers: this.getAuthHeaders(true),
+        body: JSON.stringify({ receiverId: recipientId, message }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || i18n.t('chat.failedSendPm', { defaultValue: 'Failed to send private message' }));
+      }
+
+      const privateMessage = data.message;
+      await this.loadConversations();
+      if (privateMessage?.conversation_id) {
+        await this.selectConversation(privateMessage.conversation_id);
+      }
+      closePMModal();
+    } catch (error) {
+      console.error('Failed to send private message:', error);
+      alert(error?.message || i18n.t('chat.failedSendPm', { defaultValue: 'Failed to send private message' }));
     }
   }
 
@@ -1234,8 +1322,6 @@ function closePMModal() {
 }
 
 function sendPrivateMessage() {
-  // TODO: Implement PM sending
-  alert(i18n.t('chat.pmSendingNotImpl', { defaultValue: 'Private message sending not yet implemented' }));
-  closePMModal();
+  if (!chat) return;
+  chat.sendPrivateMessageFromModal();
 }
-
