@@ -450,7 +450,28 @@ export class ShipyardManager {
   }
 
   formatNumber(value) {
-    return new Intl.NumberFormat('en-US').format(Math.floor(value || 0));
+    const locale = this.getLocale();
+    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+      return new Intl.NumberFormat(locale).format(Math.floor(value || 0));
+    }
+    return Math.floor(value || 0).toLocaleString();
+  }
+
+  getLocale() {
+    try {
+      if (i18next && i18next.language) {
+        return i18next.language;
+      }
+    } catch (error) {
+      // ignore i18next access errors
+    }
+    try {
+      const stored = localStorage.getItem('preferredLanguage');
+      if (stored) return stored;
+    } catch (error) {
+      // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
   }
 
   formatTime(seconds) {

@@ -50,7 +50,7 @@ function renderStatus(data) {
       incList.innerHTML = data.incidents.map(i => `
       <div class="incident">
         <div class="incident-title">${escapeHtml(i.title)} <span class="badge badge-${i.severity}">${i.severity}</span></div>
-        <div class="incident-meta">${new Date(i.start_time).toLocaleString()} • ${i.affected_components.join(', ')}</div>
+        <div class="incident-meta">${formatDateTime(i.start_time)} • ${i.affected_components.join(', ')}</div>
         <div class="incident-desc">${escapeHtml(i.description || '')}</div>
       </div>
     `).join('');
@@ -65,7 +65,7 @@ function renderStatus(data) {
       maintList.innerHTML = data.maintenance.map(m => `
       <div class="maintenance">
         <div class="maintenance-title">${escapeHtml(m.name)}</div>
-        <div class="maintenance-meta">${new Date(m.start_time).toLocaleString()} → ${new Date(m.end_time).toLocaleString()}</div>
+        <div class="maintenance-meta">${formatDateTime(m.start_time)} → ${formatDateTime(m.end_time)}</div>
         <div class="maintenance-desc">${escapeHtml(m.description || '')}</div>
       </div>
     `).join('');
@@ -85,6 +85,38 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function formatDateTime(value) {
+  const date = value ? new Date(value) : new Date();
+  const locale = getLocale();
+  if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+    return new Intl.DateTimeFormat(locale, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  }
+  return date.toLocaleString();
+}
+
+function getLocale() {
+  try {
+    if (window.i18next && window.i18next.language) {
+      return window.i18next.language;
+    }
+  } catch (error) {
+    // ignore i18next access errors
+  }
+  try {
+    const stored = localStorage.getItem('preferredLanguage');
+    if (stored) return stored;
+  } catch (error) {
+    // ignore storage access errors
+  }
+  return navigator.language || 'en-US';
 }
 
 /**
@@ -162,3 +194,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   await checkAdmin();
   setInterval(fetchStatus, 15000);
 });
+

@@ -1205,7 +1205,43 @@ extractShips(planet: any) {
   }
 
   formatNumber(value: number) {
-    return new Intl.NumberFormat().format(Math.floor(value || 0));
+    const locale = this.getLocale();
+    if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+      return new Intl.NumberFormat(locale).format(Math.floor(value || 0));
+    }
+    return Math.floor(value || 0).toLocaleString();
+  }
+
+  formatDateTime(value: string) {
+    const date = value ? new Date(value) : new Date();
+    const locale = this.getLocale();
+    if (typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+      return new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(date);
+    }
+    return date.toLocaleString();
+  }
+
+  getLocale() {
+    try {
+      if (window.i18next && window.i18next.language) {
+        return window.i18next.language;
+      }
+    } catch (error) {
+      // ignore i18next access errors
+    }
+    try {
+      const stored = localStorage.getItem('preferredLanguage');
+      if (stored) return stored;
+    } catch (error) {
+      // ignore storage access errors
+    }
+    return navigator.language || 'en-US';
   }
 
   formatCountdown(seconds: number | null) {

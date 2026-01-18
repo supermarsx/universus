@@ -324,7 +324,28 @@ class ResearchManager {
     }
 
     formatNumber(num) {
-        return new Intl.NumberFormat('en-US').format(Math.floor(num || 0));
+        const locale = this.getLocale();
+        if (typeof Intl !== 'undefined' && Intl.NumberFormat) {
+            return new Intl.NumberFormat(locale).format(Math.floor(num || 0));
+        }
+        return Math.floor(num || 0).toLocaleString();
+    }
+
+    getLocale() {
+        try {
+            if (i18next && i18next.language) {
+                return i18next.language;
+            }
+        } catch (error) {
+            // ignore i18next access errors
+        }
+        try {
+            const stored = localStorage.getItem('preferredLanguage');
+            if (stored) return stored;
+        } catch (error) {
+            // ignore storage access errors
+        }
+        return navigator.language || 'en-US';
     }
 
     formatTime(seconds) {
@@ -363,4 +384,3 @@ function updatePageData(data) {
 document.addEventListener('DOMContentLoaded', () => {
     ensureManager();
 });
-

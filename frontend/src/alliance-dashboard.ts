@@ -432,10 +432,10 @@
             .map((group) => {
                 const coord = `[${group.target_galaxy}:${group.target_system}:${group.target_position}]`;
                 const windowStart = group.departure_window_start
-                    ? new Date(group.departure_window_start).toLocaleString()
+                    ? formatDateTime(group.departure_window_start)
                     : '';
                 const windowEnd = group.departure_window_end
-                    ? new Date(group.departure_window_end).toLocaleString()
+                    ? formatDateTime(group.departure_window_end)
                     : '';
                 return `
                     <div class="acs-group-card">
