@@ -10,6 +10,7 @@ if (process.env.OTEL_ENABLED === 'true') {
   require('./otel-bootstrap');
 }
 import express from 'express';
+import compression from 'compression';
 import http from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -129,7 +130,10 @@ app.get('/api/health', (req, res) => {
 //   }
 // });
 
-// Error handling middleware
+import compression from 'compression';
+
+// Enable gzip compression
+app.use(compression());
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(err.status || 500).json({

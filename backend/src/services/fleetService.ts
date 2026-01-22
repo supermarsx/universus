@@ -19,7 +19,6 @@ import moonService from './moonService';
 import { ResearchService } from './researchService';
 import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
-import { getMoonById } from './moonService';
 
 interface FleetParticipant {
   fleet: Fleet;
@@ -1451,57 +1450,78 @@ export class FleetService {
    * Strips all resources from the fleet and clears any active orders.
    * Returns true when the move was successful.
    */
-  static async moveFleetToMoon(userId: number, fromMoonId: number, fleetId: number, toMoonId: number): Promise<boolean> {
+  static async moveFleetToMoon(
+    userId: number,
+    fromMoonId: number,
+    fleetId: number,
+    toMoonId: number
+  ): Promise<boolean> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
       // Get fleet and validate
-      const fleetResult = await client.query('SELECT * FROM fleets WHERE id = $1', [fleetId]);
+      const fleetResult = await client.query(
+        'SELECT * FROM fleets WHERE id = $1 FOR UPDATE',
+        [fleetId]
+      );
       const fleet = fleetResult.rows[0];
       if (!fleet || fleet.user_id !== userId) {
         throw new Error('Fleet not found or access denied');
       }
+      if (fleet.status === 'cancelled') {
+        throw new Error('Fleet is cancelled');
+      }
 
       // Get moons
-      const fromMoon = await getMoonById(fromMoonId);
-      const toMoon = await getMoonById(toMoonId);
-      if (!fromMoon || !toMoon) {
-        throw new Error('Invalid moon(s)');
+      const fromMoonResult = await client.query(
+        'SELECT id, planet_id, user_id FROM moons WHERE id = $1 FOR UPDATE',
+        [fromMoonId]
+      );
+      const toMoonResult = await client.query(
+        'SELECT id, planet_id, user_id FROM moons WHERE id = $1 FOR UPDATE',
+        [toMoonId]
+      );
+      const fromMoon = fromMoonResult.rows[0];
+      const toMoon = toMoonResult.rows[0];
+
+      if (!fromMoon || !toMoon) throw new Error('Invalid moon(s)');
+      if (fromMoon.user_id !== userId || toMoon.user_id !== userId) {
+        throw new Error('Moon access denied');
+      }
+      if (fromMoon.id === toMoon.id) {
+        throw new Error('Destination moon must be different');
+      }
+      if (fleet.origin_planet_id !== fromMoon.planet_id) {
+        throw new Error('Fleet is not stationed at the source moon');
       }
 
-      // Get destination planet coords
-      const toPlanetResult = await client.query('SELECT galaxy, system, position FROM planets WHERE id = $1', [toMoon.planet_id]);
-      const toPlanet = toPlanetResult.rows[0];
-      if (!toPlanet) {
-        throw new Error('Destination moon planet not found');
+      const ships = this.safeParse(fleet.ships);
+      const shipKeys = PLANET_SHIP_KEYS;
+      const shipCounts = shipKeys.map((key) => Math.max(0, Number(ships[key] || 0)));
+
+      if (shipCounts.every((count) => count === 0)) {
+        throw new Error('Fleet has no ships to jump');
       }
 
-      // Strip resources from fleet
+      const assignments = shipKeys.map((key, index) => `${key} = ${key} + $${index + 1}`);
       await client.query(
-        'UPDATE fleets SET metal = 0, crystal = 0, deuterium = 0 WHERE id = $1',
+        `UPDATE moons SET ${assignments.join(', ')} WHERE id = $${shipCounts.length + 1}`,
+        [...shipCounts, toMoon.id]
+      );
+
+      // Strip resources and clear fleet record to avoid further processing
+      await client.query(
+        `UPDATE fleets
+         SET cargo_metal = 0, cargo_crystal = 0, cargo_deuterium = 0
+         WHERE id = $1`,
         [fleetId]
       );
 
-      // Clear fleet orders and set idle
-      await client.query(
-        `UPDATE fleets SET 
-          mission_type = NULL,
-          status = 'idle',
-          departure_time = NULL,
-          arrival_time = NULL,
-          return_time = NULL,
-          target_galaxy = $1,
-          target_system = $2,
-          target_position = $3
-        WHERE id = $4`,
-        [toPlanet.galaxy, toPlanet.system, toPlanet.position, fleetId]
-      );
-
-      // Unschedule any events
-      FleetService.unscheduleFleetEvents(fleetId);
+      await client.query('DELETE FROM fleets WHERE id = $1', [fleetId]);
 
       await client.query('COMMIT');
+      FleetService.unscheduleFleetEvents(fleetId);
       return true;
     } catch (error) {
       await client.query('ROLLBACK');

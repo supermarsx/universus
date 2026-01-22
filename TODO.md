@@ -69,7 +69,7 @@ Status legend: [done] implemented and verified, [partial] present but needs audi
 - [partial] Debris -> moon chance and diameter tunables exist (`backend/src/config/moonConfig.ts`) and are invoked in `fleetService`, but formula validation vs spec is pending.
 - [partial] Moon entity and Lunar Base gating present (`backend/src/services/moonService.ts`, `backend/src/services/moonFieldService.ts`).
 - [partial] Sensor Phalanx implemented (`backend/src/services/phalanxService.ts`) but missing spec items: time jitter, rate limits/daily caps, and filtering to hide moon legs (queries planet legs only by coords; moon-origin/dest missions are still enumerable).
-- [partial] Jump Gate: cooldown and ownership checks exist (`backend/src/services/jumpGateService.ts`), but fleet movement is stubbed (`FleetService.moveFleetToMoon`), no resource strip/capacity checks, no per-gate cooldown on destination, and no clearing of fleet orders.
+- [partial] Jump Gate: cooldown and ownership checks exist (`backend/src/services/jumpGateService.ts`); fleet movement now transfers ships to the destination moon and clears fleet orders (`backend/src/services/fleetService.ts`), but destination cooldown and other spec rules remain.
 - [partial] Moon destruction: simplified formula + per-ship loss loop (`backend/src/services/destroyMoonService.ts`) diverge from spec math; no cleanup of queues/ships/defenses or debris/result logging.
 - [partial] Moon visibility/galaxy map indicators and moon-only build roster enforcement not validated in UI/API.
 - [partial] Phalanx counters (moon legs invisible, jitter, cooldown spam control) and RIP spam controls not enforced.
