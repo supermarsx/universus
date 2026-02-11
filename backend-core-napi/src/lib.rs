@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use backend_core::{core, sim::simulate_combat};
+use backend_core::{core, ships::load_ships_for_universe, sim::simulate_combat};
 use chrono::{SecondsFormat, Utc};
 use napi::Result;
 use napi_derive::napi;
@@ -125,6 +125,27 @@ struct PostCombatDistributionResponse {
 struct PostCombatParticipantResult {
     survivors: HashMap<String, i64>,
     loot: PostCombatLoot,
+}
+
+#[derive(Debug, Deserialize)]
+struct FleetMovementCoordinates {
+    #[serde(alias = "galaxy_id", alias = "galaxyId")]
+    galaxy: i32,
+    #[serde(alias = "system_id", alias = "systemId")]
+    system: i32,
+    position: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct FleetMovementByTypeRequest {
+    #[serde(alias = "origin_coords", alias = "originCoords")]
+    origin: FleetMovementCoordinates,
+    #[serde(alias = "target_coords", alias = "targetCoords")]
+    target: FleetMovementCoordinates,
+    #[serde(alias = "ship_counts", alias = "shipCounts")]
+    ships: HashMap<String, i64>,
+    #[serde(alias = "universe_name", alias = "universeName")]
+    universe: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -405,7 +426,11 @@ pub fn calculate_fleet_movement(payload_json: String) -> Result<String> {
         cargo_capacity += ship.cargo * count;
     }
 
-    let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+    let fleet_speed = if min_speed.is_finite() {
+        min_speed
+    } else {
+        0.0
+    };
     let travel_time_seconds = if fleet_speed > 0.0 {
         ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
     } else {
@@ -459,7 +484,11 @@ fn calculate_movement(
         cargo_capacity += ship.cargo * count;
     }
 
-    let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+    let fleet_speed = if min_speed.is_finite() {
+        min_speed
+    } else {
+        0.0
+    };
     let travel_time_seconds = if fleet_speed > 0.0 {
         ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
     } else {
@@ -477,8 +506,33 @@ fn calculate_movement(
     }
 }
 
+fn derive_movement_ship_stats(
+    ship_type: &str,
+    universe_ship_defs: &HashMap<String, backend_core::ships::ShipDef>,
+) -> ShipMovementSpec {
+    let (base_speed, fuel_consumption, cargo) = universe_ship_defs
+        .get(ship_type)
+        .map(|ship| {
+            (
+                ship.weapon.unwrap_or(0.0),
+                ship.deuterium_cost.unwrap_or(0) as f64,
+                ship.cargo.unwrap_or(0) as f64,
+            )
+        })
+        .unwrap_or((0.0, 0.0, 0.0));
+
+    ShipMovementSpec {
+        count: 0,
+        base_speed,
+        fuel_consumption,
+        cargo,
+    }
+}
+
 #[napi]
-pub fn calculate_fleet_movement_fast(payload: NapiFleetMovementRequest) -> Result<NapiFleetMovementResult> {
+pub fn calculate_fleet_movement_fast(
+    payload: NapiFleetMovementRequest,
+) -> Result<NapiFleetMovementResult> {
     Ok(calculate_movement(
         payload.origin_galaxy,
         payload.origin_system,
@@ -491,7 +545,9 @@ pub fn calculate_fleet_movement_fast(payload: NapiFleetMovementRequest) -> Resul
 }
 
 #[napi]
-pub fn calculate_fleet_movement_batch(payload: Vec<NapiFleetMovementRequest>) -> Result<Vec<NapiFleetMovementResult>> {
+pub fn calculate_fleet_movement_batch(
+    payload: Vec<NapiFleetMovementRequest>,
+) -> Result<Vec<NapiFleetMovementResult>> {
     let mut out = Vec::with_capacity(payload.len());
     for req in payload.iter() {
         out.push(calculate_movement(
@@ -505,6 +561,68 @@ pub fn calculate_fleet_movement_batch(payload: Vec<NapiFleetMovementRequest>) ->
         ));
     }
     Ok(out)
+}
+
+#[napi]
+pub fn calculate_fleet_movement_by_type(payload_json: String) -> Result<String> {
+    let payload: FleetMovementByTypeRequest = serde_json::from_str(&payload_json).map_err(|e| {
+        napi::Error::from_reason(format!("invalid movement-by-type payload: {}", e))
+    })?;
+
+    let distance = if payload.origin.galaxy != payload.target.galaxy {
+        (payload.origin.galaxy - payload.target.galaxy).abs() * 20000
+    } else if payload.origin.system != payload.target.system {
+        (payload.origin.system - payload.target.system).abs() * 5 * 19 + 2700
+    } else {
+        (payload.origin.position - payload.target.position).abs() * 5 + 1000
+    };
+
+    let ship_defs = load_ships_for_universe(payload.universe.as_deref().unwrap_or("default"));
+
+    let mut min_speed = f64::INFINITY;
+    let mut fuel_needed = 0.0f64;
+    let mut cargo_capacity = 0.0f64;
+
+    for (ship_type, count_raw) in payload.ships.iter() {
+        let count = *count_raw;
+        if count <= 0 {
+            continue;
+        }
+
+        let ship = derive_movement_ship_stats(ship_type, &ship_defs);
+        if ship.base_speed > 0.0 {
+            min_speed = min_speed.min(ship.base_speed);
+        }
+
+        let count = count as f64;
+        fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
+        cargo_capacity += ship.cargo * count;
+    }
+
+    let fleet_speed = if min_speed.is_finite() {
+        min_speed
+    } else {
+        0.0
+    };
+    let travel_time_seconds = if fleet_speed > 0.0 {
+        ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
+    } else {
+        0
+    };
+
+    cargo_capacity -= fuel_needed;
+
+    let output = FleetMovementResult {
+        distance,
+        fleet_speed,
+        travel_time_seconds,
+        fuel_needed,
+        cargo_capacity,
+    };
+
+    serde_json::to_string(&output).map_err(|e| {
+        napi::Error::from_reason(format!("serialize movement-by-type result failed: {}", e))
+    })
 }
 
 #[napi]
@@ -545,12 +663,13 @@ pub fn resolve_defense_losses(payload_json: String) -> Result<String> {
 
 #[napi]
 pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result<String> {
-    let payload: PostCombatDistributionRequest = serde_json::from_str(&payload_json).map_err(|e| {
-        napi::Error::from_reason(format!(
-            "invalid attacker post-combat distribution payload: {}",
-            e
-        ))
-    })?;
+    let payload: PostCombatDistributionRequest =
+        serde_json::from_str(&payload_json).map_err(|e| {
+            napi::Error::from_reason(format!(
+                "invalid attacker post-combat distribution payload: {}",
+                e
+            ))
+        })?;
 
     let participant_count = payload.participants.len();
     if participant_count == 0 {
@@ -596,7 +715,8 @@ pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result
                 let remaining = (total_loss - already).max(0);
                 remaining.min(fleet_count)
             } else {
-                let proportional = ((total_loss as f64 * fleet_count as f64) / total_count as f64).round() as i64;
+                let proportional =
+                    ((total_loss as f64 * fleet_count as f64) / total_count as f64).round() as i64;
                 let clamped = proportional.min(fleet_count).max(0);
                 *allocated.entry(unit.clone()).or_insert(0) += clamped;
                 clamped
@@ -624,7 +744,8 @@ pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result
         participant_count
     ];
 
-    let mut split_resource = |getter: fn(&PostCombatLoot) -> i64, setter: fn(&mut PostCombatLoot, i64)| {
+    let mut split_resource = |getter: fn(&PostCombatLoot) -> i64,
+                              setter: fn(&mut PostCombatLoot, i64)| {
         let mut remaining = getter(&loot_pool).max(0);
         for idx in 0..participant_count {
             let divisor = (participant_count - idx) as i64;
@@ -671,12 +792,10 @@ pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result
 
 #[napi]
 pub fn compute_mission_cargo_transfer(payload_json: String) -> Result<String> {
-    let payload: MissionCargoTransferRequest = serde_json::from_str(&payload_json).map_err(|e| {
-        napi::Error::from_reason(format!(
-            "invalid mission cargo transfer payload: {}",
-            e
-        ))
-    })?;
+    let payload: MissionCargoTransferRequest =
+        serde_json::from_str(&payload_json).map_err(|e| {
+            napi::Error::from_reason(format!("invalid mission cargo transfer payload: {}", e))
+        })?;
 
     let clamp_non_negative = payload.clamp_non_negative.unwrap_or(false);
 
@@ -792,10 +911,7 @@ pub fn compute_espionage_outcome(payload_json: String) -> Result<String> {
 #[napi]
 pub fn compute_combat_report_summary(payload_json: String) -> Result<String> {
     let payload: CombatReportSummaryRequest = serde_json::from_str(&payload_json).map_err(|e| {
-        napi::Error::from_reason(format!(
-            "invalid combat report summary payload: {}",
-            e
-        ))
+        napi::Error::from_reason(format!("invalid combat report summary payload: {}", e))
     })?;
 
     let response = CombatReportSummaryResponse {
@@ -822,8 +938,8 @@ pub fn compute_combat_report_summary(payload_json: String) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::compute_espionage_outcome;
-    use serde_json::Value;
+    use super::{calculate_fleet_movement_by_type, compute_espionage_outcome};
+    use serde_json::{json, Value};
 
     #[test]
     fn compute_espionage_outcome_supports_snake_case_fields() {
@@ -870,12 +986,80 @@ mod tests {
             "defender_espionage": 3
         }"#;
 
-        let raw_a = compute_espionage_outcome(payload.to_string()).expect("expected valid response");
-        let raw_b = compute_espionage_outcome(payload.to_string()).expect("expected valid response");
+        let raw_a =
+            compute_espionage_outcome(payload.to_string()).expect("expected valid response");
+        let raw_b =
+            compute_espionage_outcome(payload.to_string()).expect("expected valid response");
         let out_a: Value = serde_json::from_str(&raw_a).expect("response should be valid json");
         let out_b: Value = serde_json::from_str(&raw_b).expect("response should be valid json");
 
         assert_eq!(out_a["intel_level"], "full");
         assert_eq!(out_a, out_b);
+    }
+
+    #[test]
+    fn calculate_fleet_movement_by_type_supports_snake_case_aliases_and_shape() {
+        let payload = json!({
+            "origin_coords": {
+                "galaxy": 1,
+                "system": 1,
+                "position": 1
+            },
+            "target_coords": {
+                "galaxy": 1,
+                "system": 2,
+                "position": 5
+            },
+            "ship_counts": {
+                "fighter": 2,
+                "bomber": 1
+            },
+            "universe_name": "default"
+        });
+
+        let raw =
+            calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
+        let out: Value = serde_json::from_str(&raw).expect("response should be valid json");
+
+        assert!(out["distance"].is_number());
+        assert!(out["fleetSpeed"].is_number());
+        assert!(out["travelTimeSeconds"].is_number());
+        assert!(out["fuelNeeded"].is_number());
+        assert!(out["cargoCapacity"].is_number());
+    }
+
+    #[test]
+    fn calculate_fleet_movement_by_type_is_deterministic_and_supports_camel_case_aliases() {
+        let payload = json!({
+            "originCoords": {
+                "galaxyId": 1,
+                "systemId": 1,
+                "position": 1
+            },
+            "targetCoords": {
+                "galaxyId": 1,
+                "systemId": 2,
+                "position": 5
+            },
+            "shipCounts": {
+                "fighter": 2,
+                "bomber": 1
+            },
+            "universeName": "default"
+        });
+
+        let raw_a =
+            calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
+        let raw_b =
+            calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
+        let out_a: Value = serde_json::from_str(&raw_a).expect("response should be valid json");
+        let out_b: Value = serde_json::from_str(&raw_b).expect("response should be valid json");
+
+        assert_eq!(out_a, out_b);
+        assert_eq!(out_a["distance"].as_i64().unwrap(), 2795);
+        assert!((out_a["fleetSpeed"].as_f64().unwrap() - 100.0).abs() < 1e-12);
+        assert_eq!(out_a["travelTimeSeconds"].as_i64().unwrap(), 100620);
+        assert!((out_a["fuelNeeded"].as_f64().unwrap() - 0.0).abs() < 1e-12);
+        assert!((out_a["cargoCapacity"].as_f64().unwrap() - 30.0).abs() < 1e-12);
     }
 }
