@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import { calculateFleetMovementRust } from '../src/coreAdapter/rustCoreClient';
 import {
   calculateFleetMovementBatchNapi,
+  calculateFleetMovementByTypeNapi,
   calculateFleetMovementNapiLegacyJson,
   calculateFleetMovementNapi,
   isNapiAvailable,
@@ -159,6 +160,13 @@ async function main() {
     },
   };
 
+  const napiByTypeCase: BenchmarkCase = {
+    name: 'napi_by_type',
+    run: async (iteration) => {
+      await calculateFleetMovementByTypeNapi(buildMovementRequest(iteration));
+    },
+  };
+
   const napiBatchCase: BenchmarkCase = {
     name: 'napi_batch_x256',
     actionsPerRun: 256,
@@ -169,7 +177,7 @@ async function main() {
     },
   };
 
-  const suite = [tsCase, grpcCase, napiCase, napiFastCase, napiBatchCase];
+  const suite = [tsCase, grpcCase, napiCase, napiByTypeCase, napiFastCase, napiBatchCase];
 
   console.log('Core Transport Benchmark (Fleet Movement)');
   console.log(`iterations: ${iterations}`);
@@ -243,6 +251,15 @@ async function main() {
     warmup,
     grpcTarget: process.env.BACKEND_CORE_ADDR || 'backend-core:50051',
     napiBindingPath: process.env.CORE_NAPI_BINDING_PATH || null,
+    metadata: {
+      rustFirstMovementPath: ['napi_by_type', 'napi_fast', 'grpc', 'typescript_local'],
+      kernels: {
+        byType: 'calculateFleetMovementByTypeNapi',
+        fast: 'calculateFleetMovementNapi',
+        batch: 'calculateFleetMovementBatchNapi',
+        legacyJson: 'calculateFleetMovementNapiLegacyJson',
+      },
+    },
     summaries,
   };
   const outFile = path.join(saveDir, `core-bench-${timestamp}.json`);

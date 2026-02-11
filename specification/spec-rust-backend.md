@@ -28,6 +28,12 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
   - Node caller: `backend/src/services/fleetService.ts`
   - Scope: distance, travel time, fuel consumption, cargo capacity calculations.
+- Fleet movement by-type kernel (N-API-first):
+  - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts` (`calculateFleetMovementByTypeNapi`)
+  - Node callers:
+    - `backend/src/services/fleetService.ts`
+    - `backend/src/services/fleetHelperService.ts`
+  - Scope: movement math keyed by ship type/count map (Rust-owned ship stats), with cache key using deterministic ship map ordering.
 - Fleet post-combat distribution (N-API):
   - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
   - Node caller: `backend/src/services/fleetService.ts`
@@ -59,7 +65,12 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
 
 ## Fallback and Resilience
-- If N-API call fails, backend falls back to gRPC, then TypeScript simulation path.
+- Fleet movement path order:
+  - by-type N-API kernel
+  - fast N-API movement
+  - gRPC movement
+  - local TypeScript movement
+- If N-API movement calls fail, backend falls back to gRPC, then TypeScript simulation path.
 - If Rust gRPC call fails, backend falls back to TypeScript simulation path.
 - In test environments (`NODE_ENV=test`), default simulation engine is TypeScript unless explicitly overridden.
 - Helper REST shims use Rust N-API first and immediately fall back to TypeScript local calculators when the binding is unavailable or returns an error.

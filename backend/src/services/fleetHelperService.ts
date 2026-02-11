@@ -1,6 +1,7 @@
 import { SHIPS } from '../config/gameConfig';
 import type { RustFleetMovementRequest } from '../coreAdapter/rustCoreClient';
 import {
+  calculateFleetMovementByTypeNapi,
   calculateFleetMovementNapi,
   computeAttackerPostCombatDistributionNapi,
   resolveDefenseLossesNapi,
@@ -267,7 +268,13 @@ function combatDistributionFallback(input: CombatDistributionInput): CombatDistr
 export class FleetHelperService {
   static async calculateMovement(input: FleetMovementInput): Promise<FleetMovementOutput> {
     try {
-      const result = await calculateFleetMovementNapi(buildRustMovementRequest(input));
+      const request = buildRustMovementRequest(input);
+      let result;
+      try {
+        result = await calculateFleetMovementByTypeNapi(request);
+      } catch {
+        result = await calculateFleetMovementNapi(request);
+      }
       return {
         distance: Number(result.distance || 0),
         fleetSpeed: Number(result.fleetSpeed || 0),

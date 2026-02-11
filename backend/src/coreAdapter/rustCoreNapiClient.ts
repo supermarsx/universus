@@ -44,6 +44,63 @@ type RustNapiBinding = {
     cargo_capacity?: number;
     cargoCapacity?: number;
   };
+  calculateFleetMovementByTypeNapi?: (payload: {
+    originGalaxy: number;
+    originSystem: number;
+    originPosition: number;
+    targetGalaxy: number;
+    targetSystem: number;
+    targetPosition: number;
+    ships: Record<string, number>;
+  }) => {
+    distance: number;
+    fleet_speed?: number;
+    fleetSpeed?: number;
+    travel_time_seconds?: number;
+    travelTimeSeconds?: number;
+    fuel_needed?: number;
+    fuelNeeded?: number;
+    cargo_capacity?: number;
+    cargoCapacity?: number;
+  };
+  calculateFleetMovementByType?: (payload: {
+    originGalaxy: number;
+    originSystem: number;
+    originPosition: number;
+    targetGalaxy: number;
+    targetSystem: number;
+    targetPosition: number;
+    ships: Record<string, number>;
+  }) => {
+    distance: number;
+    fleet_speed?: number;
+    fleetSpeed?: number;
+    travel_time_seconds?: number;
+    travelTimeSeconds?: number;
+    fuel_needed?: number;
+    fuelNeeded?: number;
+    cargo_capacity?: number;
+    cargoCapacity?: number;
+  };
+  calculate_fleet_movement_by_type?: (payload: {
+    originGalaxy: number;
+    originSystem: number;
+    originPosition: number;
+    targetGalaxy: number;
+    targetSystem: number;
+    targetPosition: number;
+    ships: Record<string, number>;
+  }) => {
+    distance: number;
+    fleet_speed?: number;
+    fleetSpeed?: number;
+    travel_time_seconds?: number;
+    travelTimeSeconds?: number;
+    fuel_needed?: number;
+    fuelNeeded?: number;
+    cargo_capacity?: number;
+    cargoCapacity?: number;
+  };
   calculateFleetMovementBatch?: (payload: RustFleetMovementRequest[]) => Array<{
     distance: number;
     fleet_speed?: number;
@@ -117,6 +174,26 @@ const parseJson = <T>(raw: string): T => {
   return JSON.parse(raw) as T;
 };
 
+const normalizeMovementResult = (result: {
+  distance: number;
+  fleetSpeed?: number;
+  fleet_speed?: number;
+  travelTimeSeconds?: number;
+  travel_time_seconds?: number;
+  fuelNeeded?: number;
+  fuel_needed?: number;
+  cargoCapacity?: number;
+  cargo_capacity?: number;
+}): RustFleetMovementResult => {
+  return {
+    distance: Number(result.distance || 0),
+    fleetSpeed: Number(result.fleetSpeed ?? result.fleet_speed ?? 0),
+    travelTimeSeconds: Number(result.travelTimeSeconds ?? result.travel_time_seconds ?? 0),
+    fuelNeeded: Number(result.fuelNeeded ?? result.fuel_needed ?? 0),
+    cargoCapacity: Number(result.cargoCapacity ?? result.cargo_capacity ?? 0),
+  };
+};
+
 export async function simulateBattleNapi(request: RustSimulateRequest): Promise<any> {
   const binding = getBinding();
   const fn = binding.simulateBattle || binding.simulate_battle;
@@ -148,13 +225,7 @@ export async function calculateFleetMovementNapi(
       })),
     };
     const result = fastFn(fastRequest as any);
-    return {
-      distance: Number(result.distance || 0),
-      fleetSpeed: Number(result.fleetSpeed ?? result.fleet_speed ?? 0),
-      travelTimeSeconds: Number(result.travelTimeSeconds ?? result.travel_time_seconds ?? 0),
-      fuelNeeded: Number(result.fuelNeeded ?? result.fuel_needed ?? 0),
-      cargoCapacity: Number(result.cargoCapacity ?? result.cargo_capacity ?? 0),
-    };
+    return normalizeMovementResult(result);
   }
 
   const fn = binding.calculateFleetMovement || binding.calculate_fleet_movement;
@@ -175,13 +246,39 @@ export async function calculateFleetMovementNapi(
     cargo_capacity?: number;
   }>(raw);
 
-  return {
-    distance: Number(result.distance || 0),
-    fleetSpeed: Number(result.fleetSpeed ?? result.fleet_speed ?? 0),
-    travelTimeSeconds: Number(result.travelTimeSeconds ?? result.travel_time_seconds ?? 0),
-    fuelNeeded: Number(result.fuelNeeded ?? result.fuel_needed ?? 0),
-    cargoCapacity: Number(result.cargoCapacity ?? result.cargo_capacity ?? 0),
-  };
+  return normalizeMovementResult(result);
+}
+
+export async function calculateFleetMovementByTypeNapi(
+  request: RustFleetMovementRequest
+): Promise<RustFleetMovementResult> {
+  const binding = getBinding();
+  const fn =
+    binding.calculateFleetMovementByTypeNapi ||
+    binding.calculateFleetMovementByType ||
+    binding.calculate_fleet_movement_by_type;
+  if (!fn) {
+    throw new Error('Rust N-API function calculateFleetMovementByType not exported');
+  }
+
+  const ships: Record<string, number> = {};
+  for (const ship of request.ships || []) {
+    const count = Math.max(0, Math.trunc(Number(ship?.count) || 0));
+    if (count <= 0) continue;
+    ships[ship.ship_type] = (ships[ship.ship_type] || 0) + count;
+  }
+
+  const result = fn({
+    originGalaxy: request.origin_galaxy,
+    originSystem: request.origin_system,
+    originPosition: request.origin_position,
+    targetGalaxy: request.target_galaxy,
+    targetSystem: request.target_system,
+    targetPosition: request.target_position,
+    ships,
+  } as any);
+
+  return normalizeMovementResult(result as any);
 }
 
 export async function calculateFleetMovementNapiLegacyJson(
@@ -206,13 +303,7 @@ export async function calculateFleetMovementNapiLegacyJson(
     cargo_capacity?: number;
   }>(raw);
 
-  return {
-    distance: Number(result.distance || 0),
-    fleetSpeed: Number(result.fleetSpeed ?? result.fleet_speed ?? 0),
-    travelTimeSeconds: Number(result.travelTimeSeconds ?? result.travel_time_seconds ?? 0),
-    fuelNeeded: Number(result.fuelNeeded ?? result.fuel_needed ?? 0),
-    cargoCapacity: Number(result.cargoCapacity ?? result.cargo_capacity ?? 0),
-  };
+  return normalizeMovementResult(result);
 }
 
 export async function calculateFleetMovementBatchNapi(
@@ -240,13 +331,7 @@ export async function calculateFleetMovementBatchNapi(
   }));
 
   const rows = fn(fastRequests as any);
-  return rows.map((result) => ({
-    distance: Number(result.distance || 0),
-    fleetSpeed: Number(result.fleetSpeed ?? result.fleet_speed ?? 0),
-    travelTimeSeconds: Number(result.travelTimeSeconds ?? result.travel_time_seconds ?? 0),
-    fuelNeeded: Number(result.fuelNeeded ?? result.fuel_needed ?? 0),
-    cargoCapacity: Number(result.cargoCapacity ?? result.cargo_capacity ?? 0),
-  }));
+  return rows.map((result) => normalizeMovementResult(result));
 }
 
 export async function resolveDefenseLossesNapi(payload: {

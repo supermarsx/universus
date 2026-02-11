@@ -1695,6 +1695,7 @@ export class FleetService {
           cargo: shipConfig?.cargo || 0,
         };
       });
+    const byTypeShips = this.buildMovementShipCountMap(payload.ships);
 
     const cacheKey = this.buildMovementCacheKey(
       originPlanet.galaxy,
@@ -1705,11 +1706,16 @@ export class FleetService {
       payload.targetPosition,
       rustShips
     );
+    const byTypeCacheKey = this.buildMovementCacheKeyByType(
+      originPlanet.galaxy,
+      originPlanet.system,
+      originPlanet.position,
+      payload.targetGalaxy,
+      payload.targetSystem,
+      payload.targetPosition,
+      byTypeShips
+    );
     const now = Date.now();
-    const cached = this.movementCache.get(cacheKey);
-    if (cached && cached.expiresAt > now) {
-      return cached.value;
-    }
 
     const grpcRequest = {
       origin_galaxy: originPlanet.galaxy,
@@ -1728,18 +1734,44 @@ export class FleetService {
 
     if (coreTransport === 'napi') {
       try {
-        const { calculateFleetMovementNapi } = require('../coreAdapter/rustCoreNapiClient');
-        const rustResult = await calculateFleetMovementNapi(grpcRequest);
-        const value = {
-          fuelNeeded: rustResult.fuelNeeded,
-          travelTimeSeconds: rustResult.travelTimeSeconds,
-          cargoCapacity: rustResult.cargoCapacity,
+        const byTypeCached = this.movementCache.get(byTypeCacheKey);
+        if (byTypeCached && byTypeCached.expiresAt > now) {
+          return byTypeCached.value;
+        }
+        const { calculateFleetMovementByTypeNapi } = require('../coreAdapter/rustCoreNapiClient');
+        const byTypeResult = await calculateFleetMovementByTypeNapi(grpcRequest);
+        const byTypeValue = {
+          fuelNeeded: byTypeResult.fuelNeeded,
+          travelTimeSeconds: byTypeResult.travelTimeSeconds,
+          cargoCapacity: byTypeResult.cargoCapacity,
         };
-        this.setMovementCache(cacheKey, value);
-        return value;
+        this.setMovementCache(byTypeCacheKey, byTypeValue);
+        return byTypeValue;
       } catch (error) {
-        console.warn('[FleetService] Rust N-API movement unavailable, falling back to gRPC/local:', error);
+        console.warn('[FleetService] Rust N-API by-type movement unavailable, falling back to fast movement:', error);
+        try {
+          const cached = this.movementCache.get(cacheKey);
+          if (cached && cached.expiresAt > now) {
+            return cached.value;
+          }
+          const { calculateFleetMovementNapi } = require('../coreAdapter/rustCoreNapiClient');
+          const rustResult = await calculateFleetMovementNapi(grpcRequest);
+          const value = {
+            fuelNeeded: rustResult.fuelNeeded,
+            travelTimeSeconds: rustResult.travelTimeSeconds,
+            cargoCapacity: rustResult.cargoCapacity,
+          };
+          this.setMovementCache(cacheKey, value);
+          return value;
+        } catch (innerError) {
+          console.warn('[FleetService] Rust N-API movement unavailable, falling back to gRPC/local:', innerError);
+        }
       }
+    }
+
+    const cached = this.movementCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
     }
 
     try {
@@ -1819,6 +1851,32 @@ export class FleetService {
       .slice()
       .sort((a, b) => a.ship_type.localeCompare(b.ship_type))
       .map((ship) => `${ship.ship_type}:${ship.count}:${ship.base_speed}:${ship.fuel_consumption}:${ship.cargo}`)
+      .join('|');
+    return `${originGalaxy}:${originSystem}:${originPosition}->${targetGalaxy}:${targetSystem}:${targetPosition}#${shipPart}`;
+  }
+
+  private static buildMovementShipCountMap(ships: { [key: string]: number }): Record<string, number> {
+    const normalized: Record<string, number> = {};
+    Object.entries(ships).forEach(([shipType, rawCount]) => {
+      const count = Math.max(0, Math.trunc(Number(rawCount) || 0));
+      if (!count) return;
+      normalized[shipType] = count;
+    });
+    return normalized;
+  }
+
+  private static buildMovementCacheKeyByType(
+    originGalaxy: number,
+    originSystem: number,
+    originPosition: number,
+    targetGalaxy: number,
+    targetSystem: number,
+    targetPosition: number,
+    shipsByType: Record<string, number>
+  ): string {
+    const shipPart = Object.keys(shipsByType)
+      .sort((a, b) => a.localeCompare(b))
+      .map((shipType) => `${shipType}:${shipsByType[shipType]}`)
       .join('|');
     return `${originGalaxy}:${originSystem}:${originPosition}->${targetGalaxy}:${targetSystem}:${targetPosition}#${shipPart}`;
   }

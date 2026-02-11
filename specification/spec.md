@@ -10,7 +10,7 @@ Goal: Design and implement a full-stack browser-based multiplayer RPG (strategy 
 The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy simulation:
 - HTTP/WebSocket/API orchestration remains in Node.js/TypeScript.
 - **Combat simulation is delegated to `backend-core` (Rust, gRPC)** by default (`CORE_ENGINE=rust`), with TypeScript fallback for resilience.
-- **Fleet movement calculations (distance/travel time/fuel/cargo) are delegated to `backend-core` (Rust, gRPC)** by default, with TypeScript fallback for resilience.
+- **Fleet movement now uses a Rust-first path with N-API by-type kernel first, then fast N-API, then gRPC, then local TypeScript fallback** for resilience.
 - **Fleet/combat helper calculator endpoints now use Rust N-API first with TypeScript fallback** for low-risk orchestration offload:
   - `POST /api/fleet/helpers/movement`
   - `POST /api/fleet/helpers/combat/defense-rebuild`
@@ -21,6 +21,10 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
   - `CORE_TRANSPORT=auto|grpc|napi` to choose Rust invocation transport (default `auto`).
   - `BACKEND_CORE_ADDR` for Rust core gRPC endpoint.
   - `CORE_UNIVERSE` for universe-specific Rust worker context.
+
+Movement kernel note:
+- N-API by-type movement (`calculateFleetMovementByTypeNapi`) accepts a deterministic ship type/count map.
+- `FleetService` movement cache keys use deterministic ship-map ordering for the by-type path (ship stats are not included in that key).
 
 This update supersedes prior wording that all game modules run solely inside the Node.js process.
 See `specification/spec-rust-backend.md` for the Rust boundary and migration details.

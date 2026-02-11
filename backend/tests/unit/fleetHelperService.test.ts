@@ -1,11 +1,13 @@
 import { FleetHelperService } from '../../src/services/fleetHelperService';
 import {
+  calculateFleetMovementByTypeNapi,
   calculateFleetMovementNapi,
   computeAttackerPostCombatDistributionNapi,
   resolveDefenseLossesNapi,
 } from '../../src/coreAdapter/rustCoreNapiClient';
 
 jest.mock('../../src/coreAdapter/rustCoreNapiClient', () => ({
+  calculateFleetMovementByTypeNapi: jest.fn(),
   calculateFleetMovementNapi: jest.fn(),
   resolveDefenseLossesNapi: jest.fn(),
   computeAttackerPostCombatDistributionNapi: jest.fn(),
@@ -16,8 +18,8 @@ describe('FleetHelperService', () => {
     jest.clearAllMocks();
   });
 
-  test('uses Rust N-API movement result when available', async () => {
-    (calculateFleetMovementNapi as jest.Mock).mockResolvedValue({
+  test('uses Rust N-API by-type movement result when available', async () => {
+    (calculateFleetMovementByTypeNapi as jest.Mock).mockResolvedValue({
       distance: 1100,
       fleetSpeed: 5000,
       travelTimeSeconds: 792,
@@ -33,10 +35,33 @@ describe('FleetHelperService', () => {
 
     expect(result.engine).toBe('rust-napi');
     expect(result.distance).toBe(1100);
+    expect(calculateFleetMovementByTypeNapi).toHaveBeenCalled();
+    expect(calculateFleetMovementNapi).not.toHaveBeenCalled();
+  });
+
+  test('falls back from by-type to fast Rust N-API movement', async () => {
+    (calculateFleetMovementByTypeNapi as jest.Mock).mockRejectedValue(new Error('missing by-type binding'));
+    (calculateFleetMovementNapi as jest.Mock).mockResolvedValue({
+      distance: 1100,
+      fleetSpeed: 5000,
+      travelTimeSeconds: 792,
+      fuelNeeded: 110,
+      cargoCapacity: 4890,
+    });
+
+    const result = await FleetHelperService.calculateMovement({
+      origin: { galaxy: 1, system: 1, position: 1 },
+      target: { galaxy: 1, system: 1, position: 21 },
+      ships: { small_cargo: 10 },
+    });
+
+    expect(result.engine).toBe('rust-napi');
+    expect(calculateFleetMovementByTypeNapi).toHaveBeenCalled();
     expect(calculateFleetMovementNapi).toHaveBeenCalled();
   });
 
   test('falls back to TypeScript movement when Rust N-API fails', async () => {
+    (calculateFleetMovementByTypeNapi as jest.Mock).mockRejectedValue(new Error('missing binding'));
     (calculateFleetMovementNapi as jest.Mock).mockRejectedValue(new Error('missing binding'));
 
     const result = await FleetHelperService.calculateMovement({
