@@ -28,6 +28,18 @@ const percentile = (values: number[], p: number): number => {
 const mean = (values: number[]): number =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
+const minMax = (values: number[]): { min: number; max: number } => {
+  if (!values.length) return { min: 0, max: 0 };
+  let min = values[0];
+  let max = values[0];
+  for (let i = 1; i < values.length; i++) {
+    const value = values[i];
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return { min, max };
+};
+
 const buildMovementRequest = (iteration: number) => ({
   origin_galaxy: 1,
   origin_system: 120 + (iteration % 3),
@@ -139,8 +151,7 @@ async function main() {
     const p95 = percentile(result.samples, 95);
     const p99 = percentile(result.samples, 99);
     const avg = mean(result.samples);
-    const min = Math.min(...result.samples);
-    const max = Math.max(...result.samples);
+    const { min, max } = minMax(result.samples);
 
     console.log(
       `${testCase.name}: p50=${p50.toFixed(3)}ms p95=${p95.toFixed(3)}ms p99=${p99.toFixed(3)}ms avg=${avg.toFixed(
