@@ -19,6 +19,7 @@
     "pino": "^8.19.0"
   },
   "devDependencies": {
+    "@types/html-to-text": "^9.0.4",
     "@types/node": "^20.11.30",
     "@types/nodemailer": "^6.4.14",
     "ts-node": "^10.9.2",

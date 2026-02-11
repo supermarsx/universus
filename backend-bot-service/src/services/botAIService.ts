@@ -236,7 +236,10 @@ export class BotAIService {
         if (resources.metal >= building.minResources) {
           try {
             // Attempt to start building
-            await BuildingService.startConstruction(gameState.userId, mainPlanet.id, building.name);
+            await BuildingService.startConstruction(gameState.userId, building.name, {
+              planetId: mainPlanet.id,
+              locationType: 'planet'
+            });
             
             await BotService.logAction(
               bot.id,

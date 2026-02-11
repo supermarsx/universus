@@ -7,14 +7,16 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/backend-bot-service/src/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "worker": "node dist/backend-bot-service/src/worker.js"
+    "worker": "node dist/backend-bot-service/src/worker.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e \"console.log('No tests configured for backend-bot-service')\""
   },
   "dependencies": {
     "@types/nunjucks": "^3.2.6",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.2.4",
     "express": "^5.1.0",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",

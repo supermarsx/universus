@@ -8,6 +8,17 @@ const router: Router = express.Router();
 
 router.use(authenticateToken, requireAdmin);
 
+const toSingleString = (value: unknown): string | null => {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0];
+  return null;
+};
+
+const toInt = (value: unknown): number | null => {
+  const parsed = parseInt(toSingleString(value) ?? '', 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 /**
  * GET /api/admin/bots
  * Get all bots with optional filtering
@@ -53,7 +64,10 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const botId = parseInt(req.params.id);
+    const botId = toInt(req.params.id);
+    if (!botId) {
+      return res.status(400).json({ success: false, error: 'Invalid bot id' });
+    }
     
     const bot = await BotService.getBotById(botId);
     
@@ -166,7 +180,10 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const botId = parseInt(req.params.id);
+    const botId = toInt(req.params.id);
+    if (!botId) {
+      return res.status(400).json({ success: false, error: 'Invalid bot id' });
+    }
     const updates = req.body;
     
     const bot = await BotService.updateBot(botId, updates);
@@ -190,7 +207,10 @@ router.put('/:id', async (req: Request, res: Response) => {
  */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const botId = parseInt(req.params.id);
+    const botId = toInt(req.params.id);
+    if (!botId) {
+      return res.status(400).json({ success: false, error: 'Invalid bot id' });
+    }
     
     await BotService.deleteBot(botId);
     
@@ -257,9 +277,12 @@ router.post('/bulk', async (req: Request, res: Response) => {
  */
 router.get('/:id/actions', async (req: Request, res: Response) => {
   try {
-    const botId = parseInt(req.params.id);
-    const limit = parseInt(req.query.limit as string) || 100;
-    const actionType = req.query.action_type as string;
+    const botId = toInt(req.params.id);
+    if (!botId) {
+      return res.status(400).json({ success: false, error: 'Invalid bot id' });
+    }
+    const limit = toInt(req.query.limit) || 100;
+    const actionType = toSingleString(req.query.action_type) || undefined;
     
     const actions = await BotService.getActionHistory(botId, limit, actionType);
     
@@ -282,9 +305,14 @@ router.get('/:id/actions', async (req: Request, res: Response) => {
  */
 router.get('/:id/statistics', async (req: Request, res: Response) => {
   try {
-    const botId = parseInt(req.params.id);
-    const startDate = req.query.start_date ? new Date(req.query.start_date as string) : undefined;
-    const endDate = req.query.end_date ? new Date(req.query.end_date as string) : undefined;
+    const botId = toInt(req.params.id);
+    if (!botId) {
+      return res.status(400).json({ success: false, error: 'Invalid bot id' });
+    }
+    const startDateValue = toSingleString(req.query.start_date);
+    const endDateValue = toSingleString(req.query.end_date);
+    const startDate = startDateValue ? new Date(startDateValue) : undefined;
+    const endDate = endDateValue ? new Date(endDateValue) : undefined;
     
     const statistics = await BotService.getStatistics(botId, startDate, endDate);
     
@@ -307,7 +335,7 @@ router.get('/:id/statistics', async (req: Request, res: Response) => {
  */
 router.get('/leaderboard/top', async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = toInt(req.query.limit) || 20;
     
     const leaderboard = await BotService.getLeaderboard(limit);
     
@@ -330,7 +358,10 @@ router.get('/leaderboard/top', async (req: Request, res: Response) => {
  */
 router.post('/:id/think', async (req: Request, res: Response) => {
   try {
-    const botId = parseInt(req.params.id);
+    const botId = toInt(req.params.id);
+    if (!botId) {
+      return res.status(400).json({ success: false, error: 'Invalid bot id' });
+    }
     
     const bot = await BotService.getBotById(botId);
     
@@ -459,7 +490,10 @@ router.get('/personalities/list', async (req: Request, res: Response) => {
  */
 router.post('/universe/:id/generate', async (req: Request, res: Response) => {
   try {
-    const universeId = parseInt(req.params.id, 10);
+    const universeId = toInt(req.params.id);
+    if (!universeId) {
+      return res.status(400).json({ success: false, message: 'Invalid universe id' });
+    }
 
     const result = await botGenerationService.generateBotsForUniverse({
       universeId,
