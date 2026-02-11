@@ -1,0 +1,79 @@
+{
+  "timestamp": "2026-02-11T17:00:57.538Z",
+  "gitCommit": "ff116ee",
+  "iterations": 1000000,
+  "warmup": 5000,
+  "grpcTarget": "backend-core:50051",
+  "napiBindingPath": "C:\\Projects\\universus\\backend-core-napi\\index.node",
+  "metadata": {
+    "rustFirstMovementPath": [
+      "napi_by_type",
+      "napi_fast",
+      "grpc",
+      "typescript_local"
+    ],
+    "kernels": {
+      "byType": "calculateFleetMovementByTypeNapi",
+      "fast": "calculateFleetMovementNapi",
+      "batch": "calculateFleetMovementBatchNapi",
+      "legacyJson": "calculateFleetMovementNapiLegacyJson"
+    }
+  },
+  "summaries": [
+    {
+      "name": "ts",
+      "totalMs": 185.09480000305555,
+      "opsPerSec": 5402636.918938252,
+      "p50": 0.0001,
+      "p95": 0.0003,
+      "p99": 0.0006,
+      "avg": 0.00018509480000305554,
+      "min": 0.0001,
+      "max": 1.2857
+    },
+    {
+      "name": "napi_json_compat",
+      "totalMs": 6286.517700014212,
+      "opsPerSec": 159070.5773400971,
+      "p50": 0.0066,
+      "p95": 0.0086,
+      "p99": 0.0093,
+      "avg": 0.006286517700014212,
+      "min": 0.0029,
+      "max": 1.4369
+    },
+    {
+      "name": "napi_by_type",
+      "totalMs": 51751.35800001282,
+      "opsPerSec": 19323.16442787361,
+      "p50": 0.0475,
+      "p95": 0.0923,
+      "p99": 0.1455,
+      "avg": 0.05175135800001282,
+      "min": 0.0251,
+      "max": 10.2846
+    },
+    {
+      "name": "napi_fast",
+      "totalMs": 7451.457200009625,
+      "opsPerSec": 134201.93838041616,
+      "p50": 0.0059,
+      "p95": 0.0119,
+      "p99": 0.0141,
+      "avg": 0.007451457200009625,
+      "min": 0.0042,
+      "max": 0.5152
+    },
+    {
+      "name": "napi_batch_x256",
+      "totalMs": 1840857.251500054,
+      "opsPerSec": 139065.6444389667,
+      "p50": 1.6568,
+      "p95": 2.9252,
+      "p99": 3.4107,
+      "avg": 1.840857251500054,
+      "min": 1.0353,
+      "max": 43.2786
+    }
+  ]
+}

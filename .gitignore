@@ -26,3 +26,6 @@ Thumbs.db
 backend/coverage/
 /target
 backend-core-napi/index.node
+backend/benchmarks/tmp/rust_pure_bench.pdb
+backend/benchmarks/tmp/rust_pure_bench.exe
+/backend/benchmarks/tmp
