@@ -25,3 +25,4 @@ Thumbs.db
 # Coverage
 backend/coverage/
 /target
+backend-core-napi/index.node
