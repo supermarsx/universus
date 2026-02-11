@@ -34,6 +34,7 @@
     "bench:core:memory:grpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCoreMemory.ps1 -WithGrpc",
     "bench:core:memory:auto:10k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCoreMemory.ps1 -Iterations 10000 -Warmup 200 -SampleEvery 25",
     "bench:core:memory:grpc:10k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCoreMemory.ps1 -WithGrpc -Iterations 10000 -Warmup 200 -SampleEvery 25",
+    "bench:core:pure": "ts-node --transpile-only scripts/benchmarkCorePure.ts",
     "analytics:worker": "ts-node src/workers/analyticsQueueWorker.ts"
   },
   "keywords": [
