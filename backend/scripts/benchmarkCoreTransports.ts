@@ -28,6 +28,8 @@ const percentile = (values: number[], p: number): number => {
 const mean = (values: number[]): number =>
   values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 
+const sum = (values: number[]): number => values.reduce((acc, value) => acc + value, 0);
+
 const minMax = (values: number[]): { min: number; max: number } => {
   if (!values.length) return { min: 0, max: 0 };
   let min = values[0];
@@ -151,12 +153,16 @@ async function main() {
     const p95 = percentile(result.samples, 95);
     const p99 = percentile(result.samples, 99);
     const avg = mean(result.samples);
+    const total = sum(result.samples);
     const { min, max } = minMax(result.samples);
+    const opsPerSec = total > 0 ? (iterations / (total / 1000)) : 0;
 
     console.log(
-      `${testCase.name}: p50=${p50.toFixed(3)}ms p95=${p95.toFixed(3)}ms p99=${p99.toFixed(3)}ms avg=${avg.toFixed(
+      `${testCase.name}: total=${total.toFixed(3)}ms ops/s=${opsPerSec.toFixed(0)} p50=${p50.toFixed(
         3
-      )}ms min=${min.toFixed(3)}ms max=${max.toFixed(3)}ms`
+      )}ms p95=${p95.toFixed(3)}ms p99=${p99.toFixed(3)}ms avg=${avg.toFixed(3)}ms min=${min.toFixed(
+        3
+      )}ms max=${max.toFixed(3)}ms`
     );
   }
 
