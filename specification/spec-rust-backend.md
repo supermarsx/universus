@@ -16,14 +16,19 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - Worker-managed simulation scheduling for per-universe compute isolation.
 
 ## Transport
-- Protocol: gRPC
+- Protocols: gRPC, N-API, HTTP (internal)
 - Contract source: `backend/src/coreAdapter/proto/core.proto`
 - Rust service endpoint: `BACKEND_CORE_ADDR` (default `backend-core:50051`)
+- Rust HTTP helper endpoint base: `RUST_HTTP_HELPER_URL` (example `http://backend-core:50052`)
 
 ## Current Rust-Delegated Flows
 - Combat simulation (`SimulateBattle`) via:
   - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
   - Node caller: `backend/src/services/combatService.ts`
+  - HTTP internal route (when `CORE_TRANSPORT=http`):
+    - `POST /api/combat/simulate` on Rust HTTP helper service.
+    - Called via `backend/src/services/rustHttpHelperClientService.ts`.
+    - Protected by `x-core-helper-token` when `CORE_HTTP_HELPER_TOKEN` is configured.
 - Fleet movement math (`CalculateFleetMovement`) via:
   - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
   - Node caller: `backend/src/services/fleetService.ts`
@@ -68,6 +73,7 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - `auto` (default): prefer N-API when available, otherwise gRPC.
   - `grpc`: Node -> Rust core gRPC path.
   - `napi`: Node -> in-process Rust addon path (`backend-core-napi`) with fallback to gRPC, then TS.
+  - `http`: Node -> Rust HTTP helper path for combat simulation (`POST /api/combat/simulate`), then fallback to auto/N-API/gRPC/TS.
 - `CORE_UNIVERSE`: universe label passed to Rust for worker routing.
 - `BACKEND_CORE_ADDR`: Rust gRPC target address.
 - `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
@@ -76,7 +82,7 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - `CORE_HELPER_TRANSPORT`:
   - `http`: enable Rust HTTP helper transport for mission helper kernels in `FleetService`.
   - unset/other: keep N-API-first mission helper kernels with local fallback.
-- `CORE_HTTP_HELPER_TOKEN`: optional shared token sent as `x-core-helper-token` on Rust helper HTTP requests.
+- `CORE_HTTP_HELPER_TOKEN`: shared helper token sent as `x-core-helper-token` on Rust helper HTTP requests. Required when Rust HTTP helper ingress is configured with token auth.
 
 ## 5-Step Migration Matrix
 | Step | Scope | Current completion status | Next milestone for full cutover |
@@ -104,6 +110,10 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - memory: `core-memory-bench-<timestamp>.json`
 
 ## Fallback and Resilience
+- Combat simulation path:
+  - if `CORE_TRANSPORT=http`: Rust HTTP `POST /api/combat/simulate`
+  - then `auto` resolution (N-API if available, else gRPC)
+  - then local TypeScript simulation
 - Fleet movement path order:
   - by-type N-API kernel
   - fast N-API movement
