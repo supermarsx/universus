@@ -12,6 +12,7 @@ import type {
   MissionCargoTransferInput,
   MissionCargoTransferOutput,
 } from './fleetHelperService';
+import type { RustSimulateRequest } from '../coreAdapter/rustCoreClient';
 
 interface RustHelperEnvelope<T> {
   success?: boolean;
@@ -62,6 +63,10 @@ export class RustHttpHelperClientService {
 
   static async computeHarvestCollection(input: HarvestCollectionInput): Promise<HarvestCollectionOutput> {
     return this.postJson<HarvestCollectionOutput>('/api/fleet/helpers/harvest-collection', input);
+  }
+
+  static async simulateCombat(input: RustSimulateRequest): Promise<any> {
+    return this.postJson<any>('/api/combat/simulate', input);
   }
 
   private static async postJson<T>(path: string, payload: unknown): Promise<T> {

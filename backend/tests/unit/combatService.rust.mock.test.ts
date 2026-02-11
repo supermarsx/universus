@@ -24,9 +24,14 @@ jest.mock('../../src/services/gameConfigAdapter', () => ({
 
 describe('CombatService - Rust adapter toggle', () => {
   const OLD = process.env.CORE_ENGINE;
+  const OLD_TRANSPORT = process.env.CORE_TRANSPORT;
   beforeAll(() => { process.env.CORE_ENGINE = 'rust'; });
-  afterAll(() => { process.env.CORE_ENGINE = OLD; });
+  afterAll(() => {
+    process.env.CORE_ENGINE = OLD;
+    process.env.CORE_TRANSPORT = OLD_TRANSPORT;
+  });
   beforeEach(() => {
+    process.env.CORE_TRANSPORT = 'grpc';
     simulateBattleRustMock.mockClear();
   });
 
