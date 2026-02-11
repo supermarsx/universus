@@ -28,6 +28,10 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
   - Node caller: `backend/src/services/fleetService.ts`
   - Scope: distance, travel time, fuel consumption, cargo capacity calculations.
+- Fleet post-combat distribution (N-API):
+  - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
+  - Node caller: `backend/src/services/fleetService.ts`
+  - Scope: attacker loss allocation + loot split + defender rebuild resolution kernels.
 
 ## Runtime Controls
 - `CORE_ENGINE`:

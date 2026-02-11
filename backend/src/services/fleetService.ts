@@ -20,7 +20,11 @@ import { ResearchService } from './researchService';
 import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
 import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
-import { isNapiAvailable, resolveDefenseLossesNapi } from '../coreAdapter/rustCoreNapiClient';
+import {
+  computeAttackerPostCombatDistributionNapi,
+  isNapiAvailable,
+  resolveDefenseLossesNapi,
+} from '../coreAdapter/rustCoreNapiClient';
 
 interface FleetParticipant {
   fleet: Fleet;
@@ -1278,23 +1282,65 @@ export class FleetService {
     client: PoolClient
   ): Promise<void> {
     const totalLosses = result.attackerLosses || {};
-    const totals = this.combineFleetShips(participants);
-    const lossAllocations = this.allocateLosses(participants, totalLosses, totals);
     const lootPool = result.winner === 'attacker' ? result.loot : { metal: 0, crystal: 0, deuterium: 0 };
-    const lootShares = this.splitLoot(lootPool, participants.length);
+    let distributions: Array<{
+      survivors: { [key: string]: number };
+      loot: { metal: number; crystal: number; deuterium: number };
+    }> | null = null;
+
+    if (process.env.NODE_ENV !== 'test') {
+      const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
+      let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
+      if (coreTransport === 'auto') {
+        coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+      }
+
+      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'napi') {
+        try {
+          const response = await computeAttackerPostCombatDistributionNapi({
+            participants: participants.map((participant) => participant.ships),
+            total_losses: totalLosses,
+            loot: lootPool,
+            winner: result.winner,
+          });
+          distributions = response.participants.map((entry) => ({
+            survivors: entry.survivors || {},
+            loot: entry.loot || { metal: 0, crystal: 0, deuterium: 0 },
+          }));
+        } catch (error) {
+          console.warn('[FleetService] Rust N-API post-combat distribution unavailable, using local fallback:', error);
+        }
+      }
+    }
+
+    if (!distributions) {
+      const totals = this.combineFleetShips(participants);
+      const lossAllocations = this.allocateLosses(participants, totalLosses, totals);
+      const lootShares = this.splitLoot(lootPool, participants.length);
+      distributions = participants.map((participant, i) => {
+        const losses = lossAllocations[i] || {};
+        const survivors: { [key: string]: number } = {};
+        Object.entries(participant.ships).forEach(([type, count]) => {
+          const remaining = (count as number) - (losses[type] || 0);
+          if (remaining > 0) {
+            survivors[type] = remaining;
+          }
+        });
+        return {
+          survivors,
+          loot: lootShares[i] || { metal: 0, crystal: 0, deuterium: 0 },
+        };
+      });
+    }
 
     for (let i = 0; i < participants.length; i++) {
       const participant = participants[i];
-      const losses = lossAllocations[i] || {};
-      const survivors: { [key: string]: number } = {};
-      Object.entries(participant.ships).forEach(([type, count]) => {
-        const remaining = (count as number) - (losses[type] || 0);
-        if (remaining > 0) {
-          survivors[type] = remaining;
-        }
-      });
-
-      const loot = lootShares[i] || { metal: 0, crystal: 0, deuterium: 0 };
+      const distribution = distributions[i] || {
+        survivors: {},
+        loot: { metal: 0, crystal: 0, deuterium: 0 },
+      };
+      const survivors = distribution.survivors;
+      const loot = distribution.loot;
 
       await client.query(
         `UPDATE fleets 

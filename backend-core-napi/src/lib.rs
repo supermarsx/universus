@@ -98,6 +98,34 @@ struct DefenseLossResolveResponse {
     updated: HashMap<String, i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct PostCombatDistributionRequest {
+    participants: Vec<HashMap<String, i64>>,
+    total_losses: HashMap<String, i64>,
+    loot: PostCombatLoot,
+    winner: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct PostCombatLoot {
+    metal: i64,
+    crystal: i64,
+    deuterium: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PostCombatDistributionResponse {
+    participants: Vec<PostCombatParticipantResult>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PostCombatParticipantResult {
+    survivors: HashMap<String, i64>,
+    loot: PostCombatLoot,
+}
+
 #[napi(object)]
 pub struct NapiShipMovementSpec {
     pub count: i32,
@@ -401,5 +429,131 @@ pub fn resolve_defense_losses(payload_json: String) -> Result<String> {
     let response = DefenseLossResolveResponse { updated };
     serde_json::to_string(&response).map_err(|e| {
         napi::Error::from_reason(format!("serialize defense-loss response failed: {}", e))
+    })
+}
+
+#[napi]
+pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result<String> {
+    let payload: PostCombatDistributionRequest = serde_json::from_str(&payload_json).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "invalid attacker post-combat distribution payload: {}",
+            e
+        ))
+    })?;
+
+    let participant_count = payload.participants.len();
+    if participant_count == 0 {
+        let response = PostCombatDistributionResponse {
+            participants: Vec::new(),
+        };
+        return serde_json::to_string(&response).map_err(|e| {
+            napi::Error::from_reason(format!(
+                "serialize attacker post-combat distribution response failed: {}",
+                e
+            ))
+        });
+    }
+
+    let mut totals: HashMap<String, i64> = HashMap::new();
+    for participant in payload.participants.iter() {
+        for (unit, count) in participant.iter() {
+            *totals.entry(unit.clone()).or_insert(0) += (*count).max(0);
+        }
+    }
+
+    let unit_types: Vec<String> = payload.total_losses.keys().cloned().collect();
+    let mut allocations: Vec<HashMap<String, i64>> = vec![HashMap::new(); participant_count];
+    let mut allocated: HashMap<String, i64> = HashMap::new();
+
+    for (index, participant) in payload.participants.iter().enumerate() {
+        for unit in unit_types.iter() {
+            let total_loss = payload.total_losses.get(unit).copied().unwrap_or(0).max(0);
+            if total_loss == 0 {
+                allocations[index].insert(unit.clone(), 0);
+                continue;
+            }
+
+            let fleet_count = participant.get(unit).copied().unwrap_or(0).max(0);
+            let total_count = totals.get(unit).copied().unwrap_or(0).max(0);
+            if fleet_count == 0 || total_count == 0 {
+                allocations[index].insert(unit.clone(), 0);
+                continue;
+            }
+
+            let loss = if index == participant_count - 1 {
+                let already = allocated.get(unit).copied().unwrap_or(0).max(0);
+                let remaining = (total_loss - already).max(0);
+                remaining.min(fleet_count)
+            } else {
+                let proportional = ((total_loss as f64 * fleet_count as f64) / total_count as f64).round() as i64;
+                let clamped = proportional.min(fleet_count).max(0);
+                *allocated.entry(unit.clone()).or_insert(0) += clamped;
+                clamped
+            };
+
+            allocations[index].insert(unit.clone(), loss);
+        }
+    }
+
+    let loot_pool = if payload.winner == "attacker" {
+        payload.loot
+    } else {
+        PostCombatLoot {
+            metal: 0,
+            crystal: 0,
+            deuterium: 0,
+        }
+    };
+    let mut loot_shares = vec![
+        PostCombatLoot {
+            metal: 0,
+            crystal: 0,
+            deuterium: 0
+        };
+        participant_count
+    ];
+
+    let mut split_resource = |getter: fn(&PostCombatLoot) -> i64, setter: fn(&mut PostCombatLoot, i64)| {
+        let mut remaining = getter(&loot_pool).max(0);
+        for idx in 0..participant_count {
+            let divisor = (participant_count - idx) as i64;
+            let value = if divisor > 0 { remaining / divisor } else { 0 };
+            setter(&mut loot_shares[idx], value);
+            remaining -= value;
+        }
+    };
+    split_resource(|loot| loot.metal, |loot, value| loot.metal = value);
+    split_resource(|loot| loot.crystal, |loot, value| loot.crystal = value);
+    split_resource(|loot| loot.deuterium, |loot, value| loot.deuterium = value);
+
+    let mut participants = Vec::with_capacity(participant_count);
+    for idx in 0..participant_count {
+        let participant = &payload.participants[idx];
+        let losses = &allocations[idx];
+        let mut survivors: HashMap<String, i64> = HashMap::new();
+        for (unit, count) in participant.iter() {
+            let loss = losses.get(unit).copied().unwrap_or(0).max(0);
+            let remaining = (count.max(&0) - loss).max(0);
+            if remaining > 0 {
+                survivors.insert(unit.clone(), remaining);
+            }
+        }
+
+        participants.push(PostCombatParticipantResult {
+            survivors,
+            loot: PostCombatLoot {
+                metal: loot_shares[idx].metal,
+                crystal: loot_shares[idx].crystal,
+                deuterium: loot_shares[idx].deuterium,
+            },
+        });
+    }
+
+    let response = PostCombatDistributionResponse { participants };
+    serde_json::to_string(&response).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "serialize attacker post-combat distribution response failed: {}",
+            e
+        ))
     })
 }

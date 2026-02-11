@@ -12,6 +12,8 @@ type RustNapiBinding = {
   calculate_fleet_movement?: (payload: string) => string;
   resolveDefenseLosses?: (payload: string) => string;
   resolve_defense_losses?: (payload: string) => string;
+  computeAttackerPostCombatDistribution?: (payload: string) => string;
+  compute_attacker_post_combat_distribution?: (payload: string) => string;
   calculateFleetMovementFast?: (payload: RustFleetMovementRequest) => {
     distance: number;
     fleet_speed?: number;
@@ -254,5 +256,41 @@ export async function resolveDefenseLossesNapi(payload: {
   const parsed = parseJson<{ updated?: Record<string, number> }>(raw);
   return {
     updated: parsed.updated || {},
+  };
+}
+
+export async function computeAttackerPostCombatDistributionNapi(payload: {
+  participants: Array<Record<string, number>>;
+  total_losses: Record<string, number>;
+  loot: { metal: number; crystal: number; deuterium: number };
+  winner: 'attacker' | 'defender' | 'draw';
+}): Promise<{
+  participants: Array<{
+    survivors: Record<string, number>;
+    loot: { metal: number; crystal: number; deuterium: number };
+  }>;
+}> {
+  const binding = getBinding();
+  const fn =
+    binding.computeAttackerPostCombatDistribution || binding.compute_attacker_post_combat_distribution;
+  if (!fn) {
+    throw new Error('Rust N-API function computeAttackerPostCombatDistribution not exported');
+  }
+  const raw = fn(JSON.stringify(payload));
+  const parsed = parseJson<{
+    participants?: Array<{
+      survivors?: Record<string, number>;
+      loot?: { metal?: number; crystal?: number; deuterium?: number };
+    }>;
+  }>(raw);
+  return {
+    participants: (parsed.participants || []).map((participant) => ({
+      survivors: participant.survivors || {},
+      loot: {
+        metal: Number(participant.loot?.metal || 0),
+        crystal: Number(participant.loot?.crystal || 0),
+        deuterium: Number(participant.loot?.deuterium || 0),
+      },
+    })),
   };
 }
