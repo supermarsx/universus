@@ -14,6 +14,8 @@ type RustNapiBinding = {
   resolve_defense_losses?: (payload: string) => string;
   computeAttackerPostCombatDistribution?: (payload: string) => string;
   compute_attacker_post_combat_distribution?: (payload: string) => string;
+  computeCombatReportSummary?: (payload: string) => string;
+  compute_combat_report_summary?: (payload: string) => string;
   calculateFleetMovementFast?: (payload: RustFleetMovementRequest) => {
     distance: number;
     fleet_speed?: number;
@@ -291,6 +293,78 @@ export async function computeAttackerPostCombatDistributionNapi(payload: {
         crystal: Number(participant.loot?.crystal || 0),
         deuterium: Number(participant.loot?.deuterium || 0),
       },
+    })),
+  };
+}
+
+export async function computeCombatReportSummaryNapi(payload: {
+  report_id: number;
+  mission: string;
+  target: { galaxy: number; system: number; position: number };
+  attacker_id: number;
+  defender_id: number | null;
+  winner: string;
+  loot: { metal: number; crystal: number; deuterium: number };
+  attacker_losses: Record<string, number>;
+  defender_losses: Record<string, number>;
+  attacker_allies: Array<{ userId: number; username: string }>;
+}): Promise<{
+  id: number;
+  mission: string;
+  target: { galaxy: number; system: number; position: number };
+  attackerId: number;
+  defenderId: number | null;
+  winner: string;
+  loot: { metal: number; crystal: number; deuterium: number };
+  attackerLosses: Record<string, number>;
+  defenderLosses: Record<string, number>;
+  timestamp: string;
+  attackerAllies: Array<{ userId: number; username: string }>;
+}> {
+  const binding = getBinding();
+  const fn = binding.computeCombatReportSummary || binding.compute_combat_report_summary;
+  if (!fn) {
+    throw new Error('Rust N-API function computeCombatReportSummary not exported');
+  }
+
+  const raw = fn(JSON.stringify(payload));
+  const parsed = parseJson<{
+    id?: number;
+    mission?: string;
+    target?: { galaxy?: number; system?: number; position?: number };
+    attackerId?: number;
+    defenderId?: number | null;
+    winner?: string;
+    loot?: { metal?: number; crystal?: number; deuterium?: number };
+    attackerLosses?: Record<string, number>;
+    defenderLosses?: Record<string, number>;
+    timestamp?: string;
+    attackerAllies?: Array<{ userId?: number; username?: string }>;
+  }>(raw);
+
+  return {
+    id: Number(parsed.id || 0),
+    mission: String(parsed.mission || ''),
+    target: {
+      galaxy: Number(parsed.target?.galaxy || 0),
+      system: Number(parsed.target?.system || 0),
+      position: Number(parsed.target?.position || 0),
+    },
+    attackerId: Number(parsed.attackerId || 0),
+    defenderId:
+      parsed.defenderId === null || parsed.defenderId === undefined ? null : Number(parsed.defenderId),
+    winner: String(parsed.winner || ''),
+    loot: {
+      metal: Number(parsed.loot?.metal || 0),
+      crystal: Number(parsed.loot?.crystal || 0),
+      deuterium: Number(parsed.loot?.deuterium || 0),
+    },
+    attackerLosses: parsed.attackerLosses || {},
+    defenderLosses: parsed.defenderLosses || {},
+    timestamp: String(parsed.timestamp || new Date().toISOString()),
+    attackerAllies: (parsed.attackerAllies || []).map((ally) => ({
+      userId: Number(ally.userId || 0),
+      username: String(ally.username || 'Unknown Commander'),
     })),
   };
 }

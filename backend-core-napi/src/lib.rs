@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use backend_core::{core, sim::simulate_combat};
+use chrono::{SecondsFormat, Utc};
 use napi::Result;
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -124,6 +125,50 @@ struct PostCombatDistributionResponse {
 struct PostCombatParticipantResult {
     survivors: HashMap<String, i64>,
     loot: PostCombatLoot,
+}
+
+#[derive(Debug, Deserialize)]
+struct CombatReportSummaryRequest {
+    report_id: i64,
+    mission: String,
+    target: CombatTarget,
+    attacker_id: i64,
+    defender_id: Option<i64>,
+    winner: String,
+    loot: PostCombatLoot,
+    attacker_losses: HashMap<String, i64>,
+    defender_losses: HashMap<String, i64>,
+    attacker_allies: Vec<CombatReportAlly>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct CombatTarget {
+    galaxy: i32,
+    system: i32,
+    position: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CombatReportAlly {
+    user_id: i64,
+    username: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CombatReportSummaryResponse {
+    id: i64,
+    mission: String,
+    target: CombatTarget,
+    attacker_id: i64,
+    defender_id: Option<i64>,
+    winner: String,
+    loot: PostCombatLoot,
+    attacker_losses: HashMap<String, i64>,
+    defender_losses: HashMap<String, i64>,
+    timestamp: String,
+    attacker_allies: Vec<CombatReportAlly>,
 }
 
 #[napi(object)]
@@ -553,6 +598,37 @@ pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result
     serde_json::to_string(&response).map_err(|e| {
         napi::Error::from_reason(format!(
             "serialize attacker post-combat distribution response failed: {}",
+            e
+        ))
+    })
+}
+
+#[napi]
+pub fn compute_combat_report_summary(payload_json: String) -> Result<String> {
+    let payload: CombatReportSummaryRequest = serde_json::from_str(&payload_json).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "invalid combat report summary payload: {}",
+            e
+        ))
+    })?;
+
+    let response = CombatReportSummaryResponse {
+        id: payload.report_id,
+        mission: payload.mission,
+        target: payload.target,
+        attacker_id: payload.attacker_id,
+        defender_id: payload.defender_id,
+        winner: payload.winner,
+        loot: payload.loot,
+        attacker_losses: payload.attacker_losses,
+        defender_losses: payload.defender_losses,
+        timestamp: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+        attacker_allies: payload.attacker_allies,
+    };
+
+    serde_json::to_string(&response).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "serialize combat report summary response failed: {}",
             e
         ))
     })

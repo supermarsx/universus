@@ -21,6 +21,7 @@ import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
 import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
 import {
+  computeCombatReportSummaryNapi,
   computeAttackerPostCombatDistributionNapi,
   isNapiAvailable,
   resolveDefenseLossesNapi,
@@ -611,7 +612,13 @@ export class FleetService {
       );
     }
 
-    const summary = this.buildCombatSummary(reportId, fleet, targetPlanet.user_id, combatResult, attackerAlliesMeta);
+    const summary = await this.buildCombatSummary(
+      reportId,
+      fleet,
+      targetPlanet.user_id,
+      combatResult,
+      attackerAlliesMeta
+    );
     const location = this.formatLocation(fleet.target_galaxy, fleet.target_system, fleet.target_position);
 
     const notifiedAttackers = new Set<number>();
@@ -1436,7 +1443,52 @@ export class FleetService {
     return shares;
   }
 
-  private static buildCombatSummary(
+  private static async buildCombatSummary(
+    reportId: number,
+    fleet: Fleet,
+    defenderId: number | null,
+    result: CombatResult,
+    attackerAllies: Array<{ userId: number; username: string }> = []
+  ) {
+    if (process.env.NODE_ENV !== 'test') {
+      const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
+      let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
+      if (coreTransport === 'auto') {
+        coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+      }
+
+      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'napi') {
+        try {
+          return await computeCombatReportSummaryNapi({
+            report_id: reportId,
+            mission: fleet.mission_type,
+            target: {
+              galaxy: fleet.target_galaxy,
+              system: fleet.target_system,
+              position: fleet.target_position,
+            },
+            attacker_id: fleet.user_id,
+            defender_id: defenderId,
+            winner: result.winner,
+            loot: {
+              metal: Number(result.loot?.metal || 0),
+              crystal: Number(result.loot?.crystal || 0),
+              deuterium: Number(result.loot?.deuterium || 0),
+            },
+            attacker_losses: result.attackerLosses || {},
+            defender_losses: result.defenderLosses || {},
+            attacker_allies: attackerAllies,
+          });
+        } catch (error) {
+          console.warn('[FleetService] Rust N-API combat summary unavailable, using local fallback:', error);
+        }
+      }
+    }
+
+    return this.buildCombatSummaryLocal(reportId, fleet, defenderId, result, attackerAllies);
+  }
+
+  private static buildCombatSummaryLocal(
     reportId: number,
     fleet: Fleet,
     defenderId: number | null,
