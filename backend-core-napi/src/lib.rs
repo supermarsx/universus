@@ -754,7 +754,7 @@ pub fn compute_espionage_outcome(payload_json: String) -> Result<String> {
         napi::Error::from_reason(format!("invalid espionage outcome payload: {}", e))
     })?;
 
-    let probes = payload.probes.max(0) as f64;
+    let probes = payload.probes as f64;
     let detail_score = payload.attacker_espionage + (probes + 1.0).log2();
     let defense_score = payload.defender_espionage;
     let detail_delta = detail_score - defense_score;
