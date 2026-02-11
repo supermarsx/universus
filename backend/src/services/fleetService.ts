@@ -19,6 +19,7 @@ import moonService from './moonService';
 import { ResearchService } from './researchService';
 import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
+import { RustHttpHelperClientService } from './rustHttpHelperClientService';
 import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
 import {
   computeCombatReportSummaryNapi,
@@ -1310,28 +1311,40 @@ export class FleetService {
       loot: { metal: number; crystal: number; deuterium: number };
     }> | null = null;
 
-    if (process.env.NODE_ENV !== 'test') {
-      const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
-      let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
-      if (coreTransport === 'auto') {
-        coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+    if (this.shouldUseHttpMissionMath()) {
+      try {
+        const response = await RustHttpHelperClientService.computeAttackerDistribution({
+          participants: participants.map((participant) => participant.ships),
+          totalLosses: totalLosses,
+          loot: lootPool,
+          winner: result.winner,
+        });
+        distributions = response.participants.map((entry) => ({
+          survivors: entry.survivors || {},
+          loot: entry.loot || { metal: 0, crystal: 0, deuterium: 0 },
+        }));
+      } catch (error) {
+        console.warn(
+          '[FleetService] Rust HTTP helper attacker distribution unavailable, falling back to N-API/local:',
+          error
+        );
       }
+    }
 
-      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'napi') {
-        try {
-          const response = await computeAttackerPostCombatDistributionNapi({
-            participants: participants.map((participant) => participant.ships),
-            total_losses: totalLosses,
-            loot: lootPool,
-            winner: result.winner,
-          });
-          distributions = response.participants.map((entry) => ({
-            survivors: entry.survivors || {},
-            loot: entry.loot || { metal: 0, crystal: 0, deuterium: 0 },
-          }));
-        } catch (error) {
-          console.warn('[FleetService] Rust N-API post-combat distribution unavailable, using local fallback:', error);
-        }
+    if (!distributions && this.shouldUseNapiMissionMath()) {
+      try {
+        const response = await computeAttackerPostCombatDistributionNapi({
+          participants: participants.map((participant) => participant.ships),
+          total_losses: totalLosses,
+          loot: lootPool,
+          winner: result.winner,
+        });
+        distributions = response.participants.map((entry) => ({
+          survivors: entry.survivors || {},
+          loot: entry.loot || { metal: 0, crystal: 0, deuterium: 0 },
+        }));
+      } catch (error) {
+        console.warn('[FleetService] Rust N-API post-combat distribution unavailable, using local fallback:', error);
       }
     }
 
@@ -1905,6 +1918,23 @@ export class FleetService {
     defenderEspionage: number,
     seed: string
   ): Promise<{ intelLevel: EspionageIntelLevel; detected: boolean }> {
+    if (this.shouldUseHttpMissionMath()) {
+      try {
+        const outcome = await RustHttpHelperClientService.computeEspionageOutcome({
+          probes,
+          attackerEspionage,
+          defenderEspionage,
+          seed,
+        });
+        return {
+          intelLevel: outcome.intelLevel,
+          detected: outcome.detected,
+        };
+      } catch (error) {
+        console.warn('[FleetService] Rust HTTP helper espionage outcome unavailable, falling back to N-API/local:', error);
+      }
+    }
+
     if (this.shouldUseNapiMissionMath()) {
       try {
         const outcome = await computeEspionageOutcomeNapi({
@@ -1950,12 +1980,7 @@ export class FleetService {
   }
 
   private static shouldUseNapiMissionMath(): boolean {
-    if (process.env.NODE_ENV === 'test') {
-      return false;
-    }
-
-    const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
-    if (coreEngine === 'ts' || coreEngine === 'typescript' || coreEngine === 'js') {
+    if (!this.shouldUseRustMissionMath()) {
       return false;
     }
 
@@ -1965,6 +1990,28 @@ export class FleetService {
     }
 
     return coreTransport === 'napi';
+  }
+
+  private static shouldUseRustMissionMath(): boolean {
+    if (process.env.NODE_ENV === 'test') {
+      return false;
+    }
+
+    const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
+    return coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js';
+  }
+
+  private static shouldUseHttpMissionMath(): boolean {
+    if (!this.shouldUseRustMissionMath()) {
+      return false;
+    }
+
+    const helperTransport = (process.env.CORE_HELPER_TRANSPORT || '').toLowerCase();
+    if (helperTransport !== 'http') {
+      return false;
+    }
+
+    return RustHttpHelperClientService.isConfigured();
   }
 
   private static async computeMissionCargoTransfer(
@@ -1979,6 +2026,22 @@ export class FleetService {
     remainingDeuterium: number;
     totalTransfer: number;
   }> {
+    if (this.shouldUseHttpMissionMath()) {
+      try {
+        return await RustHttpHelperClientService.computeMissionCargoTransfer({
+          metal: cargo.metal,
+          crystal: cargo.crystal,
+          deuterium: cargo.deuterium,
+          clampNonNegative,
+        });
+      } catch (error) {
+        console.warn(
+          '[FleetService] Rust HTTP helper mission cargo transfer unavailable, falling back to N-API/local:',
+          error
+        );
+      }
+    }
+
     if (this.shouldUseNapiMissionMath()) {
       try {
         return await computeMissionCargoTransferNapi({
@@ -2038,6 +2101,22 @@ export class FleetService {
     recyclerCapacity: number;
     empty: boolean;
   }> {
+    if (this.shouldUseHttpMissionMath()) {
+      try {
+        return await RustHttpHelperClientService.computeHarvestCollection({
+          debrisMetal,
+          debrisCrystal,
+          recyclerCount,
+          recyclerCargoCapacity,
+        });
+      } catch (error) {
+        console.warn(
+          '[FleetService] Rust HTTP helper harvest collection unavailable, falling back to N-API/local:',
+          error
+        );
+      }
+    }
+
     if (this.shouldUseNapiMissionMath()) {
       try {
         return await computeHarvestCollectionNapi({
@@ -2112,20 +2191,31 @@ export class FleetService {
       defenseLosses[unit] = loss;
     });
 
-    if (Object.keys(defenseLosses).length > 0 && process.env.NODE_ENV !== 'test') {
-      const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
-      let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
-      if (coreTransport === 'auto') {
-        coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+    if (Object.keys(defenseLosses).length > 0) {
+      const seed = `${planetId}:${result.combatId || 0}:defense`;
+      if (this.shouldUseHttpMissionMath()) {
+        try {
+          const resolved = await RustHttpHelperClientService.resolveDefenseRebuild({
+            current: defenseCurrent,
+            losses: defenseLosses,
+            rebuildRate: 0.7,
+            seed,
+          });
+          Object.entries(resolved.updated).forEach(([unit, value]) => {
+            updatePayload[unit] = Math.max(0, Number(value || 0));
+          });
+        } catch (error) {
+          console.warn('[FleetService] Rust HTTP helper defense rebuild unavailable, falling back to N-API/local:', error);
+        }
       }
 
-      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'napi') {
+      if (Object.keys(updatePayload).length === 0 && this.shouldUseNapiMissionMath()) {
         try {
           const resolved = await resolveDefenseLossesNapi({
             current: defenseCurrent,
             losses: defenseLosses,
             rebuild_rate: 0.7,
-            seed: `${planetId}:${result.combatId || 0}:defense`,
+            seed,
           });
           Object.entries(resolved.updated).forEach(([unit, value]) => {
             updatePayload[unit] = Math.max(0, Number(value || 0));
