@@ -19,6 +19,7 @@
     "type-check": "tsc --noEmit",
     "validate": "pnpm run type-check && pnpm run lint && pnpm run test",
     "load:test": "ts-node scripts/loadTest.ts",
+    "bench:core": "ts-node --transpile-only scripts/benchmarkCoreTransports.ts",
     "analytics:worker": "ts-node src/workers/analyticsQueueWorker.ts"
   },
   "keywords": [
