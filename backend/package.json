@@ -24,6 +24,10 @@
     "bench:core:grpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc",
     "bench:core:auto:10k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -Iterations 10000 -Warmup 200",
     "bench:core:grpc:10k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc -Iterations 10000 -Warmup 200",
+    "bench:core:auto:100k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -Iterations 100000 -Warmup 1000",
+    "bench:core:grpc:100k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc -Iterations 100000 -Warmup 1000",
+    "bench:core:auto:1m": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -Iterations 1000000 -Warmup 5000",
+    "bench:core:grpc:1m": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc -Iterations 1000000 -Warmup 5000",
     "analytics:worker": "ts-node src/workers/analyticsQueueWorker.ts"
   },
   "keywords": [
