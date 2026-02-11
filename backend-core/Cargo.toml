@@ -27,6 +27,7 @@ serde_json = "1.0"
 prometheus = "0.13"
 hyper = { version = "0.14", features = ["full"] }
 interprocess = { version = "1.2", features = ["tokio_support"] }
+axum = "0.6"
 
 [build-dependencies]
 tonic-build = "0.9"
