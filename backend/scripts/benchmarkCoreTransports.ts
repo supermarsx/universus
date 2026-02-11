@@ -1,7 +1,14 @@
 /* eslint-disable no-console */
 import path from 'path';
+import fs from 'fs';
+import { execSync } from 'child_process';
 import { calculateFleetMovementRust } from '../src/coreAdapter/rustCoreClient';
-import { calculateFleetMovementNapi } from '../src/coreAdapter/rustCoreNapiClient';
+import {
+  calculateFleetMovementBatchNapi,
+  calculateFleetMovementNapiLegacyJson,
+  calculateFleetMovementNapi,
+  isNapiAvailable,
+} from '../src/coreAdapter/rustCoreNapiClient';
 
 type ShipSpec = {
   ship_type: string;
@@ -14,6 +21,19 @@ type ShipSpec = {
 type BenchmarkCase = {
   name: string;
   run: (iteration: number) => Promise<void>;
+  actionsPerRun?: number;
+};
+
+type BenchmarkSummary = {
+  name: string;
+  totalMs: number;
+  opsPerSec: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  avg: number;
+  min: number;
+  max: number;
 };
 
 const toMs = (ns: bigint): number => Number(ns) / 1_000_000;
@@ -126,13 +146,30 @@ async function main() {
   };
 
   const napiCase: BenchmarkCase = {
-    name: 'napi',
+    name: 'napi_json_compat',
+    run: async (iteration) => {
+      await calculateFleetMovementNapiLegacyJson(buildMovementRequest(iteration));
+    },
+  };
+
+  const napiFastCase: BenchmarkCase = {
+    name: 'napi_fast',
     run: async (iteration) => {
       await calculateFleetMovementNapi(buildMovementRequest(iteration));
     },
   };
 
-  const suite = [tsCase, grpcCase, napiCase];
+  const napiBatchCase: BenchmarkCase = {
+    name: 'napi_batch_x256',
+    actionsPerRun: 256,
+    run: async (iteration) => {
+      const batchSize = 256;
+      const batch = Array.from({ length: batchSize }, (_, offset) => buildMovementRequest(iteration * batchSize + offset));
+      await calculateFleetMovementBatchNapi(batch);
+    },
+  };
+
+  const suite = [tsCase, grpcCase, napiCase, napiFastCase, napiBatchCase];
 
   console.log('Core Transport Benchmark (Fleet Movement)');
   console.log(`iterations: ${iterations}`);
@@ -140,7 +177,10 @@ async function main() {
   console.log(`actions per transport: ${iterations}`);
   console.log(`grpc target: ${process.env.BACKEND_CORE_ADDR || 'backend-core:50051'}`);
   console.log(`napi binding path: ${process.env.CORE_NAPI_BINDING_PATH || '(auto-detect)'}`);
+  console.log(`napi available: ${isNapiAvailable()}`);
   console.log('');
+
+  const summaries: BenchmarkSummary[] = [];
 
   for (const testCase of suite) {
     const result = await benchmark(testCase, warmup, iterations);
@@ -155,10 +195,24 @@ async function main() {
     const avg = mean(result.samples);
     const total = sum(result.samples);
     const { min, max } = minMax(result.samples);
-    const opsPerSec = total > 0 ? (iterations / (total / 1000)) : 0;
+    const actionsPerRun = testCase.actionsPerRun || 1;
+    const totalActions = iterations * actionsPerRun;
+    const opsPerSec = total > 0 ? (totalActions / (total / 1000)) : 0;
+
+    summaries.push({
+      name: testCase.name,
+      totalMs: total,
+      opsPerSec,
+      p50,
+      p95,
+      p99,
+      avg,
+      min,
+      max,
+    });
 
     console.log(
-      `${testCase.name}: total=${total.toFixed(3)}ms ops/s=${opsPerSec.toFixed(0)} p50=${p50.toFixed(
+      `${testCase.name}: total=${total.toFixed(3)}ms actions=${totalActions} ops/s=${opsPerSec.toFixed(0)} p50=${p50.toFixed(
         3
       )}ms p95=${p95.toFixed(3)}ms p99=${p99.toFixed(3)}ms avg=${avg.toFixed(3)}ms min=${min.toFixed(
         3
@@ -169,6 +223,31 @@ async function main() {
   console.log('');
   console.log('Tip: start backend-core for gRPC and set CORE_NAPI_BINDING_PATH for N-API.');
   console.log(`Example N-API binding: ${path.resolve(process.cwd(), '..', 'backend-core-napi', 'index.node')}`);
+
+  const saveDir = process.env.BENCH_SAVE_DIR || path.resolve(process.cwd(), 'benchmarks', 'history');
+  fs.mkdirSync(saveDir, { recursive: true });
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:.]/g, '-');
+  let gitCommit = process.env.GIT_COMMIT || 'unknown';
+  try {
+    gitCommit = execSync('git rev-parse --short HEAD', { cwd: path.resolve(process.cwd(), '..') })
+      .toString()
+      .trim();
+  } catch {
+    // ignore git lookup failures
+  }
+  const output = {
+    timestamp: now.toISOString(),
+    gitCommit,
+    iterations,
+    warmup,
+    grpcTarget: process.env.BACKEND_CORE_ADDR || 'backend-core:50051',
+    napiBindingPath: process.env.CORE_NAPI_BINDING_PATH || null,
+    summaries,
+  };
+  const outFile = path.join(saveDir, `core-bench-${timestamp}.json`);
+  fs.writeFileSync(outFile, JSON.stringify(output, null, 2), 'utf-8');
+  console.log(`saved benchmark snapshot: ${outFile}`);
 }
 
 main().catch((error) => {

@@ -98,6 +98,34 @@ struct DefenseLossResolveResponse {
     updated: HashMap<String, i64>,
 }
 
+#[napi(object)]
+pub struct NapiShipMovementSpec {
+    pub count: i32,
+    pub base_speed: f64,
+    pub fuel_consumption: f64,
+    pub cargo: f64,
+}
+
+#[napi(object)]
+pub struct NapiFleetMovementRequest {
+    pub origin_galaxy: i32,
+    pub origin_system: i32,
+    pub origin_position: i32,
+    pub target_galaxy: i32,
+    pub target_system: i32,
+    pub target_position: i32,
+    pub ships: Vec<NapiShipMovementSpec>,
+}
+
+#[napi(object)]
+pub struct NapiFleetMovementResult {
+    pub distance: i32,
+    pub fleet_speed: f64,
+    pub travel_time_seconds: i32,
+    pub fuel_needed: f64,
+    pub cargo_capacity: f64,
+}
+
 #[derive(Clone, Copy)]
 struct Mulberry32 {
     state: u32,
@@ -257,6 +285,87 @@ pub fn calculate_fleet_movement(payload_json: String) -> Result<String> {
 
     serde_json::to_string(&output)
         .map_err(|e| napi::Error::from_reason(format!("serialize movement result failed: {}", e)))
+}
+
+fn calculate_movement(
+    origin_galaxy: i32,
+    origin_system: i32,
+    origin_position: i32,
+    target_galaxy: i32,
+    target_system: i32,
+    target_position: i32,
+    ships: &[NapiShipMovementSpec],
+) -> NapiFleetMovementResult {
+    let distance = if origin_galaxy != target_galaxy {
+        (origin_galaxy - target_galaxy).abs() * 20000
+    } else if origin_system != target_system {
+        (origin_system - target_system).abs() * 5 * 19 + 2700
+    } else {
+        (origin_position - target_position).abs() * 5 + 1000
+    };
+
+    let mut min_speed = f64::INFINITY;
+    let mut fuel_needed = 0.0f64;
+    let mut cargo_capacity = 0.0f64;
+
+    for ship in ships.iter() {
+        if ship.count <= 0 {
+            continue;
+        }
+        if ship.base_speed > 0.0 {
+            min_speed = min_speed.min(ship.base_speed);
+        }
+        let count = ship.count as f64;
+        fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
+        cargo_capacity += ship.cargo * count;
+    }
+
+    let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+    let travel_time_seconds = if fleet_speed > 0.0 {
+        ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
+    } else {
+        0
+    };
+
+    cargo_capacity -= fuel_needed;
+
+    NapiFleetMovementResult {
+        distance,
+        fleet_speed,
+        travel_time_seconds,
+        fuel_needed,
+        cargo_capacity,
+    }
+}
+
+#[napi]
+pub fn calculate_fleet_movement_fast(payload: NapiFleetMovementRequest) -> Result<NapiFleetMovementResult> {
+    Ok(calculate_movement(
+        payload.origin_galaxy,
+        payload.origin_system,
+        payload.origin_position,
+        payload.target_galaxy,
+        payload.target_system,
+        payload.target_position,
+        &payload.ships,
+    ))
+}
+
+#[napi]
+pub fn calculate_fleet_movement_batch(payload: Vec<NapiFleetMovementRequest>) -> Result<Vec<NapiFleetMovementResult>> {
+    let mut out = Vec::with_capacity(payload.len());
+    for req in payload.iter() {
+        out.push(calculate_movement(
+            req.origin_galaxy,
+            req.origin_system,
+            req.origin_position,
+            req.target_galaxy,
+            req.target_system,
+            req.target_position,
+            &req.ships,
+        ));
+    }
+    Ok(out)
 }
 
 #[napi]
