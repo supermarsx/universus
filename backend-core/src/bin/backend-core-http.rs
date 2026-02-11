@@ -5,6 +5,9 @@
 //! - `POST /api/fleet/helpers/movement`
 //! - `POST /api/fleet/helpers/combat/defense-rebuild`
 //! - `POST /api/fleet/helpers/combat/attacker-distribution`
+//! - `POST /api/fleet/helpers/espionage-outcome`
+//! - `POST /api/fleet/helpers/mission-cargo-transfer`
+//! - `POST /api/fleet/helpers/harvest-collection`
 //!
 //! It intentionally keeps request validation and response envelope semantics
 //! aligned with the Node routes: successful responses return
@@ -68,6 +71,42 @@ struct ParticipantDistribution {
 #[derive(Serialize)]
 struct AttackerDistributionData {
     participants: Vec<ParticipantDistribution>,
+    engine: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EspionageOutcomeData {
+    intel_level: &'static str,
+    detected: bool,
+    detection_chance: f64,
+    detail_score: f64,
+    defense_score: f64,
+    engine: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MissionCargoTransferData {
+    transfer_metal: i64,
+    transfer_crystal: i64,
+    transfer_deuterium: i64,
+    remaining_metal: i64,
+    remaining_crystal: i64,
+    remaining_deuterium: i64,
+    total_transfer: i64,
+    engine: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HarvestCollectionData {
+    collected_metal: i64,
+    collected_crystal: i64,
+    updated_metal: i64,
+    updated_crystal: i64,
+    recycler_capacity: i64,
+    empty: bool,
     engine: &'static str,
 }
 
@@ -223,6 +262,11 @@ fn coalesce_object(value: Option<&Value>) -> Value {
     } else {
         Value::Object(Map::new())
     }
+}
+
+fn pick<'a>(root: Option<&'a Map<String, Value>>, keys: &[&str]) -> Option<&'a Value> {
+    let root = root?;
+    keys.iter().find_map(|key| root.get(*key))
 }
 
 fn calculate_distance(
@@ -539,6 +583,144 @@ async fn attacker_distribution_handler(payload: Result<Json<Value>, JsonRejectio
     })
 }
 
+async fn espionage_outcome_handler(payload: Result<Json<Value>, JsonRejection>) -> Response {
+    let Json(body) = match payload {
+        Ok(body) => body,
+        Err(_) => return bad_request("Invalid espionage outcome request"),
+    };
+
+    let root = body.as_object();
+    let probes = match to_js_int(pick(root, &["probes"])) {
+        Some(value) => value.max(0) as f64,
+        None => return bad_request("Invalid espionage outcome request"),
+    };
+    let attacker_espionage = match js_number(pick(root, &["attackerEspionage", "attacker_espionage"])) {
+        Some(value) if value.is_finite() => value,
+        _ => return bad_request("Invalid espionage outcome request"),
+    };
+    let defender_espionage = match js_number(pick(root, &["defenderEspionage", "defender_espionage"])) {
+        Some(value) if value.is_finite() => value,
+        _ => return bad_request("Invalid espionage outcome request"),
+    };
+    let seed = pick(root, &["seed"])
+        .and_then(|value| value.as_str())
+        .unwrap_or("espionage");
+
+    let detail_score = attacker_espionage + (probes + 1.0).log2();
+    let defense_score = defender_espionage;
+    let detail_delta = detail_score - defense_score;
+    let intel_level = if detail_delta >= 3.0 {
+        "full"
+    } else if detail_delta >= 0.0 {
+        "standard"
+    } else {
+        "minimal"
+    };
+
+    let detection_chance = (0.5 + (defense_score - detail_score) * 0.05).clamp(0.05, 0.95);
+    let mut rng = Mulberry32::new(calc_seed(seed));
+    let detected = rng.next_f64() < detection_chance;
+
+    success(EspionageOutcomeData {
+        intel_level,
+        detected,
+        detection_chance,
+        detail_score,
+        defense_score,
+        engine: "rust-napi",
+    })
+}
+
+async fn mission_cargo_transfer_handler(payload: Result<Json<Value>, JsonRejection>) -> Response {
+    let Json(body) = match payload {
+        Ok(body) => body,
+        Err(_) => return bad_request("Invalid mission cargo transfer request"),
+    };
+
+    let root = body.as_object();
+    let metal = match to_js_int(pick(root, &["metal", "transferMetal", "transfer_metal"])) {
+        Some(value) => value,
+        None => return bad_request("Invalid mission cargo transfer request"),
+    };
+    let crystal = match to_js_int(pick(root, &["crystal", "transferCrystal", "transfer_crystal"])) {
+        Some(value) => value,
+        None => return bad_request("Invalid mission cargo transfer request"),
+    };
+    let deuterium = match to_js_int(pick(root, &["deuterium", "transferDeuterium", "transfer_deuterium"])) {
+        Some(value) => value,
+        None => return bad_request("Invalid mission cargo transfer request"),
+    };
+
+    let clamp_non_negative = pick(root, &["clampNonNegative", "clamp_non_negative"])
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let transfer_metal = if clamp_non_negative { metal.max(0) } else { metal };
+    let transfer_crystal = if clamp_non_negative { crystal.max(0) } else { crystal };
+    let transfer_deuterium = if clamp_non_negative {
+        deuterium.max(0)
+    } else {
+        deuterium
+    };
+    let total_transfer = transfer_metal
+        .saturating_add(transfer_crystal)
+        .saturating_add(transfer_deuterium);
+
+    success(MissionCargoTransferData {
+        transfer_metal,
+        transfer_crystal,
+        transfer_deuterium,
+        remaining_metal: 0,
+        remaining_crystal: 0,
+        remaining_deuterium: 0,
+        total_transfer,
+        engine: "rust-napi",
+    })
+}
+
+async fn harvest_collection_handler(payload: Result<Json<Value>, JsonRejection>) -> Response {
+    let Json(body) = match payload {
+        Ok(body) => body,
+        Err(_) => return bad_request("Invalid harvest collection request"),
+    };
+
+    let root = body.as_object();
+    let debris_metal = match to_js_int(pick(root, &["debrisMetal", "debris_metal"])) {
+        Some(value) => value.max(0),
+        None => return bad_request("Invalid harvest collection request"),
+    };
+    let debris_crystal = match to_js_int(pick(root, &["debrisCrystal", "debris_crystal"])) {
+        Some(value) => value.max(0),
+        None => return bad_request("Invalid harvest collection request"),
+    };
+    let recycler_count = match to_js_int(pick(root, &["recyclerCount", "recycler_count"])) {
+        Some(value) => value.max(0),
+        None => return bad_request("Invalid harvest collection request"),
+    };
+    let recycler_cargo_capacity =
+        match to_js_int(pick(root, &["recyclerCargoCapacity", "recycler_cargo_capacity"])) {
+            Some(value) => value.max(0),
+            None => return bad_request("Invalid harvest collection request"),
+        };
+
+    let recycler_capacity = recycler_count.saturating_mul(recycler_cargo_capacity);
+    let collected_metal = debris_metal.min(recycler_capacity);
+    let remaining_capacity = recycler_capacity.saturating_sub(collected_metal);
+    let collected_crystal = debris_crystal.min(remaining_capacity);
+    let updated_metal = debris_metal.saturating_sub(collected_metal);
+    let updated_crystal = debris_crystal.saturating_sub(collected_crystal);
+
+    success(HarvestCollectionData {
+        collected_metal,
+        collected_crystal,
+        updated_metal,
+        updated_crystal,
+        recycler_capacity,
+        empty: collected_metal == 0 && collected_crystal == 0,
+        engine: "rust-napi",
+    })
+}
+
 #[tokio::main]
 async fn main() {
     let app = Router::new()
@@ -551,6 +733,18 @@ async fn main() {
         .route(
             "/api/fleet/helpers/combat/attacker-distribution",
             post(attacker_distribution_handler),
+        )
+        .route(
+            "/api/fleet/helpers/espionage-outcome",
+            post(espionage_outcome_handler),
+        )
+        .route(
+            "/api/fleet/helpers/mission-cargo-transfer",
+            post(mission_cargo_transfer_handler),
+        )
+        .route(
+            "/api/fleet/helpers/harvest-collection",
+            post(harvest_collection_handler),
         );
 
     let bind_addr = std::env::var("CORE_HTTP_BIND_ADDR")

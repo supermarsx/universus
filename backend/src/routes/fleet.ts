@@ -193,6 +193,104 @@ router.post('/helpers/combat/attacker-distribution', async (req: Request, res: R
   }
 });
 
+router.post('/helpers/espionage-outcome', async (req: Request, res: Response) => {
+  try {
+    const probes = Number(req.body?.probes);
+    const attackerEspionage = Number(req.body?.attackerEspionage);
+    const defenderEspionage = Number(req.body?.defenderEspionage);
+    const seed = req.body?.seed;
+
+    if (!Number.isFinite(probes) || !Number.isFinite(attackerEspionage) || !Number.isFinite(defenderEspionage)) {
+      return res.status(400).json({ success: false, error: 'Invalid espionage outcome request' });
+    }
+
+    const normalizedInput = {
+      probes: Math.max(0, Math.trunc(probes)),
+      attackerEspionage,
+      defenderEspionage,
+      seed: typeof seed === 'string' ? seed : undefined,
+    };
+
+    const result = await runHelperWithRustFallback(
+      'espionage-outcome',
+      () => RustHttpHelperClientService.computeEspionageOutcome(normalizedInput),
+      () => FleetHelperService.computeEspionageOutcome(normalizedInput)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error resolving espionage outcome helper:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Espionage outcome helper failed' });
+  }
+});
+
+router.post('/helpers/mission-cargo-transfer', async (req: Request, res: Response) => {
+  try {
+    const metal = Number(req.body?.metal ?? 0);
+    const crystal = Number(req.body?.crystal ?? 0);
+    const deuterium = Number(req.body?.deuterium ?? 0);
+    const clampNonNegative = req.body?.clampNonNegative;
+
+    if (!Number.isFinite(metal) || !Number.isFinite(crystal) || !Number.isFinite(deuterium)) {
+      return res.status(400).json({ success: false, error: 'Invalid mission cargo transfer request' });
+    }
+
+    const normalizedInput = {
+      metal: Math.trunc(metal),
+      crystal: Math.trunc(crystal),
+      deuterium: Math.trunc(deuterium),
+      clampNonNegative: typeof clampNonNegative === 'boolean' ? clampNonNegative : undefined,
+    };
+
+    const result = await runHelperWithRustFallback(
+      'mission-cargo-transfer',
+      () => RustHttpHelperClientService.computeMissionCargoTransfer(normalizedInput),
+      () => FleetHelperService.computeMissionCargoTransfer(normalizedInput)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error resolving mission cargo transfer helper:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Mission cargo transfer helper failed' });
+  }
+});
+
+router.post('/helpers/harvest-collection', async (req: Request, res: Response) => {
+  try {
+    const debrisMetal = Number(req.body?.debrisMetal ?? 0);
+    const debrisCrystal = Number(req.body?.debrisCrystal ?? 0);
+    const recyclerCount = Number(req.body?.recyclerCount ?? 0);
+    const recyclerCargoCapacity = Number(req.body?.recyclerCargoCapacity ?? 0);
+
+    if (
+      !Number.isFinite(debrisMetal) ||
+      !Number.isFinite(debrisCrystal) ||
+      !Number.isFinite(recyclerCount) ||
+      !Number.isFinite(recyclerCargoCapacity)
+    ) {
+      return res.status(400).json({ success: false, error: 'Invalid harvest collection request' });
+    }
+
+    const normalizedInput = {
+      debrisMetal: Math.trunc(debrisMetal),
+      debrisCrystal: Math.trunc(debrisCrystal),
+      recyclerCount: Math.max(0, Math.trunc(recyclerCount)),
+      recyclerCargoCapacity: Math.max(0, Math.trunc(recyclerCargoCapacity)),
+    };
+
+    const result = await runHelperWithRustFallback(
+      'harvest-collection',
+      () => RustHttpHelperClientService.computeHarvestCollection(normalizedInput),
+      () => FleetHelperService.computeHarvestCollection(normalizedInput)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error resolving harvest collection helper:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Harvest collection helper failed' });
+  }
+});
+
 router.post('/dispatch', async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;

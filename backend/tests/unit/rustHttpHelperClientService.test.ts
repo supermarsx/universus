@@ -70,4 +70,33 @@ describe('RustHttpHelperClientService', () => {
       })
     ).rejects.toThrow('Rust helper request failed');
   });
+
+  test('calls espionage outcome endpoint path', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          intelLevel: 'minimal',
+          detected: true,
+          detectionChance: 0.5,
+          detailScore: 1.2,
+          defenseScore: 2.3,
+          engine: 'rust-http',
+        },
+      }),
+    } as any);
+
+    await RustHttpHelperClientService.computeEspionageOutcome({
+      probes: 3,
+      attackerEspionage: 1,
+      defenderEspionage: 2,
+      seed: 'fleet-1',
+    });
+
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
+      'http://rust-helper:8080/api/fleet/helpers/espionage-outcome'
+    );
+  });
 });

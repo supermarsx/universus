@@ -34,6 +34,9 @@ jest.mock('../../src/services/fleetHelperService', () => ({
     calculateMovement: jest.fn(),
     resolveDefenseRebuild: jest.fn(),
     computeAttackerDistribution: jest.fn(),
+    computeEspionageOutcome: jest.fn(),
+    computeMissionCargoTransfer: jest.fn(),
+    computeHarvestCollection: jest.fn(),
   },
 }));
 
@@ -43,6 +46,9 @@ jest.mock('../../src/services/rustHttpHelperClientService', () => ({
     calculateMovement: jest.fn(),
     resolveDefenseRebuild: jest.fn(),
     computeAttackerDistribution: jest.fn(),
+    computeEspionageOutcome: jest.fn(),
+    computeMissionCargoTransfer: jest.fn(),
+    computeHarvestCollection: jest.fn(),
   },
 }));
 
@@ -160,5 +166,101 @@ describe('fleet helper routes with Rust HTTP helper proxy', () => {
     expect(response.body.success).toBe(true);
     expect(RustHttpHelperClientService.computeAttackerDistribution).toHaveBeenCalledTimes(1);
     expect(FleetHelperService.computeAttackerDistribution).toHaveBeenCalledTimes(1);
+  });
+
+  test('uses Rust HTTP helper first for espionage outcome when configured', async () => {
+    (RustHttpHelperClientService.isConfigured as jest.Mock).mockReturnValue(true);
+    (RustHttpHelperClientService.computeEspionageOutcome as jest.Mock).mockResolvedValue({
+      intelLevel: 'standard',
+      detected: false,
+      detectionChance: 0.35,
+      detailScore: 4.1,
+      defenseScore: 3,
+      engine: 'rust-http',
+    });
+
+    const response = await request(app).post('/api/fleet/helpers/espionage-outcome').send({
+      probes: 6,
+      attackerEspionage: 3,
+      defenderEspionage: 2,
+      seed: 'fleet:12',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(RustHttpHelperClientService.computeEspionageOutcome).toHaveBeenCalledTimes(1);
+    expect(FleetHelperService.computeEspionageOutcome).not.toHaveBeenCalled();
+  });
+
+  test('falls back for mission cargo transfer helper when Rust HTTP helper errors', async () => {
+    (RustHttpHelperClientService.isConfigured as jest.Mock).mockReturnValue(true);
+    (RustHttpHelperClientService.computeMissionCargoTransfer as jest.Mock).mockRejectedValue(
+      new Error('bad gateway')
+    );
+    (FleetHelperService.computeMissionCargoTransfer as jest.Mock).mockResolvedValue({
+      transferMetal: 100,
+      transferCrystal: 200,
+      transferDeuterium: 300,
+      remainingMetal: 0,
+      remainingCrystal: 0,
+      remainingDeuterium: 0,
+      totalTransfer: 600,
+      engine: 'typescript',
+    });
+
+    const response = await request(app).post('/api/fleet/helpers/mission-cargo-transfer').send({
+      metal: 100,
+      crystal: 200,
+      deuterium: 300,
+      clampNonNegative: true,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(RustHttpHelperClientService.computeMissionCargoTransfer).toHaveBeenCalledTimes(1);
+    expect(FleetHelperService.computeMissionCargoTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  test('falls back for harvest collection helper when Rust HTTP helper errors', async () => {
+    (RustHttpHelperClientService.isConfigured as jest.Mock).mockReturnValue(true);
+    (RustHttpHelperClientService.computeHarvestCollection as jest.Mock).mockRejectedValue(
+      new Error('timeout')
+    );
+    (FleetHelperService.computeHarvestCollection as jest.Mock).mockResolvedValue({
+      collectedMetal: 1000,
+      collectedCrystal: 500,
+      updatedMetal: 0,
+      updatedCrystal: 0,
+      recyclerCapacity: 1500,
+      empty: false,
+      engine: 'typescript',
+    });
+
+    const response = await request(app).post('/api/fleet/helpers/harvest-collection').send({
+      debrisMetal: 1000,
+      debrisCrystal: 500,
+      recyclerCount: 10,
+      recyclerCargoCapacity: 150,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(RustHttpHelperClientService.computeHarvestCollection).toHaveBeenCalledTimes(1);
+    expect(FleetHelperService.computeHarvestCollection).toHaveBeenCalledTimes(1);
+  });
+
+  test('preserves validation shape for invalid espionage outcome requests', async () => {
+    (RustHttpHelperClientService.isConfigured as jest.Mock).mockReturnValue(true);
+
+    const response = await request(app).post('/api/fleet/helpers/espionage-outcome').send({
+      probes: 'x',
+      attackerEspionage: 2,
+      defenderEspionage: 4,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ success: false, error: 'Invalid espionage outcome request' });
+    expect(RustHttpHelperClientService.computeEspionageOutcome).not.toHaveBeenCalled();
+    expect(FleetHelperService.computeEspionageOutcome).not.toHaveBeenCalled();
   });
 });

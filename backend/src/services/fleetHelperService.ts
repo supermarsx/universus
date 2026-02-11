@@ -4,6 +4,9 @@ import {
   calculateFleetMovementByTypeNapi,
   calculateFleetMovementNapi,
   computeAttackerPostCombatDistributionNapi,
+  computeEspionageOutcomeNapi,
+  computeHarvestCollectionNapi,
+  computeMissionCargoTransferNapi,
   resolveDefenseLossesNapi,
 } from '../coreAdapter/rustCoreNapiClient';
 
@@ -60,6 +63,57 @@ export interface CombatDistributionOutput {
     survivors: Record<string, number>;
     loot: CombatLoot;
   }>;
+  engine: EngineSource;
+}
+
+export interface EspionageOutcomeInput {
+  probes: number;
+  attackerEspionage: number;
+  defenderEspionage: number;
+  seed?: string;
+}
+
+export interface EspionageOutcomeOutput {
+  intelLevel: 'minimal' | 'standard' | 'full';
+  detected: boolean;
+  detectionChance: number;
+  detailScore: number;
+  defenseScore: number;
+  engine: EngineSource;
+}
+
+export interface MissionCargoTransferInput {
+  metal: number;
+  crystal: number;
+  deuterium: number;
+  clampNonNegative?: boolean;
+}
+
+export interface MissionCargoTransferOutput {
+  transferMetal: number;
+  transferCrystal: number;
+  transferDeuterium: number;
+  remainingMetal: number;
+  remainingCrystal: number;
+  remainingDeuterium: number;
+  totalTransfer: number;
+  engine: EngineSource;
+}
+
+export interface HarvestCollectionInput {
+  debrisMetal: number;
+  debrisCrystal: number;
+  recyclerCount: number;
+  recyclerCargoCapacity: number;
+}
+
+export interface HarvestCollectionOutput {
+  collectedMetal: number;
+  collectedCrystal: number;
+  updatedMetal: number;
+  updatedCrystal: number;
+  recyclerCapacity: number;
+  empty: boolean;
   engine: EngineSource;
 }
 
@@ -151,6 +205,14 @@ function hashSeed(seed: string): number {
     h = Math.imul(h, 16777619);
   }
   return h || 1;
+}
+
+function randomFromSeed(seed?: string): number {
+  if (!seed) {
+    return Math.random();
+  }
+  const rng = mulberry32(hashSeed(seed));
+  return rng();
 }
 
 function defenseRebuildFallback(input: DefenseRebuildInput): DefenseRebuildOutput {
@@ -265,6 +327,72 @@ function combatDistributionFallback(input: CombatDistributionInput): CombatDistr
   };
 }
 
+function missionCargoTransferFallback(input: MissionCargoTransferInput): MissionCargoTransferOutput {
+  const clampNonNegative = Boolean(input.clampNonNegative);
+  const sanitize = (value: number): number => {
+    const numeric = Math.trunc(Number(value || 0));
+    return clampNonNegative ? Math.max(0, numeric) : numeric;
+  };
+  const transferMetal = sanitize(input.metal);
+  const transferCrystal = sanitize(input.crystal);
+  const transferDeuterium = sanitize(input.deuterium);
+
+  return {
+    transferMetal,
+    transferCrystal,
+    transferDeuterium,
+    remainingMetal: 0,
+    remainingCrystal: 0,
+    remainingDeuterium: 0,
+    totalTransfer: transferMetal + transferCrystal + transferDeuterium,
+    engine: 'typescript',
+  };
+}
+
+function harvestCollectionFallback(input: HarvestCollectionInput): HarvestCollectionOutput {
+  const debrisMetal = Math.max(0, Math.trunc(Number(input.debrisMetal || 0)));
+  const debrisCrystal = Math.max(0, Math.trunc(Number(input.debrisCrystal || 0)));
+  const recyclerCount = Math.max(0, Math.trunc(Number(input.recyclerCount || 0)));
+  const recyclerCargoCapacity = Math.max(0, Math.trunc(Number(input.recyclerCargoCapacity || 0)));
+
+  const recyclerCapacity = recyclerCount * recyclerCargoCapacity;
+  const collectedMetal = Math.min(debrisMetal, recyclerCapacity);
+  const remainingCapacity = Math.max(0, recyclerCapacity - collectedMetal);
+  const collectedCrystal = Math.min(debrisCrystal, remainingCapacity);
+  const updatedMetal = Math.max(0, debrisMetal - collectedMetal);
+  const updatedCrystal = Math.max(0, debrisCrystal - collectedCrystal);
+
+  return {
+    collectedMetal,
+    collectedCrystal,
+    updatedMetal,
+    updatedCrystal,
+    recyclerCapacity,
+    empty: collectedMetal === 0 && collectedCrystal === 0,
+    engine: 'typescript',
+  };
+}
+
+function espionageOutcomeFallback(input: EspionageOutcomeInput): EspionageOutcomeOutput {
+  const probes = Math.max(0, Math.trunc(Number(input.probes || 0)));
+  const detailScore = Number(input.attackerEspionage || 0) + Math.log2(probes + 1);
+  const defenseScore = Number(input.defenderEspionage || 0);
+  const detailDelta = detailScore - defenseScore;
+
+  const intelLevel = detailDelta >= 3 ? 'full' : detailDelta >= 0 ? 'standard' : 'minimal';
+  const detectionChance = Math.max(0.05, Math.min(0.95, 0.5 + (defenseScore - detailScore) * 0.05));
+  const detected = randomFromSeed(input.seed) < detectionChance;
+
+  return {
+    intelLevel,
+    detected,
+    detectionChance,
+    detailScore,
+    defenseScore,
+    engine: 'typescript',
+  };
+}
+
 export class FleetHelperService {
   static async calculateMovement(input: FleetMovementInput): Promise<FleetMovementOutput> {
     try {
@@ -321,6 +449,59 @@ export class FleetHelperService {
       };
     } catch {
       return combatDistributionFallback(input);
+    }
+  }
+
+  static async computeMissionCargoTransfer(
+    input: MissionCargoTransferInput
+  ): Promise<MissionCargoTransferOutput> {
+    try {
+      const response = await computeMissionCargoTransferNapi({
+        metal: input.metal,
+        crystal: input.crystal,
+        deuterium: input.deuterium,
+        clamp_non_negative: input.clampNonNegative,
+      });
+      return {
+        ...response,
+        engine: 'rust-napi',
+      };
+    } catch {
+      return missionCargoTransferFallback(input);
+    }
+  }
+
+  static async computeHarvestCollection(input: HarvestCollectionInput): Promise<HarvestCollectionOutput> {
+    try {
+      const response = await computeHarvestCollectionNapi({
+        debris_metal: input.debrisMetal,
+        debris_crystal: input.debrisCrystal,
+        recycler_count: input.recyclerCount,
+        recycler_cargo_capacity: input.recyclerCargoCapacity,
+      });
+      return {
+        ...response,
+        engine: 'rust-napi',
+      };
+    } catch {
+      return harvestCollectionFallback(input);
+    }
+  }
+
+  static async computeEspionageOutcome(input: EspionageOutcomeInput): Promise<EspionageOutcomeOutput> {
+    try {
+      const response = await computeEspionageOutcomeNapi({
+        probes: input.probes,
+        attacker_espionage: input.attackerEspionage,
+        defender_espionage: input.defenderEspionage,
+        seed: input.seed,
+      });
+      return {
+        ...response,
+        engine: 'rust-napi',
+      };
+    } catch {
+      return espionageOutcomeFallback(input);
     }
   }
 }

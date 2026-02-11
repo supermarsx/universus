@@ -52,6 +52,9 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
     - `POST /api/fleet/helpers/movement`
     - `POST /api/fleet/helpers/combat/defense-rebuild`
     - `POST /api/fleet/helpers/combat/attacker-distribution`
+    - `POST /api/fleet/helpers/espionage-outcome`
+    - `POST /api/fleet/helpers/mission-cargo-transfer`
+    - `POST /api/fleet/helpers/harvest-collection`
   - Scope: expose low-risk calculator kernels to clients/admin tooling while keeping DB mutation out of the shim paths.
   - Migration path:
     - Set `RUST_HTTP_HELPER_URL` to proxy helper requests to a Rust HTTP service.

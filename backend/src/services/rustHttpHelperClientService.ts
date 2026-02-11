@@ -3,8 +3,14 @@ import type {
   CombatDistributionOutput,
   DefenseRebuildInput,
   DefenseRebuildOutput,
+  EspionageOutcomeInput,
+  EspionageOutcomeOutput,
   FleetMovementInput,
   FleetMovementOutput,
+  HarvestCollectionInput,
+  HarvestCollectionOutput,
+  MissionCargoTransferInput,
+  MissionCargoTransferOutput,
 } from './fleetHelperService';
 
 interface RustHelperEnvelope<T> {
@@ -37,6 +43,20 @@ export class RustHttpHelperClientService {
     input: CombatDistributionInput
   ): Promise<CombatDistributionOutput> {
     return this.postJson<CombatDistributionOutput>('/api/fleet/helpers/combat/attacker-distribution', input);
+  }
+
+  static async computeEspionageOutcome(input: EspionageOutcomeInput): Promise<EspionageOutcomeOutput> {
+    return this.postJson<EspionageOutcomeOutput>('/api/fleet/helpers/espionage-outcome', input);
+  }
+
+  static async computeMissionCargoTransfer(
+    input: MissionCargoTransferInput
+  ): Promise<MissionCargoTransferOutput> {
+    return this.postJson<MissionCargoTransferOutput>('/api/fleet/helpers/mission-cargo-transfer', input);
+  }
+
+  static async computeHarvestCollection(input: HarvestCollectionInput): Promise<HarvestCollectionOutput> {
+    return this.postJson<HarvestCollectionOutput>('/api/fleet/helpers/harvest-collection', input);
   }
 
   private static async postJson<T>(path: string, payload: unknown): Promise<T> {
