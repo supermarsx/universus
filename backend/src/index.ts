@@ -62,6 +62,7 @@ import chatService from './services/chatService';
 import notificationService from './services/notificationService';
 import { themeScheduler } from './services/themeScheduler';
 import fleetScheduler from './services/fleetScheduler';
+import destroyMoonService from './services/destroyMoonService';
 
 // Initialize Express app
 const app = express();
@@ -130,8 +131,6 @@ app.get('/api/health', (req, res) => {
 //   }
 // });
 
-import compression from 'compression';
-
 // Enable gzip compression
 app.use(compression());
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -174,6 +173,14 @@ if (!skipServerStart) {
   // Start debris cleanup service (auto-decay and cleanup every hour)
   debrisService.startAutomaticCleanup(60);
   console.log('Debris cleanup service started');
+
+  // Resolve due moon destruction attacks.
+  setInterval(() => {
+    destroyMoonService.processDueAttacks().catch((error) => {
+      console.error('Destroy moon scheduler failed', error);
+    });
+  }, 10000);
+  console.log('Moon destruction scheduler started');
 
   // Phase 6: Start chat and notification cleanup services
   setInterval(() => {

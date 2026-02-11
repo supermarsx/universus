@@ -21,7 +21,8 @@ class JumpGateService {
     if (toMoon.user_id !== userId) return { success: false, error: 'Destination moon not owned by user' };
     if (fromMoonId === toMoonId) return { success: false, error: 'Destination moon must be different' };
     if (fromMoon.jump_gate < 1 || toMoon.jump_gate < 1) return { success: false, error: 'Both moons must have Jump Gates' };
-    if (!(await this.canJump(fromMoonId))) return { success: false, error: 'Jump Gate is on cooldown' };
+    if (!(await this.canJump(fromMoonId))) return { success: false, error: 'Source Jump Gate is on cooldown' };
+    if (!(await this.canJump(toMoonId))) return { success: false, error: 'Destination Jump Gate is on cooldown' };
 
     // Move fleets (use FleetService.moveFleetToMoon)
     try {
@@ -34,7 +35,7 @@ class JumpGateService {
 
     // Set cooldown (skip actual DB write during tests)
     if (process.env.NODE_ENV !== 'test' && process.env.SKIP_SERVER_START !== 'true') {
-      await pool.query('UPDATE moons SET last_jump_time = NOW() WHERE id = $1', [fromMoonId]);
+      await pool.query('UPDATE moons SET last_jump_time = NOW() WHERE id = ANY($1::int[])', [[fromMoonId, toMoonId]]);
     }
     return { success: true };
   }

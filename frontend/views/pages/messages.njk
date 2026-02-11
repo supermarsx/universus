@@ -63,15 +63,15 @@
         <form id="composeForm">
             <div class="form-group">
                 <label for="recipientUsername">To:</label>
-                <input type="text" id="recipientUsername" name="recipient" required placeholder="Commander name">
+                <input type="text" id="recipientUsername" name="recipient" required placeholder="{{ 'messages.placeholder_recipient' | t }}">
             </div>
             <div class="form-group">
                 <label for="messageSubject">Subject:</label>
-                <input type="text" id="messageSubject" name="subject" required placeholder="Message subject">
+                <input type="text" id="messageSubject" name="subject" required placeholder="{{ 'messages.placeholder_subject' | t }}">
             </div>
             <div class="form-group">
                 <label for="messageBody">Message:</label>
-                <textarea id="messageBody" name="body" required rows="6" placeholder="Your message..."></textarea>
+                <textarea id="messageBody" name="body" required rows="6" placeholder="{{ 'messages.placeholder_body' | t }}"></textarea>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn-primary">Send Message</button>

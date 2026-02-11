@@ -109,6 +109,51 @@ router.get('/id/:moonId', async (req: AuthRequest, res: Response) => {
   }
 });
 
+router.get('/public/:moonId', async (req: AuthRequest, res: Response) => {
+  try {
+    const moonId = parseInt(req.params.moonId, 10);
+    if (!Number.isFinite(moonId)) {
+      return res.status(400).json({ success: false, error: 'Invalid moon id' });
+    }
+
+    const result = await pool.query(
+      `SELECT m.id, m.diameter, m.sensor_phalanx, m.jump_gate, m.created_at,
+              p.galaxy, p.system, p.position,
+              u.username AS owner_alias
+       FROM moons m
+       JOIN planets p ON p.id = m.planet_id
+       JOIN users u ON u.id = m.user_id
+       WHERE m.id = $1`,
+      [moonId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Moon not found' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        diameter: row.diameter,
+        ownerAlias: row.owner_alias,
+        hasSensorPhalanx: Number(row.sensor_phalanx || 0) > 0,
+        hasJumpGate: Number(row.jump_gate || 0) > 0,
+        coordinates: {
+          galaxy: row.galaxy,
+          system: row.system,
+          position: row.position,
+        },
+        createdAt: row.created_at,
+      },
+    });
+  } catch (error: any) {
+    console.error('Get public moon info error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load moon info' });
+  }
+});
+
 router.post('/:moonId/phalanx', async (req: AuthRequest, res: Response) => {
   try {
     const moonId = parseInt(req.params.moonId, 10);
@@ -167,16 +212,21 @@ router.post('/:moonId/jump-gate', async (req: AuthRequest, res: Response) => {
 // POST /api/moons/:moonId/destroy
 router.post('/:moonId/destroy', async (req: AuthRequest, res: Response) => {
   try {
-    const moonId = parseInt(req.params.moonId, 10);
-    const { numDeathstars } = req.body;
+    const sourceMoonId = parseInt(req.params.moonId, 10);
+    const { targetMoonId, numDeathstars, speedPercent } = req.body;
 
-    if (!Number.isFinite(numDeathstars) || numDeathstars < 1) {
-      return res.status(400).json({ success: false, error: 'Invalid number of Deathstars' });
+    if (
+      !Number.isFinite(sourceMoonId) ||
+      !Number.isFinite(targetMoonId) ||
+      !Number.isFinite(numDeathstars) ||
+      numDeathstars < 1
+    ) {
+      return res.status(400).json({ success: false, error: 'Invalid destroy moon request' });
     }
     const authReq = req as AuthRequest;
     const moonResult = await pool.query(
       'SELECT deathstar FROM moons WHERE id = $1 AND user_id = $2',
-      [moonId, authReq.user!.id]
+      [sourceMoonId, authReq.user!.id]
     );
 
     if (moonResult.rows.length === 0) {
@@ -187,15 +237,72 @@ router.post('/:moonId/destroy', async (req: AuthRequest, res: Response) => {
     if (available < numDeathstars) {
       return res.status(400).json({ success: false, error: 'Insufficient Deathstars at moon' });
     }
-    const result = await (await import('../services/destroyMoonService')).default.attemptDestruction(authReq.user!.id, moonId, numDeathstars);
+    const result = await (
+      await import('../services/destroyMoonService')
+    ).default.scheduleDestruction(
+      authReq.user!.id,
+      sourceMoonId,
+      parseInt(targetMoonId, 10),
+      parseInt(numDeathstars, 10),
+      Number.isFinite(speedPercent) ? Number(speedPercent) : 100
+    );
 
-    if (result.error) {
-      return res.status(400).json({ success: false, error: result.error });
-    }
     res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Destroy Moon error:', error);
-    res.status(500).json({ success: false, error: 'Moon destruction failed' });
+    res.status(400).json({ success: false, error: error?.message || 'Moon destruction failed' });
+  }
+});
+
+router.post('/:moonId/jump', async (req: AuthRequest, res: Response) => {
+  try {
+    const fromMoonId = parseInt(req.params.moonId, 10);
+    const { toMoonId, fleetIds } = req.body;
+
+    if (!Number.isFinite(toMoonId) || !Array.isArray(fleetIds) || fleetIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'Invalid request' });
+    }
+    const authReq = req as AuthRequest;
+    const result = await jumpGateService.jumpFleet(authReq.user!.id, fromMoonId, toMoonId, fleetIds);
+
+    if (!result.success) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Jump Gate error:', error);
+    res.status(500).json({ success: false, error: 'Jump Gate failed' });
+  }
+});
+
+router.post('/:moonId/scan', async (req: AuthRequest, res: Response) => {
+  try {
+    const moonId = parseInt(req.params.moonId, 10);
+    const targetGalaxy = parseInt(req.body.targetGalaxy, 10);
+    const targetSystem = parseInt(req.body.targetSystem, 10);
+    const targetPosition = parseInt(req.body.targetPosition, 10);
+
+    if (
+      !Number.isFinite(targetGalaxy) ||
+      !Number.isFinite(targetSystem) ||
+      !Number.isFinite(targetPosition)
+    ) {
+      return res.status(400).json({ success: false, error: 'Invalid coordinates' });
+    }
+
+    const authReq = req as AuthRequest;
+    const result = await phalanxService.performScan({
+      userId: authReq.user!.id,
+      moonId,
+      targetGalaxy,
+      targetSystem,
+      targetPosition,
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Phalanx scan error:', error);
+    res.status(400).json({ success: false, error: error.message || 'Phalanx scan failed' });
   }
 });
 

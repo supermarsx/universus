@@ -5,7 +5,7 @@
 {% set bodyClass = "game-body admin-body" %}
 
 {% block content %}
-<h2>Admin Control Panel</h2>
+<h2>{{ 'admin.control_panel' | t }}</h2>
 
 <div class="admin-nav">
     <button class="admin-tab active" data-tab="dashboard">Dashboard</button>
@@ -41,7 +41,7 @@
 <!-- Users Tab -->
 <div id="usersTab" class="admin-tab-content">
     <div class="admin-toolbar">
-        <input type="text" id="userSearchInput" placeholder="Search users...">
+        <input type="text" id="userSearchInput" placeholder="{{ 'user.search_users' | t }}">
         <button id="searchUsersBtn" class="btn-primary">Search</button>
     </div>
     <div id="usersTable" class="admin-table-container">

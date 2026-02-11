@@ -8,7 +8,7 @@
 import { pool } from '../config/database';
 import { PlanetService } from './planetService';
 import { CombatService } from './combatService';
-import { SHIPS } from '../config/gameConfig';
+import { SHIPS, DEFENSES } from '../config/gameConfig';
 import { PoolClient } from 'pg';
 import { Fleet, Planet } from '../types';
 import { getRealtimeHandler } from '../socket';
@@ -513,6 +513,12 @@ export class FleetService {
       }
     }
 
+    for (const key of Object.keys(DEFENSES)) {
+      if (targetPlanet[key] > 0) {
+        defenderDefenses[key] = targetPlanet[key];
+      }
+    }
+
     const aggregateShips = this.combineFleetShips(participants);
     const combatResult = await CombatService.simulateBattle(
       aggregateShips,
@@ -529,6 +535,8 @@ export class FleetService {
       // Use fleet id as the deterministic seed for reproducible combat outcomes
       fleet.id
     );
+
+    await this.applyDefenderLosses(targetPlanet.id, targetPlanet, combatResult, client);
 
     if (combatResult.winner === 'attacker') {
       await client.query(
@@ -1529,6 +1537,45 @@ export class FleetService {
     } finally {
       client.release();
     }
+  }
+
+  private static async applyDefenderLosses(
+    planetId: number,
+    targetPlanet: any,
+    result: CombatResult,
+    client: PoolClient
+  ): Promise<void> {
+    const losses = result.defenderLosses || {};
+    const updatePayload: Record<string, number> = {};
+
+    Object.entries(losses).forEach(([unit, rawLoss]) => {
+      const loss = Math.max(0, Number(rawLoss || 0));
+      if (loss <= 0) return;
+
+      const current = Math.max(0, Number(targetPlanet[unit] || 0));
+      if (unit in DEFENSES) {
+        // OGame-like defense rebuild chance after battle (default 70%).
+        let rebuilt = 0;
+        for (let i = 0; i < loss; i++) {
+          if (Math.random() < 0.7) rebuilt++;
+        }
+        const effectiveLoss = Math.max(0, loss - rebuilt);
+        updatePayload[unit] = Math.max(0, current - effectiveLoss);
+      } else {
+        updatePayload[unit] = Math.max(0, current - loss);
+      }
+    });
+
+    const updates = Object.entries(updatePayload);
+    if (!updates.length) return;
+
+    const setters = updates.map(([key], index) => `${key} = $${index + 1}`);
+    const values = updates.map(([, value]) => value);
+
+    await client.query(
+      `UPDATE planets SET ${setters.join(', ')} WHERE id = $${values.length + 1}`,
+      [...values, planetId]
+    );
   }
 }
 
