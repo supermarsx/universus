@@ -83,7 +83,13 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const proto: any = grpc.loadPackageDefinition(packageDefinition).core;
 
 const addr = process.env.BACKEND_CORE_ADDR || 'backend-core:50051';
-const client = new proto.GameLoop(addr, grpc.credentials.createInsecure());
+const grpcTimeoutMs = Math.max(100, Number(process.env.BACKEND_CORE_TIMEOUT_MS || 2000));
+const client = new proto.GameLoop(addr, grpc.credentials.createInsecure(), {
+  // Keep channels warm to reduce handshake churn under bursty traffic.
+  'grpc.keepalive_time_ms': 20_000,
+  'grpc.keepalive_timeout_ms': 5_000,
+  'grpc.max_receive_message_length': 8 * 1024 * 1024,
+});
 
 const toInt = (value: number | string | undefined): number => {
   if (typeof value === 'number') return Math.trunc(value);
@@ -133,6 +139,8 @@ const toFloat = (value: number | string | undefined): number => {
   }
   return 0;
 };
+
+const getDeadline = (): Date => new Date(Date.now() + grpcTimeoutMs);
 
 /**
  * Simulate a battle using the Rust core service.
@@ -196,7 +204,7 @@ export function simulateBattleRust(arg1: RustSimulateRequest | string, arg2?: an
       };
     }
 
-    client.SimulateBattle(req, (err: any, res: any) => {
+    client.SimulateBattle(req, { deadline: getDeadline() }, (err: any, res: any) => {
       if (err) return reject(err);
       if (res && (res.winner || res.winner === 'draw')) {
         return resolve(normalizeCombatResult(res as RustCombatResultRaw));
@@ -219,7 +227,7 @@ export function calculateFleetMovementRust(
   request: RustFleetMovementRequest
 ): Promise<RustFleetMovementResult> {
   return new Promise((resolve, reject) => {
-    client.CalculateFleetMovement(request, (err: any, res: any) => {
+    client.CalculateFleetMovement(request, { deadline: getDeadline() }, (err: any, res: any) => {
       if (err) return reject(err);
       return resolve({
         distance: toInt(res?.distance),

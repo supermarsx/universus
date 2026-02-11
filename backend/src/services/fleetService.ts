@@ -66,12 +66,17 @@ const PLANET_BUILDING_KEYS = [
 ];
 
 const messagingService = new MessagingService(pool);
+const MOVEMENT_CACHE_TTL_MS = 60_000;
+const MOVEMENT_CACHE_MAX_ENTRIES = 512;
+type FleetMovementCalc = { fuelNeeded: number; travelTimeSeconds: number; cargoCapacity: number };
 
 /**
  * Coordinator for fleet operations (dispatch, arrival processing, returns).
  * Public APIs are mostly static helpers used by controllers and schedulers.
  */
 export class FleetService {
+  private static movementCache = new Map<string, { expiresAt: number; value: FleetMovementCalc }>();
+
   /**
    * Dispatch a fleet from an origin planet to a target coordinate.
    * Validates ships, fuel and cargo, persists the fleet and schedules arrival.
@@ -1543,20 +1548,45 @@ export class FleetService {
       targetPosition: number;
       ships: { [key: string]: number };
     }
-  ): Promise<{ fuelNeeded: number; travelTimeSeconds: number; cargoCapacity: number }> {
-    const local = this.calculateFleetMovementLocal(
+  ): Promise<FleetMovementCalc> {
+    if (process.env.NODE_ENV === 'test') {
+      return this.calculateFleetMovementLocal(
+        originPlanet.galaxy,
+        originPlanet.system,
+        originPlanet.position,
+        payload.targetGalaxy,
+        payload.targetSystem,
+        payload.targetPosition,
+        payload.ships
+      );
+    }
+
+    const rustShips = Object.entries(payload.ships)
+      .filter(([, count]) => count > 0)
+      .map(([shipType, count]) => {
+        const shipConfig = SHIPS[shipType];
+        return {
+          ship_type: shipType,
+          count,
+          base_speed: shipConfig?.baseSpeed || 0,
+          fuel_consumption: shipConfig?.fuelConsumption || 0,
+          cargo: shipConfig?.cargo || 0,
+        };
+      });
+
+    const cacheKey = this.buildMovementCacheKey(
       originPlanet.galaxy,
       originPlanet.system,
       originPlanet.position,
       payload.targetGalaxy,
       payload.targetSystem,
       payload.targetPosition,
-      payload.ships
+      rustShips
     );
-
-    const preferRust = process.env.NODE_ENV !== 'test';
-    if (!preferRust) {
-      return local;
+    const now = Date.now();
+    const cached = this.movementCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
     }
 
     try {
@@ -1567,28 +1597,29 @@ export class FleetService {
         target_galaxy: payload.targetGalaxy,
         target_system: payload.targetSystem,
         target_position: payload.targetPosition,
-        ships: Object.entries(payload.ships)
-          .filter(([, count]) => count > 0)
-          .map(([shipType, count]) => {
-            const shipConfig = SHIPS[shipType];
-            return {
-              ship_type: shipType,
-              count,
-              base_speed: shipConfig?.baseSpeed || 0,
-              fuel_consumption: shipConfig?.fuelConsumption || 0,
-              cargo: shipConfig?.cargo || 0,
-            };
-          }),
+        ships: rustShips,
       });
 
-      return {
+      const value = {
         fuelNeeded: rustResult.fuelNeeded,
         travelTimeSeconds: rustResult.travelTimeSeconds,
         cargoCapacity: rustResult.cargoCapacity,
       };
+      this.setMovementCache(cacheKey, value);
+      return value;
     } catch (error) {
       console.warn('[FleetService] Rust fleet movement unavailable, using local fallback:', error);
-      return local;
+      const fallback = this.calculateFleetMovementLocal(
+        originPlanet.galaxy,
+        originPlanet.system,
+        originPlanet.position,
+        payload.targetGalaxy,
+        payload.targetSystem,
+        payload.targetPosition,
+        payload.ships
+      );
+      this.setMovementCache(cacheKey, fallback);
+      return fallback;
     }
   }
 
@@ -1628,6 +1659,37 @@ export class FleetService {
       travelTimeSeconds,
       cargoCapacity,
     };
+  }
+
+  private static buildMovementCacheKey(
+    originGalaxy: number,
+    originSystem: number,
+    originPosition: number,
+    targetGalaxy: number,
+    targetSystem: number,
+    targetPosition: number,
+    ships: Array<{ ship_type: string; count: number; base_speed: number; fuel_consumption: number; cargo: number }>
+  ): string {
+    const shipPart = ships
+      .slice()
+      .sort((a, b) => a.ship_type.localeCompare(b.ship_type))
+      .map((ship) => `${ship.ship_type}:${ship.count}:${ship.base_speed}:${ship.fuel_consumption}:${ship.cargo}`)
+      .join('|');
+    return `${originGalaxy}:${originSystem}:${originPosition}->${targetGalaxy}:${targetSystem}:${targetPosition}#${shipPart}`;
+  }
+
+  private static setMovementCache(key: string, value: FleetMovementCalc): void {
+    this.movementCache.set(key, {
+      value,
+      expiresAt: Date.now() + MOVEMENT_CACHE_TTL_MS,
+    });
+
+    if (this.movementCache.size > MOVEMENT_CACHE_MAX_ENTRIES) {
+      const firstKey = this.movementCache.keys().next().value;
+      if (firstKey) {
+        this.movementCache.delete(firstKey);
+      }
+    }
   }
 
   private static async applyDefenderLosses(
