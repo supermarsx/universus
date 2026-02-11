@@ -16,9 +16,12 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
+use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::Json;
 use axum::http::StatusCode;
+use axum::middleware::{from_fn_with_state, Next};
+use axum::http::{HeaderMap, Request};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
@@ -36,6 +39,11 @@ struct SuccessResponse<T> {
 struct ErrorResponse {
     success: bool,
     error: String,
+}
+
+#[derive(Clone)]
+struct AppState {
+    helper_token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -173,6 +181,34 @@ fn internal_error(message: &str) -> Response {
         }),
     )
         .into_response()
+}
+
+fn unauthorized() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            success: false,
+            error: "Unauthorized".to_string(),
+        }),
+    )
+        .into_response()
+}
+
+async fn helper_auth_middleware<B>(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    request: Request<B>,
+    next: Next<B>,
+) -> Response {
+    if let Some(expected) = state.helper_token.as_deref() {
+        let provided = headers
+            .get("x-core-helper-token")
+            .and_then(|value| value.to_str().ok());
+        if provided != Some(expected) {
+            return unauthorized();
+        }
+    }
+    next.run(request).await
 }
 
 fn js_truthy(value: Option<&Value>) -> bool {
@@ -721,31 +757,41 @@ async fn harvest_collection_handler(payload: Result<Json<Value>, JsonRejection>)
     })
 }
 
-#[tokio::main]
-async fn main() {
-    let app = Router::new()
-        .route("/health", get(health_handler))
-        .route("/api/fleet/helpers/movement", post(movement_handler))
+pub(crate) fn build_app(helper_token: Option<String>) -> Router {
+    let state = AppState { helper_token };
+    let helper_routes = Router::new()
+        .route("/movement", post(movement_handler))
         .route(
-            "/api/fleet/helpers/combat/defense-rebuild",
+            "/combat/defense-rebuild",
             post(defense_rebuild_handler),
         )
         .route(
-            "/api/fleet/helpers/combat/attacker-distribution",
+            "/combat/attacker-distribution",
             post(attacker_distribution_handler),
         )
         .route(
-            "/api/fleet/helpers/espionage-outcome",
+            "/espionage-outcome",
             post(espionage_outcome_handler),
         )
         .route(
-            "/api/fleet/helpers/mission-cargo-transfer",
+            "/mission-cargo-transfer",
             post(mission_cargo_transfer_handler),
         )
         .route(
-            "/api/fleet/helpers/harvest-collection",
+            "/harvest-collection",
             post(harvest_collection_handler),
-        );
+        )
+        .layer(from_fn_with_state(state.clone(), helper_auth_middleware));
+
+    Router::new()
+        .route("/health", get(health_handler))
+        .nest("/api/fleet/helpers", helper_routes)
+}
+
+#[tokio::main]
+async fn main() {
+    let helper_token = std::env::var("CORE_HTTP_HELPER_TOKEN").ok();
+    let app = build_app(helper_token);
 
     let bind_addr = std::env::var("CORE_HTTP_BIND_ADDR")
         .unwrap_or_else(|_| "0.0.0.0:50052".to_string());
