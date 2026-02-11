@@ -589,7 +589,9 @@
     "perk": {
       "active": "Active",
       "expired": "Expired"
-    }
+    },
+    "advertisement": "Advertisement",
+    "adPlaceholder": "Ad slot"
   },
   "bots": {
     "bot_details": "Bot Details",
