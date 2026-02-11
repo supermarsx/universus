@@ -1,0 +1,210 @@
+use std::collections::HashMap;
+
+use backend_core::{core, sim::simulate_combat};
+use napi::Result;
+use napi_derive::napi;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize)]
+struct SimulateBattleRequest {
+    battle_id: String,
+    attacker_ships: HashMap<String, i64>,
+    defender_ships: HashMap<String, i64>,
+    defender_defenses: HashMap<String, i64>,
+    attacker_tech: HashMap<String, i64>,
+    defender_tech: HashMap<String, i64>,
+    planet_metal: i64,
+    planet_crystal: i64,
+    planet_deuterium: i64,
+    seed: Option<String>,
+    universe: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RoundResultOut {
+    attacker_shots: i32,
+    defender_shots: i32,
+    attacker_destroyed: i32,
+    defender_destroyed: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CombatResultOut {
+    winner: String,
+    rounds: Vec<RoundResultOut>,
+    attacker_losses: HashMap<String, i32>,
+    defender_losses: HashMap<String, i32>,
+    loot: ResourceTripletOut,
+    debris: ResourcePairOut,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceTripletOut {
+    metal: i64,
+    crystal: i64,
+    deuterium: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourcePairOut {
+    metal: i64,
+    crystal: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct FleetMovementRequest {
+    origin_galaxy: i32,
+    origin_system: i32,
+    origin_position: i32,
+    target_galaxy: i32,
+    target_system: i32,
+    target_position: i32,
+    ships: Vec<ShipMovementSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ShipMovementSpec {
+    count: i32,
+    base_speed: f64,
+    fuel_consumption: f64,
+    cargo: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FleetMovementResult {
+    distance: i32,
+    fleet_speed: f64,
+    travel_time_seconds: i32,
+    fuel_needed: f64,
+    cargo_capacity: f64,
+}
+
+fn to_i32_map(input: HashMap<String, i64>) -> HashMap<String, i32> {
+    input
+        .into_iter()
+        .map(|(k, v)| {
+            let value = if v > i32::MAX as i64 {
+                i32::MAX
+            } else if v < i32::MIN as i64 {
+                i32::MIN
+            } else {
+                v as i32
+            };
+            (k, value)
+        })
+        .collect()
+}
+
+#[napi]
+pub fn simulate_battle(payload_json: String) -> Result<String> {
+    let payload: SimulateBattleRequest = serde_json::from_str(&payload_json)
+        .map_err(|e| napi::Error::from_reason(format!("invalid simulate payload: {}", e)))?;
+
+    let request = core::SimulateRequest {
+        battle_id: payload.battle_id,
+        attacker_ships: to_i32_map(payload.attacker_ships),
+        defender_ships: to_i32_map(payload.defender_ships),
+        defender_defenses: to_i32_map(payload.defender_defenses),
+        attacker_tech: to_i32_map(payload.attacker_tech),
+        defender_tech: to_i32_map(payload.defender_tech),
+        planet_metal: payload.planet_metal,
+        planet_crystal: payload.planet_crystal,
+        planet_deuterium: payload.planet_deuterium,
+        seed: payload.seed.unwrap_or_default(),
+        universe: payload.universe.unwrap_or_else(|| "default".to_string()),
+    };
+
+    let result = simulate_combat(&request);
+    let loot = result.loot.unwrap_or(core::Loot {
+        metal: 0,
+        crystal: 0,
+        deuterium: 0,
+    });
+    let debris = result.debris.unwrap_or(core::Debris {
+        metal: 0,
+        crystal: 0,
+    });
+
+    let output = CombatResultOut {
+        winner: result.winner,
+        rounds: result
+            .rounds
+            .into_iter()
+            .map(|round| RoundResultOut {
+                attacker_shots: round.attacker_shots,
+                defender_shots: round.defender_shots,
+                attacker_destroyed: round.attacker_destroyed,
+                defender_destroyed: round.defender_destroyed,
+            })
+            .collect(),
+        attacker_losses: result.attacker_losses,
+        defender_losses: result.defender_losses,
+        loot: ResourceTripletOut {
+            metal: loot.metal,
+            crystal: loot.crystal,
+            deuterium: loot.deuterium,
+        },
+        debris: ResourcePairOut {
+            metal: debris.metal,
+            crystal: debris.crystal,
+        },
+    };
+
+    serde_json::to_string(&output)
+        .map_err(|e| napi::Error::from_reason(format!("serialize combat result failed: {}", e)))
+}
+
+#[napi]
+pub fn calculate_fleet_movement(payload_json: String) -> Result<String> {
+    let payload: FleetMovementRequest = serde_json::from_str(&payload_json)
+        .map_err(|e| napi::Error::from_reason(format!("invalid movement payload: {}", e)))?;
+
+    let distance = if payload.origin_galaxy != payload.target_galaxy {
+        (payload.origin_galaxy - payload.target_galaxy).abs() * 20000
+    } else if payload.origin_system != payload.target_system {
+        (payload.origin_system - payload.target_system).abs() * 5 * 19 + 2700
+    } else {
+        (payload.origin_position - payload.target_position).abs() * 5 + 1000
+    };
+
+    let mut min_speed = f64::INFINITY;
+    let mut fuel_needed = 0.0f64;
+    let mut cargo_capacity = 0.0f64;
+
+    for ship in payload.ships.iter() {
+        if ship.count <= 0 {
+            continue;
+        }
+        if ship.base_speed > 0.0 {
+            min_speed = min_speed.min(ship.base_speed);
+        }
+        let count = ship.count as f64;
+        fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
+        cargo_capacity += ship.cargo * count;
+    }
+
+    let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+    let travel_time_seconds = if fleet_speed > 0.0 {
+        ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
+    } else {
+        0
+    };
+
+    cargo_capacity -= fuel_needed;
+
+    let output = FleetMovementResult {
+        distance,
+        fleet_speed,
+        travel_time_seconds,
+        fuel_needed,
+        cargo_capacity,
+    };
+
+    serde_json::to_string(&output)
+        .map_err(|e| napi::Error::from_reason(format!("serialize movement result failed: {}", e)))
+}

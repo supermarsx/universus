@@ -33,11 +33,16 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - `CORE_ENGINE`:
   - `rust` (default in non-test environments): Rust-first delegation with TS fallback.
   - `ts` / `typescript` / `js`: force TypeScript simulation path.
+- `CORE_TRANSPORT`:
+  - `grpc` (default): Node -> Rust core gRPC path.
+  - `napi`: Node -> in-process Rust addon path (`backend-core-napi`) with fallback to gRPC, then TS.
 - `CORE_UNIVERSE`: universe label passed to Rust for worker routing.
 - `BACKEND_CORE_ADDR`: Rust gRPC target address.
+- `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
 
 ## Fallback and Resilience
-- If Rust gRPC call fails, backend falls back to TypeScript simulation path and logs the failure.
+- If N-API call fails, backend falls back to gRPC, then TypeScript simulation path.
+- If Rust gRPC call fails, backend falls back to TypeScript simulation path.
 - In test environments (`NODE_ENV=test`), default simulation engine is TypeScript unless explicitly overridden.
 
 ## Data Contract Normalization

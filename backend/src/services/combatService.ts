@@ -80,22 +80,36 @@ export class CombatService {
     // Rust-first delegation: use Rust unless explicitly disabled.
     const defaultEngine = process.env.NODE_ENV === 'test' ? 'ts' : 'rust';
     const coreEngine = (process.env.CORE_ENGINE || defaultEngine).toLowerCase();
+    const coreTransport = (process.env.CORE_TRANSPORT || 'grpc').toLowerCase();
     if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js') {
+      const rustRequest = {
+        battle_id: String(planetId || 'local'),
+        attacker_ships: attackerShips || {},
+        defender_ships: defenderShips || {},
+        defender_defenses: defenderDefenses || {},
+        attacker_tech: this.normalizeTechMap(attackerTech),
+        defender_tech: this.normalizeTechMap(defenderTech),
+        planet_metal: Number(planetResources?.metal || 0),
+        planet_crystal: Number(planetResources?.crystal || 0),
+        planet_deuterium: Number(planetResources?.deuterium || 0),
+        seed: typeof seed === 'number' ? String(seed) : undefined,
+        universe: process.env.CORE_UNIVERSE || 'default',
+      };
+
+      if (coreTransport === 'napi') {
+        try {
+          const { simulateBattleNapi } = require('../coreAdapter/rustCoreNapiClient');
+          const result = await simulateBattleNapi(rustRequest);
+          if (result && result.winner) return result as CombatResult;
+          throw new Error('Rust N-API returned invalid combat result payload');
+        } catch (error) {
+          console.error('Rust N-API call failed, falling back to gRPC/TS implementation:', error);
+        }
+      }
+
       try {
         const { simulateBattleRust } = require('../coreAdapter/rustCoreClient');
-        const result = await simulateBattleRust({
-          battle_id: String(planetId || 'local'),
-          attacker_ships: attackerShips || {},
-          defender_ships: defenderShips || {},
-          defender_defenses: defenderDefenses || {},
-          attacker_tech: this.normalizeTechMap(attackerTech),
-          defender_tech: this.normalizeTechMap(defenderTech),
-          planet_metal: Number(planetResources?.metal || 0),
-          planet_crystal: Number(planetResources?.crystal || 0),
-          planet_deuterium: Number(planetResources?.deuterium || 0),
-          seed: typeof seed === 'number' ? String(seed) : undefined,
-          universe: process.env.CORE_UNIVERSE || 'default',
-        });
+        const result = await simulateBattleRust(rustRequest);
         if (result && result.winner) return result as CombatResult;
         throw new Error('Rust core returned invalid combat result payload');
       } catch (error) {

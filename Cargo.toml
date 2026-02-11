@@ -1,4 +1,5 @@
 [workspace]
 members = [
-  "backend-core"
+  "backend-core",
+  "backend-core-napi"
 ]

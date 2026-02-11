@@ -1589,16 +1589,35 @@ export class FleetService {
       return cached.value;
     }
 
+    const grpcRequest = {
+      origin_galaxy: originPlanet.galaxy,
+      origin_system: originPlanet.system,
+      origin_position: originPlanet.position,
+      target_galaxy: payload.targetGalaxy,
+      target_system: payload.targetSystem,
+      target_position: payload.targetPosition,
+      ships: rustShips,
+    };
+    const coreTransport = (process.env.CORE_TRANSPORT || 'grpc').toLowerCase();
+
+    if (coreTransport === 'napi') {
+      try {
+        const { calculateFleetMovementNapi } = require('../coreAdapter/rustCoreNapiClient');
+        const rustResult = await calculateFleetMovementNapi(grpcRequest);
+        const value = {
+          fuelNeeded: rustResult.fuelNeeded,
+          travelTimeSeconds: rustResult.travelTimeSeconds,
+          cargoCapacity: rustResult.cargoCapacity,
+        };
+        this.setMovementCache(cacheKey, value);
+        return value;
+      } catch (error) {
+        console.warn('[FleetService] Rust N-API movement unavailable, falling back to gRPC/local:', error);
+      }
+    }
+
     try {
-      const rustResult = await calculateFleetMovementRust({
-        origin_galaxy: originPlanet.galaxy,
-        origin_system: originPlanet.system,
-        origin_position: originPlanet.position,
-        target_galaxy: payload.targetGalaxy,
-        target_system: payload.targetSystem,
-        target_position: payload.targetPosition,
-        ships: rustShips,
-      });
+      const rustResult = await calculateFleetMovementRust(grpcRequest);
 
       const value = {
         fuelNeeded: rustResult.fuelNeeded,
