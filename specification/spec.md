@@ -22,9 +22,20 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
 - Runtime controls:
   - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.
   - `CORE_TRANSPORT=auto|grpc|napi` to choose Rust invocation transport (default `auto`).
+  - `CORE_HELPER_TRANSPORT=http` to enable Rust HTTP helper transport for fleet mission helper kernels.
+  - `CORE_HTTP_HELPER_TOKEN` to send shared helper auth token as `x-core-helper-token`.
   - `BACKEND_CORE_ADDR` for Rust core gRPC endpoint.
   - `CORE_UNIVERSE` for universe-specific Rust worker context.
   - `RUST_HTTP_HELPER_URL` optional HTTP base URL for fleet helper proxy migration.
+
+### 5-Step Migration Matrix (Rust Backend Cutover)
+| Step | Scope | Current completion status | Next milestone |
+| --- | --- | --- | --- |
+| 1 | Combat simulation on Rust core | Completed (Rust-first live, TS fallback retained) | Staging rust-only fail-closed canary for combat path. |
+| 2 | Fleet movement Rust-first transport chain | Completed (N-API by-type -> fast N-API -> gRPC -> TS fallback) | Move TS movement fallback behind emergency-only flag after SLO validation. |
+| 3 | Mission helper kernels in fleet orchestration | In progress (Rust N-API/HTTP live; TS fallback still active) | Roll out `CORE_HELPER_TRANSPORT=http` with `RUST_HTTP_HELPER_URL` and `CORE_HTTP_HELPER_TOKEN`. |
+| 4 | Fleet helper REST shim proxying to Rust | In progress (proxy-first when configured, local fallback on errors) | Make Rust helper proxy default in non-test and enforce helper token ingress. |
+| 5 | Full backend cutover posture | Pending | Standardize runtime profile on Rust-first (`CORE_ENGINE=rust`, `CORE_TRANSPORT=auto|napi|grpc`, `CORE_HELPER_TRANSPORT=http`) and then retire TS combat/mission fallbacks after stability window. |
 - Backend benchmark tooling now includes:
   - transport benchmark (`backend/scripts/benchmarkCoreTransports.ts`)
   - memory benchmark (`backend/scripts/benchmarkCoreMemory.ts`, runs with Node `--expose-gc`)

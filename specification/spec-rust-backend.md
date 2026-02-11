@@ -73,6 +73,19 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
 - `RUST_HTTP_HELPER_URL`: optional HTTP base URL for Rust helper proxy (example: `http://rust-helper:8080`).
 - `RUST_HTTP_HELPER_TIMEOUT_MS`: optional timeout for Rust helper HTTP calls (default `2000`ms).
+- `CORE_HELPER_TRANSPORT`:
+  - `http`: enable Rust HTTP helper transport for mission helper kernels in `FleetService`.
+  - unset/other: keep N-API-first mission helper kernels with local fallback.
+- `CORE_HTTP_HELPER_TOKEN`: optional shared token sent as `x-core-helper-token` on Rust helper HTTP requests.
+
+## 5-Step Migration Matrix
+| Step | Scope | Current completion status | Next milestone for full cutover |
+| --- | --- | --- | --- |
+| 1 | Combat simulation (`SimulateBattle`) on Rust core | Completed (Rust-first, TS fallback remains) | Add rust-only canary mode that fails closed for combat in staging before prod flip. |
+| 2 | Fleet movement math (by-type N-API -> fast N-API -> gRPC -> TS) | Completed (Rust-first chain active) | Validate transport SLOs, then gate TS movement fallback behind an emergency-only flag. |
+| 3 | Mission helper kernels in fleet orchestration (distribution, defense rebuild, espionage, cargo transfer, harvest) | In progress (Rust N-API/HTTP paths live; local TS fallback still active) | Run staged `CORE_HELPER_TRANSPORT=http` rollout with `RUST_HTTP_HELPER_URL` + `CORE_HTTP_HELPER_TOKEN` configured and monitored. |
+| 4 | Fleet helper REST shim routes (`/api/fleet/helpers/*`) | In progress (Rust HTTP proxy-first when configured; local fallback on error) | Enforce authenticated Rust helper ingress and promote Rust proxy to default path in non-test envs. |
+| 5 | Backend-wide Rust cutover posture | Pending | Set default runtime profile to Rust-first everywhere (`CORE_ENGINE=rust`, `CORE_TRANSPORT=auto|napi|grpc`, `CORE_HELPER_TRANSPORT=http`) and retire TS mission/combat fallbacks after stability window. |
 
 ## Benchmark Tooling
 - Transport benchmark script: `backend/scripts/benchmarkCoreTransports.ts`
