@@ -43,14 +43,19 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - Node caller: `backend/src/services/fleetService.ts`
   - Scope: intel level + detection chance/decision computation.
   - Deterministic seed: `${fleet.id}:${target.galaxy}:${target.system}:${target.position}:${probes}`.
-- Fleet/combat helper REST shims (N-API-first):
+- Fleet/combat helper REST shims (Rust HTTP proxy optional):
   - Node routes: `backend/src/routes/fleet.ts`
-  - Node caller: `backend/src/services/fleetHelperService.ts`
+  - Node callers:
+    - `backend/src/services/rustHttpHelperClientService.ts` (proxy-first when configured)
+    - `backend/src/services/fleetHelperService.ts` (local fallback path)
   - Endpoints:
     - `POST /api/fleet/helpers/movement`
     - `POST /api/fleet/helpers/combat/defense-rebuild`
     - `POST /api/fleet/helpers/combat/attacker-distribution`
   - Scope: expose low-risk calculator kernels to clients/admin tooling while keeping DB mutation out of the shim paths.
+  - Migration path:
+    - Set `RUST_HTTP_HELPER_URL` to proxy helper requests to a Rust HTTP service.
+    - If unset or the proxy call fails, Node falls back to local `FleetHelperService`.
 
 ## Runtime Controls
 - `CORE_ENGINE`:
@@ -63,6 +68,8 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - `CORE_UNIVERSE`: universe label passed to Rust for worker routing.
 - `BACKEND_CORE_ADDR`: Rust gRPC target address.
 - `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
+- `RUST_HTTP_HELPER_URL`: optional HTTP base URL for Rust helper proxy (example: `http://rust-helper:8080`).
+- `RUST_HTTP_HELPER_TIMEOUT_MS`: optional timeout for Rust helper HTTP calls (default `2000`ms).
 
 ## Benchmark Tooling
 - Transport benchmark script: `backend/scripts/benchmarkCoreTransports.ts`
@@ -89,7 +96,7 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - If N-API movement calls fail, backend falls back to gRPC, then TypeScript simulation path.
 - If Rust gRPC call fails, backend falls back to TypeScript simulation path.
 - In test environments (`NODE_ENV=test`), default simulation engine is TypeScript unless explicitly overridden.
-- Helper REST shims use Rust N-API first and immediately fall back to TypeScript local calculators when the binding is unavailable or returns an error.
+- Helper REST shims use Rust HTTP proxy first when `RUST_HTTP_HELPER_URL` is configured; on proxy error they fall back to local `FleetHelperService` (Rust N-API first, then TypeScript).
 - Espionage mission handling uses Rust N-API first for outcome computation and keeps the existing TypeScript formulas/default thresholds as the fallback path.
 
 ## Data Contract Normalization

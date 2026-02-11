@@ -3,11 +3,29 @@ import { authenticateToken } from '../middleware/auth';
 import { FleetService } from '../services/fleetService';
 import allianceLogisticsService from '../services/allianceLogisticsService';
 import { FleetHelperService } from '../services/fleetHelperService';
+import { RustHttpHelperClientService } from '../services/rustHttpHelperClientService';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
 
 router.use(authenticateToken);
+
+async function runHelperWithRustFallback<T>(
+  operation: string,
+  rustCall: () => Promise<T>,
+  localCall: () => Promise<T>
+): Promise<T> {
+  if (!RustHttpHelperClientService.isConfigured()) {
+    return localCall();
+  }
+
+  try {
+    return await rustCall();
+  } catch (error: any) {
+    console.warn(`[Fleet Helpers] Rust HTTP helper failed for ${operation}, falling back:`, error?.message || error);
+    return localCall();
+  }
+}
 
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -51,7 +69,7 @@ router.post('/helpers/movement', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Invalid fleet helper movement request' });
     }
 
-    const result = await FleetHelperService.calculateMovement({
+    const normalizedInput = {
       origin: {
         galaxy: toInt(origin.galaxy),
         system: toInt(origin.system),
@@ -69,7 +87,13 @@ router.post('/helpers/movement', async (req: Request, res: Response) => {
         }
         return acc;
       }, {}),
-    });
+    };
+
+    const result = await runHelperWithRustFallback(
+      'movement',
+      () => RustHttpHelperClientService.calculateMovement(normalizedInput),
+      () => FleetHelperService.calculateMovement(normalizedInput)
+    );
 
     return res.json({ success: true, data: result });
   } catch (error: any) {
@@ -94,12 +118,18 @@ router.post('/helpers/combat/defense-rebuild', async (req: Request, res: Respons
       return res.status(400).json({ success: false, error: 'Invalid defense rebuild request' });
     }
 
-    const result = await FleetHelperService.resolveDefenseRebuild({
+    const normalizedInput = {
       current,
       losses,
       rebuildRate: Number.isFinite(Number(rebuildRate)) ? Number(rebuildRate) : undefined,
       seed: typeof seed === 'string' ? seed : undefined,
-    });
+    };
+
+    const result = await runHelperWithRustFallback(
+      'combat/defense-rebuild',
+      () => RustHttpHelperClientService.resolveDefenseRebuild(normalizedInput),
+      () => FleetHelperService.resolveDefenseRebuild(normalizedInput)
+    );
 
     return res.json({ success: true, data: result });
   } catch (error: any) {
@@ -139,7 +169,7 @@ router.post('/helpers/combat/attacker-distribution', async (req: Request, res: R
 
     const normalizeResource = (value: unknown): number => Math.max(0, Math.trunc(Number(value) || 0));
 
-    const result = await FleetHelperService.computeAttackerDistribution({
+    const normalizedInput = {
       participants: participants.map((participant) => normalizeFleet(participant)),
       totalLosses: normalizeFleet(totalLosses),
       loot: {
@@ -148,7 +178,13 @@ router.post('/helpers/combat/attacker-distribution', async (req: Request, res: R
         deuterium: normalizeResource((loot as Record<string, unknown>).deuterium),
       },
       winner: winner as 'attacker' | 'defender' | 'draw',
-    });
+    };
+
+    const result = await runHelperWithRustFallback(
+      'combat/attacker-distribution',
+      () => RustHttpHelperClientService.computeAttackerDistribution(normalizedInput),
+      () => FleetHelperService.computeAttackerDistribution(normalizedInput)
+    );
 
     return res.json({ success: true, data: result });
   } catch (error: any) {

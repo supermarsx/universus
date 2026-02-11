@@ -11,16 +11,20 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
 - HTTP/WebSocket/API orchestration remains in Node.js/TypeScript.
 - **Combat simulation is delegated to `backend-core` (Rust, gRPC)** by default (`CORE_ENGINE=rust`), with TypeScript fallback for resilience.
 - **Fleet movement now uses a Rust-first path with N-API by-type kernel first, then fast N-API, then gRPC, then local TypeScript fallback** for resilience.
-- **Fleet/combat helper calculator endpoints now use Rust N-API first with TypeScript fallback** for low-risk orchestration offload:
+- **Fleet/combat helper calculator endpoints now support a Rust HTTP helper proxy migration path**:
   - `POST /api/fleet/helpers/movement`
   - `POST /api/fleet/helpers/combat/defense-rebuild`
   - `POST /api/fleet/helpers/combat/attacker-distribution`
+  - If `RUST_HTTP_HELPER_URL` is configured, backend routes call that Rust HTTP helper first.
+  - On proxy failure (or when unset), routes fall back to existing local `FleetHelperService` logic.
+  - Local `FleetHelperService` remains Rust N-API first with TypeScript fallback.
 - Backend and Rust core interoperate through protobuf (`backend/src/coreAdapter/proto/core.proto`).
 - Runtime controls:
   - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.
   - `CORE_TRANSPORT=auto|grpc|napi` to choose Rust invocation transport (default `auto`).
   - `BACKEND_CORE_ADDR` for Rust core gRPC endpoint.
   - `CORE_UNIVERSE` for universe-specific Rust worker context.
+  - `RUST_HTTP_HELPER_URL` optional HTTP base URL for fleet helper proxy migration.
 - Backend benchmark tooling now includes:
   - transport benchmark (`backend/scripts/benchmarkCoreTransports.ts`)
   - memory benchmark (`backend/scripts/benchmarkCoreMemory.ts`, runs with Node `--expose-gc`)
