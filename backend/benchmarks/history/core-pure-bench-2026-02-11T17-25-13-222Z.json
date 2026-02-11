@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-02-11T17:25:13.222Z",
+  "gitCommit": "db1fa31",
+  "benchmarkType": "pure-operation",
+  "workload": {
+    "actions": 1000000,
+    "warmup": 100000,
+    "sampleEvery": 1024,
+    "timeoutMs": 300000,
+    "movementKernel": "fleet-helper movement math equivalent in TS and Rust"
+  },
+  "results": [
+    {
+      "impl": "ts_pure",
+      "runtimeMs": 113.689,
+      "computeMs": 51.186,
+      "opsPerSec": 19536553.869,
+      "peakMemoryMB": 56.513,
+      "sink": 1840986180163
+    },
+    {
+      "impl": "rust_pure",
+      "runtimeMs": 60.767,
+      "computeMs": 11.238,
+      "opsPerSec": 88983804.947,
+      "peakMemoryMB": 3.756,
+      "sink": 1840986180163
+    }
+  ]
+}

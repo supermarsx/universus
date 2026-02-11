@@ -23,10 +23,22 @@ interface WorkerResult {
   sink: number;
 }
 
-const ITERATIONS = Math.max(1, Number(process.env.BENCH_PURE_ITERATIONS || 1_000_000));
-const WARMUP = Math.max(0, Number(process.env.BENCH_PURE_WARMUP || 100_000));
-const SAMPLE_EVERY = Math.max(1, Number(process.env.BENCH_PURE_SAMPLE_EVERY || 1024));
-const TIMEOUT_MS = Math.max(10_000, Number(process.env.BENCH_PURE_TIMEOUT_MS || 300_000));
+const parseEnvInt = (name: string, fallback: number, min: number): number => {
+  const rawValue = process.env[name];
+  if (rawValue == null || rawValue.trim().length === 0) {
+    return fallback;
+  }
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(parsed));
+};
+
+const ITERATIONS = parseEnvInt('BENCH_PURE_ITERATIONS', 1_000_000, 1);
+const WARMUP = parseEnvInt('BENCH_PURE_WARMUP', 100_000, 0);
+const SAMPLE_EVERY = parseEnvInt('BENCH_PURE_SAMPLE_EVERY', 1024, 1);
+const TIMEOUT_MS = parseEnvInt('BENCH_PURE_TIMEOUT_MS', 300_000, 10_000);
 
 const backendDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(backendDir, '..');
@@ -452,8 +464,9 @@ const ensureRustWorkerCompiled = () => {
   });
 };
 
-const bytesToMiB = (bytes: number): number => Math.round((bytes / (1024 * 1024)) * 1000) / 1000;
 const roundMs = (value: number): number => Math.round(value * 1000) / 1000;
+const roundOps = (value: number): number => Math.round(value * 1000) / 1000;
+const bytesToMb = (bytes: number): number => Math.round((bytes / 1_000_000) * 1000) / 1000;
 
 async function main() {
   fs.mkdirSync(historyDir, { recursive: true });
@@ -502,25 +515,24 @@ async function main() {
       actions: ITERATIONS,
       warmup: WARMUP,
       sampleEvery: SAMPLE_EVERY,
+      timeoutMs: TIMEOUT_MS,
       movementKernel: 'fleet-helper movement math equivalent in TS and Rust',
     },
     results: [
       {
         impl: tsResult.impl,
-        processRuntimeMs: roundMs(tsRun.wallMs),
-        benchmarkTotalMs: roundMs(tsResult.totalMs),
-        opsPerSec: Math.round(tsResult.opsPerSec),
-        peakResidentBytes: tsResult.peakResidentBytes,
-        peakResidentMiB: bytesToMiB(tsResult.peakResidentBytes),
+        runtimeMs: roundMs(tsRun.wallMs),
+        computeMs: roundMs(tsResult.totalMs),
+        opsPerSec: roundOps(tsResult.opsPerSec),
+        peakMemoryMB: bytesToMb(tsResult.peakResidentBytes),
         sink: tsResult.sink,
       },
       {
         impl: rustResult.impl,
-        processRuntimeMs: roundMs(rustRun.wallMs),
-        benchmarkTotalMs: roundMs(rustResult.totalMs),
-        opsPerSec: Math.round(rustResult.opsPerSec),
-        peakResidentBytes: rustResult.peakResidentBytes,
-        peakResidentMiB: bytesToMiB(rustResult.peakResidentBytes),
+        runtimeMs: roundMs(rustRun.wallMs),
+        computeMs: roundMs(rustResult.totalMs),
+        opsPerSec: roundOps(rustResult.opsPerSec),
+        peakMemoryMB: bytesToMb(rustResult.peakResidentBytes),
         sink: rustResult.sink,
       },
     ],
@@ -531,7 +543,7 @@ async function main() {
 
   for (const item of snapshot.results) {
     console.log(
-      `${item.impl}: runtime=${item.processRuntimeMs}ms compute=${item.benchmarkTotalMs}ms ops/s=${item.opsPerSec} peak=${item.peakResidentMiB} MiB`
+      `${item.impl}: runtimeMs=${item.runtimeMs} computeMs=${item.computeMs} opsPerSec=${item.opsPerSec} peakMemoryMB=${item.peakMemoryMB}`
     );
   }
   console.log(`saved benchmark snapshot: ${outPath}`);
