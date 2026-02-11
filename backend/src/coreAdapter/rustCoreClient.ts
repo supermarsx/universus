@@ -14,16 +14,90 @@
  *   Defaults to `backend-core:50051` which is convenient for Docker Compose.
  */
 
-import grpc from '@grpc/grpc-js';
-import protoLoader from '@grpc/proto-loader';
+import * as grpc from '@grpc/grpc-js';
+import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 
-const PROTO_PATH = path.join(__dirname, '../../backend-core/proto/core.proto');
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true });
+export interface RustSimulateRequest {
+  battle_id: string;
+  attacker_ships: Record<string, number>;
+  defender_ships: Record<string, number>;
+  defender_defenses: Record<string, number>;
+  attacker_tech: Record<string, number>;
+  defender_tech: Record<string, number>;
+  planet_metal: number;
+  planet_crystal: number;
+  planet_deuterium: number;
+  seed?: string;
+  universe?: string;
+}
+
+interface RustCombatResultRaw {
+  winner: 'attacker' | 'defender' | 'draw' | string;
+  rounds?: Array<{
+    attacker_shots?: number | string;
+    defender_shots?: number | string;
+    attacker_destroyed?: number | string;
+    defender_destroyed?: number | string;
+  }>;
+  attacker_losses?: Record<string, number | string>;
+  defender_losses?: Record<string, number | string>;
+  loot?: { metal?: number | string; crystal?: number | string; deuterium?: number | string };
+  debris?: { metal?: number | string; crystal?: number | string };
+}
+
+const PROTO_PATH = path.join(__dirname, 'proto', 'core.proto');
+const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
 const proto: any = grpc.loadPackageDefinition(packageDefinition).core;
 
 const addr = process.env.BACKEND_CORE_ADDR || 'backend-core:50051';
 const client = new proto.GameLoop(addr, grpc.credentials.createInsecure());
+
+const toInt = (value: number | string | undefined): number => {
+  if (typeof value === 'number') return Math.trunc(value);
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+const normalizeNumericMap = (value: Record<string, number | string> | undefined): Record<string, number> => {
+  const output: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value || {})) {
+    output[key] = toInt(raw);
+  }
+  return output;
+};
+
+const normalizeCombatResult = (raw: RustCombatResultRaw): any => {
+  return {
+    winner: (raw.winner || 'draw') as 'attacker' | 'defender' | 'draw',
+    rounds: (raw.rounds || []).map((round) => ({
+      attackerShots: toInt(round.attacker_shots),
+      defenderShots: toInt(round.defender_shots),
+      attackerDestroyed: toInt(round.attacker_destroyed),
+      defenderDestroyed: toInt(round.defender_destroyed),
+    })),
+    attackerLosses: normalizeNumericMap(raw.attacker_losses),
+    defenderLosses: normalizeNumericMap(raw.defender_losses),
+    loot: {
+      metal: toInt(raw.loot?.metal),
+      crystal: toInt(raw.loot?.crystal),
+      deuterium: toInt(raw.loot?.deuterium),
+    },
+    debris: {
+      metal: toInt(raw.debris?.metal),
+      crystal: toInt(raw.debris?.crystal),
+    },
+  };
+};
 
 /**
  * Simulate a battle using the Rust core service.
@@ -54,27 +128,49 @@ const client = new proto.GameLoop(addr, grpc.credentials.createInsecure());
  * // Legacy style: (battleId, playerIds, seed)
  * await simulateBattleRust('b123', ['p1','p2'], 'xyz');
  */
-export function simulateBattleRust(arg1: any, arg2?: any, arg3?: any): Promise<any> {
+export function simulateBattleRust(arg1: RustSimulateRequest | string, arg2?: any, arg3?: any): Promise<any> {
   return new Promise((resolve, reject) => {
-    let req: any = {};
-    if (typeof arg1 === 'object' && arg1 !== null && !Array.isArray(arg1)) {
-      req = arg1;
-    } else {
+    let req: RustSimulateRequest;
+    if (typeof arg1 === 'string') {
       // legacy: (battleId, playerIds, seed)
-      req = { battle_id: String(arg1 || ''), player_ids: Array.isArray(arg2) ? arg2 : [], seed: arg3 ? String(arg3) : '' };
+      req = {
+        battle_id: String(arg1 || ''),
+        attacker_ships: {},
+        defender_ships: {},
+        defender_defenses: {},
+        attacker_tech: {},
+        defender_tech: {},
+        planet_metal: 0,
+        planet_crystal: 0,
+        planet_deuterium: 0,
+        seed: arg3 ? String(arg3) : '',
+      };
+    } else {
+      req = {
+        battle_id: arg1.battle_id || 'local',
+        attacker_ships: arg1.attacker_ships || {},
+        defender_ships: arg1.defender_ships || {},
+        defender_defenses: arg1.defender_defenses || {},
+        attacker_tech: arg1.attacker_tech || {},
+        defender_tech: arg1.defender_tech || {},
+        planet_metal: toInt(arg1.planet_metal),
+        planet_crystal: toInt(arg1.planet_crystal),
+        planet_deuterium: toInt(arg1.planet_deuterium),
+        seed: arg1.seed || '',
+        universe: arg1.universe || 'default',
+      };
     }
 
     client.SimulateBattle(req, (err: any, res: any) => {
       if (err) return reject(err);
-      // If the Rust core returns a structured CombatResult, use it directly
-      if (res && (res.winner || res.winner === '')) {
-        return resolve(res);
+      if (res && (res.winner || res.winner === 'draw')) {
+        return resolve(normalizeCombatResult(res as RustCombatResultRaw));
       }
       // Fallback: try parsing legacy json_result field
       if (res && res.json_result) {
         try {
-          const parsed = JSON.parse(res.json_result);
-          return resolve(parsed);
+          const parsed = JSON.parse(res.json_result) as RustCombatResultRaw;
+          return resolve(normalizeCombatResult(parsed));
         } catch (error) {
           return resolve(res.json_result);
         }

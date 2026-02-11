@@ -77,18 +77,27 @@ export class CombatService {
     planetId?: number,
     seed?: number
   ): Promise<CombatResult> {
-    // If CORE_ENGINE is set to 'rust', delegate to the Rust service
-    if (process.env.CORE_ENGINE === 'rust') {
+    // Rust-first delegation: use Rust unless explicitly disabled.
+    const defaultEngine = process.env.NODE_ENV === 'test' ? 'ts' : 'rust';
+    const coreEngine = (process.env.CORE_ENGINE || defaultEngine).toLowerCase();
+    if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js') {
       try {
-        // Lazy import so tests can mock the module path easily
         const { simulateBattleRust } = require('../coreAdapter/rustCoreClient');
-        const result = await simulateBattleRust(String(planetId || 'local'), Object.keys(attackerShips).concat(Object.keys(defenderShips)), seed ? String(seed) : undefined);
-        // If the rust service returns the full CombatResult object, use it directly
-        if (result && result.winner) {
-          return result as CombatResult;
-        }
-        // Otherwise attempt to parse
-        return JSON.parse(result) as CombatResult;
+        const result = await simulateBattleRust({
+          battle_id: String(planetId || 'local'),
+          attacker_ships: attackerShips || {},
+          defender_ships: defenderShips || {},
+          defender_defenses: defenderDefenses || {},
+          attacker_tech: this.normalizeTechMap(attackerTech),
+          defender_tech: this.normalizeTechMap(defenderTech),
+          planet_metal: Number(planetResources?.metal || 0),
+          planet_crystal: Number(planetResources?.crystal || 0),
+          planet_deuterium: Number(planetResources?.deuterium || 0),
+          seed: typeof seed === 'number' ? String(seed) : undefined,
+          universe: process.env.CORE_UNIVERSE || 'default',
+        });
+        if (result && result.winner) return result as CombatResult;
+        throw new Error('Rust core returned invalid combat result payload');
       } catch (error) {
         console.error('Rust core call failed, falling back to TS implementation:', error);
         // fallback to JS implementation
@@ -215,6 +224,17 @@ export class CombatService {
       counts[unit.type] = (counts[unit.type] || 0) + (unit.count || 1);
     }
     return counts;
+  }
+
+  private static normalizeTechMap(tech: any): Record<string, number> {
+    const normalized: Record<string, number> = {};
+    for (const [key, value] of Object.entries(tech || {})) {
+      const n = Number(value);
+      if (Number.isFinite(n)) {
+        normalized[key] = Math.max(0, Math.trunc(n));
+      }
+    }
+    return normalized;
   }
 
   private static prepareCombatUnits(

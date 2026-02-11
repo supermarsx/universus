@@ -31,6 +31,8 @@
   "author": "MiniMax Agent",
   "license": "MIT",
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.1",
+    "@grpc/proto-loader": "^0.8.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.208.0",
     "@prisma/client": "^6.19.0",
     "@socket.io/redis-adapter": "^8.3.0",
