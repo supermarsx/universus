@@ -32,6 +32,32 @@ export interface RustSimulateRequest {
   universe?: string;
 }
 
+export interface RustShipMovementSpec {
+  ship_type: string;
+  count: number;
+  base_speed: number;
+  fuel_consumption: number;
+  cargo: number;
+}
+
+export interface RustFleetMovementRequest {
+  origin_galaxy: number;
+  origin_system: number;
+  origin_position: number;
+  target_galaxy: number;
+  target_system: number;
+  target_position: number;
+  ships: RustShipMovementSpec[];
+}
+
+export interface RustFleetMovementResult {
+  distance: number;
+  fleetSpeed: number;
+  travelTimeSeconds: number;
+  fuelNeeded: number;
+  cargoCapacity: number;
+}
+
 interface RustCombatResultRaw {
   winner: 'attacker' | 'defender' | 'draw' | string;
   rounds?: Array<{
@@ -97,6 +123,15 @@ const normalizeCombatResult = (raw: RustCombatResultRaw): any => {
       crystal: toInt(raw.debris?.crystal),
     },
   };
+};
+
+const toFloat = (value: number | string | undefined): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 };
 
 /**
@@ -176,6 +211,23 @@ export function simulateBattleRust(arg1: RustSimulateRequest | string, arg2?: an
         }
       }
       return resolve(res);
+    });
+  });
+}
+
+export function calculateFleetMovementRust(
+  request: RustFleetMovementRequest
+): Promise<RustFleetMovementResult> {
+  return new Promise((resolve, reject) => {
+    client.CalculateFleetMovement(request, (err: any, res: any) => {
+      if (err) return reject(err);
+      return resolve({
+        distance: toInt(res?.distance),
+        fleetSpeed: toFloat(res?.fleet_speed),
+        travelTimeSeconds: toInt(res?.travel_time_seconds),
+        fuelNeeded: toFloat(res?.fuel_needed),
+        cargoCapacity: toFloat(res?.cargo_capacity),
+      });
     });
   });
 }

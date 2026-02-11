@@ -63,9 +63,36 @@ message CombatResult {
   Debris debris = 6;
 }
 
+message ShipMovementSpec {
+  string ship_type = 1;
+  int32 count = 2;
+  double base_speed = 3;
+  double fuel_consumption = 4;
+  double cargo = 5;
+}
+
+message FleetMovementRequest {
+  int32 origin_galaxy = 1;
+  int32 origin_system = 2;
+  int32 origin_position = 3;
+  int32 target_galaxy = 4;
+  int32 target_system = 5;
+  int32 target_position = 6;
+  repeated ShipMovementSpec ships = 7;
+}
+
+message FleetMovementResult {
+  int32 distance = 1;
+  double fleet_speed = 2;
+  int32 travel_time_seconds = 3;
+  double fuel_needed = 4;
+  double cargo_capacity = 5;
+}
+
 service GameLoop {
   rpc StartBattle(BattleRequest) returns (BattleState);
   rpc StepBattle(StepRequest) returns (BattleState);
   rpc StreamBattle(StepRequest) returns (stream BattleState);
   rpc SimulateBattle(SimulateRequest) returns (CombatResult);
+  rpc CalculateFleetMovement(FleetMovementRequest) returns (FleetMovementResult);
 }

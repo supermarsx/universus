@@ -24,6 +24,10 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - Combat simulation (`SimulateBattle`) via:
   - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
   - Node caller: `backend/src/services/combatService.ts`
+- Fleet movement math (`CalculateFleetMovement`) via:
+  - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
+  - Node caller: `backend/src/services/fleetService.ts`
+  - Scope: distance, travel time, fuel consumption, cargo capacity calculations.
 
 ## Runtime Controls
 - `CORE_ENGINE`:
@@ -48,6 +52,5 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - Economy ticks, fleet mission orchestration, alliance logic, and messaging remain Node-managed.
 
 ## Next Migration Candidates
-- Fleet travel time + fuel computation.
 - Debris and salvage computation kernels.
 - Batch score recomputation kernels for leaderboards.

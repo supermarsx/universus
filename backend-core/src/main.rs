@@ -29,7 +29,10 @@ pub mod core {
     tonic::include_proto!("core");
 }
 use core::game_loop_server::{GameLoop, GameLoopServer};
-use core::{BattleRequest, BattleState, CombatResult, SimulateRequest, StepRequest};
+use core::{
+    BattleRequest, BattleState, CombatResult, FleetMovementRequest, FleetMovementResult,
+    SimulateRequest, StepRequest,
+};
 
 mod ships;
 mod sim;
@@ -373,6 +376,54 @@ impl GameLoop for CoreService {
             defender_losses: ipc_res.defender_losses,
             loot: None,
             debris: None,
+        }))
+    }
+
+    async fn calculate_fleet_movement(
+        &self,
+        req: Request<FleetMovementRequest>,
+    ) -> Result<Response<FleetMovementResult>, Status> {
+        let r = req.into_inner();
+
+        let distance = if r.origin_galaxy != r.target_galaxy {
+            (r.origin_galaxy - r.target_galaxy).abs() * 20000
+        } else if r.origin_system != r.target_system {
+            (r.origin_system - r.target_system).abs() * 5 * 19 + 2700
+        } else {
+            (r.origin_position - r.target_position).abs() * 5 + 1000
+        };
+
+        let mut min_speed = f64::INFINITY;
+        let mut fuel_needed = 0.0f64;
+        let mut cargo_capacity = 0.0f64;
+
+        for ship in &r.ships {
+            if ship.count <= 0 {
+                continue;
+            }
+            if ship.base_speed > 0.0 {
+                min_speed = min_speed.min(ship.base_speed);
+            }
+            let count = ship.count as f64;
+            fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
+            cargo_capacity += ship.cargo * count;
+        }
+
+        let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+        let travel_time_seconds = if fleet_speed > 0.0 {
+            ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
+        } else {
+            0
+        };
+
+        cargo_capacity -= fuel_needed;
+
+        Ok(Response::new(FleetMovementResult {
+            distance,
+            fleet_speed,
+            travel_time_seconds,
+            fuel_needed,
+            cargo_capacity,
         }))
     }
 }

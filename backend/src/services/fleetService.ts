@@ -19,6 +19,7 @@ import moonService from './moonService';
 import { ResearchService } from './researchService';
 import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
+import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
 
 interface FleetParticipant {
   fleet: Fleet;
@@ -121,27 +122,15 @@ export class FleetService {
         }
       }
 
-      // Calculate fuel consumption and travel time
-      const distance = this.calculateDistance(
-        originPlanet.galaxy,
-        originPlanet.system,
-        originPlanet.position,
+      // Calculate movement metrics in Rust first with a TS fallback.
+      const movement = await this.calculateFleetMovement(originPlanet, {
         targetGalaxy,
         targetSystem,
-        targetPosition
-      );
-
-      const speed = this.calculateFleetSpeed(ships);
-      const travelTime = Math.ceil((distance / speed) * 3600); // in seconds
-
-      // Calculate fuel needed
-      let fuelNeeded = 0;
-      for (const [shipType, count] of Object.entries(ships)) {
-        const shipConfig = SHIPS[shipType];
-        if (shipConfig) {
-          fuelNeeded += shipConfig.fuelConsumption * count * (distance / 100);
-        }
-      }
+        targetPosition,
+        ships,
+      });
+      const fuelNeeded = movement.fuelNeeded;
+      const travelTime = movement.travelTimeSeconds;
 
       // Check fuel
       if (originPlanet.deuterium < fuelNeeded + cargo.deuterium) {
@@ -149,15 +138,7 @@ export class FleetService {
       }
 
       // Calculate cargo capacity
-      let cargoCapacity = 0;
-      for (const [shipType, count] of Object.entries(ships)) {
-        const shipConfig = SHIPS[shipType];
-        if (shipConfig) {
-          cargoCapacity += shipConfig.cargo * count;
-        }
-      }
-
-      cargoCapacity -= fuelNeeded;
+      const cargoCapacity = movement.cargoCapacity;
 
       const totalCargo = cargo.metal + cargo.crystal + cargo.deuterium;
       if (totalCargo > cargoCapacity) {
@@ -1552,6 +1533,101 @@ export class FleetService {
     } finally {
       client.release();
     }
+  }
+
+  private static async calculateFleetMovement(
+    originPlanet: { galaxy: number; system: number; position: number },
+    payload: {
+      targetGalaxy: number;
+      targetSystem: number;
+      targetPosition: number;
+      ships: { [key: string]: number };
+    }
+  ): Promise<{ fuelNeeded: number; travelTimeSeconds: number; cargoCapacity: number }> {
+    const local = this.calculateFleetMovementLocal(
+      originPlanet.galaxy,
+      originPlanet.system,
+      originPlanet.position,
+      payload.targetGalaxy,
+      payload.targetSystem,
+      payload.targetPosition,
+      payload.ships
+    );
+
+    const preferRust = process.env.NODE_ENV !== 'test';
+    if (!preferRust) {
+      return local;
+    }
+
+    try {
+      const rustResult = await calculateFleetMovementRust({
+        origin_galaxy: originPlanet.galaxy,
+        origin_system: originPlanet.system,
+        origin_position: originPlanet.position,
+        target_galaxy: payload.targetGalaxy,
+        target_system: payload.targetSystem,
+        target_position: payload.targetPosition,
+        ships: Object.entries(payload.ships)
+          .filter(([, count]) => count > 0)
+          .map(([shipType, count]) => {
+            const shipConfig = SHIPS[shipType];
+            return {
+              ship_type: shipType,
+              count,
+              base_speed: shipConfig?.baseSpeed || 0,
+              fuel_consumption: shipConfig?.fuelConsumption || 0,
+              cargo: shipConfig?.cargo || 0,
+            };
+          }),
+      });
+
+      return {
+        fuelNeeded: rustResult.fuelNeeded,
+        travelTimeSeconds: rustResult.travelTimeSeconds,
+        cargoCapacity: rustResult.cargoCapacity,
+      };
+    } catch (error) {
+      console.warn('[FleetService] Rust fleet movement unavailable, using local fallback:', error);
+      return local;
+    }
+  }
+
+  private static calculateFleetMovementLocal(
+    originGalaxy: number,
+    originSystem: number,
+    originPosition: number,
+    targetGalaxy: number,
+    targetSystem: number,
+    targetPosition: number,
+    ships: { [key: string]: number }
+  ): { fuelNeeded: number; travelTimeSeconds: number; cargoCapacity: number } {
+    const distance = this.calculateDistance(
+      originGalaxy,
+      originSystem,
+      originPosition,
+      targetGalaxy,
+      targetSystem,
+      targetPosition
+    );
+    const speed = this.calculateFleetSpeed(ships);
+    const travelTimeSeconds = speed > 0 ? Math.ceil((distance / speed) * 3600) : 0;
+
+    let fuelNeeded = 0;
+    let cargoCapacity = 0;
+    for (const [shipType, count] of Object.entries(ships)) {
+      const shipConfig = SHIPS[shipType];
+      if (!shipConfig) continue;
+      fuelNeeded += shipConfig.fuelConsumption * count * (distance / 100);
+      cargoCapacity += shipConfig.cargo * count;
+    }
+
+    cargoCapacity -= fuelNeeded;
+
+    return {
+      fuelNeeded,
+      travelTimeSeconds,
+      cargoCapacity,
+    };
   }
 
   private static async applyDefenderLosses(

@@ -30,3 +30,4 @@ interprocess = { version = "1.2", features = ["tokio_support"] }
 
 [build-dependencies]
 tonic-build = "0.9"
+protoc-bin-vendored = "3"
