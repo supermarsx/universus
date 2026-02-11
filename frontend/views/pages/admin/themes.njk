@@ -662,12 +662,12 @@ async function deleteTheme(themeId) {
 
 // View analytics
 function viewAnalytics() {
-    alert('Analytics view coming soon!');
+    window.location.href = '/admin/analytics';
 }
 
 // View theme analytics
 function viewThemeAnalytics(themeId) {
-    alert(window.t ? t('theme_analytics_coming_soon', {id: themeId}) : `Theme analytics for ID ${themeId} coming soon!`);
+    window.location.href = `/admin/analytics?themeId=${encodeURIComponent(themeId)}`;
 }
 </script>
 {% endblock %}
