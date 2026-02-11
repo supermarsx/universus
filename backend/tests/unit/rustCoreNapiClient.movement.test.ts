@@ -6,29 +6,35 @@ describe('rustCoreNapiClient.calculateFleetMovementByTypeNapi', () => {
   });
 
   it('normalizes by-type movement response and sends deterministic ship map', async () => {
+    process.env.CORE_NAPI_BINDING_PATH = 'backend-core-napi';
     jest.doMock(
       'backend-core-napi',
       () => ({
-        calculate_fleet_movement_by_type: jest.fn((payload: any) => {
+        calculate_fleet_movement_by_type: jest.fn((raw: string) => {
+          const payload = JSON.parse(raw);
           expect(payload).toEqual({
-            originGalaxy: 1,
-            originSystem: 10,
-            originPosition: 5,
-            targetGalaxy: 1,
-            targetSystem: 11,
-            targetPosition: 7,
-            ships: {
+            origin: {
+              galaxy: 1,
+              system: 10,
+              position: 5,
+            },
+            target: {
+              galaxy: 1,
+              system: 11,
+              position: 7,
+            },
+            shipCounts: {
               cruiser: 2,
               small_cargo: 5,
             },
           });
-          return {
+          return JSON.stringify({
             distance: 2795,
             fleet_speed: 5000,
             travel_time_seconds: 2013,
             fuel_needed: 1300,
             cargo_capacity: 22700,
-          };
+          });
         }),
       }),
       { virtual: true }
@@ -59,6 +65,7 @@ describe('rustCoreNapiClient.calculateFleetMovementByTypeNapi', () => {
   });
 
   it('throws when by-type movement export is missing from binding', async () => {
+    process.env.CORE_NAPI_BINDING_PATH = 'backend-core-napi';
     jest.doMock(
       'backend-core-napi',
       () => ({

@@ -44,63 +44,9 @@ type RustNapiBinding = {
     cargo_capacity?: number;
     cargoCapacity?: number;
   };
-  calculateFleetMovementByTypeNapi?: (payload: {
-    originGalaxy: number;
-    originSystem: number;
-    originPosition: number;
-    targetGalaxy: number;
-    targetSystem: number;
-    targetPosition: number;
-    ships: Record<string, number>;
-  }) => {
-    distance: number;
-    fleet_speed?: number;
-    fleetSpeed?: number;
-    travel_time_seconds?: number;
-    travelTimeSeconds?: number;
-    fuel_needed?: number;
-    fuelNeeded?: number;
-    cargo_capacity?: number;
-    cargoCapacity?: number;
-  };
-  calculateFleetMovementByType?: (payload: {
-    originGalaxy: number;
-    originSystem: number;
-    originPosition: number;
-    targetGalaxy: number;
-    targetSystem: number;
-    targetPosition: number;
-    ships: Record<string, number>;
-  }) => {
-    distance: number;
-    fleet_speed?: number;
-    fleetSpeed?: number;
-    travel_time_seconds?: number;
-    travelTimeSeconds?: number;
-    fuel_needed?: number;
-    fuelNeeded?: number;
-    cargo_capacity?: number;
-    cargoCapacity?: number;
-  };
-  calculate_fleet_movement_by_type?: (payload: {
-    originGalaxy: number;
-    originSystem: number;
-    originPosition: number;
-    targetGalaxy: number;
-    targetSystem: number;
-    targetPosition: number;
-    ships: Record<string, number>;
-  }) => {
-    distance: number;
-    fleet_speed?: number;
-    fleetSpeed?: number;
-    travel_time_seconds?: number;
-    travelTimeSeconds?: number;
-    fuel_needed?: number;
-    fuelNeeded?: number;
-    cargo_capacity?: number;
-    cargoCapacity?: number;
-  };
+  calculateFleetMovementByTypeNapi?: (payload: string) => string;
+  calculateFleetMovementByType?: (payload: string) => string;
+  calculate_fleet_movement_by_type?: (payload: string) => string;
   calculateFleetMovementBatch?: (payload: RustFleetMovementRequest[]) => Array<{
     distance: number;
     fleet_speed?: number;
@@ -268,17 +214,35 @@ export async function calculateFleetMovementByTypeNapi(
     ships[ship.ship_type] = (ships[ship.ship_type] || 0) + count;
   }
 
-  const result = fn({
-    originGalaxy: request.origin_galaxy,
-    originSystem: request.origin_system,
-    originPosition: request.origin_position,
-    targetGalaxy: request.target_galaxy,
-    targetSystem: request.target_system,
-    targetPosition: request.target_position,
-    ships,
-  } as any);
+  const raw = fn(
+    JSON.stringify({
+      origin: {
+        galaxy: request.origin_galaxy,
+        system: request.origin_system,
+        position: request.origin_position,
+      },
+      target: {
+        galaxy: request.target_galaxy,
+        system: request.target_system,
+        position: request.target_position,
+      },
+      shipCounts: ships,
+    })
+  );
 
-  return normalizeMovementResult(result as any);
+  const parsed = parseJson<{
+    distance: number;
+    fleetSpeed?: number;
+    fleet_speed?: number;
+    travelTimeSeconds?: number;
+    travel_time_seconds?: number;
+    fuelNeeded?: number;
+    fuel_needed?: number;
+    cargoCapacity?: number;
+    cargo_capacity?: number;
+  }>(raw);
+
+  return normalizeMovementResult(parsed);
 }
 
 export async function calculateFleetMovementNapiLegacyJson(
