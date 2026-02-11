@@ -21,6 +21,10 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
   - `CORE_TRANSPORT=auto|grpc|napi` to choose Rust invocation transport (default `auto`).
   - `BACKEND_CORE_ADDR` for Rust core gRPC endpoint.
   - `CORE_UNIVERSE` for universe-specific Rust worker context.
+- Backend benchmark tooling now includes:
+  - transport benchmark (`backend/scripts/benchmarkCoreTransports.ts`)
+  - memory benchmark (`backend/scripts/benchmarkCoreMemory.ts`, runs with Node `--expose-gc`)
+  - snapshot outputs under `backend/benchmarks/history/` (`core-bench-*.json`, `core-memory-bench-*.json`)
 
 Movement kernel note:
 - N-API by-type movement (`calculateFleetMovementByTypeNapi`) accepts a deterministic ship type/count map.

@@ -1,0 +1,120 @@
+{
+  "timestamp": "2026-02-11T16:15:45.634Z",
+  "gitCommit": "f307cde",
+  "iterations": 60,
+  "warmup": 10,
+  "sampleEvery": 10,
+  "grpcTarget": "backend-core:50051",
+  "napiBindingPath": "C:\\Projects\\universus\\backend-core-napi\\index.node",
+  "metadata": {
+    "benchmarkType": "memory",
+    "rustVsNode": [
+      "node_ts_local",
+      "rust_napi_by_type",
+      "rust_napi_fast",
+      "rust_napi_batch_x256",
+      "rust_grpc"
+    ]
+  },
+  "summaries": [
+    {
+      "name": "node_ts_local",
+      "totalMs": 0.14,
+      "opsPerSec": 427350.427,
+      "baselineMb": {
+        "rss": 98.758,
+        "heapUsed": 30.447,
+        "heapTotal": 66.461,
+        "external": 8.05,
+        "arrayBuffers": 4.877
+      },
+      "finalMb": {
+        "rss": 99.172,
+        "heapUsed": 30.422,
+        "heapTotal": 65.211,
+        "external": 8.02,
+        "arrayBuffers": 4.877
+      },
+      "deltaMb": {
+        "rss": 0.414,
+        "heapUsed": -0.026,
+        "heapTotal": -1.25,
+        "external": -0.03,
+        "arrayBuffers": 0
+      },
+      "peakMb": {
+        "rss": 99.172,
+        "heapUsed": 30.553,
+        "heapTotal": 66.461,
+        "external": 8.05,
+        "arrayBuffers": 4.877
+      }
+    },
+    {
+      "name": "rust_napi_fast",
+      "totalMs": 0.45,
+      "opsPerSec": 133214.92,
+      "baselineMb": {
+        "rss": 99.25,
+        "heapUsed": 30.428,
+        "heapTotal": 65.461,
+        "external": 8.028,
+        "arrayBuffers": 4.885
+      },
+      "finalMb": {
+        "rss": 99.25,
+        "heapUsed": 30.417,
+        "heapTotal": 65.461,
+        "external": 8.028,
+        "arrayBuffers": 4.885
+      },
+      "deltaMb": {
+        "rss": 0,
+        "heapUsed": -0.011,
+        "heapTotal": 0,
+        "external": 0,
+        "arrayBuffers": 0
+      },
+      "peakMb": {
+        "rss": 99.25,
+        "heapUsed": 30.569,
+        "heapTotal": 65.461,
+        "external": 8.028,
+        "arrayBuffers": 4.885
+      }
+    },
+    {
+      "name": "rust_napi_batch_x256",
+      "totalMs": 85.237,
+      "opsPerSec": 180202.799,
+      "baselineMb": {
+        "rss": 98.977,
+        "heapUsed": 30.43,
+        "heapTotal": 65.461,
+        "external": 8.028,
+        "arrayBuffers": 4.885
+      },
+      "finalMb": {
+        "rss": 107.078,
+        "heapUsed": 30.434,
+        "heapTotal": 65.461,
+        "external": 8.028,
+        "arrayBuffers": 4.885
+      },
+      "deltaMb": {
+        "rss": 8.102,
+        "heapUsed": 0.005,
+        "heapTotal": 0,
+        "external": 0,
+        "arrayBuffers": 0
+      },
+      "peakMb": {
+        "rss": 107.078,
+        "heapUsed": 45.642,
+        "heapTotal": 65.461,
+        "external": 8.028,
+        "arrayBuffers": 4.885
+      }
+    }
+  ]
+}

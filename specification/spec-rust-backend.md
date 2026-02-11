@@ -64,6 +64,22 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - `BACKEND_CORE_ADDR`: Rust gRPC target address.
 - `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
 
+## Benchmark Tooling
+- Transport benchmark script: `backend/scripts/benchmarkCoreTransports.ts`
+- Memory benchmark script: `backend/scripts/benchmarkCoreMemory.ts`
+- PowerShell launchers (build N-API, optionally start gRPC core, then run benchmark):
+  - `backend/scripts/benchCore.ps1`
+  - `backend/scripts/benchCoreMemory.ps1`
+- Package scripts:
+  - `pnpm --dir backend run bench:core:auto`
+  - `pnpm --dir backend run bench:core:grpc`
+  - `pnpm --dir backend run bench:core:memory:auto`
+  - `pnpm --dir backend run bench:core:memory:grpc`
+- Memory benchmark runs with Node `--expose-gc` enabled to support pre/post forced-GC sampling.
+- Benchmark snapshots are written to `backend/benchmarks/history/`:
+  - transport: `core-bench-<timestamp>.json`
+  - memory: `core-memory-bench-<timestamp>.json`
+
 ## Fallback and Resilience
 - Fleet movement path order:
   - by-type N-API kernel
