@@ -6,6 +6,19 @@ OGame is a classic browser-based space strategy MMO where each player develops a
 
 Goal: Design and implement a full-stack browser-based multiplayer RPG (strategy MMO) with real-time gameplay and all core mechanics of OGame, including planet management, resource production, fleet warfare, tech trees, alliances, rankings, and monetization features. The entire stack will use JavaScript/ TypeScript – a Node.js backend and an HTML5/Canvas front-end – to allow a seamless web experience without plugins. Users will even be able to customize the game’s look by applying their own CSS themes to the UI. Below is a comprehensive technical specification covering game features and the system architecture, followed by a development roadmap. 
 
+## Implementation Update (February 11, 2026)
+The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy simulation:
+- HTTP/WebSocket/API orchestration remains in Node.js/TypeScript.
+- **Combat simulation is delegated to `backend-core` (Rust, gRPC)** by default (`CORE_ENGINE=rust`), with TypeScript fallback for resilience.
+- Backend and Rust core interoperate through protobuf (`backend/src/coreAdapter/proto/core.proto`).
+- Runtime controls:
+  - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.
+  - `BACKEND_CORE_ADDR` for Rust core gRPC endpoint.
+  - `CORE_UNIVERSE` for universe-specific Rust worker context.
+
+This update supersedes prior wording that all game modules run solely inside the Node.js process.
+See `specification/spec-rust-backend.md` for the Rust boundary and migration details.
+
 # Game Mechanics and Features 
 
 # Real-Time Multiplayer Gameplay 
