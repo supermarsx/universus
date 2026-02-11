@@ -145,9 +145,16 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
         &ship_defs,
     );
 
-    // max rounds with small deterministic offset based on the seed string
-    let round_offset = (calc_seed(&format!("{}:round", req.seed)) % 7) as usize;
-    let max_rounds = 50usize + round_offset;
+    // Use explicit max rounds when provided (>0); otherwise preserve
+    // legacy deterministic round budget behavior.
+    let explicit_max_rounds = req.max_rounds.unwrap_or(0);
+    let use_explicit_max_rounds = explicit_max_rounds > 0;
+    let max_rounds = if use_explicit_max_rounds {
+        explicit_max_rounds as usize
+    } else {
+        let round_offset = (calc_seed(&format!("{}:round", req.seed)) % 7) as usize;
+        50usize + round_offset
+    };
     let mut rounds: Vec<RoundResult> = Vec::new();
 
     for round_idx in 0..max_rounds {
@@ -175,15 +182,17 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
         regenerate_shields(&mut defender_units);
     }
 
-    // deterministic padding: append a small number of no-op rounds based on seed
-    let extra = (seed % 7) as usize;
-    for _ in 0..extra {
-        rounds.push(RoundResult {
-            attacker_shots: 0,
-            defender_shots: 0,
-            attacker_destroyed: 0,
-            defender_destroyed: 0,
-        });
+    // Preserve legacy deterministic padding only for legacy round budget mode.
+    if !use_explicit_max_rounds {
+        let extra = (seed % 7) as usize;
+        for _ in 0..extra {
+            rounds.push(RoundResult {
+                attacker_shots: 0,
+                defender_shots: 0,
+                attacker_destroyed: 0,
+                defender_destroyed: 0,
+            });
+        }
     }
 
     let winner = if attacker_units.len() > defender_units.len() {
@@ -648,6 +657,7 @@ mod tests {
             planet_deuterium: 1000,
             seed: seed.to_string(),
             universe: "default".to_string(),
+            max_rounds: None,
         }
     }
 
@@ -678,5 +688,32 @@ mod tests {
         let r1 = simulate_combat(&make_req("rfseed"));
         let r2 = simulate_combat(&make_req("rfseed"));
         assert_eq!(r1.winner, r2.winner);
+    }
+
+    #[test]
+    fn explicit_max_rounds_limits_total_round_count() {
+        let mut req = make_req("max-rounds-seed");
+        req.max_rounds = Some(1);
+        let r = simulate_combat(&req);
+        assert!(
+            r.rounds.len() <= 1,
+            "explicit max_rounds should cap total rounds"
+        );
+    }
+
+    #[test]
+    fn explicit_non_positive_max_rounds_falls_back_to_default_behavior() {
+        let mut default_req = make_req("fallback-seed");
+        default_req.max_rounds = None;
+        let default_result = simulate_combat(&default_req);
+
+        let mut zero_req = make_req("fallback-seed");
+        zero_req.max_rounds = Some(0);
+        let zero_result = simulate_combat(&zero_req);
+
+        assert_eq!(default_result.winner, zero_result.winner);
+        assert_eq!(default_result.rounds, zero_result.rounds);
+        assert_eq!(default_result.attacker_losses, zero_result.attacker_losses);
+        assert_eq!(default_result.defender_losses, zero_result.defender_losses);
     }
 }

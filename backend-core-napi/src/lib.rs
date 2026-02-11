@@ -19,6 +19,7 @@ struct SimulateBattleRequest {
     planet_deuterium: i64,
     seed: Option<String>,
     universe: Option<String>,
+    max_rounds: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -338,6 +339,16 @@ fn to_i32_map(input: HashMap<String, i64>) -> HashMap<String, i32> {
         .collect()
 }
 
+fn to_i32(value: i64) -> i32 {
+    if value > i32::MAX as i64 {
+        i32::MAX
+    } else if value < i32::MIN as i64 {
+        i32::MIN
+    } else {
+        value as i32
+    }
+}
+
 #[napi]
 pub fn simulate_battle(payload_json: String) -> Result<String> {
     let payload: SimulateBattleRequest = serde_json::from_str(&payload_json)
@@ -355,6 +366,7 @@ pub fn simulate_battle(payload_json: String) -> Result<String> {
         planet_deuterium: payload.planet_deuterium,
         seed: payload.seed.unwrap_or_default(),
         universe: payload.universe.unwrap_or_else(|| "default".to_string()),
+        max_rounds: payload.max_rounds.map(to_i32).filter(|value| *value > 0),
     };
 
     let result = simulate_combat(&request);

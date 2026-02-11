@@ -34,6 +34,7 @@ message SimulateRequest {
   int64 planet_deuterium = 9;
   string seed = 10;
   string universe = 11;
+  optional int32 max_rounds = 12;
 }
 
 message RoundResult {

@@ -62,6 +62,7 @@ struct IPCSimulateRequest {
     planet_deuterium: i64,
     seed: String,
     universe: String,
+    max_rounds: i32,
 }
 
 /// IPC result returned by worker processes. This mirrors the essential
@@ -315,6 +316,7 @@ impl GameLoop for CoreService {
             planet_deuterium: r.planet_deuterium,
             seed: r.seed.clone(),
             universe: universe.clone(),
+            max_rounds: r.max_rounds.unwrap_or(0),
         };
         let mut worker = match self.manager.pick_worker_or_spawn(&universe).await {
             Ok(w) => w,
@@ -504,6 +506,11 @@ async fn worker_main(universe: &str) -> Result<(), Box<dyn std::error::Error>> {
                                         proto.planet_crystal = req.planet_crystal;
                                         proto.planet_deuterium = req.planet_deuterium;
                                         proto.seed = req.seed.clone();
+                                        proto.max_rounds = if req.max_rounds > 0 {
+                                            Some(req.max_rounds)
+                                        } else {
+                                            None
+                                        };
                                         let cr = simulate_combat(&proto);
                                         let mut rounds = vec![];
                                         for r in cr.rounds.iter() {
@@ -594,6 +601,11 @@ async fn worker_main(universe: &str) -> Result<(), Box<dyn std::error::Error>> {
                                 proto.planet_crystal = req2.planet_crystal;
                                 proto.planet_deuterium = req2.planet_deuterium;
                                 proto.seed = req2.seed.clone();
+                                proto.max_rounds = if req2.max_rounds > 0 {
+                                    Some(req2.max_rounds)
+                                } else {
+                                    None
+                                };
                                 let cr = simulate_combat(&proto);
                                 let mut rounds = Vec::new();
                                 for r in cr.rounds.iter() {

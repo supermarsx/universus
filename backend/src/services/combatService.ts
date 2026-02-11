@@ -81,6 +81,13 @@ export class CombatService {
     const defaultEngine = process.env.NODE_ENV === 'test' ? 'ts' : 'rust';
     const coreEngine = (process.env.CORE_ENGINE || defaultEngine).toLowerCase();
     let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
+    const combatConfig = await gameConfig.getCombatConfig();
+    const configuredMaxRounds = Number(combatConfig?.maxRounds);
+    const rustMaxRounds =
+      Number.isFinite(configuredMaxRounds) && configuredMaxRounds > 0
+        ? Math.trunc(configuredMaxRounds)
+        : undefined;
+
     if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js') {
       const rustRequest = {
         battle_id: String(planetId || 'local'),
@@ -92,6 +99,7 @@ export class CombatService {
         planet_metal: Number(planetResources?.metal || 0),
         planet_crystal: Number(planetResources?.crystal || 0),
         planet_deuterium: Number(planetResources?.deuterium || 0),
+        max_rounds: rustMaxRounds,
         seed: typeof seed === 'number' ? String(seed) : undefined,
         universe: process.env.CORE_UNIVERSE || 'default',
       };
@@ -155,7 +163,6 @@ export class CombatService {
     const rounds: any[] = [];
     
     // Get max rounds from configuration
-    const combatConfig = await gameConfig.getCombatConfig();
     const maxRounds = combatConfig.maxRounds;
 
     for (let round = 1; round <= maxRounds; round++) {

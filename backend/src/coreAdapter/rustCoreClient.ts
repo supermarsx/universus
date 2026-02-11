@@ -28,6 +28,7 @@ export interface RustSimulateRequest {
   planet_metal: number;
   planet_crystal: number;
   planet_deuterium: number;
+  max_rounds?: number;
   seed?: string;
   universe?: string;
 }
@@ -186,6 +187,7 @@ export function simulateBattleRust(arg1: RustSimulateRequest | string, arg2?: an
         planet_metal: 0,
         planet_crystal: 0,
         planet_deuterium: 0,
+        max_rounds: undefined,
         seed: arg3 ? String(arg3) : '',
       };
     } else {
@@ -199,6 +201,10 @@ export function simulateBattleRust(arg1: RustSimulateRequest | string, arg2?: an
         planet_metal: toInt(arg1.planet_metal),
         planet_crystal: toInt(arg1.planet_crystal),
         planet_deuterium: toInt(arg1.planet_deuterium),
+        max_rounds:
+          typeof arg1.max_rounds === 'number' && Number.isFinite(arg1.max_rounds)
+            ? Math.trunc(arg1.max_rounds)
+            : undefined,
         seed: arg1.seed || '',
         universe: arg1.universe || 'default',
       };

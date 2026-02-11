@@ -15,6 +15,7 @@ fn base_request() -> SimulateRequest {
         planet_deuterium: 0,
         seed: "slice-seed".to_string(),
         universe: "default".to_string(),
+        max_rounds: None,
     }
 }
 
