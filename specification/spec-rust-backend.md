@@ -32,6 +32,11 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
   - Node caller: `backend/src/services/fleetService.ts`
   - Scope: attacker loss allocation + loot split + defender rebuild resolution kernels.
+- Espionage outcome kernel (N-API):
+  - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
+  - Node caller: `backend/src/services/fleetService.ts`
+  - Scope: intel level + detection chance/decision computation.
+  - Deterministic seed: `${fleet.id}:${target.galaxy}:${target.system}:${target.position}:${probes}`.
 - Fleet/combat helper REST shims (N-API-first):
   - Node routes: `backend/src/routes/fleet.ts`
   - Node caller: `backend/src/services/fleetHelperService.ts`
@@ -58,6 +63,7 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - If Rust gRPC call fails, backend falls back to TypeScript simulation path.
 - In test environments (`NODE_ENV=test`), default simulation engine is TypeScript unless explicitly overridden.
 - Helper REST shims use Rust N-API first and immediately fall back to TypeScript local calculators when the binding is unavailable or returns an error.
+- Espionage mission handling uses Rust N-API first for outcome computation and keeps the existing TypeScript formulas/default thresholds as the fallback path.
 
 ## Data Contract Normalization
 - Rust returns snake_case protobuf fields.

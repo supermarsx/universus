@@ -24,6 +24,7 @@ import {
   computeCombatReportSummaryNapi,
   computeAttackerPostCombatDistributionNapi,
   computeHarvestCollectionNapi,
+  computeEspionageOutcomeNapi,
   computeMissionCargoTransferNapi,
   isNapiAvailable,
   resolveDefenseLossesNapi,
@@ -801,23 +802,15 @@ export class FleetService {
 
     const attackerEspionage = spyResearch?.espionage_technology || 0;
     const defenderEspionage = defenderResearch?.espionage_technology || 0;
-
-    const detailScore = attackerEspionage + Math.log2(probes + 1);
-    const defenseScore = defenderEspionage;
-    const detailDelta = detailScore - defenseScore;
-
-    let intelLevel: EspionageIntelLevel = 'minimal';
-    if (detailDelta >= 3) {
-      intelLevel = 'full';
-    } else if (detailDelta >= 0) {
-      intelLevel = 'standard';
-    }
-
-    const detectionChance = Math.max(
-      0.05,
-      Math.min(0.95, 0.5 + (defenseScore - detailScore) * 0.05)
+    const seed = this.buildEspionageSeed(fleet, probes);
+    const outcome = await this.computeEspionageOutcome(
+      probes,
+      Number(attackerEspionage || 0),
+      Number(defenderEspionage || 0),
+      seed
     );
-    const detected = Math.random() < detectionChance;
+    const intelLevel = outcome.intelLevel;
+    const detected = outcome.detected;
 
     const report = this.buildEspionageReport(targetPlanet, intelLevel);
     report.detected = detected;
@@ -1842,6 +1835,60 @@ export class FleetService {
         this.movementCache.delete(firstKey);
       }
     }
+  }
+
+  private static buildEspionageSeed(fleet: Fleet, probes: number): string {
+    return `${fleet.id}:${fleet.target_galaxy}:${fleet.target_system}:${fleet.target_position}:${probes}`;
+  }
+
+  private static async computeEspionageOutcome(
+    probes: number,
+    attackerEspionage: number,
+    defenderEspionage: number,
+    seed: string
+  ): Promise<{ intelLevel: EspionageIntelLevel; detected: boolean }> {
+    if (this.shouldUseNapiMissionMath()) {
+      try {
+        const outcome = await computeEspionageOutcomeNapi({
+          probes,
+          attacker_espionage: attackerEspionage,
+          defender_espionage: defenderEspionage,
+          seed,
+        });
+        return {
+          intelLevel: outcome.intelLevel,
+          detected: outcome.detected,
+        };
+      } catch (error) {
+        console.warn('[FleetService] Rust N-API espionage outcome unavailable, using local fallback:', error);
+      }
+    }
+
+    return this.computeEspionageOutcomeLocal(probes, attackerEspionage, defenderEspionage);
+  }
+
+  private static computeEspionageOutcomeLocal(
+    probes: number,
+    attackerEspionage: number,
+    defenderEspionage: number
+  ): { intelLevel: EspionageIntelLevel; detected: boolean } {
+    const detailScore = attackerEspionage + Math.log2(probes + 1);
+    const defenseScore = defenderEspionage;
+    const detailDelta = detailScore - defenseScore;
+
+    let intelLevel: EspionageIntelLevel = 'minimal';
+    if (detailDelta >= 3) {
+      intelLevel = 'full';
+    } else if (detailDelta >= 0) {
+      intelLevel = 'standard';
+    }
+
+    const detectionChance = Math.max(
+      0.05,
+      Math.min(0.95, 0.5 + (defenseScore - detailScore) * 0.05)
+    );
+    const detected = Math.random() < detectionChance;
+    return { intelLevel, detected };
   }
 
   private static shouldUseNapiMissionMath(): boolean {

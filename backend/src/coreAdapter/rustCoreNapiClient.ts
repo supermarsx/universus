@@ -20,6 +20,8 @@ type RustNapiBinding = {
   compute_mission_cargo_transfer?: (payload: string) => string;
   computeHarvestCollection?: (payload: string) => string;
   compute_harvest_collection?: (payload: string) => string;
+  computeEspionageOutcome?: (payload: string) => string;
+  compute_espionage_outcome?: (payload: string) => string;
   calculateFleetMovementFast?: (payload: RustFleetMovementRequest) => {
     distance: number;
     fleet_speed?: number;
@@ -391,6 +393,50 @@ export async function computeHarvestCollectionNapi(payload: {
     updatedCrystal: Number(parsed.updatedCrystal ?? parsed.updated_crystal ?? 0),
     recyclerCapacity: Number(parsed.recyclerCapacity ?? parsed.recycler_capacity ?? 0),
     empty: Boolean(parsed.empty),
+  };
+}
+
+export async function computeEspionageOutcomeNapi(payload: {
+  probes: number;
+  attacker_espionage: number;
+  defender_espionage: number;
+  seed?: string;
+}): Promise<{
+  intelLevel: 'minimal' | 'standard' | 'full';
+  detected: boolean;
+  detectionChance: number;
+  detailScore: number;
+  defenseScore: number;
+}> {
+  const binding = getBinding();
+  const fn = binding.computeEspionageOutcome || binding.compute_espionage_outcome;
+  if (!fn) {
+    throw new Error('Rust N-API function computeEspionageOutcome not exported');
+  }
+
+  const raw = fn(JSON.stringify(payload));
+  const parsed = parseJson<{
+    intelLevel?: string;
+    intel_level?: string;
+    detected?: boolean;
+    detectionChance?: number;
+    detection_chance?: number;
+    detailScore?: number;
+    detail_score?: number;
+    defenseScore?: number;
+    defense_score?: number;
+  }>(raw);
+
+  const intelRaw = String(parsed.intelLevel ?? parsed.intel_level ?? 'minimal');
+  const intelLevel =
+    intelRaw === 'full' || intelRaw === 'standard' || intelRaw === 'minimal' ? intelRaw : 'minimal';
+
+  return {
+    intelLevel,
+    detected: Boolean(parsed.detected),
+    detectionChance: Number(parsed.detectionChance ?? parsed.detection_chance ?? 0),
+    detailScore: Number(parsed.detailScore ?? parsed.detail_score ?? 0),
+    defenseScore: Number(parsed.defenseScore ?? parsed.defense_score ?? 0),
   };
 }
 
