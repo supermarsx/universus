@@ -179,6 +179,9 @@ router.post('/parameters/bulk-update', requirePermission('config:write'), async 
 router.post('/parameters/:key/reset', requirePermission('config:write'), async (req: AuthRequest, res: Response) => {
     try {
         const { key } = req.params;
+        const reason = typeof req.body?.reason === 'string' && req.body.reason.trim().length
+            ? req.body.reason.trim()
+            : 'Reset to default';
         const userId = getUserId(req);
         if (userId === null) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
@@ -197,7 +200,7 @@ router.post('/parameters/:key/reset', requirePermission('config:write'), async (
             paramResult.rows[0].data_type
         );
 
-        const result = await configService.setValue(key, defaultValue, userId, 'Reset to default');
+        const result = await configService.setValue(key, defaultValue, userId, reason);
 
         res.json({
             success: true,

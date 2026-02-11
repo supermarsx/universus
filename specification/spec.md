@@ -10,6 +10,7 @@ Goal: Design and implement a full-stack browser-based multiplayer RPG (strategy 
 The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy simulation:
 - HTTP/WebSocket/API orchestration remains in Node.js/TypeScript.
 - **Combat simulation is delegated to `backend-core` (Rust, gRPC)** by default (`CORE_ENGINE=rust`), with TypeScript fallback for resilience.
+- **Fleet movement calculations (distance/travel time/fuel/cargo) are delegated to `backend-core` (Rust, gRPC)** by default, with TypeScript fallback for resilience.
 - Backend and Rust core interoperate through protobuf (`backend/src/coreAdapter/proto/core.proto`).
 - Runtime controls:
   - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.
@@ -198,6 +199,7 @@ Admin Panel: A secure admin web interface (protected by additional login or IP w
 Player Management: Search for players by name or ID, view their account details (planets, resources, fleets, researches, last login, IP if needed for multi-account detection). Admins can perform actions: adjust resources (for event rewards or testing), force fleet recalls, teleport players, or ban/suspend accounts. Banning might set a flag that prevents login and optionally puts their planets in vacation mode. 
 
 Game Balance Settings: Modify global parameters such as resource production multipliers, building and research speed, combat parameters, etc. These settings could be stored in a config file or database table that the game uses. The admin UI will provide controls to change these values (e.g. change universe speed from 1x to 2x) and the changes can propagate to the server (possibly requiring a restart or being coded to take effect live depending on implementation complexity). 
+The admin configuration interface must provide explicit per-parameter and per-category "Use Default" controls so administrators can revert to canonical defaults at any time, with defaults acting as a guaranteed fallback.
 
 Moderation Tools: View in-game messages or chat logs for moderation (to investigate harassment or cheating discussions). Admins should be able to delete offensive messages or mute players if necessary. This requires storing chat logs or at least recent messages – possibly we’ll log chat to a database with timestamps. 
 

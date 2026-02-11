@@ -384,7 +384,9 @@ class ConfigurationManager {
             <div class="parameter-input-group">
                 ${this.createInput(param, currentValue)}
                 <div class="parameter-actions">
-                    ${isModified ? '<button class="btn-sm btn-secondary" onclick="configManager.resetParameter(\'' + param.parameter_key + '\')">Reset</button>' : ''}
+                    ${(isModified || hasPendingChange)
+                        ? '<button class="btn-sm btn-secondary" onclick="configManager.useDefaultForParameter(\'' + param.parameter_key + '\', ' + isModified + ')">Use Default</button>'
+                        : ''}
                 </div>
             </div>
             ${param.min_value !== null || param.max_value !== null ? `
@@ -521,10 +523,30 @@ class ConfigurationManager {
         discardBtn.disabled = !hasChanges;
     }
 
-    resetParameter(key) {
+    async useDefaultForParameter(key, isPersistedOverride = false) {
         this.pendingChanges.delete(key);
         this.updateSaveButtonState();
-        this.loadCategoryParameters(this.currentCategory);
+
+        if (!isPersistedOverride) {
+            this.loadCategoryParameters(this.currentCategory);
+            return;
+        }
+
+        const reason = await this.promptForReason(`Reset ${key} to default`);
+        if (reason === null) return;
+
+        try {
+            await this.apiCall(`/parameters/${key}/reset`, {
+                method: 'POST',
+                body: JSON.stringify({ reason }),
+            });
+            this.showToast('Parameter reset to default', 'success');
+            await this.loadCategoryParameters(this.currentCategory);
+            await this.loadStatistics();
+            await this.loadGameConfigSnapshot(true);
+        } catch (error) {
+            this.showToast('Failed to reset parameter: ' + error.message, 'error');
+        }
     }
 
     discardChanges() {
