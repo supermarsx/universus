@@ -128,6 +128,53 @@ struct PostCombatParticipantResult {
 }
 
 #[derive(Debug, Deserialize)]
+struct MissionCargoTransferRequest {
+    #[serde(alias = "transfer_metal", alias = "transferMetal")]
+    metal: i64,
+    #[serde(alias = "transfer_crystal", alias = "transferCrystal")]
+    crystal: i64,
+    #[serde(alias = "transfer_deuterium", alias = "transferDeuterium")]
+    deuterium: i64,
+    #[serde(alias = "clamp_non_negative", alias = "clampNonNegative")]
+    clamp_non_negative: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MissionCargoTransferResult {
+    transfer_metal: i64,
+    transfer_crystal: i64,
+    transfer_deuterium: i64,
+    remaining_metal: i64,
+    remaining_crystal: i64,
+    remaining_deuterium: i64,
+    total_transfer: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct HarvestCollectionRequest {
+    #[serde(alias = "debris_metal", alias = "debrisMetal")]
+    debris_metal: i64,
+    #[serde(alias = "debris_crystal", alias = "debrisCrystal")]
+    debris_crystal: i64,
+    #[serde(alias = "recycler_count", alias = "recyclerCount")]
+    recycler_count: i64,
+    #[serde(alias = "recycler_cargo_capacity", alias = "recyclerCargoCapacity")]
+    recycler_cargo_capacity: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HarvestCollectionResult {
+    collected_metal: i64,
+    collected_crystal: i64,
+    updated_metal: i64,
+    updated_crystal: i64,
+    recycler_capacity: i64,
+    empty: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct CombatReportSummaryRequest {
     report_id: i64,
     mission: String,
@@ -598,6 +645,85 @@ pub fn compute_attacker_post_combat_distribution(payload_json: String) -> Result
     serde_json::to_string(&response).map_err(|e| {
         napi::Error::from_reason(format!(
             "serialize attacker post-combat distribution response failed: {}",
+            e
+        ))
+    })
+}
+
+#[napi]
+pub fn compute_mission_cargo_transfer(payload_json: String) -> Result<String> {
+    let payload: MissionCargoTransferRequest = serde_json::from_str(&payload_json).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "invalid mission cargo transfer payload: {}",
+            e
+        ))
+    })?;
+
+    let clamp_non_negative = payload.clamp_non_negative.unwrap_or(false);
+
+    let mut transfer_metal = payload.metal;
+    let mut transfer_crystal = payload.crystal;
+    let mut transfer_deuterium = payload.deuterium;
+
+    if clamp_non_negative {
+        transfer_metal = transfer_metal.max(0);
+        transfer_crystal = transfer_crystal.max(0);
+        transfer_deuterium = transfer_deuterium.max(0);
+    }
+
+    let total_transfer = transfer_metal
+        .saturating_add(transfer_crystal)
+        .saturating_add(transfer_deuterium);
+
+    let response = MissionCargoTransferResult {
+        transfer_metal,
+        transfer_crystal,
+        transfer_deuterium,
+        remaining_metal: 0,
+        remaining_crystal: 0,
+        remaining_deuterium: 0,
+        total_transfer,
+    };
+
+    serde_json::to_string(&response).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "serialize mission cargo transfer response failed: {}",
+            e
+        ))
+    })
+}
+
+#[napi]
+pub fn compute_harvest_collection(payload_json: String) -> Result<String> {
+    let payload: HarvestCollectionRequest = serde_json::from_str(&payload_json).map_err(|e| {
+        napi::Error::from_reason(format!("invalid harvest collection payload: {}", e))
+    })?;
+
+    let debris_metal = payload.debris_metal.max(0);
+    let debris_crystal = payload.debris_crystal.max(0);
+    let recycler_count = payload.recycler_count.max(0);
+    let recycler_cargo_capacity = payload.recycler_cargo_capacity.max(0);
+    let recycler_capacity = recycler_count.saturating_mul(recycler_cargo_capacity);
+
+    let collected_metal = debris_metal.min(recycler_capacity);
+    let remaining_capacity = recycler_capacity.saturating_sub(collected_metal);
+    let collected_crystal = debris_crystal.min(remaining_capacity);
+
+    let updated_metal = debris_metal.saturating_sub(collected_metal);
+    let updated_crystal = debris_crystal.saturating_sub(collected_crystal);
+
+    let response = HarvestCollectionResult {
+        collected_metal,
+        collected_crystal,
+        updated_metal,
+        updated_crystal,
+        recycler_capacity,
+        empty: collected_metal == 0 && collected_crystal == 0,
+    };
+
+    serde_json::to_string(&response).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "serialize harvest collection response failed: {}",
             e
         ))
     })

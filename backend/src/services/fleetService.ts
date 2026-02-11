@@ -23,6 +23,8 @@ import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
 import {
   computeCombatReportSummaryNapi,
   computeAttackerPostCombatDistributionNapi,
+  computeHarvestCollectionNapi,
+  computeMissionCargoTransferNapi,
   isNapiAvailable,
   resolveDefenseLossesNapi,
 } from '../coreAdapter/rustCoreNapiClient';
@@ -655,6 +657,15 @@ export class FleetService {
   }
 
   private static async handleTransportMission(fleet: Fleet, client: PoolClient): Promise<void> {
+    const transfer = await this.computeMissionCargoTransfer(
+      {
+        metal: Number(fleet.cargo_metal || 0),
+        crystal: Number(fleet.cargo_crystal || 0),
+        deuterium: Number(fleet.cargo_deuterium || 0),
+      },
+      false
+    );
+
     const targetResult = await client.query(
       'SELECT * FROM planets WHERE galaxy = $1 AND system = $2 AND position = $3',
       [fleet.target_galaxy, fleet.target_system, fleet.target_position]
@@ -667,13 +678,18 @@ export class FleetService {
         `UPDATE planets 
          SET metal = metal + $1, crystal = crystal + $2, deuterium = deuterium + $3
          WHERE id = $4`,
-        [fleet.cargo_metal, fleet.cargo_crystal, fleet.cargo_deuterium, targetPlanet.id]
+        [transfer.transferMetal, transfer.transferCrystal, transfer.transferDeuterium, targetPlanet.id]
       );
     }
 
     await client.query(
-      `UPDATE fleets SET status = 'returning', cargo_metal = 0, cargo_crystal = 0, cargo_deuterium = 0 WHERE id = $1`,
-      [fleet.id]
+      `UPDATE fleets
+       SET status = 'returning',
+           cargo_metal = $1,
+           cargo_crystal = $2,
+           cargo_deuterium = $3
+       WHERE id = $4`,
+      [transfer.remainingMetal, transfer.remainingCrystal, transfer.remainingDeuterium, fleet.id]
     );
 
     this.scheduleReturnEvent(fleet.id, fleet.return_time);
@@ -852,23 +868,15 @@ export class FleetService {
     }
 
     const debris = debrisResult.rows[0];
-    const recyclerCapacity = (SHIPS.recycler?.cargo || 0) * recyclerCount;
-    let remainingCapacity = recyclerCapacity;
-
-    const collected = { metal: 0, crystal: 0 };
-
-    if (debris.metal > 0) {
-      collected.metal = Math.min(debris.metal, remainingCapacity);
-      remainingCapacity -= collected.metal;
-    }
-
-    if (remainingCapacity > 0 && debris.crystal > 0) {
-      collected.crystal = Math.min(debris.crystal, remainingCapacity);
-      remainingCapacity -= collected.crystal;
-    }
-
-    const updatedMetal = Math.max(0, debris.metal - collected.metal);
-    const updatedCrystal = Math.max(0, debris.crystal - collected.crystal);
+    const harvest = await this.computeHarvestCollection(
+      Number(debris.metal || 0),
+      Number(debris.crystal || 0),
+      recyclerCount,
+      Number(SHIPS.recycler?.cargo || 0)
+    );
+    const collected = { metal: harvest.collectedMetal, crystal: harvest.collectedCrystal };
+    const updatedMetal = harvest.updatedMetal;
+    const updatedCrystal = harvest.updatedCrystal;
 
     if (updatedMetal === 0 && updatedCrystal === 0) {
       await client.query('DELETE FROM debris_fields WHERE id = $1', [debris.id]);
@@ -893,7 +901,7 @@ export class FleetService {
     return {
       type: 'harvest',
       collected,
-      empty: collected.metal === 0 && collected.crystal === 0,
+      empty: harvest.empty,
     };
   }
 
@@ -1034,11 +1042,25 @@ export class FleetService {
         );
       }
 
+      const transfer = await this.computeMissionCargoTransfer(
+        {
+          metal: Number(fleet.cargo_metal || 0),
+          crystal: Number(fleet.cargo_crystal || 0),
+          deuterium: Number(fleet.cargo_deuterium || 0),
+        },
+        false
+      );
+
       await client.query(
         `UPDATE planets 
          SET metal = metal + $1, crystal = crystal + $2, deuterium = deuterium + $3
          WHERE id = $4`,
-        [fleet.cargo_metal, fleet.cargo_crystal, fleet.cargo_deuterium, fleet.origin_planet_id]
+        [
+          transfer.transferMetal,
+          transfer.transferCrystal,
+          transfer.transferDeuterium,
+          fleet.origin_planet_id,
+        ]
       );
 
       await client.query('DELETE FROM fleets WHERE id = $1', [fleetId]);
@@ -1604,6 +1626,14 @@ export class FleetService {
       );
 
       // Jump Gate drops transported resources at origin before instant transfer.
+      const transfer = await this.computeMissionCargoTransfer(
+        {
+          metal: Number(fleet.cargo_metal || 0),
+          crystal: Number(fleet.cargo_crystal || 0),
+          deuterium: Number(fleet.cargo_deuterium || 0),
+        },
+        true
+      );
       await client.query(
         `UPDATE moons
          SET metal = COALESCE(metal, 0) + $1,
@@ -1611,9 +1641,9 @@ export class FleetService {
              deuterium = COALESCE(deuterium, 0) + $3
          WHERE id = $4`,
         [
-          Math.max(0, Number(fleet.cargo_metal || 0)),
-          Math.max(0, Number(fleet.cargo_crystal || 0)),
-          Math.max(0, Number(fleet.cargo_deuterium || 0)),
+          transfer.transferMetal,
+          transfer.transferCrystal,
+          transfer.transferDeuterium,
           fromMoon.id,
         ]
       );
@@ -1812,6 +1842,151 @@ export class FleetService {
         this.movementCache.delete(firstKey);
       }
     }
+  }
+
+  private static shouldUseNapiMissionMath(): boolean {
+    if (process.env.NODE_ENV === 'test') {
+      return false;
+    }
+
+    const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
+    if (coreEngine === 'ts' || coreEngine === 'typescript' || coreEngine === 'js') {
+      return false;
+    }
+
+    let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
+    if (coreTransport === 'auto') {
+      coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+    }
+
+    return coreTransport === 'napi';
+  }
+
+  private static async computeMissionCargoTransfer(
+    cargo: { metal: number; crystal: number; deuterium: number },
+    clampNonNegative: boolean
+  ): Promise<{
+    transferMetal: number;
+    transferCrystal: number;
+    transferDeuterium: number;
+    remainingMetal: number;
+    remainingCrystal: number;
+    remainingDeuterium: number;
+    totalTransfer: number;
+  }> {
+    if (this.shouldUseNapiMissionMath()) {
+      try {
+        return await computeMissionCargoTransferNapi({
+          metal: cargo.metal,
+          crystal: cargo.crystal,
+          deuterium: cargo.deuterium,
+          clamp_non_negative: clampNonNegative,
+        });
+      } catch (error) {
+        console.warn('[FleetService] Rust N-API mission cargo transfer unavailable, using local fallback:', error);
+      }
+    }
+
+    return this.computeMissionCargoTransferLocal(cargo, clampNonNegative);
+  }
+
+  private static computeMissionCargoTransferLocal(
+    cargo: { metal: number; crystal: number; deuterium: number },
+    clampNonNegative: boolean
+  ): {
+    transferMetal: number;
+    transferCrystal: number;
+    transferDeuterium: number;
+    remainingMetal: number;
+    remainingCrystal: number;
+    remainingDeuterium: number;
+    totalTransfer: number;
+  } {
+    const sanitize = (value: number): number => {
+      const numeric = Number(value || 0);
+      return clampNonNegative ? Math.max(0, numeric) : numeric;
+    };
+    const transferMetal = sanitize(cargo.metal);
+    const transferCrystal = sanitize(cargo.crystal);
+    const transferDeuterium = sanitize(cargo.deuterium);
+    return {
+      transferMetal,
+      transferCrystal,
+      transferDeuterium,
+      remainingMetal: 0,
+      remainingCrystal: 0,
+      remainingDeuterium: 0,
+      totalTransfer: transferMetal + transferCrystal + transferDeuterium,
+    };
+  }
+
+  private static async computeHarvestCollection(
+    debrisMetal: number,
+    debrisCrystal: number,
+    recyclerCount: number,
+    recyclerCargoCapacity: number
+  ): Promise<{
+    collectedMetal: number;
+    collectedCrystal: number;
+    updatedMetal: number;
+    updatedCrystal: number;
+    recyclerCapacity: number;
+    empty: boolean;
+  }> {
+    if (this.shouldUseNapiMissionMath()) {
+      try {
+        return await computeHarvestCollectionNapi({
+          debris_metal: debrisMetal,
+          debris_crystal: debrisCrystal,
+          recycler_count: recyclerCount,
+          recycler_cargo_capacity: recyclerCargoCapacity,
+        });
+      } catch (error) {
+        console.warn('[FleetService] Rust N-API harvest collection unavailable, using local fallback:', error);
+      }
+    }
+
+    return this.computeHarvestCollectionLocal(
+      debrisMetal,
+      debrisCrystal,
+      recyclerCount,
+      recyclerCargoCapacity
+    );
+  }
+
+  private static computeHarvestCollectionLocal(
+    debrisMetal: number,
+    debrisCrystal: number,
+    recyclerCount: number,
+    recyclerCargoCapacity: number
+  ): {
+    collectedMetal: number;
+    collectedCrystal: number;
+    updatedMetal: number;
+    updatedCrystal: number;
+    recyclerCapacity: number;
+    empty: boolean;
+  } {
+    const normalizedDebrisMetal = Math.max(0, Number(debrisMetal || 0));
+    const normalizedDebrisCrystal = Math.max(0, Number(debrisCrystal || 0));
+    const normalizedRecyclerCount = Math.max(0, Number(recyclerCount || 0));
+    const normalizedRecyclerCargo = Math.max(0, Number(recyclerCargoCapacity || 0));
+
+    const recyclerCapacity = normalizedRecyclerCount * normalizedRecyclerCargo;
+    const collectedMetal = Math.min(normalizedDebrisMetal, recyclerCapacity);
+    const remainingCapacity = Math.max(0, recyclerCapacity - collectedMetal);
+    const collectedCrystal = Math.min(normalizedDebrisCrystal, remainingCapacity);
+    const updatedMetal = Math.max(0, normalizedDebrisMetal - collectedMetal);
+    const updatedCrystal = Math.max(0, normalizedDebrisCrystal - collectedCrystal);
+
+    return {
+      collectedMetal,
+      collectedCrystal,
+      updatedMetal,
+      updatedCrystal,
+      recyclerCapacity,
+      empty: collectedMetal === 0 && collectedCrystal === 0,
+    };
   }
 
   private static async applyDefenderLosses(

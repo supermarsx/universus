@@ -16,6 +16,10 @@ type RustNapiBinding = {
   compute_attacker_post_combat_distribution?: (payload: string) => string;
   computeCombatReportSummary?: (payload: string) => string;
   compute_combat_report_summary?: (payload: string) => string;
+  computeMissionCargoTransfer?: (payload: string) => string;
+  compute_mission_cargo_transfer?: (payload: string) => string;
+  computeHarvestCollection?: (payload: string) => string;
+  compute_harvest_collection?: (payload: string) => string;
   calculateFleetMovementFast?: (payload: RustFleetMovementRequest) => {
     distance: number;
     fleet_speed?: number;
@@ -294,6 +298,99 @@ export async function computeAttackerPostCombatDistributionNapi(payload: {
         deuterium: Number(participant.loot?.deuterium || 0),
       },
     })),
+  };
+}
+
+export async function computeMissionCargoTransferNapi(payload: {
+  metal: number;
+  crystal: number;
+  deuterium: number;
+  clamp_non_negative?: boolean;
+}): Promise<{
+  transferMetal: number;
+  transferCrystal: number;
+  transferDeuterium: number;
+  remainingMetal: number;
+  remainingCrystal: number;
+  remainingDeuterium: number;
+  totalTransfer: number;
+}> {
+  const binding = getBinding();
+  const fn = binding.computeMissionCargoTransfer || binding.compute_mission_cargo_transfer;
+  if (!fn) {
+    throw new Error('Rust N-API function computeMissionCargoTransfer not exported');
+  }
+
+  const raw = fn(JSON.stringify(payload));
+  const parsed = parseJson<{
+    transferMetal?: number;
+    transfer_metal?: number;
+    transferCrystal?: number;
+    transfer_crystal?: number;
+    transferDeuterium?: number;
+    transfer_deuterium?: number;
+    remainingMetal?: number;
+    remaining_metal?: number;
+    remainingCrystal?: number;
+    remaining_crystal?: number;
+    remainingDeuterium?: number;
+    remaining_deuterium?: number;
+    totalTransfer?: number;
+    total_transfer?: number;
+  }>(raw);
+
+  return {
+    transferMetal: Number(parsed.transferMetal ?? parsed.transfer_metal ?? 0),
+    transferCrystal: Number(parsed.transferCrystal ?? parsed.transfer_crystal ?? 0),
+    transferDeuterium: Number(parsed.transferDeuterium ?? parsed.transfer_deuterium ?? 0),
+    remainingMetal: Number(parsed.remainingMetal ?? parsed.remaining_metal ?? 0),
+    remainingCrystal: Number(parsed.remainingCrystal ?? parsed.remaining_crystal ?? 0),
+    remainingDeuterium: Number(parsed.remainingDeuterium ?? parsed.remaining_deuterium ?? 0),
+    totalTransfer: Number(parsed.totalTransfer ?? parsed.total_transfer ?? 0),
+  };
+}
+
+export async function computeHarvestCollectionNapi(payload: {
+  debris_metal: number;
+  debris_crystal: number;
+  recycler_count: number;
+  recycler_cargo_capacity: number;
+}): Promise<{
+  collectedMetal: number;
+  collectedCrystal: number;
+  updatedMetal: number;
+  updatedCrystal: number;
+  recyclerCapacity: number;
+  empty: boolean;
+}> {
+  const binding = getBinding();
+  const fn = binding.computeHarvestCollection || binding.compute_harvest_collection;
+  if (!fn) {
+    throw new Error('Rust N-API function computeHarvestCollection not exported');
+  }
+
+  const raw = fn(JSON.stringify(payload));
+  const parsed = parseJson<{
+    collectedMetal?: number;
+    collected_metal?: number;
+    collectedCrystal?: number;
+    collected_crystal?: number;
+    updatedMetal?: number;
+    updated_metal?: number;
+    updatedCrystal?: number;
+    updated_crystal?: number;
+    recyclerCapacity?: number;
+    recycler_capacity?: number;
+    empty?: boolean;
+  }>(raw);
+
+  return {
+    collectedMetal: Number(parsed.collectedMetal ?? parsed.collected_metal ?? 0),
+    collectedCrystal: Number(parsed.collectedCrystal ?? parsed.collected_crystal ?? 0),
+    updatedMetal: Number(parsed.updatedMetal ?? parsed.updated_metal ?? 0),
+    updatedCrystal: Number(parsed.updatedCrystal ?? parsed.updated_crystal ?? 0),
+    recyclerCapacity: Number(parsed.recyclerCapacity ?? parsed.recycler_capacity ?? 0),
+    empty: Boolean(parsed.empty),
   };
 }
 
