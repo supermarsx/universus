@@ -20,6 +20,7 @@ import { ResearchService } from './researchService';
 import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
 import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
+import { isNapiAvailable, resolveDefenseLossesNapi } from '../coreAdapter/rustCoreNapiClient';
 
 interface FleetParticipant {
   fleet: Fleet;
@@ -1598,7 +1599,11 @@ export class FleetService {
       target_position: payload.targetPosition,
       ships: rustShips,
     };
-    const coreTransport = (process.env.CORE_TRANSPORT || 'grpc').toLowerCase();
+    let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
+
+    if (coreTransport === 'auto') {
+      coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+    }
 
     if (coreTransport === 'napi') {
       try {
@@ -1720,7 +1725,41 @@ export class FleetService {
     const losses = result.defenderLosses || {};
     const updatePayload: Record<string, number> = {};
 
+    const defenseCurrent: Record<string, number> = {};
+    const defenseLosses: Record<string, number> = {};
     Object.entries(losses).forEach(([unit, rawLoss]) => {
+      const loss = Math.max(0, Number(rawLoss || 0));
+      if (!(unit in DEFENSES) || loss <= 0) return;
+      defenseCurrent[unit] = Math.max(0, Number(targetPlanet[unit] || 0));
+      defenseLosses[unit] = loss;
+    });
+
+    if (Object.keys(defenseLosses).length > 0 && process.env.NODE_ENV !== 'test') {
+      const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
+      let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
+      if (coreTransport === 'auto') {
+        coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+      }
+
+      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'napi') {
+        try {
+          const resolved = await resolveDefenseLossesNapi({
+            current: defenseCurrent,
+            losses: defenseLosses,
+            rebuild_rate: 0.7,
+            seed: `${planetId}:${result.combatId || 0}:defense`,
+          });
+          Object.entries(resolved.updated).forEach(([unit, value]) => {
+            updatePayload[unit] = Math.max(0, Number(value || 0));
+          });
+        } catch (error) {
+          console.warn('[FleetService] Rust N-API defense rebuild unavailable, using local fallback:', error);
+        }
+      }
+    }
+
+    Object.entries(losses).forEach(([unit, rawLoss]) => {
+      if (updatePayload[unit] !== undefined) return;
       const loss = Math.max(0, Number(rawLoss || 0));
       if (loss <= 0) return;
 

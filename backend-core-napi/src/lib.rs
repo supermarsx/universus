@@ -84,6 +84,56 @@ struct FleetMovementResult {
     cargo_capacity: f64,
 }
 
+#[derive(Debug, Deserialize)]
+struct DefenseLossResolveRequest {
+    current: HashMap<String, i64>,
+    losses: HashMap<String, i64>,
+    rebuild_rate: Option<f64>,
+    seed: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DefenseLossResolveResponse {
+    updated: HashMap<String, i64>,
+}
+
+#[derive(Clone, Copy)]
+struct Mulberry32 {
+    state: u32,
+}
+
+impl Mulberry32 {
+    fn new(seed: u32) -> Self {
+        Self { state: seed }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        let mut t = self.state.wrapping_add(0x6D2B79F5);
+        self.state = t;
+        t = t.wrapping_mul(t ^ (t >> 15));
+        t = t.wrapping_add(t.wrapping_mul(t ^ (t >> 7)));
+        (t ^ (t >> 14)) as u32
+    }
+
+    fn next_f64(&mut self) -> f64 {
+        (self.next_u32() as f64) / (u32::MAX as f64 + 1.0)
+    }
+}
+
+fn calc_seed(seed: &str) -> u32 {
+    let mut h: u32 = 0x811c9dc5;
+    for b in seed.as_bytes() {
+        h ^= *b as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    if h == 0 {
+        1
+    } else {
+        h
+    }
+}
+
 fn to_i32_map(input: HashMap<String, i64>) -> HashMap<String, i32> {
     input
         .into_iter()
@@ -207,4 +257,40 @@ pub fn calculate_fleet_movement(payload_json: String) -> Result<String> {
 
     serde_json::to_string(&output)
         .map_err(|e| napi::Error::from_reason(format!("serialize movement result failed: {}", e)))
+}
+
+#[napi]
+pub fn resolve_defense_losses(payload_json: String) -> Result<String> {
+    let payload: DefenseLossResolveRequest = serde_json::from_str(&payload_json)
+        .map_err(|e| napi::Error::from_reason(format!("invalid defense-loss payload: {}", e)))?;
+
+    let rebuild_rate = payload.rebuild_rate.unwrap_or(0.7).clamp(0.0, 1.0);
+    let seed = payload.seed.unwrap_or_else(|| "defense-loss".to_string());
+    let mut rng = Mulberry32::new(calc_seed(&seed));
+
+    let mut updated: HashMap<String, i64> = HashMap::new();
+
+    for (unit, current_value) in payload.current.iter() {
+        let current = (*current_value).max(0);
+        let loss = payload.losses.get(unit).copied().unwrap_or(0).max(0);
+        if loss == 0 {
+            updated.insert(unit.clone(), current);
+            continue;
+        }
+
+        let mut rebuilt = 0i64;
+        for _ in 0..loss {
+            if rng.next_f64() < rebuild_rate {
+                rebuilt += 1;
+            }
+        }
+        let effective_loss = (loss - rebuilt).max(0);
+        let remaining = (current - effective_loss).max(0);
+        updated.insert(unit.clone(), remaining);
+    }
+
+    let response = DefenseLossResolveResponse { updated };
+    serde_json::to_string(&response).map_err(|e| {
+        napi::Error::from_reason(format!("serialize defense-loss response failed: {}", e))
+    })
 }

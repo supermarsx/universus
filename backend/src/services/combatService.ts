@@ -80,7 +80,7 @@ export class CombatService {
     // Rust-first delegation: use Rust unless explicitly disabled.
     const defaultEngine = process.env.NODE_ENV === 'test' ? 'ts' : 'rust';
     const coreEngine = (process.env.CORE_ENGINE || defaultEngine).toLowerCase();
-    const coreTransport = (process.env.CORE_TRANSPORT || 'grpc').toLowerCase();
+    let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
     if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js') {
       const rustRequest = {
         battle_id: String(planetId || 'local'),
@@ -95,6 +95,15 @@ export class CombatService {
         seed: typeof seed === 'number' ? String(seed) : undefined,
         universe: process.env.CORE_UNIVERSE || 'default',
       };
+
+      if (coreTransport === 'auto') {
+        try {
+          const { isNapiAvailable } = require('../coreAdapter/rustCoreNapiClient');
+          coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+        } catch {
+          coreTransport = 'grpc';
+        }
+      }
 
       if (coreTransport === 'napi') {
         try {

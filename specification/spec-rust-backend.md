@@ -34,7 +34,8 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - `rust` (default in non-test environments): Rust-first delegation with TS fallback.
   - `ts` / `typescript` / `js`: force TypeScript simulation path.
 - `CORE_TRANSPORT`:
-  - `grpc` (default): Node -> Rust core gRPC path.
+  - `auto` (default): prefer N-API when available, otherwise gRPC.
+  - `grpc`: Node -> Rust core gRPC path.
   - `napi`: Node -> in-process Rust addon path (`backend-core-napi`) with fallback to gRPC, then TS.
 - `CORE_UNIVERSE`: universe label passed to Rust for worker routing.
 - `BACKEND_CORE_ADDR`: Rust gRPC target address.

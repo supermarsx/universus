@@ -20,6 +20,8 @@
     "validate": "pnpm run type-check && pnpm run lint && pnpm run test",
     "load:test": "ts-node scripts/loadTest.ts",
     "bench:core": "ts-node --transpile-only scripts/benchmarkCoreTransports.ts",
+    "bench:core:auto": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1",
+    "bench:core:grpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc",
     "analytics:worker": "ts-node src/workers/analyticsQueueWorker.ts"
   },
   "keywords": [

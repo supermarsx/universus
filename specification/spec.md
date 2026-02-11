@@ -14,7 +14,7 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
 - Backend and Rust core interoperate through protobuf (`backend/src/coreAdapter/proto/core.proto`).
 - Runtime controls:
   - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.
-  - `CORE_TRANSPORT=grpc|napi` to choose Rust invocation transport.
+  - `CORE_TRANSPORT=auto|grpc|napi` to choose Rust invocation transport (default `auto`).
   - `BACKEND_CORE_ADDR` for Rust core gRPC endpoint.
   - `CORE_UNIVERSE` for universe-specific Rust worker context.
 

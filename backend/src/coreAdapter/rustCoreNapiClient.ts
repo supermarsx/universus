@@ -10,6 +10,8 @@ type RustNapiBinding = {
   simulate_battle?: (payload: string) => string;
   calculateFleetMovement?: (payload: string) => string;
   calculate_fleet_movement?: (payload: string) => string;
+  resolveDefenseLosses?: (payload: string) => string;
+  resolve_defense_losses?: (payload: string) => string;
 };
 
 let bindingState: RustNapiBinding | null | undefined;
@@ -47,6 +49,15 @@ const getBinding = (): RustNapiBinding => {
   bindingState = null;
   throw new Error('Rust N-API binding not found; set CORE_NAPI_BINDING_PATH or build backend-core-napi');
 };
+
+export function isNapiAvailable(): boolean {
+  try {
+    getBinding();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const parseJson = <T>(raw: string): T => {
   return JSON.parse(raw) as T;
@@ -90,5 +101,23 @@ export async function calculateFleetMovementNapi(
     travelTimeSeconds: Number(result.travelTimeSeconds ?? result.travel_time_seconds ?? 0),
     fuelNeeded: Number(result.fuelNeeded ?? result.fuel_needed ?? 0),
     cargoCapacity: Number(result.cargoCapacity ?? result.cargo_capacity ?? 0),
+  };
+}
+
+export async function resolveDefenseLossesNapi(payload: {
+  current: Record<string, number>;
+  losses: Record<string, number>;
+  rebuild_rate?: number;
+  seed?: string;
+}): Promise<{ updated: Record<string, number> }> {
+  const binding = getBinding();
+  const fn = binding.resolveDefenseLosses || binding.resolve_defense_losses;
+  if (!fn) {
+    throw new Error('Rust N-API function resolveDefenseLosses not exported');
+  }
+  const raw = fn(JSON.stringify(payload));
+  const parsed = parseJson<{ updated?: Record<string, number> }>(raw);
+  return {
+    updated: parsed.updated || {},
   };
 }
