@@ -123,6 +123,7 @@ async function main() {
   console.log('Core Transport Benchmark (Fleet Movement)');
   console.log(`iterations: ${iterations}`);
   console.log(`warmup: ${warmup}`);
+  console.log(`actions per transport: ${iterations}`);
   console.log(`grpc target: ${process.env.BACKEND_CORE_ADDR || 'backend-core:50051'}`);
   console.log(`napi binding path: ${process.env.CORE_NAPI_BINDING_PATH || '(auto-detect)'}`);
   console.log('');

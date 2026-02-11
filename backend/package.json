@@ -22,6 +22,8 @@
     "bench:core": "ts-node --transpile-only scripts/benchmarkCoreTransports.ts",
     "bench:core:auto": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1",
     "bench:core:grpc": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc",
+    "bench:core:auto:10k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -Iterations 10000 -Warmup 200",
+    "bench:core:grpc:10k": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/benchCore.ps1 -WithGrpc -Iterations 10000 -Warmup 200",
     "analytics:worker": "ts-node src/workers/analyticsQueueWorker.ts"
   },
   "keywords": [

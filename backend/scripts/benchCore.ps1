@@ -1,5 +1,7 @@
 param(
-  [switch]$WithGrpc
+  [switch]$WithGrpc,
+  [int]$Iterations = 150,
+  [int]$Warmup = 25
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,7 +22,10 @@ if (-not (Test-Path $napiDll)) {
 
 Copy-Item -Path $napiDll -Destination $napiNode -Force
 $env:CORE_NAPI_BINDING_PATH = $napiNode
+$env:BENCH_ITERATIONS = [string]$Iterations
+$env:BENCH_WARMUP = [string]$Warmup
 Write-Host "[bench] CORE_NAPI_BINDING_PATH=$($env:CORE_NAPI_BINDING_PATH)"
+Write-Host "[bench] BENCH_ITERATIONS=$($env:BENCH_ITERATIONS) BENCH_WARMUP=$($env:BENCH_WARMUP)"
 
 $coreProc = $null
 try {
