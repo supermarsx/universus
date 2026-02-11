@@ -55,24 +55,40 @@ export function configureTemplateEngine(app: express.Application): nunjucks.Envi
      noCache: process.env.NODE_ENV === 'development',
    });
 
-    // --- i18n translation filter ---
-     const fs = require('fs');
-     // Load English translations (default)
-     let translations: Record<string, string> = {};
-     // During tests or when server startup is skipped, avoid reading locale files
-     if (process.env.NODE_ENV !== 'test' && process.env.SKIP_SERVER_START !== 'true') {
-       try {
-         const enPath = path.join(__dirname, '../../frontend/locales/en.json');
-         translations = JSON.parse(fs.readFileSync(enPath, 'utf8'));
-       } catch (e) {
-         if (process.env.NODE_ENV !== 'test') {
-           console.error('Failed to load translations:', e);
-         }
-       }
-     }
-     env.addFilter('t', (key: string) => {
-       return translations[key] || key;
-     });
+  // --- i18n translation filter ---
+  const fs = require('fs');
+  let translations: Record<string, string> = {};
+  if (process.env.NODE_ENV !== 'test' && process.env.SKIP_SERVER_START !== 'true') {
+    try {
+      const localesDir = path.join(__dirname, '../../frontend/locales');
+      const defaultLocale = process.env.DEFAULT_LOCALE || 'en-US';
+      const preferredPath = path.join(localesDir, `${defaultLocale}.json`);
+      const fallbackPath = path.join(localesDir, 'en-US.json');
+
+      let localePath = '';
+      if (fs.existsSync(preferredPath)) {
+        localePath = preferredPath;
+      } else if (fs.existsSync(fallbackPath)) {
+        localePath = fallbackPath;
+      } else {
+        const firstLocaleFile = (fs.readdirSync(localesDir) as string[]).find((f) => f.endsWith('.json'));
+        if (firstLocaleFile) {
+          localePath = path.join(localesDir, firstLocaleFile);
+        }
+      }
+
+      if (localePath) {
+        translations = JSON.parse(fs.readFileSync(localePath, 'utf8'));
+      }
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.error('Failed to load translations:', e);
+      }
+    }
+  }
+  env.addFilter('t', (key: string) => {
+    return translations[key] || key;
+  });
 
 
   /**

@@ -1518,6 +1518,21 @@ export class FleetService {
         [...shipCounts, toMoon.id]
       );
 
+      // Jump Gate drops transported resources at origin before instant transfer.
+      await client.query(
+        `UPDATE moons
+         SET metal = COALESCE(metal, 0) + $1,
+             crystal = COALESCE(crystal, 0) + $2,
+             deuterium = COALESCE(deuterium, 0) + $3
+         WHERE id = $4`,
+        [
+          Math.max(0, Number(fleet.cargo_metal || 0)),
+          Math.max(0, Number(fleet.cargo_crystal || 0)),
+          Math.max(0, Number(fleet.cargo_deuterium || 0)),
+          fromMoon.id,
+        ]
+      );
+
       // Strip resources and clear fleet record to avoid further processing
       await client.query(
         `UPDATE fleets
