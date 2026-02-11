@@ -12,6 +12,17 @@ let socket = null;
 let users = [];
 let serverStats = null;
 
+function renderLoadError(containerId, message) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'tbody') {
+        el.innerHTML = `<tr><td colspan="99" class="text-muted">${escapeHtml(message)}</td></tr>`;
+    } else {
+        el.innerHTML = `<p class="text-muted">${escapeHtml(message)}</p>`;
+    }
+}
+
 /**
  * Initialize admin panel
  */
@@ -220,21 +231,7 @@ async function loadDashboard() {
 
     } catch (error) {
         console.error('Error loading dashboard:', error);
-        // Use mock data for development
-        const mockStats = {
-            totalUsers: 1523,
-            activePlayers: 342,
-            totalPlanets: 4521,
-            serverUptime: 168,
-            activeCombats: 23,
-            dbSize: 256,
-            usersToday: 45,
-            recentActivity: [
-                { type: 'user_registered', username: 'NewPlayer123', timestamp: new Date().toISOString() },
-                { type: 'combat_completed', details: 'Galaxy 1:234:5', timestamp: new Date().toISOString() }
-            ]
-        };
-        updateDashboardStats(mockStats);
+        renderLoadError('recentActivity', 'Unable to load dashboard metrics.');
     }
 }
 
@@ -287,13 +284,8 @@ async function loadUsers() {
 
     } catch (error) {
         console.error('Error loading users:', error);
-        // Use mock data
-        users = [
-            { id: 1, username: 'player1', email: 'player1@example.com', status: 'active', last_login: new Date().toISOString(), is_admin: false },
-            { id: 2, username: 'player2', email: 'player2@example.com', status: 'active', last_login: new Date().toISOString(), is_admin: false },
-            { id: 3, username: 'admin', email: 'admin@example.com', status: 'active', last_login: new Date().toISOString(), is_admin: true }
-        ];
-        renderUsers(users);
+        users = [];
+        renderLoadError('usersTableBody', 'Unable to load users.');
     }
 }
 
@@ -504,19 +496,7 @@ async function loadServerStatus() {
 
     } catch (error) {
         console.error('Error loading server status:', error);
-        // Mock data
-        const mockStatus = {
-            cpu: 45.2,
-            memory: 512,
-            connections: 142,
-            requestsPerMin: 324,
-            services: [
-                { name: 'PostgreSQL', status: 'running', uptime: 168 },
-                { name: 'Redis', status: 'running', uptime: 168 },
-                { name: 'WebSocket', status: 'running', uptime: 168 }
-            ]
-        };
-        updateServerStatus(mockStatus);
+        renderLoadError('serviceStatus', 'Unable to load server status.');
     }
 }
 
@@ -569,13 +549,7 @@ async function loadLogs() {
 
     } catch (error) {
         console.error('Error loading logs:', error);
-        // Mock logs
-        const mockLogs = [
-            { level: 'info', message: 'Server started successfully', timestamp: new Date().toISOString() },
-            { level: 'warn', message: 'High memory usage detected', timestamp: new Date().toISOString() },
-            { level: 'error', message: 'Failed to connect to external API', timestamp: new Date().toISOString() }
-        ];
-        renderLogs(mockLogs);
+        renderLoadError('logsContainer', 'Unable to load logs.');
     }
 }
 
@@ -613,13 +587,7 @@ async function loadDatabaseStats() {
 
     } catch (error) {
         console.error('Error loading database stats:', error);
-        // Mock data
-        const mockTables = [
-            { table_name: 'users', row_count: 1523, size: '2.4 MB', last_modified: new Date().toISOString() },
-            { table_name: 'planets', row_count: 4521, size: '8.7 MB', last_modified: new Date().toISOString() },
-            { table_name: 'fleets', row_count: 8234, size: '12.3 MB', last_modified: new Date().toISOString() }
-        ];
-        renderDatabaseStats(mockTables);
+        renderLoadError('dbStatsTableBody', 'Unable to load database stats.');
     }
 }
 

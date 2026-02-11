@@ -15,10 +15,29 @@ class ShopManager {
     
     init() {
         this.setupEventListeners();
+        this.initializeAdHooks();
         this.loadShopData();
         this.loadActivePerks();
         this.loadPurchaseHistory();
         this.updateDarkMatter();
+    }
+
+    initializeAdHooks() {
+        const slots = Array.from(document.querySelectorAll('.ad-slot[data-ad-unit]'));
+        if (!slots.length) return;
+
+        slots.forEach((slot) => {
+            const adUnit = slot.getAttribute('data-ad-unit');
+            if (!adUnit) return;
+
+            // Integrators can define a renderer (e.g., Google Ad Manager, in-house ads).
+            if (window.UniversusAds && typeof window.UniversusAds.render === 'function') {
+                window.UniversusAds.render(slot, { adUnit });
+                return;
+            }
+
+            slot.innerHTML = `<div class="ad-slot-placeholder">${i18n.t('shop.adPlaceholder', { defaultValue: 'Ad slot' })}</div>`;
+        });
     }
     
     setupEventListeners() {
