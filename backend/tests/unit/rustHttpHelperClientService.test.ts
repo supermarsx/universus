@@ -3,11 +3,13 @@ import { RustHttpHelperClientService } from '../../src/services/rustHttpHelperCl
 describe('RustHttpHelperClientService', () => {
   const envBackup = process.env.RUST_HTTP_HELPER_URL;
   const timeoutBackup = process.env.RUST_HTTP_HELPER_TIMEOUT_MS;
+  const coreHelperTokenBackup = process.env.CORE_HTTP_HELPER_TOKEN;
   const fetchBackup = global.fetch;
 
   beforeEach(() => {
     process.env.RUST_HTTP_HELPER_URL = 'http://rust-helper:8080';
     process.env.RUST_HTTP_HELPER_TIMEOUT_MS = '1000';
+    delete process.env.CORE_HTTP_HELPER_TOKEN;
     global.fetch = jest.fn();
   });
 
@@ -18,6 +20,7 @@ describe('RustHttpHelperClientService', () => {
   afterAll(() => {
     process.env.RUST_HTTP_HELPER_URL = envBackup;
     process.env.RUST_HTTP_HELPER_TIMEOUT_MS = timeoutBackup;
+    process.env.CORE_HTTP_HELPER_TOKEN = coreHelperTokenBackup;
     global.fetch = fetchBackup;
   });
 
@@ -54,6 +57,39 @@ describe('RustHttpHelperClientService', () => {
 
     expect(result.distance).toBe(1100);
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe('http://rust-helper:8080/api/fleet/helpers/movement');
+    expect((global.fetch as jest.Mock).mock.calls[0][1].headers).toEqual({
+      'content-type': 'application/json',
+    });
+  });
+
+  test('sends x-core-helper-token header when CORE_HTTP_HELPER_TOKEN is set', async () => {
+    process.env.CORE_HTTP_HELPER_TOKEN = 'helper-token-value';
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          distance: 1100,
+          fleetSpeed: 5000,
+          travelTimeSeconds: 792,
+          fuelNeeded: 110,
+          cargoCapacity: 4890,
+          engine: 'rust-http',
+        },
+      }),
+    } as any);
+
+    await RustHttpHelperClientService.calculateMovement({
+      origin: { galaxy: 1, system: 1, position: 1 },
+      target: { galaxy: 1, system: 1, position: 21 },
+      ships: { small_cargo: 10 },
+    });
+
+    expect((global.fetch as jest.Mock).mock.calls[0][1].headers).toEqual({
+      'content-type': 'application/json',
+      'x-core-helper-token': 'helper-token-value',
+    });
   });
 
   test('throws on non-2xx status', async () => {

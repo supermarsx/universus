@@ -26,6 +26,11 @@ function toBaseUrl(raw: string | undefined): string {
   return String(raw || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
 }
 
+function toCoreHelperToken(raw: string | undefined): string | undefined {
+  const token = String(raw || '').trim();
+  return token.length > 0 ? token : undefined;
+}
+
 export class RustHttpHelperClientService {
   static isConfigured(): boolean {
     return toBaseUrl(process.env.RUST_HTTP_HELPER_URL).length > 0;
@@ -64,6 +69,11 @@ export class RustHttpHelperClientService {
     if (!baseUrl) {
       throw new Error('RUST_HTTP_HELPER_URL is not configured');
     }
+    const coreHelperToken = toCoreHelperToken(process.env.CORE_HTTP_HELPER_TOKEN);
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (coreHelperToken) {
+      headers['x-core-helper-token'] = coreHelperToken;
+    }
 
     const timeoutMs = Math.max(100, Number(process.env.RUST_HTTP_HELPER_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
     const controller = new AbortController();
@@ -72,7 +82,7 @@ export class RustHttpHelperClientService {
     try {
       const response = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
