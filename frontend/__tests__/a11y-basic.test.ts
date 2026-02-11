@@ -10,8 +10,9 @@ describe('Accessibility check', () => {
 
   it('should have no accessibility violations on moon overview modal', async () => {
     const html = `
-      <div id="moonOverviewModal" class="modal" style="display:block;">
-        <div class="modal-content">
+      <main role="main">
+        <div id="moonOverviewModal" class="modal" style="display:block;">
+          <div class="modal-content">
           <button class="close" id="closeMoonOverviewModal" aria-label="Close moon overview modal">&times;</button>
           <div id="moonOverviewContent">
             <div class="moon-overview-header">
@@ -42,7 +43,8 @@ describe('Accessibility check', () => {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </main>
     `;
     const results = await axe(html);
     expect(results).toHaveNoViolations();
