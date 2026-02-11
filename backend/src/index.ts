@@ -46,6 +46,7 @@ import accountRoutes from './routes/accountRoutes';
 import enhancedShopRoutes from './routes/enhancedShopRoutes';
 import allianceRoutes from './routes/allianceRoutes';
 import moonRoutes from './routes/moons';
+import ripsRoutes from './routes/rips';
 import playerBlockRoutes from './routes/playerBlocks';
 import analyticsRoutes from './routes/analytics';
 import LeaderboardScheduler from './services/leaderboardScheduler';
@@ -105,6 +106,7 @@ app.use('/api/account', accountRoutes);
 app.use('/api/shop-enhanced', enhancedShopRoutes);
 app.use('/api/alliances', allianceRoutes);
 app.use('/api/moons', moonRoutes);
+app.use('/api/rips', ripsRoutes);
 app.use('/api/player-blocks', playerBlockRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
