@@ -128,14 +128,18 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
     let seed = calc_seed(&req.seed);
     let mut rng = Mulberry32::new(seed);
 
-    // Load ship metadata and prepare units using those stats when available.
-    // allow future selection of universe via request; default to "default"
-    let universe = "default";
+    // Load ship metadata for the requested universe (or default).
+    let universe = if req.universe.trim().is_empty() {
+        "default"
+    } else {
+        req.universe.as_str()
+    };
     let ship_defs = ships::load_ships_for_universe(universe);
+    let defender_force_map = merge_unit_counts(&req.defender_ships, &req.defender_defenses);
     let mut attacker_units =
         prepare_combat_units(&req.attacker_ships, &req.attacker_tech, seed, &ship_defs);
     let mut defender_units = prepare_combat_units(
-        &req.defender_ships,
+        &defender_force_map,
         &req.defender_tech,
         seed.wrapping_add(0x9e3779b9),
         &ship_defs,
@@ -196,9 +200,9 @@ pub fn simulate_combat(req: &SimulateRequest) -> CombatResult {
     };
 
     let attacker_losses = calculate_losses(&req.attacker_ships, &attacker_units);
-    let defender_losses = calculate_losses(&req.defender_ships, &defender_units);
+    let defender_losses = calculate_losses(&defender_force_map, &defender_units);
 
-    let debris = calculate_debris(&attacker_losses, &defender_losses);
+    let debris = calculate_debris(&attacker_losses, &defender_losses, &ship_defs);
     // Loot should be taken by surviving attackers only. Compute available loot and distribute
     let loot = if winner == "attacker" {
         // total loot available on planet (max 50% of each resource)
@@ -293,11 +297,33 @@ fn derive_stats_from_type(
 
 fn prepare_combat_units(
     map: &HashMap<String, i32>,
-    _tech: &HashMap<String, i32>,
+    tech: &HashMap<String, i32>,
     seed: u32,
     ship_defs: &HashMap<String, ships::ShipDef>,
 ) -> Vec<CombatUnit> {
     let mut units = Vec::new();
+    let weapon_multiplier = tech_multiplier(tech_level(
+        tech,
+        &[
+            "weapons_technology",
+            "weapon_technology",
+            "weapons",
+            "weapon",
+        ],
+    ));
+    let shield_multiplier = tech_multiplier(tech_level(
+        tech,
+        &[
+            "shielding_technology",
+            "shield_technology",
+            "shielding",
+            "shield",
+        ],
+    ));
+    let armor_multiplier = tech_multiplier(tech_level(
+        tech,
+        &["armor_technology", "armour_technology", "armor", "armour"],
+    ));
     // iterate in sorted order to ensure deterministic behavior
     let mut keys: Vec<&String> = map.keys().collect();
     keys.sort();
@@ -307,6 +333,9 @@ fn prepare_combat_units(
             continue;
         }
         let (base_weapon, base_shield, base_hull, cargo) = derive_stats_from_type(typ, ship_defs);
+        let scaled_weapon = base_weapon * weapon_multiplier;
+        let scaled_shield = base_shield * shield_multiplier;
+        let scaled_hull = base_hull * armor_multiplier;
         // small deterministic count adjustment per type based on seed (-1,0,+1)
         let mut th: u32 = 2166136261u32;
         for b in typ.as_bytes() {
@@ -323,9 +352,9 @@ fn prepare_combat_units(
             }
             let frac = (h % 1000) as f64 / 1000.0; // 0.0 - 0.999
                                                    // increase variation to +/-50% to ensure different seeds produce different outcomes
-            let w = base_weapon * (0.5 + frac * 1.0);
-            let s = base_shield * (0.5 + ((h.wrapping_mul(7) % 1000) as f64 / 1000.0) * 1.0);
-            let uu_h = base_hull * (0.5 + ((h.wrapping_mul(13) % 1000) as f64 / 1000.0) * 1.0);
+            let w = scaled_weapon * (0.5 + frac * 1.0);
+            let s = scaled_shield * (0.5 + ((h.wrapping_mul(7) % 1000) as f64 / 1000.0) * 1.0);
+            let uu_h = scaled_hull * (0.5 + ((h.wrapping_mul(13) % 1000) as f64 / 1000.0) * 1.0);
             // copy rapid_fire map from definitions when available
             let rf = ship_defs.get(*typ).and_then(|d| d.rapid_fire.clone());
             units.push(CombatUnit {
@@ -517,10 +546,10 @@ fn calculate_losses(
 fn calculate_debris(
     attacker_losses: &HashMap<String, i32>,
     defender_losses: &HashMap<String, i32>,
+    ship_defs: &HashMap<String, ships::ShipDef>,
 ) -> Debris {
     // Use ship metadata to compute debris; fall back to rough per-unit estimate.
     // Default fractions: 30% of metal, 15% of crystal become debris unless ship-specific info exists.
-    let ship_defs = ships::load_default_ships();
     let mut metal = 0i64;
     let mut crystal = 0i64;
     for (typ, count) in attacker_losses.iter().chain(defender_losses.iter()) {
@@ -535,6 +564,30 @@ fn calculate_debris(
         }
     }
     Debris { metal, crystal }
+}
+
+fn merge_unit_counts(
+    primary: &HashMap<String, i32>,
+    secondary: &HashMap<String, i32>,
+) -> HashMap<String, i32> {
+    let mut merged = primary.clone();
+    for (unit_type, count) in secondary {
+        *merged.entry(unit_type.clone()).or_insert(0) += *count;
+    }
+    merged
+}
+
+fn tech_level(tech: &HashMap<String, i32>, keys: &[&str]) -> i32 {
+    for key in keys {
+        if let Some(level) = tech.get(*key) {
+            return (*level).max(0);
+        }
+    }
+    0
+}
+
+fn tech_multiplier(level: i32) -> f64 {
+    1.0 + (level as f64 * 0.1)
 }
 
 fn calculate_loot(
