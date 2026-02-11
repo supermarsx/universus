@@ -175,6 +175,25 @@ struct HarvestCollectionResult {
 }
 
 #[derive(Debug, Deserialize)]
+struct EspionageOutcomeRequest {
+    probes: i64,
+    #[serde(alias = "attackerEspionage")]
+    attacker_espionage: f64,
+    #[serde(alias = "defenderEspionage")]
+    defender_espionage: f64,
+    seed: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct EspionageOutcomeResponse {
+    intel_level: String,
+    detected: bool,
+    detection_chance: f64,
+    detail_score: f64,
+    defense_score: f64,
+}
+
+#[derive(Debug, Deserialize)]
 struct CombatReportSummaryRequest {
     report_id: i64,
     mission: String,
@@ -730,6 +749,47 @@ pub fn compute_harvest_collection(payload_json: String) -> Result<String> {
 }
 
 #[napi]
+pub fn compute_espionage_outcome(payload_json: String) -> Result<String> {
+    let payload: EspionageOutcomeRequest = serde_json::from_str(&payload_json).map_err(|e| {
+        napi::Error::from_reason(format!("invalid espionage outcome payload: {}", e))
+    })?;
+
+    let probes = payload.probes.max(0) as f64;
+    let detail_score = payload.attacker_espionage + (probes + 1.0).log2();
+    let defense_score = payload.defender_espionage;
+    let detail_delta = detail_score - defense_score;
+
+    let intel_level = if detail_delta >= 3.0 {
+        "full"
+    } else if detail_delta >= 0.0 {
+        "standard"
+    } else {
+        "minimal"
+    }
+    .to_string();
+
+    let detection_chance = (0.5 + (defense_score - detail_score) * 0.05).clamp(0.05, 0.95);
+    let seed = payload.seed.unwrap_or_else(|| "espionage".to_string());
+    let mut rng = Mulberry32::new(calc_seed(&seed));
+    let detected = rng.next_f64() < detection_chance;
+
+    let response = EspionageOutcomeResponse {
+        intel_level,
+        detected,
+        detection_chance,
+        detail_score,
+        defense_score,
+    };
+
+    serde_json::to_string(&response).map_err(|e| {
+        napi::Error::from_reason(format!(
+            "serialize espionage outcome response failed: {}",
+            e
+        ))
+    })
+}
+
+#[napi]
 pub fn compute_combat_report_summary(payload_json: String) -> Result<String> {
     let payload: CombatReportSummaryRequest = serde_json::from_str(&payload_json).map_err(|e| {
         napi::Error::from_reason(format!(
@@ -758,4 +818,64 @@ pub fn compute_combat_report_summary(payload_json: String) -> Result<String> {
             e
         ))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_espionage_outcome;
+    use serde_json::Value;
+
+    #[test]
+    fn compute_espionage_outcome_supports_snake_case_fields() {
+        let payload = r#"{
+            "probes": 3,
+            "attacker_espionage": 2,
+            "defender_espionage": 2,
+            "seed": "seed-a"
+        }"#;
+
+        let raw = compute_espionage_outcome(payload.to_string()).expect("expected valid response");
+        let out: Value = serde_json::from_str(&raw).expect("response should be valid json");
+
+        assert_eq!(out["intel_level"], "standard");
+        assert!((out["detail_score"].as_f64().unwrap() - 4.0).abs() < 1e-12);
+        assert!((out["defense_score"].as_f64().unwrap() - 2.0).abs() < 1e-12);
+        assert!((out["detection_chance"].as_f64().unwrap() - 0.4).abs() < 1e-12);
+        assert!(out["detected"].is_boolean());
+    }
+
+    #[test]
+    fn compute_espionage_outcome_supports_camel_case_fields() {
+        let payload = r#"{
+            "probes": 3,
+            "attackerEspionage": 1,
+            "defenderEspionage": 5,
+            "seed": "seed-b"
+        }"#;
+
+        let raw = compute_espionage_outcome(payload.to_string()).expect("expected valid response");
+        let out: Value = serde_json::from_str(&raw).expect("response should be valid json");
+
+        assert_eq!(out["intel_level"], "minimal");
+        assert!((out["detail_score"].as_f64().unwrap() - 3.0).abs() < 1e-12);
+        assert!((out["defense_score"].as_f64().unwrap() - 5.0).abs() < 1e-12);
+        assert!((out["detection_chance"].as_f64().unwrap() - 0.6).abs() < 1e-12);
+    }
+
+    #[test]
+    fn compute_espionage_outcome_uses_default_seed_deterministically() {
+        let payload = r#"{
+            "probes": 15,
+            "attacker_espionage": 2,
+            "defender_espionage": 3
+        }"#;
+
+        let raw_a = compute_espionage_outcome(payload.to_string()).expect("expected valid response");
+        let raw_b = compute_espionage_outcome(payload.to_string()).expect("expected valid response");
+        let out_a: Value = serde_json::from_str(&raw_a).expect("response should be valid json");
+        let out_b: Value = serde_json::from_str(&raw_b).expect("response should be valid json");
+
+        assert_eq!(out_a["intel_level"], "full");
+        assert_eq!(out_a, out_b);
+    }
 }
