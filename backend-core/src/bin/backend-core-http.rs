@@ -8,6 +8,7 @@
 //! - `POST /api/fleet/helpers/espionage-outcome`
 //! - `POST /api/fleet/helpers/mission-cargo-transfer`
 //! - `POST /api/fleet/helpers/harvest-collection`
+//! - `POST /api/combat/simulate` (internal)
 //!
 //! It intentionally keeps request validation and response envelope semantics
 //! aligned with the Node routes: successful responses return
@@ -16,17 +17,19 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use axum::extract::State;
 use axum::extract::rejection::JsonRejection;
 use axum::extract::Json;
+use axum::extract::State;
 use axum::http::StatusCode;
-use axum::middleware::{from_fn_with_state, Next};
 use axum::http::{HeaderMap, Request};
+use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
+use backend_core::core::SimulateRequest;
 use backend_core::ships::load_ships_for_universe;
-use serde::Serialize;
+use backend_core::sim::simulate_combat;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 #[derive(Serialize)]
@@ -118,6 +121,86 @@ struct HarvestCollectionData {
     engine: &'static str,
 }
 
+#[derive(Deserialize)]
+struct CombatSimulateRequestPayload {
+    battle_id: String,
+    attacker_ships: HashMap<String, i32>,
+    defender_ships: HashMap<String, i32>,
+    defender_defenses: HashMap<String, i32>,
+    attacker_tech: HashMap<String, i32>,
+    defender_tech: HashMap<String, i32>,
+    planet_metal: i64,
+    planet_crystal: i64,
+    planet_deuterium: i64,
+    seed: String,
+    universe: String,
+    #[serde(default)]
+    max_rounds: Option<i32>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CombatRoundData {
+    attacker_shots: i32,
+    defender_shots: i32,
+    attacker_destroyed: i32,
+    defender_destroyed: i32,
+}
+
+#[derive(Serialize)]
+struct CombatLootData {
+    metal: i64,
+    crystal: i64,
+    deuterium: i64,
+}
+
+#[derive(Serialize)]
+struct CombatDebrisData {
+    metal: i64,
+    crystal: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CombatSimulateData {
+    winner: String,
+    rounds: Vec<CombatRoundData>,
+    attacker_losses: HashMap<String, i32>,
+    defender_losses: HashMap<String, i32>,
+    loot: CombatLootData,
+    debris: CombatDebrisData,
+}
+
+fn to_simulate_response_data(result: backend_core::core::CombatResult) -> CombatSimulateData {
+    let loot = result.loot.unwrap_or_default();
+    let debris = result.debris.unwrap_or_default();
+
+    CombatSimulateData {
+        winner: result.winner,
+        rounds: result
+            .rounds
+            .into_iter()
+            .map(|round| CombatRoundData {
+                attacker_shots: round.attacker_shots,
+                defender_shots: round.defender_shots,
+                attacker_destroyed: round.attacker_destroyed,
+                defender_destroyed: round.defender_destroyed,
+            })
+            .collect(),
+        attacker_losses: result.attacker_losses,
+        defender_losses: result.defender_losses,
+        loot: CombatLootData {
+            metal: loot.metal,
+            crystal: loot.crystal,
+            deuterium: loot.deuterium,
+        },
+        debris: CombatDebrisData {
+            metal: debris.metal,
+            crystal: debris.crystal,
+        },
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Mulberry32 {
     state: u32,
@@ -147,7 +230,11 @@ fn calc_seed(seed: &str) -> u32 {
         h ^= *b as u32;
         h = h.wrapping_mul(16777619);
     }
-    if h == 0 { 1 } else { h }
+    if h == 0 {
+        1
+    } else {
+        h
+    }
 }
 
 fn success<T: Serialize>(data: T) -> Response {
@@ -385,7 +472,8 @@ async fn movement_handler(payload: Result<Json<Value>, JsonRejection>) -> Respon
         if count <= 0 {
             continue;
         }
-        let (base_speed, fuel_consumption, cargo) = derive_movement_ship_stats(&ship_type, &ship_defs);
+        let (base_speed, fuel_consumption, cargo) =
+            derive_movement_ship_stats(&ship_type, &ship_defs);
         if base_speed > 0.0 {
             min_speed = min_speed.min(base_speed);
         }
@@ -394,7 +482,11 @@ async fn movement_handler(payload: Result<Json<Value>, JsonRejection>) -> Respon
         cargo_capacity += cargo * count;
     }
 
-    let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+    let fleet_speed = if min_speed.is_finite() {
+        min_speed
+    } else {
+        0.0
+    };
     let travel_time_seconds = if fleet_speed > 0.0 {
         ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
     } else {
@@ -576,7 +668,8 @@ async fn attacker_distribution_handler(payload: Result<Json<Value>, JsonRejectio
                 let remaining = (total_loss - already).max(0);
                 remaining.min(fleet_count)
             } else {
-                let proportional = ((total_loss as f64 * fleet_count as f64) / total_count as f64).round() as i64;
+                let proportional =
+                    ((total_loss as f64 * fleet_count as f64) / total_count as f64).round() as i64;
                 let clamped = proportional.min(fleet_count).max(0);
                 *allocated.entry(unit.clone()).or_insert(0) += clamped;
                 clamped
@@ -630,14 +723,16 @@ async fn espionage_outcome_handler(payload: Result<Json<Value>, JsonRejection>) 
         Some(value) => value.max(0) as f64,
         None => return bad_request("Invalid espionage outcome request"),
     };
-    let attacker_espionage = match js_number(pick(root, &["attackerEspionage", "attacker_espionage"])) {
-        Some(value) if value.is_finite() => value,
-        _ => return bad_request("Invalid espionage outcome request"),
-    };
-    let defender_espionage = match js_number(pick(root, &["defenderEspionage", "defender_espionage"])) {
-        Some(value) if value.is_finite() => value,
-        _ => return bad_request("Invalid espionage outcome request"),
-    };
+    let attacker_espionage =
+        match js_number(pick(root, &["attackerEspionage", "attacker_espionage"])) {
+            Some(value) if value.is_finite() => value,
+            _ => return bad_request("Invalid espionage outcome request"),
+        };
+    let defender_espionage =
+        match js_number(pick(root, &["defenderEspionage", "defender_espionage"])) {
+            Some(value) if value.is_finite() => value,
+            _ => return bad_request("Invalid espionage outcome request"),
+        };
     let seed = pick(root, &["seed"])
         .and_then(|value| value.as_str())
         .unwrap_or("espionage");
@@ -678,11 +773,17 @@ async fn mission_cargo_transfer_handler(payload: Result<Json<Value>, JsonRejecti
         Some(value) => value,
         None => return bad_request("Invalid mission cargo transfer request"),
     };
-    let crystal = match to_js_int(pick(root, &["crystal", "transferCrystal", "transfer_crystal"])) {
+    let crystal = match to_js_int(pick(
+        root,
+        &["crystal", "transferCrystal", "transfer_crystal"],
+    )) {
         Some(value) => value,
         None => return bad_request("Invalid mission cargo transfer request"),
     };
-    let deuterium = match to_js_int(pick(root, &["deuterium", "transferDeuterium", "transfer_deuterium"])) {
+    let deuterium = match to_js_int(pick(
+        root,
+        &["deuterium", "transferDeuterium", "transfer_deuterium"],
+    )) {
         Some(value) => value,
         None => return bad_request("Invalid mission cargo transfer request"),
     };
@@ -691,8 +792,16 @@ async fn mission_cargo_transfer_handler(payload: Result<Json<Value>, JsonRejecti
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let transfer_metal = if clamp_non_negative { metal.max(0) } else { metal };
-    let transfer_crystal = if clamp_non_negative { crystal.max(0) } else { crystal };
+    let transfer_metal = if clamp_non_negative {
+        metal.max(0)
+    } else {
+        metal
+    };
+    let transfer_crystal = if clamp_non_negative {
+        crystal.max(0)
+    } else {
+        crystal
+    };
     let transfer_deuterium = if clamp_non_negative {
         deuterium.max(0)
     } else {
@@ -733,11 +842,13 @@ async fn harvest_collection_handler(payload: Result<Json<Value>, JsonRejection>)
         Some(value) => value.max(0),
         None => return bad_request("Invalid harvest collection request"),
     };
-    let recycler_cargo_capacity =
-        match to_js_int(pick(root, &["recyclerCargoCapacity", "recycler_cargo_capacity"])) {
-            Some(value) => value.max(0),
-            None => return bad_request("Invalid harvest collection request"),
-        };
+    let recycler_cargo_capacity = match to_js_int(pick(
+        root,
+        &["recyclerCargoCapacity", "recycler_cargo_capacity"],
+    )) {
+        Some(value) => value.max(0),
+        None => return bad_request("Invalid harvest collection request"),
+    };
 
     let recycler_capacity = recycler_count.saturating_mul(recycler_cargo_capacity);
     let collected_metal = debris_metal.min(recycler_capacity);
@@ -757,35 +868,64 @@ async fn harvest_collection_handler(payload: Result<Json<Value>, JsonRejection>)
     })
 }
 
+async fn combat_simulate_handler(
+    payload: Result<Json<CombatSimulateRequestPayload>, JsonRejection>,
+) -> Response {
+    let Json(body) = match payload {
+        Ok(body) => body,
+        Err(_) => return bad_request("Invalid combat simulate request"),
+    };
+
+    if body.battle_id.trim().is_empty()
+        || body.seed.trim().is_empty()
+        || body.universe.trim().is_empty()
+    {
+        return bad_request("Invalid combat simulate request");
+    }
+
+    let request = SimulateRequest {
+        battle_id: body.battle_id,
+        attacker_ships: body.attacker_ships,
+        defender_ships: body.defender_ships,
+        defender_defenses: body.defender_defenses,
+        attacker_tech: body.attacker_tech,
+        defender_tech: body.defender_tech,
+        planet_metal: body.planet_metal,
+        planet_crystal: body.planet_crystal,
+        planet_deuterium: body.planet_deuterium,
+        seed: body.seed,
+        universe: body.universe,
+        max_rounds: body.max_rounds,
+    };
+
+    let result = simulate_combat(&request);
+    success(to_simulate_response_data(result))
+}
+
 pub(crate) fn build_app(helper_token: Option<String>) -> Router {
     let state = AppState { helper_token };
     let helper_routes = Router::new()
         .route("/movement", post(movement_handler))
-        .route(
-            "/combat/defense-rebuild",
-            post(defense_rebuild_handler),
-        )
+        .route("/combat/defense-rebuild", post(defense_rebuild_handler))
         .route(
             "/combat/attacker-distribution",
             post(attacker_distribution_handler),
         )
-        .route(
-            "/espionage-outcome",
-            post(espionage_outcome_handler),
-        )
+        .route("/espionage-outcome", post(espionage_outcome_handler))
         .route(
             "/mission-cargo-transfer",
             post(mission_cargo_transfer_handler),
         )
-        .route(
-            "/harvest-collection",
-            post(harvest_collection_handler),
-        )
+        .route("/harvest-collection", post(harvest_collection_handler));
+
+    let internal_routes = Router::new()
+        .nest("/api/fleet/helpers", helper_routes)
+        .route("/api/combat/simulate", post(combat_simulate_handler))
         .layer(from_fn_with_state(state.clone(), helper_auth_middleware));
 
     Router::new()
         .route("/health", get(health_handler))
-        .nest("/api/fleet/helpers", helper_routes)
+        .merge(internal_routes)
 }
 
 #[tokio::main]
@@ -793,8 +933,8 @@ async fn main() {
     let helper_token = std::env::var("CORE_HTTP_HELPER_TOKEN").ok();
     let app = build_app(helper_token);
 
-    let bind_addr = std::env::var("CORE_HTTP_BIND_ADDR")
-        .unwrap_or_else(|_| "0.0.0.0:50052".to_string());
+    let bind_addr =
+        std::env::var("CORE_HTTP_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:50052".to_string());
     let addr: SocketAddr = match bind_addr.parse() {
         Ok(value) => value,
         Err(err) => {
