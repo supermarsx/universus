@@ -6,6 +6,9 @@
 
 import i18n from './i18n';
 
+let pmModalPreviousFocus: HTMLElement | null = null;
+let pmModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
+
 const CHAT_REACTIONS = [
   { type: 'thumbs_up', emoji: '👍', label: i18n.t('chat.reaction.thumbs_up', { defaultValue: 'Thumbs up' }) },
   { type: 'thumbs_down', emoji: '👎', label: i18n.t('chat.reaction.thumbs_down', { defaultValue: 'Thumbs down' }) },
@@ -995,6 +998,7 @@ class UniversusChat {
   openPrivateMessageModal(userId, username) {
     const modal = document.getElementById('pm-modal');
     if (!modal) return;
+    pmModalPreviousFocus = document.activeElement as HTMLElement | null;
     const recipientInput = document.getElementById('pm-recipient');
     const messageInput = document.getElementById('pm-message');
     if (recipientInput) {
@@ -1009,6 +1013,35 @@ class UniversusChat {
       messageInput.value = '';
       messageInput.focus();
     }
+    modal.setAttribute('aria-hidden', 'false');
+    pmModalKeydownHandler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePMModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusables = Array.from(
+        modal.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => !el.hasAttribute('disabled'));
+
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const current = document.activeElement as HTMLElement | null;
+
+      if (event.shiftKey && current === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    modal.addEventListener('keydown', pmModalKeydownHandler);
     modal.style.display = 'block';
   }
 
@@ -1351,6 +1384,11 @@ function closePMModal() {
   const modal = document.getElementById('pm-modal');
   if (modal) {
     modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    if (pmModalKeydownHandler) {
+      modal.removeEventListener('keydown', pmModalKeydownHandler);
+      pmModalKeydownHandler = null;
+    }
   }
   const recipientInput = document.getElementById('pm-recipient');
   const messageInput = document.getElementById('pm-message');
@@ -1361,6 +1399,10 @@ function closePMModal() {
   if (messageInput) {
     messageInput.value = '';
   }
+  if (pmModalPreviousFocus && typeof pmModalPreviousFocus.focus === 'function') {
+    pmModalPreviousFocus.focus();
+  }
+  pmModalPreviousFocus = null;
 }
 
 function sendPrivateMessage() {

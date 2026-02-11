@@ -28,50 +28,65 @@ jobs:
       - name: Install root dependencies
         run: pnpm install
 
+      - name: Install backend dependencies
+        run: pnpm --dir backend install
+
+      - name: Install backend-admin-service dependencies
+        run: pnpm --dir backend-admin-service install
+
+      - name: Install backend-bot-service dependencies
+        run: pnpm --dir backend-bot-service install
+
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install
+
+      - name: Install email-delivery-service dependencies
+        run: pnpm --dir email-delivery-service install
+
       - name: Lint backend
-        run: pnpm --filter ./backend... run lint
+        run: pnpm --dir backend run lint
 
       - name: Build backend
-        run: pnpm --filter ./backend... run build
+        run: pnpm --dir backend run build
 
       - name: Test backend
-        run: pnpm --filter ./backend... run test
+        run: pnpm --dir backend run test
 
       - name: Lint backend-admin-service
-        run: pnpm --filter ./backend-admin-service... run lint
+        run: pnpm --dir backend-admin-service run lint
 
       - name: Build backend-admin-service
-        run: pnpm --filter ./backend-admin-service... run build
+        run: pnpm --dir backend-admin-service run build
 
       - name: Test backend-admin-service
-        run: pnpm --filter ./backend-admin-service... run test
+        run: pnpm --dir backend-admin-service run test
 
       - name: Lint backend-bot-service
-        run: pnpm --filter ./backend-bot-service... run lint
+        run: pnpm --dir backend-bot-service run lint
 
       - name: Build backend-bot-service
-        run: pnpm --filter ./backend-bot-service... run build
+        run: pnpm --dir backend-bot-service run build
 
       - name: Test backend-bot-service
-        run: pnpm --filter ./backend-bot-service... run test
+        run: pnpm --dir backend-bot-service run test
 
       - name: Lint frontend
-        run: pnpm --filter ./frontend... run lint
+        run: pnpm --dir frontend run lint
 
       - name: Build frontend
-        run: pnpm --filter ./frontend... run build
+        run: pnpm --dir frontend run build
 
       - name: Test frontend
-        run: pnpm --filter ./frontend... run test
+        run: pnpm --dir frontend run test
 
       - name: Lint email-delivery-service
-        run: pnpm --filter ./email-delivery-service... run lint
+        run: pnpm --dir email-delivery-service run lint
 
       - name: Build email-delivery-service
-        run: pnpm --filter ./email-delivery-service... run build
+        run: pnpm --dir email-delivery-service run build
 
       - name: Test email-delivery-service
-        run: pnpm --filter ./email-delivery-service... run test
+        run: pnpm --dir email-delivery-service run test
 
       # Optionally, build Docker images for each service
       - name: Build Docker images
@@ -116,6 +131,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Install backend dependencies
+        run: pnpm --dir backend install
+
       - name: Apply database schema and run sanity checks
         env:
           PGHOST: localhost
@@ -131,5 +149,4 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
         run: |
-          RUN_INTEGRATION=true pnpm --filter ./backend... run test:integration
-
+          RUN_INTEGRATION=true pnpm --dir backend run test:integration
