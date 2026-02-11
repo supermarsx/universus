@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { FleetService } from '../services/fleetService';
 import allianceLogisticsService from '../services/allianceLogisticsService';
+import { FleetHelperService } from '../services/fleetHelperService';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
@@ -28,6 +29,131 @@ router.get('/reports', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error fetching combat reports:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/helpers/movement', async (req: Request, res: Response) => {
+  try {
+    const origin = req.body?.origin || {};
+    const target = req.body?.target || {};
+    const ships = req.body?.ships || {};
+
+    const toInt = (value: unknown): number => Math.trunc(Number(value));
+    const isCoordinateValid = (coord: any): boolean => {
+      return (
+        Number.isFinite(toInt(coord?.galaxy)) &&
+        Number.isFinite(toInt(coord?.system)) &&
+        Number.isFinite(toInt(coord?.position))
+      );
+    };
+
+    if (!isCoordinateValid(origin) || !isCoordinateValid(target) || typeof ships !== 'object' || Array.isArray(ships)) {
+      return res.status(400).json({ success: false, error: 'Invalid fleet helper movement request' });
+    }
+
+    const result = await FleetHelperService.calculateMovement({
+      origin: {
+        galaxy: toInt(origin.galaxy),
+        system: toInt(origin.system),
+        position: toInt(origin.position),
+      },
+      target: {
+        galaxy: toInt(target.galaxy),
+        system: toInt(target.system),
+        position: toInt(target.position),
+      },
+      ships: Object.entries(ships).reduce<Record<string, number>>((acc, [shipType, count]) => {
+        const normalized = Math.max(0, toInt(count));
+        if (normalized > 0) {
+          acc[shipType] = normalized;
+        }
+        return acc;
+      }, {}),
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error calculating fleet movement helper:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Fleet movement helper failed' });
+  }
+});
+
+router.post('/helpers/combat/defense-rebuild', async (req: Request, res: Response) => {
+  try {
+    const current = req.body?.current || {};
+    const losses = req.body?.losses || {};
+    const rebuildRate = req.body?.rebuildRate;
+    const seed = req.body?.seed;
+
+    if (
+      typeof current !== 'object' ||
+      Array.isArray(current) ||
+      typeof losses !== 'object' ||
+      Array.isArray(losses)
+    ) {
+      return res.status(400).json({ success: false, error: 'Invalid defense rebuild request' });
+    }
+
+    const result = await FleetHelperService.resolveDefenseRebuild({
+      current,
+      losses,
+      rebuildRate: Number.isFinite(Number(rebuildRate)) ? Number(rebuildRate) : undefined,
+      seed: typeof seed === 'string' ? seed : undefined,
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error resolving defense rebuild helper:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Defense rebuild helper failed' });
+  }
+});
+
+router.post('/helpers/combat/attacker-distribution', async (req: Request, res: Response) => {
+  try {
+    const participants = req.body?.participants;
+    const totalLosses = req.body?.totalLosses || {};
+    const loot = req.body?.loot || {};
+    const winner = req.body?.winner;
+
+    if (
+      !Array.isArray(participants) ||
+      typeof totalLosses !== 'object' ||
+      Array.isArray(totalLosses) ||
+      typeof loot !== 'object' ||
+      Array.isArray(loot) ||
+      !['attacker', 'defender', 'draw'].includes(String(winner))
+    ) {
+      return res.status(400).json({ success: false, error: 'Invalid attacker distribution request' });
+    }
+
+    const normalizeFleet = (fleet: unknown): Record<string, number> => {
+      if (!fleet || typeof fleet !== 'object' || Array.isArray(fleet)) return {};
+      return Object.entries(fleet).reduce<Record<string, number>>((acc, [shipType, count]) => {
+        const normalized = Math.max(0, Math.trunc(Number(count) || 0));
+        if (normalized > 0) {
+          acc[shipType] = normalized;
+        }
+        return acc;
+      }, {});
+    };
+
+    const normalizeResource = (value: unknown): number => Math.max(0, Math.trunc(Number(value) || 0));
+
+    const result = await FleetHelperService.computeAttackerDistribution({
+      participants: participants.map((participant) => normalizeFleet(participant)),
+      totalLosses: normalizeFleet(totalLosses),
+      loot: {
+        metal: normalizeResource((loot as Record<string, unknown>).metal),
+        crystal: normalizeResource((loot as Record<string, unknown>).crystal),
+        deuterium: normalizeResource((loot as Record<string, unknown>).deuterium),
+      },
+      winner: winner as 'attacker' | 'defender' | 'draw',
+    });
+
+    return res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error resolving attacker distribution helper:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Attacker distribution helper failed' });
   }
 });
 

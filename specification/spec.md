@@ -11,6 +11,10 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
 - HTTP/WebSocket/API orchestration remains in Node.js/TypeScript.
 - **Combat simulation is delegated to `backend-core` (Rust, gRPC)** by default (`CORE_ENGINE=rust`), with TypeScript fallback for resilience.
 - **Fleet movement calculations (distance/travel time/fuel/cargo) are delegated to `backend-core` (Rust, gRPC)** by default, with TypeScript fallback for resilience.
+- **Fleet/combat helper calculator endpoints now use Rust N-API first with TypeScript fallback** for low-risk orchestration offload:
+  - `POST /api/fleet/helpers/movement`
+  - `POST /api/fleet/helpers/combat/defense-rebuild`
+  - `POST /api/fleet/helpers/combat/attacker-distribution`
 - Backend and Rust core interoperate through protobuf (`backend/src/coreAdapter/proto/core.proto`).
 - Runtime controls:
   - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.

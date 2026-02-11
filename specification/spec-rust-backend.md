@@ -32,6 +32,14 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
   - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
   - Node caller: `backend/src/services/fleetService.ts`
   - Scope: attacker loss allocation + loot split + defender rebuild resolution kernels.
+- Fleet/combat helper REST shims (N-API-first):
+  - Node routes: `backend/src/routes/fleet.ts`
+  - Node caller: `backend/src/services/fleetHelperService.ts`
+  - Endpoints:
+    - `POST /api/fleet/helpers/movement`
+    - `POST /api/fleet/helpers/combat/defense-rebuild`
+    - `POST /api/fleet/helpers/combat/attacker-distribution`
+  - Scope: expose low-risk calculator kernels to clients/admin tooling while keeping DB mutation out of the shim paths.
 
 ## Runtime Controls
 - `CORE_ENGINE`:
@@ -49,6 +57,7 @@ Define the Rust-native backend responsibilities and the Node.js/Rust boundary fo
 - If N-API call fails, backend falls back to gRPC, then TypeScript simulation path.
 - If Rust gRPC call fails, backend falls back to TypeScript simulation path.
 - In test environments (`NODE_ENV=test`), default simulation engine is TypeScript unless explicitly overridden.
+- Helper REST shims use Rust N-API first and immediately fall back to TypeScript local calculators when the binding is unavailable or returns an error.
 
 ## Data Contract Normalization
 - Rust returns snake_case protobuf fields.
