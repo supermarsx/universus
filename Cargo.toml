@@ -1,8 +1,6 @@
 [workspace]
 members = [
-  "crates/*",
-  "backend-core",
-  "backend-core-napi"
+  "crates/*"
 ]
 resolver = "2"
 
