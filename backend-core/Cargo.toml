@@ -28,6 +28,8 @@ prometheus = "0.13"
 hyper = { version = "0.14", features = ["full"] }
 interprocess = { version = "1.2", features = ["tokio_support"] }
 axum = "0.6"
+game-combat = { path = "../crates/game-combat" }
+game-fleet = { path = "../crates/game-fleet" }
 
 [build-dependencies]
 tonic-build = "0.9"

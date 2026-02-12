@@ -3,6 +3,26 @@
 version = 4
 
 [[package]]
+name = "adapter-http-compat"
+version = "0.1.0"
+
+[[package]]
+name = "adapter-provider-bot"
+version = "0.1.0"
+
+[[package]]
+name = "adapter-provider-email"
+version = "0.1.0"
+
+[[package]]
+name = "adapter-provider-payments"
+version = "0.1.0"
+
+[[package]]
+name = "adapter-provider-sms"
+version = "0.1.0"
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -25,6 +45,87 @@ name = "anyhow"
 version = "1.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
+
+[[package]]
+name = "app-admin-api"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-analytics-worker"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-api-gateway"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-bot-api"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-bot-worker"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-core-engine"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-email-worker"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-realtime-gateway"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "app-sms-api"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "async-channel"
@@ -123,6 +224,8 @@ dependencies = [
  "anyhow",
  "axum",
  "dashmap",
+ "game-combat",
+ "game-fleet",
  "hyper",
  "interprocess",
  "prometheus",
@@ -144,8 +247,9 @@ dependencies = [
 name = "backend-core-napi"
 version = "0.1.0"
 dependencies = [
- "backend-core",
  "chrono",
+ "game-combat",
+ "game-fleet",
  "napi",
  "napi-build",
  "napi-derive",
@@ -408,6 +512,63 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
 ]
+
+[[package]]
+name = "game-achievements"
+version = "0.1.0"
+
+[[package]]
+name = "game-alliance"
+version = "0.1.0"
+
+[[package]]
+name = "game-antiabuse"
+version = "0.1.0"
+
+[[package]]
+name = "game-combat"
+version = "0.1.0"
+dependencies = [
+ "game-fleet",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "game-domain"
+version = "0.1.0"
+
+[[package]]
+name = "game-economy"
+version = "0.1.0"
+
+[[package]]
+name = "game-fleet"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "game-galaxy"
+version = "0.1.0"
+
+[[package]]
+name = "game-leaderboard"
+version = "0.1.0"
+
+[[package]]
+name = "game-messaging"
+version = "0.1.0"
+
+[[package]]
+name = "game-moon"
+version = "0.1.0"
+
+[[package]]
+name = "game-universe"
+version = "0.1.0"
 
 [[package]]
 name = "getrandom"
@@ -911,6 +1072,42 @@ dependencies = [
  "fastrand",
  "futures-io",
 ]
+
+[[package]]
+name = "platform-auth"
+version = "0.1.0"
+
+[[package]]
+name = "platform-cache"
+version = "0.1.0"
+
+[[package]]
+name = "platform-common"
+version = "0.1.0"
+
+[[package]]
+name = "platform-config"
+version = "0.1.0"
+
+[[package]]
+name = "platform-db"
+version = "0.1.0"
+
+[[package]]
+name = "platform-errors"
+version = "0.1.0"
+
+[[package]]
+name = "platform-events"
+version = "0.1.0"
+
+[[package]]
+name = "platform-observability"
+version = "0.1.0"
+
+[[package]]
+name = "platform-proto"
+version = "0.1.0"
 
 [[package]]
 name = "ppv-lite86"

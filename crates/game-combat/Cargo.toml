@@ -1,0 +1,12 @@
+[package]
+name = "game-combat"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+game-fleet = { path = "../game-fleet" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1"

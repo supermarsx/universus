@@ -1,5 +1,16 @@
 [workspace]
 members = [
+  "crates/*",
   "backend-core",
   "backend-core-napi"
 ]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
-use backend_core::{core, ships::load_ships_for_universe, sim::simulate_combat};
 use chrono::{SecondsFormat, Utc};
+use game_combat::CombatInput;
+use game_fleet::ships::load_ships_for_universe;
+use game_fleet::{FleetMovementInput as DomainFleetMovementInput, FleetShipInput};
 use napi::Result;
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -354,8 +356,7 @@ pub fn simulate_battle(payload_json: String) -> Result<String> {
     let payload: SimulateBattleRequest = serde_json::from_str(&payload_json)
         .map_err(|e| napi::Error::from_reason(format!("invalid simulate payload: {}", e)))?;
 
-    let request = core::SimulateRequest {
-        battle_id: payload.battle_id,
+    let request = CombatInput {
         attacker_ships: to_i32_map(payload.attacker_ships),
         defender_ships: to_i32_map(payload.defender_ships),
         defender_defenses: to_i32_map(payload.defender_defenses),
@@ -369,16 +370,7 @@ pub fn simulate_battle(payload_json: String) -> Result<String> {
         max_rounds: payload.max_rounds.map(to_i32).filter(|value| *value > 0),
     };
 
-    let result = simulate_combat(&request);
-    let loot = result.loot.unwrap_or(core::Loot {
-        metal: 0,
-        crystal: 0,
-        deuterium: 0,
-    });
-    let debris = result.debris.unwrap_or(core::Debris {
-        metal: 0,
-        crystal: 0,
-    });
+    let result = game_combat::simulate_combat(&request);
 
     let output = CombatResultOut {
         winner: result.winner,
@@ -395,13 +387,13 @@ pub fn simulate_battle(payload_json: String) -> Result<String> {
         attacker_losses: result.attacker_losses,
         defender_losses: result.defender_losses,
         loot: ResourceTripletOut {
-            metal: loot.metal,
-            crystal: loot.crystal,
-            deuterium: loot.deuterium,
+            metal: result.loot.metal,
+            crystal: result.loot.crystal,
+            deuterium: result.loot.deuterium,
         },
         debris: ResourcePairOut {
-            metal: debris.metal,
-            crystal: debris.crystal,
+            metal: result.debris.metal,
+            crystal: result.debris.crystal,
         },
     };
 
@@ -414,49 +406,32 @@ pub fn calculate_fleet_movement(payload_json: String) -> Result<String> {
     let payload: FleetMovementRequest = serde_json::from_str(&payload_json)
         .map_err(|e| napi::Error::from_reason(format!("invalid movement payload: {}", e)))?;
 
-    let distance = if payload.origin_galaxy != payload.target_galaxy {
-        (payload.origin_galaxy - payload.target_galaxy).abs() * 20000
-    } else if payload.origin_system != payload.target_system {
-        (payload.origin_system - payload.target_system).abs() * 5 * 19 + 2700
-    } else {
-        (payload.origin_position - payload.target_position).abs() * 5 + 1000
+    let input = DomainFleetMovementInput {
+        origin_galaxy: payload.origin_galaxy,
+        origin_system: payload.origin_system,
+        origin_position: payload.origin_position,
+        target_galaxy: payload.target_galaxy,
+        target_system: payload.target_system,
+        target_position: payload.target_position,
+        ships: payload
+            .ships
+            .into_iter()
+            .map(|ship| FleetShipInput {
+                count: ship.count,
+                base_speed: ship.base_speed,
+                fuel_consumption: ship.fuel_consumption,
+                cargo: ship.cargo,
+            })
+            .collect(),
     };
-
-    let mut min_speed = f64::INFINITY;
-    let mut fuel_needed = 0.0f64;
-    let mut cargo_capacity = 0.0f64;
-
-    for ship in payload.ships.iter() {
-        if ship.count <= 0 {
-            continue;
-        }
-        if ship.base_speed > 0.0 {
-            min_speed = min_speed.min(ship.base_speed);
-        }
-        let count = ship.count as f64;
-        fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
-        cargo_capacity += ship.cargo * count;
-    }
-
-    let fleet_speed = if min_speed.is_finite() {
-        min_speed
-    } else {
-        0.0
-    };
-    let travel_time_seconds = if fleet_speed > 0.0 {
-        ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
-    } else {
-        0
-    };
-
-    cargo_capacity -= fuel_needed;
+    let domain_result = game_fleet::calculate_movement(&input);
 
     let output = FleetMovementResult {
-        distance,
-        fleet_speed,
-        travel_time_seconds,
-        fuel_needed,
-        cargo_capacity,
+        distance: domain_result.distance,
+        fleet_speed: domain_result.fleet_speed,
+        travel_time_seconds: domain_result.travel_time_seconds,
+        fuel_needed: domain_result.fuel_needed,
+        cargo_capacity: domain_result.cargo_capacity,
     };
 
     serde_json::to_string(&output)
@@ -472,56 +447,38 @@ fn calculate_movement(
     target_position: i32,
     ships: &[NapiShipMovementSpec],
 ) -> NapiFleetMovementResult {
-    let distance = if origin_galaxy != target_galaxy {
-        (origin_galaxy - target_galaxy).abs() * 20000
-    } else if origin_system != target_system {
-        (origin_system - target_system).abs() * 5 * 19 + 2700
-    } else {
-        (origin_position - target_position).abs() * 5 + 1000
+    let input = DomainFleetMovementInput {
+        origin_galaxy,
+        origin_system,
+        origin_position,
+        target_galaxy,
+        target_system,
+        target_position,
+        ships: ships
+            .iter()
+            .map(|ship| FleetShipInput {
+                count: ship.count,
+                base_speed: ship.base_speed,
+                fuel_consumption: ship.fuel_consumption,
+                cargo: ship.cargo,
+            })
+            .collect(),
     };
-
-    let mut min_speed = f64::INFINITY;
-    let mut fuel_needed = 0.0f64;
-    let mut cargo_capacity = 0.0f64;
-
-    for ship in ships.iter() {
-        if ship.count <= 0 {
-            continue;
-        }
-        if ship.base_speed > 0.0 {
-            min_speed = min_speed.min(ship.base_speed);
-        }
-        let count = ship.count as f64;
-        fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
-        cargo_capacity += ship.cargo * count;
-    }
-
-    let fleet_speed = if min_speed.is_finite() {
-        min_speed
-    } else {
-        0.0
-    };
-    let travel_time_seconds = if fleet_speed > 0.0 {
-        ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
-    } else {
-        0
-    };
-
-    cargo_capacity -= fuel_needed;
+    let domain_result = game_fleet::calculate_movement(&input);
 
     NapiFleetMovementResult {
-        distance,
-        fleet_speed,
-        travel_time_seconds,
-        fuel_needed,
-        cargo_capacity,
+        distance: domain_result.distance,
+        fleet_speed: domain_result.fleet_speed,
+        travel_time_seconds: domain_result.travel_time_seconds,
+        fuel_needed: domain_result.fuel_needed,
+        cargo_capacity: domain_result.cargo_capacity,
     }
 }
 
 fn derive_movement_ship_stats(
     ship_type: &str,
-    universe_ship_defs: &HashMap<String, backend_core::ships::ShipDef>,
-) -> ShipMovementSpec {
+    universe_ship_defs: &HashMap<String, game_fleet::ships::ShipDef>,
+) -> FleetShipInput {
     let (base_speed, fuel_consumption, cargo) = universe_ship_defs
         .get(ship_type)
         .map(|ship| {
@@ -533,7 +490,7 @@ fn derive_movement_ship_stats(
         })
         .unwrap_or((0.0, 0.0, 0.0));
 
-    ShipMovementSpec {
+    FleetShipInput {
         count: 0,
         base_speed,
         fuel_consumption,
@@ -581,55 +538,37 @@ pub fn calculate_fleet_movement_by_type(payload_json: String) -> Result<String> 
         napi::Error::from_reason(format!("invalid movement-by-type payload: {}", e))
     })?;
 
-    let distance = if payload.origin.galaxy != payload.target.galaxy {
-        (payload.origin.galaxy - payload.target.galaxy).abs() * 20000
-    } else if payload.origin.system != payload.target.system {
-        (payload.origin.system - payload.target.system).abs() * 5 * 19 + 2700
-    } else {
-        (payload.origin.position - payload.target.position).abs() * 5 + 1000
-    };
-
     let ship_defs = load_ships_for_universe(payload.universe.as_deref().unwrap_or("default"));
-
-    let mut min_speed = f64::INFINITY;
-    let mut fuel_needed = 0.0f64;
-    let mut cargo_capacity = 0.0f64;
+    let mut ships = Vec::with_capacity(payload.ships.len());
 
     for (ship_type, count_raw) in payload.ships.iter() {
-        let count = *count_raw;
+        let count = to_i32(*count_raw);
         if count <= 0 {
             continue;
         }
 
-        let ship = derive_movement_ship_stats(ship_type, &ship_defs);
-        if ship.base_speed > 0.0 {
-            min_speed = min_speed.min(ship.base_speed);
-        }
-
-        let count = count as f64;
-        fuel_needed += ship.fuel_consumption * count * (distance as f64 / 100.0);
-        cargo_capacity += ship.cargo * count;
+        let mut ship = derive_movement_ship_stats(ship_type, &ship_defs);
+        ship.count = count;
+        ships.push(ship);
     }
 
-    let fleet_speed = if min_speed.is_finite() {
-        min_speed
-    } else {
-        0.0
+    let input = DomainFleetMovementInput {
+        origin_galaxy: payload.origin.galaxy,
+        origin_system: payload.origin.system,
+        origin_position: payload.origin.position,
+        target_galaxy: payload.target.galaxy,
+        target_system: payload.target.system,
+        target_position: payload.target.position,
+        ships,
     };
-    let travel_time_seconds = if fleet_speed > 0.0 {
-        ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
-    } else {
-        0
-    };
-
-    cargo_capacity -= fuel_needed;
+    let domain_result = game_fleet::calculate_movement(&input);
 
     let output = FleetMovementResult {
-        distance,
-        fleet_speed,
-        travel_time_seconds,
-        fuel_needed,
-        cargo_capacity,
+        distance: domain_result.distance,
+        fleet_speed: domain_result.fleet_speed,
+        travel_time_seconds: domain_result.travel_time_seconds,
+        fuel_needed: domain_result.fuel_needed,
+        cargo_capacity: domain_result.cargo_capacity,
     };
 
     serde_json::to_string(&output).map_err(|e| {

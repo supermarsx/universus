@@ -7,7 +7,8 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-backend-core = { path = "../backend-core" }
+game-combat = { path = "../crates/game-combat" }
+game-fleet = { path = "../crates/game-fleet" }
 napi = { version = "2", features = ["napi8"] }
 napi-derive = "2"
 serde = { version = "1.0", features = ["derive"] }
