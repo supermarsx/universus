@@ -1,141 +1,201 @@
-# Universus Rust Backend Core Specification
+# Universus Full Rust Backend Reframe Specification
 
 ## Status
-Active as of February 11, 2026.
+Drafted on February 12, 2026.
 
-## Purpose
-Define the Rust-native backend responsibilities and the Node.js/Rust boundary for performance-critical systems.
+## Objective
+Reframe the entire backend as a Rust-first platform with explicit crate boundaries, preserving gameplay behavior while removing Node.js service ownership over time.
 
-## Architecture Boundary
-- Node.js backend owns:
-  - Authentication, authorization, REST APIs, WebSocket orchestration.
-  - Persistence orchestration and business workflow coordination.
-  - Realtime fanout and notification delivery.
-- Rust backend-core owns:
-  - Deterministic combat simulation execution.
-  - Worker-managed simulation scheduling for per-universe compute isolation.
+## Current Reality (Baseline)
+- Existing TypeScript services:
+  - `backend` (main gameplay + HTTP + Socket.IO)
+  - `backend-admin-service`
+  - `backend-bot-service`
+  - `backend-sms-service`
+  - `email-delivery-service`
+- Existing Rust services:
+  - `backend-core` (gRPC + optional HTTP helpers + worker IPC)
+  - `backend-core-napi` (Node addon bridge)
+- Existing top-level Cargo workspace:
+  - `Cargo.toml` includes only `backend-core` and `backend-core-napi`.
 
-## Transport
-- Protocols: gRPC, N-API, HTTP (internal)
-- Contract source: `backend/src/coreAdapter/proto/core.proto`
-- Rust service endpoint: `BACKEND_CORE_ADDR` (default `backend-core:50051`)
-- Rust HTTP helper endpoint base: `RUST_HTTP_HELPER_URL` (example `http://backend-core:50052`)
+## Target Backend Shape
+- All server-side business logic and service processes are Rust.
+- Frontend-facing API remains HTTP/JSON + WebSocket semantics compatible with current clients.
+- Canonical inter-service contracts are Protobuf/gRPC.
+- N-API is transitional only and eventually retired.
 
-## Current Rust-Delegated Flows
-- Combat simulation (`SimulateBattle`) via:
-  - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
-  - Node caller: `backend/src/services/combatService.ts`
-  - HTTP internal route (when `CORE_TRANSPORT=http`):
-    - `POST /api/combat/simulate` on Rust HTTP helper service.
-    - Called via `backend/src/services/rustHttpHelperClientService.ts`.
-    - Protected by `x-core-helper-token` when `CORE_HTTP_HELPER_TOKEN` is configured.
-- Fleet movement math (`CalculateFleetMovement`) via:
-  - Node adapter: `backend/src/coreAdapter/rustCoreClient.ts`
-  - Node caller: `backend/src/services/fleetService.ts`
-  - Scope: distance, travel time, fuel consumption, cargo capacity calculations.
-- Fleet movement by-type kernel (N-API-first):
-  - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts` (`calculateFleetMovementByTypeNapi`)
-  - Node callers:
-    - `backend/src/services/fleetService.ts`
-    - `backend/src/services/fleetHelperService.ts`
-  - Scope: movement math keyed by ship type/count map (Rust-owned ship stats), with cache key using deterministic ship map ordering.
-- Fleet post-combat distribution (N-API):
-  - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
-  - Node caller: `backend/src/services/fleetService.ts`
-  - Scope: attacker loss allocation + loot split + defender rebuild resolution kernels.
-- Espionage outcome kernel (N-API):
-  - Node adapter: `backend/src/coreAdapter/rustCoreNapiClient.ts`
-  - Node caller: `backend/src/services/fleetService.ts`
-  - Scope: intel level + detection chance/decision computation.
-  - Deterministic seed: `${fleet.id}:${target.galaxy}:${target.system}:${target.position}:${probes}`.
-- Fleet/combat helper REST shims (Rust HTTP proxy optional):
-  - Node routes: `backend/src/routes/fleet.ts`
-  - Node callers:
-    - `backend/src/services/rustHttpHelperClientService.ts` (proxy-first when configured)
-    - `backend/src/services/fleetHelperService.ts` (local fallback path)
-  - Endpoints:
-    - `POST /api/fleet/helpers/movement`
-    - `POST /api/fleet/helpers/combat/defense-rebuild`
-    - `POST /api/fleet/helpers/combat/attacker-distribution`
-    - `POST /api/fleet/helpers/espionage-outcome`
-    - `POST /api/fleet/helpers/mission-cargo-transfer`
-    - `POST /api/fleet/helpers/harvest-collection`
-  - Scope: expose low-risk calculator kernels to clients/admin tooling while keeping DB mutation out of the shim paths.
-  - Migration path:
-    - Set `RUST_HTTP_HELPER_URL` to proxy helper requests to a Rust HTTP service.
-    - If unset or the proxy call fails, Node falls back to local `FleetHelperService`.
+## Bounded Contexts to Preserve
+- Auth and account security.
+- Admin and operations.
+- Universe and sharding.
+- Core gameplay (planets/buildings/research/shipyard/fleet/combat/galaxy/moons/debris/ACS).
+- Alliances and messaging.
+- Economy/marketplace/payments.
+- Realtime notifications.
+- Bot AI and automation.
+- Analytics/events.
+- SMS verification and outbound delivery.
+- Email queue worker and provider dispatch.
 
-## Runtime Controls
-- `CORE_ENGINE`:
-  - `rust` (default in non-test environments): Rust-first delegation with TS fallback.
-  - `ts` / `typescript` / `js`: force TypeScript simulation path.
-- `CORE_TRANSPORT`:
-  - `auto` (default): prefer N-API when available, otherwise gRPC.
-  - `grpc`: Node -> Rust core gRPC path.
-  - `napi`: Node -> in-process Rust addon path (`backend-core-napi`) with fallback to gRPC, then TS.
-  - `http`: Node -> Rust HTTP helper path for combat simulation (`POST /api/combat/simulate`), then fallback to auto/N-API/gRPC/TS.
-- `CORE_UNIVERSE`: universe label passed to Rust for worker routing.
-- `BACKEND_CORE_ADDR`: Rust gRPC target address.
-- `CORE_NAPI_BINDING_PATH`: optional absolute path to compiled N-API `.node` module.
-- `RUST_HTTP_HELPER_URL`: optional HTTP base URL for Rust helper proxy (example: `http://rust-helper:8080`).
-- `RUST_HTTP_HELPER_TIMEOUT_MS`: optional timeout for Rust helper HTTP calls (default `2000`ms).
-- `CORE_HELPER_TRANSPORT`:
-  - `http`: enable Rust HTTP helper transport for mission helper kernels in `FleetService`.
-  - unset/other: keep N-API-first mission helper kernels with local fallback.
-- `CORE_HTTP_HELPER_TOKEN`: shared helper token sent as `x-core-helper-token` on Rust helper HTTP requests. Required when Rust HTTP helper ingress is configured with token auth.
+## Proposed Rust Workspace
+```text
+universus-rs/
+  Cargo.toml
+  crates/
+    platform-common
+    platform-config
+    platform-observability
+    platform-errors
+    platform-auth
+    platform-db
+    platform-cache
+    platform-events
+    platform-proto
+    game-domain
+    game-combat
+    game-fleet
+    game-economy
+    game-galaxy
+    game-moon
+    game-alliance
+    game-messaging
+    game-leaderboard
+    game-achievements
+    game-antiabuse
+    game-universe
+    app-api-gateway
+    app-realtime-gateway
+    app-admin-api
+    app-bot-api
+    app-bot-worker
+    app-sms-api
+    app-email-worker
+    app-analytics-worker
+    app-core-engine
+    adapter-http-compat
+    adapter-provider-email
+    adapter-provider-sms
+    adapter-provider-payments
+    adapter-provider-bot
+```
 
-## 5-Step Migration Matrix
-| Step | Scope | Current completion status | Next milestone for full cutover |
-| --- | --- | --- | --- |
-| 1 | Combat simulation (`SimulateBattle`) on Rust core | Completed (Rust-first, TS fallback remains) | Add rust-only canary mode that fails closed for combat in staging before prod flip. |
-| 2 | Fleet movement math (by-type N-API -> fast N-API -> gRPC -> TS) | Completed (Rust-first chain active) | Validate transport SLOs, then gate TS movement fallback behind an emergency-only flag. |
-| 3 | Mission helper kernels in fleet orchestration (distribution, defense rebuild, espionage, cargo transfer, harvest) | In progress (Rust N-API/HTTP paths live; local TS fallback still active) | Run staged `CORE_HELPER_TRANSPORT=http` rollout with `RUST_HTTP_HELPER_URL` + `CORE_HTTP_HELPER_TOKEN` configured and monitored. |
-| 4 | Fleet helper REST shim routes (`/api/fleet/helpers/*`) | In progress (Rust HTTP proxy-first when configured; local fallback on error) | Enforce authenticated Rust helper ingress and promote Rust proxy to default path in non-test envs. |
-| 5 | Backend-wide Rust cutover posture | Pending | Set default runtime profile to Rust-first everywhere (`CORE_ENGINE=rust`, `CORE_TRANSPORT=auto|napi|grpc`, `CORE_HELPER_TRANSPORT=http`) and retire TS mission/combat fallbacks after stability window. |
+## Crate Responsibilities
+1. `platform-common`: shared primitives, IDs, time/clock traits, serialization helpers.
+2. `platform-config`: layered config loader (env/file/remote), runtime feature flags.
+3. `platform-observability`: tracing, metrics, OpenTelemetry, request IDs.
+4. `platform-errors`: unified error taxonomy and transport mapping.
+5. `platform-auth`: JWT/session/permission checks and authz policy evaluation.
+6. `platform-db`: Postgres repositories, transaction wrappers, migration helpers.
+7. `platform-cache`: Redis abstractions, pub/sub, locks, cache policies.
+8. `platform-events`: RabbitMQ/Redis stream producers-consumers and event envelopes.
+9. `platform-proto`: shared `.proto` contracts and generated Rust types.
+10. `game-domain`: core entity/state models with invariant checks.
+11. `game-combat`: deterministic battle simulation and combat helpers.
+12. `game-fleet`: movement, missions, fuel/cargo math, scheduler logic.
+13. `game-economy`: construction/research/shipyard costs, marketplace calculations, pricing.
+14. `game-galaxy`: coordinates, distance/topology, scanning and location rules.
+15. `game-moon`: jump gate/phalanx/moon destruction and related cooldown logic.
+16. `game-alliance`: alliance membership, diplomacy, wars, announcements.
+17. `game-messaging`: player messaging, chat, reactions, blocking policy hooks.
+18. `game-leaderboard`: ranking snapshots and global aggregation logic.
+19. `game-achievements`: achievements/badges/reward triggers.
+20. `game-antiabuse`: throttle/challenge heuristics and bot-protection policy.
+21. `game-universe`: seeding, sharding placement, maintenance and health policies.
+22. `app-api-gateway`: main HTTP API replacing `backend`.
+23. `app-realtime-gateway`: websocket gateway replacing Socket.IO orchestration.
+24. `app-admin-api`: admin endpoints replacing `backend-admin-service`.
+25. `app-bot-api`: bot admin APIs replacing `backend-bot-service`.
+26. `app-bot-worker`: autonomous bot thinking loop worker.
+27. `app-sms-api`: outbound SMS/WhatsApp/Telegram/Discord dispatch API.
+28. `app-email-worker`: Redis email queue consumer and provider dispatch.
+29. `app-analytics-worker`: analytics ingestion/aggregation async worker.
+30. `app-core-engine`: evolved version of `backend-core` gRPC engine service.
+31. `adapter-http-compat`: compatibility surface for existing HTTP payload shapes.
+32. `adapter-provider-email`: SMTP/SendGrid/SES/MailerSend integrations.
+33. `adapter-provider-sms`: Twilio/Baileys/Telegram/Discord/custom HTTP channels.
+34. `adapter-provider-payments`: Stripe integration and webhook verification.
+35. `adapter-provider-bot`: remote bot integrations if externalized.
 
-## Benchmark Tooling
-- Transport benchmark script: `backend/scripts/benchmarkCoreTransports.ts`
-- Memory benchmark script: `backend/scripts/benchmarkCoreMemory.ts`
-- PowerShell launchers (build N-API, optionally start gRPC core, then run benchmark):
-  - `backend/scripts/benchCore.ps1`
-  - `backend/scripts/benchCoreMemory.ps1`
-- Package scripts:
-  - `pnpm --dir backend run bench:core:auto`
-  - `pnpm --dir backend run bench:core:grpc`
-  - `pnpm --dir backend run bench:core:memory:auto`
-  - `pnpm --dir backend run bench:core:memory:grpc`
-- Memory benchmark runs with Node `--expose-gc` enabled to support pre/post forced-GC sampling.
-- Benchmark snapshots are written to `backend/benchmarks/history/`:
-  - transport: `core-bench-<timestamp>.json`
-  - memory: `core-memory-bench-<timestamp>.json`
+## Service-to-Crate Mapping (From Current Code)
+- `backend` -> `app-api-gateway`, `app-realtime-gateway`, domain crates (`game-*`) and platform crates.
+- `backend-admin-service` -> `app-admin-api` + `platform-auth`, `platform-db`, `platform-observability`.
+- `backend-bot-service` -> `app-bot-api`, `app-bot-worker`, `game-antiabuse`, `game-fleet`, `game-economy`.
+- `backend-sms-service` -> `app-sms-api`, `adapter-provider-sms`, `platform-events`.
+- `email-delivery-service` -> `app-email-worker`, `adapter-provider-email`, `platform-cache`.
+- `backend-core` -> `app-core-engine`, `game-combat`, `game-fleet`, `platform-proto`.
+- `backend-core-napi` -> temporary bridge only; no long-term ownership.
 
-## Fallback and Resilience
-- Combat simulation path:
-  - if `CORE_TRANSPORT=http`: Rust HTTP `POST /api/combat/simulate`
-  - then `auto` resolution (N-API if available, else gRPC)
-  - then local TypeScript simulation
-- Fleet movement path order:
-  - by-type N-API kernel
-  - fast N-API movement
-  - gRPC movement
-  - local TypeScript movement
-- If N-API movement calls fail, backend falls back to gRPC, then TypeScript simulation path.
-- If Rust gRPC call fails, backend falls back to TypeScript simulation path.
-- In test environments (`NODE_ENV=test`), default simulation engine is TypeScript unless explicitly overridden.
-- Helper REST shims use Rust HTTP proxy first when `RUST_HTTP_HELPER_URL` is configured; on proxy error they fall back to local `FleetHelperService` (Rust N-API first, then TypeScript).
-- Espionage mission handling uses Rust N-API first for outcome computation and keeps the existing TypeScript formulas/default thresholds as the fallback path.
+## Transport and Compatibility Rules
+- External client interface:
+  - Keep existing REST endpoint contracts and auth semantics during migration.
+  - Keep websocket event names/payload contracts during migration.
+- Internal service interface:
+  - gRPC/Protobuf is canonical for service-to-service.
+  - HTTP helper endpoints are compatibility-only and sunset once clients are migrated.
+- N-API policy:
+  - Development/perf fallback only in transition.
+  - Production path targets gRPC consistently.
 
-## Data Contract Normalization
-- Rust returns snake_case protobuf fields.
-- Node adapter normalizes results to backend camelCase shape:
-  - `attacker_losses -> attackerLosses`
-  - `defender_losses -> defenderLosses`
-  - round keys normalized to `attackerShots/defenderShots/attackerDestroyed/defenderDestroyed`.
+## Data and Persistence Rules
+- Database remains PostgreSQL with existing schema evolution from `database/sql/steps`.
+- Every domain crate owns repository interfaces; SQL implementations stay in `platform-db`.
+- Idempotency must be explicit for outbound operations (email/SMS/payments/webhooks).
+- Exactly-once is not assumed; at-least-once plus dedup keys is required.
 
-## Non-Goals (Current Phase)
-- This phase does not migrate all backend logic to Rust.
-- Economy ticks, fleet mission orchestration, alliance logic, and messaging remain Node-managed.
+## Runtime and Deployment Model
+- Per-service binaries with independent autoscaling.
+- Stateless API services; state in Postgres/Redis/RabbitMQ.
+- Worker binaries for asynchronous responsibilities:
+  - `app-bot-worker`
+  - `app-email-worker`
+  - `app-analytics-worker`
+- Shared observability stack (Prometheus/Grafana/OpenTelemetry) preserved.
 
-## Next Migration Candidates
-- Debris and salvage computation kernels.
-- Batch score recomputation kernels for leaderboards.
+## Migration Phases
+1. Phase 0: Workspace bootstrap.
+   - Expand root `Cargo.toml` workspace.
+   - Split `backend-core` into `app-core-engine` + reusable `game-combat/game-fleet`.
+2. Phase 1: Core gameplay domain extraction.
+   - Port deterministic/pure logic first: combat, movement, economy calculators.
+   - Keep Node API layer calling Rust over gRPC as facade.
+3. Phase 2: HTTP gateway replacement.
+   - Introduce `app-api-gateway` route-by-route parity with existing `backend/src/routes`.
+   - Run shadow traffic + response diffing.
+4. Phase 3: Service replacement.
+   - Replace admin, bot, SMS, and email services with Rust binaries.
+   - Keep original endpoints and auth contracts stable.
+5. Phase 4: Realtime replacement.
+   - Replace Socket.IO orchestration with `app-realtime-gateway`.
+   - Preserve event contracts for frontend compatibility.
+6. Phase 5: Node retirement.
+   - Decommission TS services after SLO and parity acceptance windows.
+   - Remove N-API and HTTP helper compatibility paths.
+
+## Acceptance Criteria (Per Phase)
+- No gameplay regression in deterministic simulation test corpus.
+- p95 latency non-inferior for core gameplay APIs.
+- Error rate non-inferior under load tests.
+- Contract compatibility checks pass (HTTP schema + websocket payload snapshots).
+- Rollback path exists for each cutover wave.
+
+## Risks and Controls
+- Risk: semantic drift during porting.
+  - Control: golden fixtures and replay tests for combat/fleet/economy.
+- Risk: mixed-language operational complexity.
+  - Control: short-lived coexistence, strict migration ownership, phase gates.
+- Risk: provider integration regressions (Stripe/SMS/Email).
+  - Control: adapter crates with contract tests and sandbox integration tests.
+
+## Immediate Execution Plan (Next 2 Sprints)
+1. Create expanded Rust workspace manifest and crate skeletons.
+2. Extract `backend-core` domain code into `game-combat` and `game-fleet`.
+3. Generate shared protobuf crate (`platform-proto`) and move contracts there.
+4. Add compatibility test harness:
+   - Compare Node vs Rust outputs for combat/fleet/economy fixtures.
+5. Start `app-admin-api` as first full service rewrite target.
+
+## Non-Goals During Migration
+- Frontend redesign.
+- Database replatforming away from PostgreSQL.
+- Introducing new gameplay mechanics while parity migration is in-flight.
