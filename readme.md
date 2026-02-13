@@ -56,6 +56,23 @@ Quick Start — Docker (recommended)
 
    docker-compose down
 
+Rust-only hard-cut runbook
+1. Start the Rust-first stack profile:
+
+   docker compose --profile rust-only up -d --build database redis rabbitmq rust-core-engine rust-api-gateway rust-admin-api rust-bot-api rust-sms-api rust-realtime-gateway frontend
+
+2. In this mode, `frontend` waits for `rust-api-gateway` (and can still run if legacy `backend` is not started).
+3. Primary Rust services in this profile are:
+   - `rust-api-gateway`
+   - `rust-admin-api`
+   - `rust-bot-api`
+   - `rust-sms-api`
+   - `rust-realtime-gateway`
+   - `rust-core-engine`
+4. Stop the profile:
+
+   docker compose --profile rust-only down
+
 Local development (service by service)
 - Backend
   - Install: `cd backend && pnpm install`
@@ -122,5 +139,3 @@ License
 If you want, I can also:
 - Trim or expand specific sections (API, deployment, developer workflow).
 - Add quick curl examples for auth and planet operations.
-
-

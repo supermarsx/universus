@@ -51,8 +51,11 @@ name = "app-admin-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hyper",
  "serde",
+ "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]
@@ -89,8 +92,11 @@ name = "app-bot-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hyper",
  "serde",
+ "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]
@@ -138,12 +144,13 @@ name = "app-sms-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hyper",
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -604,18 +611,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
-]
-
-[[package]]
-name = "getrandom"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
-dependencies = [
- "cfg-if",
- "libc",
- "r-efi",
- "wasip2",
 ]
 
 [[package]]
@@ -1930,17 +1925,6 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
-
-[[package]]
-name = "uuid"
-version = "1.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
-dependencies = [
- "getrandom 0.3.4",
- "js-sys",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "valuable"

@@ -137,73 +137,109 @@ services:
     restart: unless-stopped
 
   rust-api-gateway:
-    profiles: ["rust-backend"]
+    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
       args:
         BIN_NAME: app-api-gateway
     container_name: universus_rust_api_gateway
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      rust-core-engine:
+        condition: service_started
     ports:
       - "3300:3000"
     restart: unless-stopped
 
   rust-admin-api:
-    profiles: ["rust-backend"]
+    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
       args:
         BIN_NAME: app-admin-api
     container_name: universus_rust_admin_api
+    depends_on:
+      database:
+        condition: service_healthy
     ports:
       - "4302:4002"
     restart: unless-stopped
 
   rust-bot-api:
-    profiles: ["rust-backend"]
+    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
       args:
         BIN_NAME: app-bot-api
     container_name: universus_rust_bot_api
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "4301:4001"
     restart: unless-stopped
 
   rust-sms-api:
-    profiles: ["rust-backend"]
+    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
       args:
         BIN_NAME: app-sms-api
     container_name: universus_rust_sms_api
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "4303:4003"
     restart: unless-stopped
 
   rust-realtime-gateway:
-    profiles: ["rust-backend"]
+    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
       args:
         BIN_NAME: app-realtime-gateway
     container_name: universus_rust_realtime_gateway
+    depends_on:
+      redis:
+        condition: service_healthy
+      rust-core-engine:
+        condition: service_started
     ports:
       - "4304:4004"
     restart: unless-stopped
 
   rust-core-engine:
-    profiles: ["rust-backend"]
+    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
       args:
         BIN_NAME: backend-core
     container_name: universus_rust_core_engine
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       CORE_BIND_ADDR: 0.0.0.0:50051
     ports:
@@ -238,6 +274,10 @@ services:
     depends_on:
       backend:
         condition: service_started
+        required: false
+      rust-api-gateway:
+        condition: service_started
+        required: false
     ports:
       - "8080:80"
     restart: unless-stopped

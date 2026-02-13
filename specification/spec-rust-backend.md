@@ -1,7 +1,20 @@
 # Universus Full Rust Backend Reframe Specification
 
 ## Status
-Drafted on February 12, 2026.
+Updated on February 13, 2026.
+- Migration mode: hard-cut capable in runtime wiring via `docker compose --profile rust-only`.
+- Rust service binaries currently moved and wired:
+  - `app-api-gateway` (`rust-api-gateway`)
+  - `app-admin-api` (`rust-admin-api`)
+  - `app-bot-api` (`rust-bot-api`)
+  - `app-sms-api` (`rust-sms-api`)
+  - `app-realtime-gateway` (`rust-realtime-gateway`)
+  - `app-core-engine` (`rust-core-engine`)
+- Remaining migration gaps before full Node retirement:
+  - `backend` route-by-route parity validation and production cutover sign-off.
+  - `app-email-worker` and `app-analytics-worker` runtime adoption.
+  - websocket/event contract parity validation for realtime replacement.
+  - decommission of `backend-core-napi` bridge after parity/SLO acceptance.
 
 ## Objective
 Reframe the entire backend as a Rust-first platform with explicit crate boundaries, preserving gameplay behavior while removing Node.js service ownership over time.
@@ -171,6 +184,14 @@ universus-rs/
 6. Phase 5: Node retirement.
    - Decommission TS services after SLO and parity acceptance windows.
    - Remove N-API and HTTP helper compatibility paths.
+
+## Phase Checklist (Current)
+- [x] Phase 0: Workspace bootstrap and Rust service scaffold in place.
+- [~] Phase 1: Core gameplay domain extraction (in progress; mixed `backend-core` and `app-core-engine` path).
+- [~] Phase 2: HTTP gateway replacement (Rust gateway wired; parity validation pending).
+- [~] Phase 3: Service replacement (admin/bot/sms moved; email/analytics pending).
+- [~] Phase 4: Realtime replacement (service wired; contract validation pending).
+- [ ] Phase 5: Node retirement and N-API removal.
 
 ## Acceptance Criteria (Per Phase)
 - No gameplay regression in deterministic simulation test corpus.
