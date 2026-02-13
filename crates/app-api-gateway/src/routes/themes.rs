@@ -38,9 +38,15 @@ pub fn router() -> Router {
         .route("/api/themes", get(list_themes_handler))
         .route("/api/themes/:id", get(theme_by_id_handler))
         .route("/api/themes/user/preferences", get(get_preferences_handler))
-        .route("/api/themes/user/preferences", put(update_preferences_handler))
+        .route(
+            "/api/themes/user/preferences",
+            put(update_preferences_handler),
+        )
         .route("/api/themes/user/custom-css", get(get_custom_css_handler))
-        .route("/api/themes/user/custom-css", put(update_custom_css_handler))
+        .route(
+            "/api/themes/user/custom-css",
+            put(update_custom_css_handler),
+        )
 }
 
 async fn current_theme_handler() -> Response {

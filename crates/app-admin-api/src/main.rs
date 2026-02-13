@@ -1,5 +1,5 @@
-use std::net::SocketAddr;
 use std::collections::{BTreeMap, BTreeSet};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -213,7 +213,10 @@ fn app_router() -> Router {
         .route("/dashboard", get(admin_dashboard))
         .route("/users", get(admin_users))
         .route("/monitoring", get(admin_monitoring))
-        .route("/settings", get(get_settings).post(post_settings).patch(patch_settings))
+        .route(
+            "/settings",
+            get(get_settings).post(post_settings).patch(patch_settings),
+        )
         .route("/analytics", get(admin_analytics))
         .route("/audit", get(admin_audit))
         .route("/status", get(admin_status))
@@ -295,7 +298,11 @@ async fn admin_monitoring() -> Json<Envelope<MonitoringPayload>> {
 }
 
 async fn get_settings(State(state): State<AppState>) -> Json<Envelope<SettingsPayload>> {
-    let settings = state.settings.lock().expect("settings lock poisoned").clone();
+    let settings = state
+        .settings
+        .lock()
+        .expect("settings lock poisoned")
+        .clone();
     Json(Envelope {
         status: "ok",
         data: settings,
@@ -379,7 +386,10 @@ async fn admin_status(State(state): State<AppState>) -> Json<Envelope<AdminStatu
         .clone();
     let admin_state = snapshot_admin_ops(&state);
 
-    let incidents_open = incidents.iter().filter(|incident| incident.state == "open").count();
+    let incidents_open = incidents
+        .iter()
+        .filter(|incident| incident.state == "open")
+        .count();
 
     Json(Envelope {
         status: "ok",
@@ -617,7 +627,12 @@ mod tests {
         let app = app_router();
 
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -690,7 +705,10 @@ mod tests {
 
         let get_body = json_body(get_response).await;
         assert_eq!(get_body["data"]["maintenance_mode"], true);
-        assert_eq!(get_body["data"]["notification_channel"], "pagerduty://oncall");
+        assert_eq!(
+            get_body["data"]["notification_channel"],
+            "pagerduty://oncall"
+        );
     }
 
     #[tokio::test]
@@ -796,7 +814,10 @@ mod tests {
             .unwrap();
 
         let status_body = json_body(status_response).await;
-        assert_eq!(status_body["data"]["admin_state"]["blocked_users"], json!(["user-1"]));
+        assert_eq!(
+            status_body["data"]["admin_state"]["blocked_users"],
+            json!(["user-1"])
+        );
     }
 
     #[tokio::test]
@@ -841,7 +862,10 @@ mod tests {
             .unwrap();
 
         let status_body = json_body(status_response).await;
-        assert_eq!(status_body["data"]["admin_state"]["blocked_users"], json!([]));
+        assert_eq!(
+            status_body["data"]["admin_state"]["blocked_users"],
+            json!([])
+        );
     }
 
     #[tokio::test]
@@ -981,7 +1005,10 @@ mod tests {
             .unwrap();
 
         let status_body = json_body(status_response).await;
-        assert_eq!(status_body["data"]["admin_state"]["maintenance"]["active"], false);
+        assert_eq!(
+            status_body["data"]["admin_state"]["maintenance"]["active"],
+            false
+        );
     }
 
     #[tokio::test]
@@ -1005,7 +1032,9 @@ mod tests {
                     .method(Method::POST)
                     .uri("/api/admin/users/user-6/resources")
                     .header("content-type", "application/json")
-                    .body(Body::from(json!({ "resource": "quota", "delta": 1 }).to_string()))
+                    .body(Body::from(
+                        json!({ "resource": "quota", "delta": 1 }).to_string(),
+                    ))
                     .unwrap(),
             )
             .await

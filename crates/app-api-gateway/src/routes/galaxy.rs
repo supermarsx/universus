@@ -34,7 +34,10 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/galaxy", get(galaxy_overview_handler))
         .route("/api/galaxy/:galaxy/:system", get(system_view_handler))
-        .route("/api/galaxy/:galaxy/:system/:position", get(position_view_handler))
+        .route(
+            "/api/galaxy/:galaxy/:system/:position",
+            get(position_view_handler),
+        )
 }
 
 async fn galaxy_overview_handler() -> Response {
@@ -71,7 +74,9 @@ async fn system_view_handler(Path((galaxy, system)): Path<(i32, i32)>) -> Respon
     })
 }
 
-async fn position_view_handler(Path((galaxy, system, position)): Path<(i32, i32, i32)>) -> Response {
+async fn position_view_handler(
+    Path((galaxy, system, position)): Path<(i32, i32, i32)>,
+) -> Response {
     success(SystemSlot {
         position,
         occupant: if galaxy == 1 && system == 120 && position == 8 {

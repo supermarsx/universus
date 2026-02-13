@@ -233,7 +233,8 @@ fn personalities() -> Vec<Personality> {
         Personality {
             r#type: "speed_rusher",
             name: "Speed Rusher",
-            description: "Early game aggression, rapid technology advancement, timing-based attacks",
+            description:
+                "Early game aggression, rapid technology advancement, timing-based attacks",
             traits: serde_json::json!({"aggression": 95, "military": 90, "risk_tolerance": 90}),
         },
         Personality {
@@ -271,7 +272,10 @@ pub fn build_router() -> Router {
             post(generate_bots_for_universe),
         )
         .route("/api/admin/bots/leaderboard/top", get(leaderboard_top))
-        .route("/api/admin/bots/personalities/list", get(list_personalities))
+        .route(
+            "/api/admin/bots/personalities/list",
+            get(list_personalities),
+        )
         .route("/api/admin/bots/think/:id", post(think_by_id))
         .route("/api/admin/bots/:id/think", post(think_by_id))
         .route("/api/admin/bots/:id/enable", post(enable_bot))
@@ -408,7 +412,9 @@ async fn create_bot(
     if !(1..=10).contains(&difficulty_level) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::err("Difficulty level must be between 1 and 10")),
+            Json(ApiResponse::err(
+                "Difficulty level must be between 1 and 10",
+            )),
         );
     }
 
@@ -454,7 +460,9 @@ async fn update_bot(
         if !(1..=10).contains(&difficulty_level) {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(ApiResponse::err("Difficulty level must be between 1 and 10")),
+                Json(ApiResponse::err(
+                    "Difficulty level must be between 1 and 10",
+                )),
             );
         }
     }
@@ -532,7 +540,9 @@ async fn bulk_create_bots(
     if !(1..=10).contains(&difficulty_level) {
         return (
             StatusCode::BAD_REQUEST,
-            Json(ApiResponse::err("Difficulty level must be between 1 and 10")),
+            Json(ApiResponse::err(
+                "Difficulty level must be between 1 and 10",
+            )),
         );
     }
 
@@ -699,7 +709,10 @@ async fn bot_statistics(
         );
     }
 
-    (StatusCode::OK, Json(ApiResponse::ok(build_bot_statistics(&store, bot_id))))
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(build_bot_statistics(&store, bot_id))),
+    )
 }
 
 async fn leaderboard_top(
@@ -708,12 +721,21 @@ async fn leaderboard_top(
 ) -> Json<ApiResponse<Vec<Bot>>> {
     let limit = query.limit.unwrap_or(20);
     let store = state.inner.lock().expect("state lock poisoned");
-    let mut leaderboard: Vec<Bot> = store.bots.values().filter(|bot| bot.is_active).cloned().collect();
+    let mut leaderboard: Vec<Bot> = store
+        .bots
+        .values()
+        .filter(|bot| bot.is_active)
+        .cloned()
+        .collect();
 
     leaderboard.sort_by(|a, b| {
         b.total_resources_plundered
             .cmp(&a.total_resources_plundered)
-            .then_with(|| b.win_rate.partial_cmp(&a.win_rate).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| {
+                b.win_rate
+                    .partial_cmp(&a.win_rate)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     });
 
     leaderboard.truncate(limit);
@@ -758,7 +780,11 @@ fn recent_actions_for_bot(
             actions
                 .iter()
                 .rev()
-                .filter(|action| action_type.map(|kind| action.action == kind).unwrap_or(true))
+                .filter(|action| {
+                    action_type
+                        .map(|kind| action.action == kind)
+                        .unwrap_or(true)
+                })
                 .take(cap)
                 .cloned()
                 .collect()
@@ -775,13 +801,25 @@ fn build_bot_statistics(store: &BotStore, bot_id: u64) -> BotStatistics {
 
     BotStatistics {
         total_actions: actions.len(),
-        enable_count: actions.iter().filter(|item| item.action == "enabled").count(),
-        disable_count: actions.iter().filter(|item| item.action == "disabled").count(),
+        enable_count: actions
+            .iter()
+            .filter(|item| item.action == "enabled")
+            .count(),
+        disable_count: actions
+            .iter()
+            .filter(|item| item.action == "disabled")
+            .count(),
         think_count: actions
             .iter()
             .filter(|item| item.action == "think_triggered")
             .count(),
-        update_count: actions.iter().filter(|item| item.action == "updated").count(),
-        created_count: actions.iter().filter(|item| item.action == "created").count(),
+        update_count: actions
+            .iter()
+            .filter(|item| item.action == "updated")
+            .count(),
+        created_count: actions
+            .iter()
+            .filter(|item| item.action == "created")
+            .count(),
     }
 }

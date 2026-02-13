@@ -4,12 +4,31 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<Mutex<GameState>>,
+    shard_inner: Arc<Mutex<ShardState>>,
 }
 
 struct GameState {
     players: HashMap<String, PlayerState>,
     config_parameters: HashMap<String, ConfigParameter>,
     config_history: Vec<ConfigHistoryEntry>,
+}
+
+struct ShardState {
+    servers: HashMap<String, ShardServerRecord>,
+    routing_migrations: i64,
+}
+
+#[derive(Clone)]
+struct ShardServerRecord {
+    server_id: String,
+    server_type: String,
+    region: String,
+    endpoint: String,
+    status: String,
+    current_load: i64,
+    max_capacity: i64,
+    health_score: f64,
+    last_heartbeat_unix: i64,
 }
 
 #[derive(Clone)]
@@ -161,10 +180,58 @@ pub struct QueuedBuildingUpgrade {
     pub finishes_in_seconds: i64,
 }
 
+#[derive(Clone)]
+pub struct ShardServerSnapshot {
+    pub server_id: String,
+    pub server_type: String,
+    pub region: String,
+    pub endpoint: String,
+    pub status: String,
+    pub current_load: i64,
+    pub max_capacity: i64,
+    pub health_score: f64,
+    pub last_heartbeat_unix: i64,
+}
+
+#[derive(Clone)]
+pub struct ShardHealthSnapshot {
+    pub server_id: String,
+    pub status: String,
+    pub health_score: f64,
+    pub current_load: i64,
+    pub max_capacity: i64,
+    pub load_percent: f64,
+    pub last_heartbeat_unix: i64,
+}
+
+#[derive(Clone)]
+pub struct RoutingStatsSnapshot {
+    pub total_servers: usize,
+    pub healthy_servers: usize,
+    pub overloaded_servers: usize,
+    pub total_capacity: i64,
+    pub total_load: i64,
+    pub average_load_percent: f64,
+    pub migration_count: i64,
+}
+
+#[derive(Clone)]
+pub struct RegisterShardServerInput {
+    pub server_id: String,
+    pub server_type: String,
+    pub region: String,
+    pub endpoint: String,
+    pub status: String,
+    pub current_load: i64,
+    pub max_capacity: i64,
+    pub health_score: f64,
+}
+
 impl AppState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(GameState::default())),
+            shard_inner: Arc::new(Mutex::new(ShardState::default())),
         }
     }
 
@@ -574,6 +641,119 @@ impl AppState {
             })
             .collect()
     }
+
+    pub fn list_shard_servers(&self) -> Vec<ShardServerSnapshot> {
+        let shard_state = self.shard_inner.lock().expect("app state poisoned");
+        let mut servers = shard_state
+            .servers
+            .values()
+            .map(shard_server_snapshot)
+            .collect::<Vec<_>>();
+        servers.sort_by(|left, right| left.server_id.cmp(&right.server_id));
+        servers
+    }
+
+    pub fn register_shard_server(
+        &self,
+        input: RegisterShardServerInput,
+    ) -> Result<ShardServerSnapshot, &'static str> {
+        if input.server_id.trim().is_empty() {
+            return Err("serverId is required");
+        }
+        if input.max_capacity <= 0 {
+            return Err("maxCapacity must be greater than zero");
+        }
+        if input.current_load < 0 {
+            return Err("currentLoad cannot be negative");
+        }
+
+        let mut shard_state = self.shard_inner.lock().expect("app state poisoned");
+        let now = unix_timestamp();
+        let server_id = input.server_id.clone();
+        let existed = shard_state.servers.contains_key(&server_id);
+
+        shard_state.servers.insert(
+            server_id.clone(),
+            ShardServerRecord {
+                server_id: server_id.clone(),
+                server_type: input.server_type,
+                region: input.region,
+                endpoint: input.endpoint,
+                status: input.status,
+                current_load: input.current_load,
+                max_capacity: input.max_capacity,
+                health_score: input.health_score,
+                last_heartbeat_unix: now,
+            },
+        );
+
+        if existed {
+            shard_state.routing_migrations += 1;
+        }
+
+        let server = shard_state
+            .servers
+            .get(&server_id)
+            .cloned()
+            .expect("registered shard server must exist");
+        Ok(shard_server_snapshot(&server))
+    }
+
+    pub fn shard_server_health(&self, server_id: &str) -> Option<ShardHealthSnapshot> {
+        let shard_state = self.shard_inner.lock().expect("app state poisoned");
+        shard_state.servers.get(server_id).map(|entry| {
+            let load_percent = load_percent(entry.current_load, entry.max_capacity);
+            ShardHealthSnapshot {
+                server_id: entry.server_id.clone(),
+                status: entry.status.clone(),
+                health_score: entry.health_score,
+                current_load: entry.current_load,
+                max_capacity: entry.max_capacity,
+                load_percent,
+                last_heartbeat_unix: entry.last_heartbeat_unix,
+            }
+        })
+    }
+
+    pub fn shard_routing_stats(&self) -> RoutingStatsSnapshot {
+        let shard_state = self.shard_inner.lock().expect("app state poisoned");
+        let total_servers = shard_state.servers.len();
+        let healthy_servers = shard_state
+            .servers
+            .values()
+            .filter(|entry| entry.status == "online" && entry.health_score >= 0.7)
+            .count();
+        let overloaded_servers = shard_state
+            .servers
+            .values()
+            .filter(|entry| load_percent(entry.current_load, entry.max_capacity) >= 80.0)
+            .count();
+        let total_capacity = shard_state
+            .servers
+            .values()
+            .map(|entry| entry.max_capacity)
+            .sum::<i64>();
+        let total_load = shard_state
+            .servers
+            .values()
+            .map(|entry| entry.current_load)
+            .sum::<i64>();
+        let average_load_percent = if total_capacity <= 0 {
+            0.0
+        } else {
+            (total_load as f64 * 100.0) / total_capacity as f64
+        };
+
+        RoutingStatsSnapshot {
+            total_servers,
+            healthy_servers,
+            overloaded_servers,
+            total_capacity,
+            total_load,
+            average_load_percent: round_2(average_load_percent),
+            migration_count: shard_state.routing_migrations,
+        }
+    }
 }
 
 fn player_mut<'a>(game_state: &'a mut GameState, player_key: &str) -> &'a mut PlayerState {
@@ -641,6 +821,15 @@ impl Default for GameState {
     }
 }
 
+impl Default for ShardState {
+    fn default() -> Self {
+        Self {
+            servers: HashMap::new(),
+            routing_migrations: 0,
+        }
+    }
+}
+
 fn spend_resources(
     resources: &mut PlayerResources,
     metal: i64,
@@ -662,6 +851,39 @@ fn normalize_id(value: &str) -> String {
         .filter(|ch| ch.is_ascii_alphanumeric())
         .collect::<String>()
         .to_lowercase()
+}
+
+fn shard_server_snapshot(entry: &ShardServerRecord) -> ShardServerSnapshot {
+    ShardServerSnapshot {
+        server_id: entry.server_id.clone(),
+        server_type: entry.server_type.clone(),
+        region: entry.region.clone(),
+        endpoint: entry.endpoint.clone(),
+        status: entry.status.clone(),
+        current_load: entry.current_load,
+        max_capacity: entry.max_capacity,
+        health_score: entry.health_score,
+        last_heartbeat_unix: entry.last_heartbeat_unix,
+    }
+}
+
+fn unix_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn load_percent(current_load: i64, max_capacity: i64) -> f64 {
+    if max_capacity <= 0 {
+        0.0
+    } else {
+        round_2((current_load as f64 * 100.0) / max_capacity as f64)
+    }
+}
+
+fn round_2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
 }
 
 fn research_config(technology_type: &str) -> Option<(&'static str, i64, i64, i64, i64)> {

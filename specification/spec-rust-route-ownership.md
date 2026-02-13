@@ -20,15 +20,16 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/api/shop` | `backend/src/routes/shop.ts` | `crates/app-api-gateway` + `crates/adapter-provider-payments` | In progress |
 | `/api/shop-enhanced` | `backend/src/routes/enhancedShopRoutes.ts` | `crates/app-api-gateway` + `crates/game-economy` | Pending |
 | `/api/alliances` | `backend/src/routes/allianceRoutes.ts` | `crates/app-api-gateway` + `crates/game-alliance` | In progress |
+| `/api/acs` | `backend/src/routes/acs.ts` | `crates/app-api-gateway` + `crates/game-fleet` | In progress |
 | `/api/moons` | `backend/src/routes/moons.ts` | `crates/app-api-gateway` + `crates/game-moon` | In progress |
-| `/api/rips` | `backend/src/routes/rips.ts` | `crates/app-api-gateway` + `crates/game-moon` | Pending |
+| `/api/rips` | `backend/src/routes/rips.ts` | `crates/app-api-gateway` + `crates/game-moon` | In progress |
 | `/api/debris` | `backend/src/routes/debrisRoutes.ts` | `crates/app-api-gateway` + `crates/game-combat` | In progress |
 | `/api/player-blocks` | `backend/src/routes/playerBlocks.ts` | `crates/app-api-gateway` + `crates/game-antiabuse` | In progress |
 | `/api/config` | `backend/src/routes/configRoutes.ts` | `crates/app-api-gateway` + `crates/platform-config` | In progress |
 | `/api/themes` | `backend/src/routes/themeRoutes.ts` | `crates/app-api-gateway` + `crates/platform-config` | In progress |
 | `/api/universe` | `backend/src/routes/universeRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | In progress |
-| `/api/shards` | `backend/src/routes/shardingRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | Pending |
-| `/api/realtime` | `backend/src/routes/realtimeRoutes.ts` | `crates/app-realtime-gateway` + `crates/platform-events` | Pending parity pass |
+| `/api/shards` | `backend/src/routes/shardingRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | In progress |
+| `/api/realtime` | `backend/src/routes/realtimeRoutes.ts` | `crates/app-realtime-gateway` + `crates/platform-events` | In progress |
 | `/api/analytics` | `backend/src/routes/analytics.ts` | `crates/app-analytics-worker` + `crates/platform-events` | Pending ingestion API parity |
 | `/api/admin/*` | `backend/src/routes/admin.ts`, `backend/src/routes/adminRoutes.ts` | `crates/app-admin-api` | In progress |
 | `/api/admin/bots/*` | `backend/src/routes/bots.ts` | `crates/app-bot-api` + `crates/app-bot-worker` | In progress |

@@ -24,7 +24,10 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/leaderboard", get(global_leaderboard_handler))
         .route("/api/leaderboard/players", get(players_leaderboard_handler))
-        .route("/api/leaderboard/alliances", get(alliances_leaderboard_handler))
+        .route(
+            "/api/leaderboard/alliances",
+            get(alliances_leaderboard_handler),
+        )
 }
 
 async fn global_leaderboard_handler() -> Response {

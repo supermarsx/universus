@@ -118,7 +118,11 @@ pub fn calculate_movement(input: &FleetMovementInput) -> FleetMovementResult {
         cargo_capacity += ship.cargo * count;
     }
 
-    let fleet_speed = if min_speed.is_finite() { min_speed } else { 0.0 };
+    let fleet_speed = if min_speed.is_finite() {
+        min_speed
+    } else {
+        0.0
+    };
     let travel_time_seconds = if fleet_speed > 0.0 {
         ((distance as f64 / fleet_speed) * 3600.0).ceil() as i32
     } else {

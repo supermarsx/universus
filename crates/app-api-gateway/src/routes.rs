@@ -1,4 +1,5 @@
 mod account;
+mod acs;
 mod alliance;
 mod auth;
 mod config;
@@ -11,6 +12,8 @@ mod moons;
 mod planets;
 mod player_blocks;
 mod research;
+mod rips;
+mod shards;
 mod shipyard;
 mod shop;
 mod themes;
@@ -32,6 +35,7 @@ struct ServiceStatus {
 pub fn build_router(service_name: &'static str) -> Router {
     let protected_routes = Router::new()
         .merge(account::router())
+        .merge(acs::router())
         .merge(debris::router())
         .merge(config::router())
         .merge(planets::protected_router())
@@ -39,7 +43,9 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(moons::router())
         .merge(player_blocks::router())
         .merge(research::protected_router())
+        .merge(rips::router())
         .merge(shipyard::protected_router())
+        .merge(shards::router())
         .merge(universe::router())
         .route_layer(middleware::from_fn(require_bearer_auth));
 

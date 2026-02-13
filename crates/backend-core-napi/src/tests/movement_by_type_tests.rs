@@ -21,7 +21,8 @@ fn calculate_fleet_movement_by_type_supports_snake_case_aliases_and_shape() {
         "universe_name": "default"
     });
 
-    let raw = calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
+    let raw =
+        calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
     let out: Value = serde_json::from_str(&raw).expect("response should be valid json");
 
     assert!(out["distance"].is_number());
@@ -51,8 +52,10 @@ fn calculate_fleet_movement_by_type_is_deterministic_and_supports_camel_case_ali
         "universeName": "default"
     });
 
-    let raw_a = calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
-    let raw_b = calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
+    let raw_a =
+        calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
+    let raw_b =
+        calculate_fleet_movement_by_type(payload.to_string()).expect("expected valid response");
     let out_a: Value = serde_json::from_str(&raw_a).expect("response should be valid json");
     let out_b: Value = serde_json::from_str(&raw_b).expect("response should be valid json");
 

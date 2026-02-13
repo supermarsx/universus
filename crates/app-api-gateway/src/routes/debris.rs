@@ -29,11 +29,17 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/debris", get(list_debris_handler))
         .route("/api/debris/search", post(search_debris_handler))
-        .route("/api/debris/location/:galaxy/:system/:position", get(location_debris_handler))
+        .route(
+            "/api/debris/location/:galaxy/:system/:position",
+            get(location_debris_handler),
+        )
 }
 
 async fn list_debris_handler() -> Response {
-    success(vec![sample_debris(11, 1, 120, 7), sample_debris(12, 1, 121, 5)])
+    success(vec![
+        sample_debris(11, 1, 120, 7),
+        sample_debris(12, 1, 121, 5),
+    ])
 }
 
 async fn search_debris_handler(Json(payload): Json<DebrisSearchRequest>) -> Response {
@@ -47,7 +53,9 @@ async fn search_debris_handler(Json(payload): Json<DebrisSearchRequest>) -> Resp
     success(data)
 }
 
-async fn location_debris_handler(Path((galaxy, system, position)): Path<(i32, i32, i32)>) -> Response {
+async fn location_debris_handler(
+    Path((galaxy, system, position)): Path<(i32, i32, i32)>,
+) -> Response {
     success(vec![sample_debris(21, galaxy, system, position)])
 }
 

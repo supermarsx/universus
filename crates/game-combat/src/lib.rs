@@ -364,9 +364,9 @@ fn simulate_round(
         if attacker.is_empty() {
             break;
         }
-        let bias =
-            (((seed as u64) + (round_idx as u64) + (i as u64).wrapping_mul(13)) % 991) as f64
-                / 991.0;
+        let bias = (((seed as u64) + (round_idx as u64) + (i as u64).wrapping_mul(13)) % 991)
+            as f64
+            / 991.0;
         let rnd = (rng.next_f64() + bias) % 1.0;
         let target_idx = (rnd * attacker.len() as f64) as usize % attacker.len();
         defender_shots += shoot_with_rapid(&defender[i].clone(), &mut attacker[target_idx], rng);
@@ -459,7 +459,10 @@ fn regenerate_shields(units: &mut [CombatUnit]) {
     }
 }
 
-fn calculate_losses(initial: &HashMap<String, i32>, remaining: &[CombatUnit]) -> HashMap<String, i32> {
+fn calculate_losses(
+    initial: &HashMap<String, i32>,
+    remaining: &[CombatUnit],
+) -> HashMap<String, i32> {
     let mut losses = HashMap::new();
     let mut remaining_counts = HashMap::new();
 

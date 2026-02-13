@@ -37,13 +37,19 @@ struct ConfigCategory {
 pub fn router() -> Router {
     Router::new()
         .route("/api/config/categories", get(list_categories_handler))
-        .route("/api/config/categories/:category", get(category_parameters_handler))
+        .route(
+            "/api/config/categories/:category",
+            get(category_parameters_handler),
+        )
         .route("/api/config/parameters", get(parameters_handler))
         .route("/api/config/parameters/:key", get(parameter_handler))
         .route("/api/config/parameters/:key", put(update_parameter_handler))
         .route("/api/config/game-config", get(game_config_handler))
         .route("/api/config/history", get(config_history_handler))
-        .route("/api/config/game-config/refresh", post(game_config_refresh_handler))
+        .route(
+            "/api/config/game-config/refresh",
+            post(game_config_refresh_handler),
+        )
 }
 
 async fn list_categories_handler(

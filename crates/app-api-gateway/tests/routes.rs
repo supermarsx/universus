@@ -844,6 +844,125 @@ async fn universe_routes_with_auth_return_expected_contracts() {
 }
 
 #[tokio::test]
+async fn universe_parity_mutation_routes_return_success_with_auth() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let create_payload = json!({
+        "universeName": "Slice C",
+        "speedMultiplier": 4
+    });
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe/create")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(create_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::OK);
+    let create_body = response_json(create_response).await;
+    assert_eq!(create_body["success"], true);
+    assert_eq!(create_body["data"]["created"], true);
+
+    let seed_payload = json!({
+        "generateBots": false
+    });
+    let seed_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe/9/seed")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(seed_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(seed_response.status(), StatusCode::OK);
+    let seed_body = response_json(seed_response).await;
+    assert_eq!(seed_body["data"]["universeId"], 9);
+    assert_eq!(seed_body["data"]["seeded"], true);
+    assert_eq!(seed_body["data"]["generateBots"], false);
+
+    let place_payload = json!({
+        "playerId": 77,
+        "customGalaxy": 2,
+        "customSystem": 90
+    });
+    let place_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe/9/place-player")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(place_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(place_response.status(), StatusCode::OK);
+    let place_body = response_json(place_response).await;
+    assert_eq!(place_body["data"]["placed"], true);
+    assert_eq!(place_body["data"]["placement"]["galaxy"], 2);
+
+    let maintenance_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe/9/maintenance/population-balance")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(maintenance_response.status(), StatusCode::OK);
+    let maintenance_body = response_json(maintenance_response).await;
+    assert_eq!(maintenance_body["data"]["operation"], "population-balance");
+    assert_eq!(maintenance_body["data"]["balanced"], true);
+
+    let patch_cases = [
+        ("/api/universe/9/registration", "registration"),
+        ("/api/universe/9/lifecycle", "lifecycle"),
+        ("/api/universe/9/speed", "speed"),
+        ("/api/universe/9/merge", "merge"),
+        ("/api/universe/9/end-event", "end-event"),
+        ("/api/universe/9/announcement", "announcement"),
+    ];
+
+    for (uri, expected_updated) in patch_cases {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .method("PATCH")
+                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"isActive":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["success"], true);
+        assert_eq!(body["data"]["updated"], expected_updated);
+        assert_eq!(body["data"]["universeId"], 9);
+    }
+}
+
+#[tokio::test]
 async fn player_blocks_create_list_delete_flow_is_stateful() {
     let app = build_router(TEST_SERVICE_NAME);
     let create_payload = json!({
@@ -1004,4 +1123,301 @@ async fn themes_public_and_user_preference_routes_work() {
     assert_eq!(get_response.status(), StatusCode::OK);
     let get_body = response_json(get_response).await;
     assert_eq!(get_body["data"]["themeKey"], "solstice");
+}
+
+#[tokio::test]
+async fn shards_routes_require_authentication() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn shards_register_list_health_and_routing_stats_are_stateful() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let register_1 = json!({
+        "serverId": "eu-west-1",
+        "serverType": "game",
+        "region": "eu-west",
+        "endpoint": "http://eu-west-1.internal",
+        "status": "online",
+        "currentLoad": 240,
+        "maxCapacity": 1000,
+        "healthScore": 0.92
+    });
+    let register_1_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/register")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(register_1.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register_1_response.status(), StatusCode::OK);
+    let register_1_body = response_json(register_1_response).await;
+    assert_eq!(register_1_body["success"], true);
+    assert_eq!(register_1_body["data"]["serverId"], "eu-west-1");
+
+    let register_1_update = json!({
+        "serverId": "eu-west-1",
+        "serverType": "game",
+        "region": "eu-west",
+        "endpoint": "http://eu-west-1.internal",
+        "status": "online",
+        "currentLoad": 280,
+        "maxCapacity": 1000,
+        "healthScore": 0.95
+    });
+    let register_1_update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/register")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(register_1_update.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register_1_update_response.status(), StatusCode::OK);
+
+    let register_2 = json!({
+        "serverId": "us-east-1",
+        "serverType": "game",
+        "region": "us-east",
+        "endpoint": "http://us-east-1.internal",
+        "status": "online",
+        "currentLoad": 700,
+        "maxCapacity": 1000,
+        "healthScore": 0.81
+    });
+    let register_2_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/register")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(register_2.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register_2_response.status(), StatusCode::OK);
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = response_json(list_response).await;
+    assert_eq!(list_body["success"], true);
+    assert_eq!(list_body["data"].as_array().unwrap().len(), 2);
+
+    let health_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/eu-west-1/health")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(health_response.status(), StatusCode::OK);
+    let health_body = response_json(health_response).await;
+    assert_eq!(health_body["success"], true);
+    assert_eq!(health_body["data"]["serverId"], "eu-west-1");
+    assert_eq!(health_body["data"]["currentLoad"], 280);
+    assert_eq!(health_body["data"]["loadPercent"], 28.0);
+
+    let stats_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/routing/stats")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stats_response.status(), StatusCode::OK);
+    let stats_body = response_json(stats_response).await;
+    assert_eq!(stats_body["success"], true);
+    assert_eq!(stats_body["data"]["totalServers"], 2);
+    assert_eq!(stats_body["data"]["healthyServers"], 2);
+    assert_eq!(stats_body["data"]["overloadedServers"], 0);
+    assert_eq!(stats_body["data"]["migrationCount"], 1);
+    assert_eq!(stats_body["data"]["totalCapacity"], 2000);
+    assert_eq!(stats_body["data"]["totalLoad"], 980);
+    assert_eq!(stats_body["data"]["averageLoadPercent"], 49.0);
+}
+
+#[tokio::test]
+async fn acs_routes_require_authentication() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/acs")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn acs_create_join_and_leave_return_success_envelopes() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let create_payload = json!({
+        "missionType": "attack",
+        "targetGalaxy": 2,
+        "targetSystem": 155,
+        "targetPosition": 8
+    });
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/acs")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(create_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::OK);
+    let create_body = response_json(create_response).await;
+    assert_eq!(create_body["success"], true);
+    assert_eq!(create_body["data"]["targetGalaxy"], 2);
+
+    let join_payload = json!({ "planetId": 1 });
+    let join_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/acs/101/join")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(join_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join_response.status(), StatusCode::OK);
+    let join_body = response_json(join_response).await;
+    assert_eq!(join_body["success"], true);
+    assert_eq!(join_body["data"]["joined"], true);
+
+    let leave_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/acs/101/leave")
+                .method("DELETE")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(leave_response.status(), StatusCode::OK);
+    let leave_body = response_json(leave_response).await;
+    assert_eq!(leave_body["success"], true);
+    assert_eq!(leave_body["data"]["left"], true);
+}
+
+#[tokio::test]
+async fn rips_destroy_moon_validates_and_returns_success_envelope() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let invalid_payload = json!({
+        "sourceMoonId": 101,
+        "targetMoonId": 202,
+        "numDeathstars": 0
+    });
+    let invalid_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/rips/destroyMoon")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(invalid_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid_response.status(), StatusCode::BAD_REQUEST);
+    let invalid_body = response_json(invalid_response).await;
+    assert_eq!(invalid_body["success"], false);
+    assert_eq!(invalid_body["error"], "Invalid destroy moon request");
+
+    let valid_payload = json!({
+        "sourceMoonId": 101,
+        "targetMoonId": 202,
+        "numDeathstars": 5,
+        "speedPercent": 90
+    });
+    let valid_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/rips/destroyMoon")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(valid_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(valid_response.status(), StatusCode::OK);
+    let valid_body = response_json(valid_response).await;
+    assert_eq!(valid_body["success"], true);
+    assert_eq!(valid_body["data"]["accepted"], true);
+    assert_eq!(valid_body["data"]["numDeathstars"], 5);
 }

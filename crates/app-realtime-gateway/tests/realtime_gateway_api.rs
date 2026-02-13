@@ -6,7 +6,9 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn json_body(response: axum::response::Response) -> Value {
-    let bytes = to_bytes(response.into_body()).await.expect("read response body");
+    let bytes = to_bytes(response.into_body())
+        .await
+        .expect("read response body");
     serde_json::from_slice(&bytes).expect("parse response json")
 }
 
@@ -15,7 +17,12 @@ async fn health_endpoint_returns_service_status() {
     let app = build_router();
 
     let response = app
-        .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -87,7 +94,10 @@ async fn subscribe_creates_channel_and_updates_channel_listing() {
     assert_eq!(channels_response.status(), StatusCode::OK);
     let channels_body = json_body(channels_response).await;
     assert_eq!(channels_body["status"], "ok");
-    assert_eq!(channels_body["data"]["channels"][0]["name"], "alliance-updates");
+    assert_eq!(
+        channels_body["data"]["channels"][0]["name"],
+        "alliance-updates"
+    );
     assert_eq!(channels_body["data"]["channels"][0]["subscriber_count"], 1);
 }
 
@@ -154,7 +164,9 @@ async fn publish_validates_required_fields() {
                 .method(Method::POST)
                 .uri("/api/realtime/publish")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({ "channel": "", "event": "" }).to_string()))
+                .body(Body::from(
+                    json!({ "channel": "", "event": "" }).to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -164,4 +176,154 @@ async fn publish_validates_required_fields() {
     let body = json_body(publish_response).await;
     assert_eq!(body["status"], "error");
     assert_eq!(body["error"], "channel and event are required");
+}
+
+#[tokio::test]
+async fn chat_channels_parity_endpoint_returns_list_shape() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/chat/channels")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["channels"].is_array());
+}
+
+#[tokio::test]
+async fn notifications_parity_endpoint_supports_unread_filter_and_paging() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/notifications?unreadOnly=true&limit=1&offset=0")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["notifications"].is_array());
+    assert!(body["total"].is_u64());
+    assert_eq!(body["notifications"].as_array().unwrap().len(), 1);
+    assert_eq!(body["notifications"][0]["read"], false);
+}
+
+#[tokio::test]
+async fn players_online_parity_endpoint_supports_alliance_filter() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/players/online?allianceId=10")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["players"][0]["alliance_id"], 10);
+}
+
+#[tokio::test]
+async fn trade_offers_parity_endpoint_defaults_to_active_status() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/trade/offers")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["offers"].is_array());
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["offers"][0]["status"], "active");
+}
+
+#[tokio::test]
+async fn realtime_prefixed_parity_aliases_match_family_shapes() {
+    let app = build_router();
+
+    let chat = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/channels")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(chat.status(), StatusCode::OK);
+    let chat_body = json_body(chat).await;
+    assert!(chat_body["channels"].is_array());
+
+    let notifications = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/notifications")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(notifications.status(), StatusCode::OK);
+    let notifications_body = json_body(notifications).await;
+    assert!(notifications_body["notifications"].is_array());
+
+    let players = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/players/online")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(players.status(), StatusCode::OK);
+    let players_body = json_body(players).await;
+    assert!(players_body["players"].is_array());
+
+    let trade = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/trade/offers")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(trade.status(), StatusCode::OK);
+    let trade_body = json_body(trade).await;
+    assert!(trade_body["offers"].is_array());
 }

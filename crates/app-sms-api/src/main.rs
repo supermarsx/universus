@@ -169,7 +169,10 @@ impl SmsApiState {
 
     fn record_success(&mut self, channel: &str, duration_ms: u128) {
         self.success_count += 1;
-        *self.per_channel_success.entry(channel.to_string()).or_insert(0) += 1;
+        *self
+            .per_channel_success
+            .entry(channel.to_string())
+            .or_insert(0) += 1;
         self.response_times_ms.push(duration_ms);
         if self.response_times_ms.len() > 1000 {
             self.response_times_ms.remove(0);
@@ -178,7 +181,10 @@ impl SmsApiState {
 
     fn record_failure(&mut self, channel: &str) {
         self.failure_count += 1;
-        *self.per_channel_failure.entry(channel.to_string()).or_insert(0) += 1;
+        *self
+            .per_channel_failure
+            .entry(channel.to_string())
+            .or_insert(0) += 1;
     }
 
     fn find_history_by_idempotency(&self, key: &str) -> Option<&HistoryEntry> {
@@ -220,7 +226,11 @@ impl SmsApiState {
             })
             .collect::<Vec<_>>();
 
-        stats.sort_by(|a, b| a.channel.cmp(&b.channel).then_with(|| a.status.cmp(&b.status)));
+        stats.sort_by(|a, b| {
+            a.channel
+                .cmp(&b.channel)
+                .then_with(|| a.status.cmp(&b.status))
+        });
         stats
     }
 
@@ -336,7 +346,10 @@ fn build_sequence(channels: Vec<String>) -> Result<Vec<String>, String> {
 }
 
 fn normalize_phone_number(phone: &str) -> Result<String, String> {
-    let sanitized: String = phone.chars().filter(|ch| ch.is_ascii_digit() || *ch == '+').collect();
+    let sanitized: String = phone
+        .chars()
+        .filter(|ch| ch.is_ascii_digit() || *ch == '+')
+        .collect();
     if sanitized.is_empty() {
         return Err("Invalid phone number".to_string());
     }
@@ -428,7 +441,11 @@ async fn send_sms(
         .filter(|value| !value.is_empty())
         .or(idempotency_header);
 
-    if idempotency_key.as_ref().map(|value| value.len() > 128).unwrap_or(false) {
+    if idempotency_key
+        .as_ref()
+        .map(|value| value.len() > 128)
+        .unwrap_or(false)
+    {
         return (
             StatusCode::BAD_REQUEST,
             Json(BasicErrorResponse {
@@ -683,8 +700,8 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Method, Request};
     use hyper::body::to_bytes;
-    use serial_test::serial;
     use serde_json::{json, Value};
+    use serial_test::serial;
     use tower::ServiceExt;
 
     fn test_app() -> Router {
@@ -699,9 +716,15 @@ mod tests {
             .body(Body::from(body.to_string()))
             .expect("request should build");
 
-        let response = app.clone().oneshot(request).await.expect("request should execute");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("request should execute");
         let status = response.status();
-        let bytes = to_bytes(response.into_body()).await.expect("body should read");
+        let bytes = to_bytes(response.into_body())
+            .await
+            .expect("body should read");
         let payload = serde_json::from_slice::<Value>(&bytes).expect("json should parse");
         (status, payload)
     }
@@ -713,9 +736,15 @@ mod tests {
             .body(Body::empty())
             .expect("request should build");
 
-        let response = app.clone().oneshot(request).await.expect("request should execute");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("request should execute");
         let status = response.status();
-        let bytes = to_bytes(response.into_body()).await.expect("body should read");
+        let bytes = to_bytes(response.into_body())
+            .await
+            .expect("body should read");
         let payload = serde_json::from_slice::<Value>(&bytes).expect("json should parse");
         (status, payload)
     }
