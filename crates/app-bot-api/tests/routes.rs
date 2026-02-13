@@ -243,9 +243,9 @@ async fn actions_endpoint_returns_action_log_entries() {
     let body = response_json(response).await;
     let actions = body["data"].as_array().unwrap();
     assert!(actions.len() >= 3);
-    assert_eq!(actions[0]["action"], "created");
+    assert_eq!(actions[0]["action"], "enabled");
     assert_eq!(actions[1]["action"], "disabled");
-    assert_eq!(actions[2]["action"], "enabled");
+    assert_eq!(actions[2]["action"], "created");
 }
 
 #[tokio::test]
@@ -331,4 +331,108 @@ async fn actions_for_missing_bot_returns_not_found() {
     let body = response_json(response).await;
     assert_eq!(body["success"], false);
     assert_eq!(body["error"], "Bot not found");
+}
+
+#[tokio::test]
+async fn actions_endpoint_supports_limit_and_action_type_filters() {
+    let app = build_router();
+    let bot_id = create_test_bot(&app, "bot_filtered_actions").await;
+
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/disable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/enable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let filtered_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/admin/bots/{bot_id}/actions?limit=1&action_type=enabled"
+                ))
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(filtered_response.status(), StatusCode::OK);
+    let filtered_body = response_json(filtered_response).await;
+    let filtered_actions = filtered_body["data"].as_array().unwrap();
+    assert_eq!(filtered_actions.len(), 1);
+    assert_eq!(filtered_actions[0]["action"], "enabled");
+}
+
+#[tokio::test]
+async fn bulk_create_bots_returns_requested_and_created_counts() {
+    let app = build_router();
+    let payload = json!({
+        "count": 3,
+        "personality_type": "tech_enthusiast",
+        "difficulty_level": 6
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/bots/bulk")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert_eq!(body["data"]["requested"], 3);
+    assert_eq!(body["data"]["created"], 3);
+}
+
+#[tokio::test]
+async fn universe_generate_route_returns_success_shape() {
+    let app = build_router();
+    let payload = json!({
+        "botCount": 12,
+        "personalities": ["aggressive_conqueror"],
+        "skillLevels": ["medium"],
+        "distributeEvenly": true
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/bots/universe/7/generate")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert_eq!(body["botsGenerated"], 12);
 }

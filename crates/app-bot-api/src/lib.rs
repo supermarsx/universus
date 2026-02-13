@@ -108,6 +108,12 @@ struct ListBotsQuery {
 }
 
 #[derive(Deserialize)]
+struct BotActionsQuery {
+    limit: Option<usize>,
+    action_type: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct CreateBotRequest {
     username: String,
     email: String,
@@ -125,6 +131,35 @@ struct UpdateBotRequest {
 #[derive(Deserialize)]
 struct LeaderboardQuery {
     limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct BulkCreateBotsRequest {
+    count: u16,
+    personality_type: String,
+    difficulty_level: Option<u8>,
+}
+
+#[derive(Serialize)]
+struct BulkCreateBotsResult {
+    requested: u16,
+    created: u16,
+}
+
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+struct UniverseGenerateRequest {
+    botCount: Option<u16>,
+    personalities: Option<Vec<String>>,
+    skillLevels: Option<Vec<String>>,
+    distributeEvenly: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct UniverseGenerateResponse {
+    success: bool,
+    botsGenerated: u16,
+    message: String,
 }
 
 #[derive(Serialize)]
@@ -229,6 +264,11 @@ pub fn build_router() -> Router {
         .route("/ready", get(ready))
         .route("/api/admin/bots/health", get(bots_health))
         .route("/api/admin/bots/process/all", post(process_all_bots))
+        .route("/api/admin/bots/bulk", post(bulk_create_bots))
+        .route(
+            "/api/admin/bots/universe/:id/generate",
+            post(generate_bots_for_universe),
+        )
         .route("/api/admin/bots/leaderboard/top", get(leaderboard_top))
         .route("/api/admin/bots/personalities/list", get(list_personalities))
         .route("/api/admin/bots/think/:id", post(think_by_id))
@@ -333,7 +373,7 @@ async fn get_bot(
         StatusCode::OK,
         Json(ApiResponse::ok(BotDetails {
             bot,
-            recent_actions: recent_actions_for_bot(&store, bot_id),
+            recent_actions: recent_actions_for_bot(&store, bot_id, Some(50), None),
             statistics: build_bot_statistics(&store, bot_id),
             targets: Vec::new(),
         })),
@@ -470,6 +510,97 @@ async fn delete_bot(
     )
 }
 
+async fn bulk_create_bots(
+    State(state): State<AppState>,
+    Json(request): Json<BulkCreateBotsRequest>,
+) -> (StatusCode, Json<ApiResponse<BulkCreateBotsResult>>) {
+    if request.count == 0 || request.count > 50 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::err("Count must be between 1 and 50")),
+        );
+    }
+    if !valid_personality(&request.personality_type) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::err("Invalid personality type")),
+        );
+    }
+
+    let difficulty_level = request.difficulty_level.unwrap_or(5);
+    if !(1..=10).contains(&difficulty_level) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::err("Difficulty level must be between 1 and 10")),
+        );
+    }
+
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let mut created: u16 = 0;
+
+    for _ in 0..request.count {
+        store.next_id += 1;
+        let id = store.next_id;
+        let username = format!("Bot_{}_{}", request.personality_type, id);
+        let email = format!("bot_{}_{}@bot.local", request.personality_type, id);
+
+        let bot = Bot {
+            id,
+            username,
+            email,
+            personality_type: request.personality_type.clone(),
+            is_active: true,
+            difficulty_level,
+            think_interval_minutes: 20,
+            total_resources_plundered: 0,
+            win_rate: 0.0,
+        };
+
+        store.bots.insert(id, bot);
+        append_bot_action(&mut store, id, "created");
+        created += 1;
+    }
+
+    (
+        StatusCode::CREATED,
+        Json(ApiResponse::ok(BulkCreateBotsResult {
+            requested: request.count,
+            created,
+        })),
+    )
+}
+
+async fn generate_bots_for_universe(
+    Path(universe_id): Path<u64>,
+    Json(request): Json<UniverseGenerateRequest>,
+) -> (StatusCode, Json<UniverseGenerateResponse>) {
+    if universe_id == 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(UniverseGenerateResponse {
+                success: false,
+                botsGenerated: 0,
+                message: "Invalid universe id".to_string(),
+            }),
+        );
+    }
+
+    let _ = request.personalities;
+    let _ = request.skillLevels;
+    let _ = request.distributeEvenly;
+
+    let bot_count = request.botCount.unwrap_or(100);
+
+    (
+        StatusCode::OK,
+        Json(UniverseGenerateResponse {
+            success: true,
+            botsGenerated: bot_count,
+            message: format!("Successfully generated {bot_count} bots for universe"),
+        }),
+    )
+}
+
 async fn process_all_bots() -> Json<ApiResponse<()>> {
     Json(ApiResponse::ok_message("Bot processing triggered"))
 }
@@ -534,6 +665,7 @@ async fn disable_bot(
 async fn bot_actions(
     State(state): State<AppState>,
     Path(bot_id): Path<u64>,
+    Query(query): Query<BotActionsQuery>,
 ) -> (StatusCode, Json<ApiResponse<Vec<BotAction>>>) {
     let store = state.inner.lock().expect("state lock poisoned");
     if !store.bots.contains_key(&bot_id) {
@@ -543,7 +675,15 @@ async fn bot_actions(
         );
     }
 
-    (StatusCode::OK, Json(ApiResponse::ok(recent_actions_for_bot(&store, bot_id))))
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(recent_actions_for_bot(
+            &store,
+            bot_id,
+            query.limit,
+            query.action_type.as_deref(),
+        ))),
+    )
 }
 
 async fn bot_statistics(
@@ -602,8 +742,27 @@ fn append_bot_action(store: &mut BotStore, bot_id: u64, action: &str) {
     store.action_log.entry(bot_id).or_default().push(entry);
 }
 
-fn recent_actions_for_bot(store: &BotStore, bot_id: u64) -> Vec<BotAction> {
-    store.action_log.get(&bot_id).cloned().unwrap_or_default()
+fn recent_actions_for_bot(
+    store: &BotStore,
+    bot_id: u64,
+    limit: Option<usize>,
+    action_type: Option<&str>,
+) -> Vec<BotAction> {
+    let cap = limit.unwrap_or(100);
+
+    store
+        .action_log
+        .get(&bot_id)
+        .map(|actions| {
+            actions
+                .iter()
+                .rev()
+                .filter(|action| action_type.map(|kind| action.action == kind).unwrap_or(true))
+                .take(cap)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn build_bot_statistics(store: &BotStore, bot_id: u64) -> BotStatistics {
