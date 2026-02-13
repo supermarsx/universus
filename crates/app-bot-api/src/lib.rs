@@ -27,7 +27,9 @@ impl AppState {
 #[derive(Default)]
 struct BotStore {
     bots: HashMap<u64, Bot>,
+    action_log: HashMap<u64, Vec<BotAction>>,
     next_id: u64,
+    next_action_id: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -41,6 +43,14 @@ struct Bot {
     think_interval_minutes: u16,
     total_resources_plundered: u64,
     win_rate: f32,
+}
+
+#[derive(Clone, Serialize)]
+struct BotAction {
+    id: u64,
+    action: String,
+    bot_active: bool,
+    details: serde_json::Value,
 }
 
 #[derive(Serialize)]
@@ -121,9 +131,19 @@ struct LeaderboardQuery {
 struct BotDetails {
     bot: Bot,
     #[serde(rename = "recentActions")]
-    recent_actions: Vec<serde_json::Value>,
-    statistics: Vec<serde_json::Value>,
+    recent_actions: Vec<BotAction>,
+    statistics: BotStatistics,
     targets: Vec<serde_json::Value>,
+}
+
+#[derive(Serialize, Default)]
+struct BotStatistics {
+    total_actions: usize,
+    enable_count: usize,
+    disable_count: usize,
+    think_count: usize,
+    update_count: usize,
+    created_count: usize,
 }
 
 #[derive(Serialize)]
@@ -213,6 +233,10 @@ pub fn build_router() -> Router {
         .route("/api/admin/bots/personalities/list", get(list_personalities))
         .route("/api/admin/bots/think/:id", post(think_by_id))
         .route("/api/admin/bots/:id/think", post(think_by_id))
+        .route("/api/admin/bots/:id/enable", post(enable_bot))
+        .route("/api/admin/bots/:id/disable", post(disable_bot))
+        .route("/api/admin/bots/:id/actions", get(bot_actions))
+        .route("/api/admin/bots/:id/statistics", get(bot_statistics))
         .route("/api/admin/bots", get(list_bots).post(create_bot))
         .route(
             "/api/admin/bots/:id",
@@ -309,8 +333,8 @@ async fn get_bot(
         StatusCode::OK,
         Json(ApiResponse::ok(BotDetails {
             bot,
-            recent_actions: Vec::new(),
-            statistics: Vec::new(),
+            recent_actions: recent_actions_for_bot(&store, bot_id),
+            statistics: build_bot_statistics(&store, bot_id),
             targets: Vec::new(),
         })),
     )
@@ -375,6 +399,7 @@ async fn create_bot(
     };
 
     store.bots.insert(bot.id, bot.clone());
+    append_bot_action(&mut store, bot.id, "created");
 
     (StatusCode::CREATED, Json(ApiResponse::ok(bot)))
 }
@@ -421,7 +446,10 @@ async fn update_bot(
         bot.think_interval_minutes = think_interval_minutes;
     }
 
-    (StatusCode::OK, Json(ApiResponse::ok(bot.clone())))
+    let response = bot.clone();
+    append_bot_action(&mut store, bot_id, "updated");
+
+    (StatusCode::OK, Json(ApiResponse::ok(response)))
 }
 
 async fn delete_bot(
@@ -450,6 +478,63 @@ async fn think_by_id(
     State(state): State<AppState>,
     Path(bot_id): Path<u64>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    if !store.bots.contains_key(&bot_id) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::err("Bot not found")),
+        );
+    }
+    append_bot_action(&mut store, bot_id, "think_triggered");
+
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok_message("Bot think cycle triggered")),
+    )
+}
+
+async fn enable_bot(
+    State(state): State<AppState>,
+    Path(bot_id): Path<u64>,
+) -> (StatusCode, Json<ApiResponse<Bot>>) {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let Some(bot) = store.bots.get_mut(&bot_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::err("Bot not found")),
+        );
+    };
+
+    bot.is_active = true;
+    let response = bot.clone();
+    append_bot_action(&mut store, bot_id, "enabled");
+
+    (StatusCode::OK, Json(ApiResponse::ok(response)))
+}
+
+async fn disable_bot(
+    State(state): State<AppState>,
+    Path(bot_id): Path<u64>,
+) -> (StatusCode, Json<ApiResponse<Bot>>) {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let Some(bot) = store.bots.get_mut(&bot_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::err("Bot not found")),
+        );
+    };
+
+    bot.is_active = false;
+    let response = bot.clone();
+    append_bot_action(&mut store, bot_id, "disabled");
+
+    (StatusCode::OK, Json(ApiResponse::ok(response)))
+}
+
+async fn bot_actions(
+    State(state): State<AppState>,
+    Path(bot_id): Path<u64>,
+) -> (StatusCode, Json<ApiResponse<Vec<BotAction>>>) {
     let store = state.inner.lock().expect("state lock poisoned");
     if !store.bots.contains_key(&bot_id) {
         return (
@@ -458,10 +543,22 @@ async fn think_by_id(
         );
     }
 
-    (
-        StatusCode::OK,
-        Json(ApiResponse::ok_message("Bot think cycle triggered")),
-    )
+    (StatusCode::OK, Json(ApiResponse::ok(recent_actions_for_bot(&store, bot_id))))
+}
+
+async fn bot_statistics(
+    State(state): State<AppState>,
+    Path(bot_id): Path<u64>,
+) -> (StatusCode, Json<ApiResponse<BotStatistics>>) {
+    let store = state.inner.lock().expect("state lock poisoned");
+    if !store.bots.contains_key(&bot_id) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::err("Bot not found")),
+        );
+    }
+
+    (StatusCode::OK, Json(ApiResponse::ok(build_bot_statistics(&store, bot_id))))
 }
 
 async fn leaderboard_top(
@@ -485,4 +582,46 @@ async fn leaderboard_top(
 
 async fn list_personalities() -> Json<ApiResponse<Vec<Personality>>> {
     Json(ApiResponse::ok(personalities()))
+}
+
+fn append_bot_action(store: &mut BotStore, bot_id: u64, action: &str) {
+    store.next_action_id += 1;
+    let bot_active = store
+        .bots
+        .get(&bot_id)
+        .map(|bot| bot.is_active)
+        .unwrap_or(false);
+
+    let entry = BotAction {
+        id: store.next_action_id,
+        action: action.to_string(),
+        bot_active,
+        details: serde_json::json!({}),
+    };
+
+    store.action_log.entry(bot_id).or_default().push(entry);
+}
+
+fn recent_actions_for_bot(store: &BotStore, bot_id: u64) -> Vec<BotAction> {
+    store.action_log.get(&bot_id).cloned().unwrap_or_default()
+}
+
+fn build_bot_statistics(store: &BotStore, bot_id: u64) -> BotStatistics {
+    let actions = store
+        .action_log
+        .get(&bot_id)
+        .map(|value| value.as_slice())
+        .unwrap_or(&[]);
+
+    BotStatistics {
+        total_actions: actions.len(),
+        enable_count: actions.iter().filter(|item| item.action == "enabled").count(),
+        disable_count: actions.iter().filter(|item| item.action == "disabled").count(),
+        think_count: actions
+            .iter()
+            .filter(|item| item.action == "think_triggered")
+            .count(),
+        update_count: actions.iter().filter(|item| item.action == "updated").count(),
+        created_count: actions.iter().filter(|item| item.action == "created").count(),
+    }
 }

@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Path, State};
 use axum::routing::{get, patch, post};
@@ -13,6 +15,7 @@ const DEFAULT_PORT: u16 = 3001;
 struct AppState {
     settings: Arc<Mutex<SettingsPayload>>,
     incidents: Arc<Mutex<Vec<IncidentPayload>>>,
+    admin_ops: Arc<Mutex<AdminOpsState>>,
 }
 
 impl Default for AppState {
@@ -26,6 +29,7 @@ impl Default for AppState {
                 state: "open".to_string(),
                 created_at: "2026-02-13T00:00:00Z".to_string(),
             }])),
+            admin_ops: Arc::new(Mutex::new(AdminOpsState::default())),
         }
     }
 }
@@ -47,6 +51,9 @@ struct DashboardPayload {
     active_users: u64,
     alerts_open: u64,
     requests_per_minute: u64,
+    maintenance_active: bool,
+    blocked_users: usize,
+    adjusted_users: usize,
 }
 
 #[derive(Serialize)]
@@ -121,6 +128,7 @@ struct AdminStatusPayload {
     service_state: &'static str,
     incidents_open: usize,
     incidents: Vec<IncidentPayload>,
+    admin_state: AdminOpsSnapshot,
 }
 
 #[derive(Serialize)]
@@ -147,6 +155,57 @@ struct UpdateIncidentRequest {
     state: String,
 }
 
+#[derive(Clone)]
+struct AdminOpsState {
+    blocked_users: BTreeSet<String>,
+    maintenance: MaintenancePayload,
+    resource_adjustments: BTreeMap<String, BTreeMap<String, i64>>,
+}
+
+impl Default for AdminOpsState {
+    fn default() -> Self {
+        Self {
+            blocked_users: BTreeSet::new(),
+            maintenance: MaintenancePayload::default(),
+            resource_adjustments: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Default)]
+struct MaintenancePayload {
+    active: bool,
+    started_at_epoch_seconds: Option<u64>,
+    stopped_at_epoch_seconds: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct UserBlockPayload {
+    user_id: String,
+    blocked: bool,
+}
+
+#[derive(Deserialize)]
+struct ResourceAdjustmentRequest {
+    resource: String,
+    delta: i64,
+}
+
+#[derive(Serialize)]
+struct ResourceAdjustmentPayload {
+    user_id: String,
+    resource: String,
+    delta: i64,
+    total: i64,
+}
+
+#[derive(Serialize)]
+struct AdminOpsSnapshot {
+    blocked_users: Vec<String>,
+    maintenance: MaintenancePayload,
+    resource_adjustments: BTreeMap<String, BTreeMap<String, i64>>,
+}
+
 fn app_router() -> Router {
     let state = AppState::default();
 
@@ -158,6 +217,12 @@ fn app_router() -> Router {
         .route("/analytics", get(admin_analytics))
         .route("/audit", get(admin_audit))
         .route("/status", get(admin_status))
+        .route("/users/:id/block", post(block_user))
+        .route("/users/:id/unblock", post(unblock_user))
+        .route("/users/:id/resources", post(adjust_user_resources))
+        .route("/maintenance/start", post(start_maintenance))
+        .route("/maintenance/stop", post(stop_maintenance))
+        .route("/maintenance", get(get_maintenance))
         .route("/events", get(admin_events))
         .route("/status/incidents", post(create_incident))
         .route("/status/incidents/:id", patch(update_incident));
@@ -191,13 +256,18 @@ async fn status() -> Json<ServiceStatus> {
     })
 }
 
-async fn admin_dashboard() -> Json<Envelope<DashboardPayload>> {
+async fn admin_dashboard(State(state): State<AppState>) -> Json<Envelope<DashboardPayload>> {
+    let admin_ops = snapshot_admin_ops(&state);
+
     Json(Envelope {
         status: "ok",
         data: DashboardPayload {
             active_users: 1284,
             alerts_open: 3,
             requests_per_minute: 2370,
+            maintenance_active: admin_ops.maintenance.active,
+            blocked_users: admin_ops.blocked_users.len(),
+            adjusted_users: admin_ops.resource_adjustments.len(),
         },
     })
 }
@@ -307,6 +377,7 @@ async fn admin_status(State(state): State<AppState>) -> Json<Envelope<AdminStatu
         .lock()
         .expect("incidents lock poisoned")
         .clone();
+    let admin_state = snapshot_admin_ops(&state);
 
     let incidents_open = incidents.iter().filter(|incident| incident.state == "open").count();
 
@@ -316,6 +387,7 @@ async fn admin_status(State(state): State<AppState>) -> Json<Envelope<AdminStatu
             service_state: "operational",
             incidents_open,
             incidents,
+            admin_state,
         },
     })
 }
@@ -391,6 +463,116 @@ async fn update_incident(
         status: "ok",
         data: incident,
     })
+}
+
+async fn block_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Json<Envelope<UserBlockPayload>> {
+    let mut admin_ops = state.admin_ops.lock().expect("admin ops lock poisoned");
+    admin_ops.blocked_users.insert(id.clone());
+
+    Json(Envelope {
+        status: "ok",
+        data: UserBlockPayload {
+            user_id: id,
+            blocked: true,
+        },
+    })
+}
+
+async fn unblock_user(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Json<Envelope<UserBlockPayload>> {
+    let mut admin_ops = state.admin_ops.lock().expect("admin ops lock poisoned");
+    admin_ops.blocked_users.remove(&id);
+
+    Json(Envelope {
+        status: "ok",
+        data: UserBlockPayload {
+            user_id: id,
+            blocked: false,
+        },
+    })
+}
+
+async fn adjust_user_resources(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(payload): Json<ResourceAdjustmentRequest>,
+) -> Json<Envelope<ResourceAdjustmentPayload>> {
+    let mut admin_ops = state.admin_ops.lock().expect("admin ops lock poisoned");
+
+    let user_resources = admin_ops
+        .resource_adjustments
+        .entry(id.clone())
+        .or_default();
+    let total = user_resources.entry(payload.resource.clone()).or_default();
+    *total += payload.delta;
+
+    Json(Envelope {
+        status: "ok",
+        data: ResourceAdjustmentPayload {
+            user_id: id,
+            resource: payload.resource,
+            delta: payload.delta,
+            total: *total,
+        },
+    })
+}
+
+async fn start_maintenance(State(state): State<AppState>) -> Json<Envelope<MaintenancePayload>> {
+    let mut admin_ops = state.admin_ops.lock().expect("admin ops lock poisoned");
+    admin_ops.maintenance.active = true;
+    admin_ops.maintenance.started_at_epoch_seconds = Some(now_epoch_seconds());
+    admin_ops.maintenance.stopped_at_epoch_seconds = None;
+
+    Json(Envelope {
+        status: "ok",
+        data: admin_ops.maintenance.clone(),
+    })
+}
+
+async fn stop_maintenance(State(state): State<AppState>) -> Json<Envelope<MaintenancePayload>> {
+    let mut admin_ops = state.admin_ops.lock().expect("admin ops lock poisoned");
+    admin_ops.maintenance.active = false;
+    admin_ops.maintenance.stopped_at_epoch_seconds = Some(now_epoch_seconds());
+
+    Json(Envelope {
+        status: "ok",
+        data: admin_ops.maintenance.clone(),
+    })
+}
+
+async fn get_maintenance(State(state): State<AppState>) -> Json<Envelope<MaintenancePayload>> {
+    let maintenance = state
+        .admin_ops
+        .lock()
+        .expect("admin ops lock poisoned")
+        .maintenance
+        .clone();
+
+    Json(Envelope {
+        status: "ok",
+        data: maintenance,
+    })
+}
+
+fn snapshot_admin_ops(state: &AppState) -> AdminOpsSnapshot {
+    let admin_ops = state.admin_ops.lock().expect("admin ops lock poisoned");
+    AdminOpsSnapshot {
+        blocked_users: admin_ops.blocked_users.iter().cloned().collect(),
+        maintenance: admin_ops.maintenance.clone(),
+        resource_adjustments: admin_ops.resource_adjustments.clone(),
+    }
+}
+
+fn now_epoch_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before epoch")
+        .as_secs()
 }
 
 fn listen_port(default_port: u16) -> u16 {
@@ -578,6 +760,282 @@ mod tests {
         assert_eq!(body["status"], "ok");
         assert!(body["data"]["incidents_open"].is_number());
         assert!(body["data"]["incidents"].is_array());
+        assert!(body["data"]["admin_state"]["blocked_users"].is_array());
+        assert!(body["data"]["admin_state"]["resource_adjustments"].is_object());
+    }
+
+    #[tokio::test]
+    async fn block_user_route_persists_state_in_status() {
+        let app = app_router();
+
+        let block_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-1/block")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(block_response.status(), StatusCode::OK);
+        let block_body = json_body(block_response).await;
+        assert_eq!(block_body["data"]["user_id"], "user-1");
+        assert_eq!(block_body["data"]["blocked"], true);
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status_body = json_body(status_response).await;
+        assert_eq!(status_body["data"]["admin_state"]["blocked_users"], json!(["user-1"]));
+    }
+
+    #[tokio::test]
+    async fn unblock_user_route_removes_user_from_state() {
+        let app = app_router();
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-2/block")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let unblock_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-2/unblock")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(unblock_response.status(), StatusCode::OK);
+        let unblock_body = json_body(unblock_response).await;
+        assert_eq!(unblock_body["data"]["blocked"], false);
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status_body = json_body(status_response).await;
+        assert_eq!(status_body["data"]["admin_state"]["blocked_users"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn resource_adjustments_accumulate_by_user_and_resource() {
+        let app = app_router();
+
+        let add_payload = json!({ "resource": "credits", "delta": 50 });
+        let subtract_payload = json!({ "resource": "credits", "delta": -15 });
+
+        let add_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-3/resources")
+                    .header("content-type", "application/json")
+                    .body(Body::from(add_payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(add_response.status(), StatusCode::OK);
+        let add_body = json_body(add_response).await;
+        assert_eq!(add_body["data"]["total"], 50);
+
+        let subtract_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-3/resources")
+                    .header("content-type", "application/json")
+                    .body(Body::from(subtract_payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let subtract_body = json_body(subtract_response).await;
+        assert_eq!(subtract_body["data"]["total"], 35);
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status_body = json_body(status_response).await;
+        assert_eq!(
+            status_body["data"]["admin_state"]["resource_adjustments"]["user-3"]["credits"],
+            35
+        );
+    }
+
+    #[tokio::test]
+    async fn maintenance_start_and_get_routes_report_active_window() {
+        let app = app_router();
+
+        let start_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/maintenance/start")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(start_response.status(), StatusCode::OK);
+        let start_body = json_body(start_response).await;
+        assert_eq!(start_body["data"]["active"], true);
+        assert!(start_body["data"]["started_at_epoch_seconds"].is_number());
+        assert!(start_body["data"]["stopped_at_epoch_seconds"].is_null());
+
+        let get_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/maintenance")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let get_body = json_body(get_response).await;
+        assert_eq!(get_body["data"]["active"], true);
+        assert!(get_body["data"]["started_at_epoch_seconds"].is_number());
+    }
+
+    #[tokio::test]
+    async fn maintenance_stop_route_transitions_back_to_inactive() {
+        let app = app_router();
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/maintenance/start")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let stop_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/maintenance/stop")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(stop_response.status(), StatusCode::OK);
+        let stop_body = json_body(stop_response).await;
+        assert_eq!(stop_body["data"]["active"], false);
+        assert!(stop_body["data"]["stopped_at_epoch_seconds"].is_number());
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status_body = json_body(status_response).await;
+        assert_eq!(status_body["data"]["admin_state"]["maintenance"]["active"], false);
+    }
+
+    #[tokio::test]
+    async fn dashboard_reflects_admin_operational_state_counts() {
+        let app = app_router();
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-5/block")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/users/user-6/resources")
+                    .header("content-type", "application/json")
+                    .body(Body::from(json!({ "resource": "quota", "delta": 1 }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/maintenance/start")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let dashboard_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/dashboard")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let dashboard_body = json_body(dashboard_response).await;
+        assert_eq!(dashboard_body["data"]["maintenance_active"], true);
+        assert_eq!(dashboard_body["data"]["blocked_users"], 1);
+        assert_eq!(dashboard_body["data"]["adjusted_users"], 1);
     }
 
     #[tokio::test]

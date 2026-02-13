@@ -10,6 +10,31 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&body).unwrap()
 }
 
+async fn create_test_bot(app: &axum::Router, username: &str) -> u64 {
+    let payload = json!({
+        "username": username,
+        "email": format!("{username}@example.com"),
+        "personality_type": "aggressive_conqueror",
+        "difficulty_level": 7
+    });
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/bots")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let create_body = response_json(create_response).await;
+    create_body["data"]["id"].as_u64().unwrap()
+}
+
 #[tokio::test]
 async fn list_bots_returns_success_with_data_array() {
     let app = build_router();
@@ -138,4 +163,172 @@ async fn process_all_returns_trigger_message() {
     let body = response_json(response).await;
     assert_eq!(body["success"], true);
     assert_eq!(body["message"], "Bot processing triggered");
+}
+
+#[tokio::test]
+async fn disable_then_enable_updates_active_state() {
+    let app = build_router();
+    let bot_id = create_test_bot(&app, "bot_toggle").await;
+
+    let disable_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/disable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(disable_response.status(), StatusCode::OK);
+    let disable_body = response_json(disable_response).await;
+    assert_eq!(disable_body["data"]["is_active"], false);
+
+    let enable_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/enable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(enable_response.status(), StatusCode::OK);
+    let enable_body = response_json(enable_response).await;
+    assert_eq!(enable_body["data"]["is_active"], true);
+}
+
+#[tokio::test]
+async fn actions_endpoint_returns_action_log_entries() {
+    let app = build_router();
+    let bot_id = create_test_bot(&app, "bot_actions").await;
+
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/disable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/enable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/actions"))
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    let actions = body["data"].as_array().unwrap();
+    assert!(actions.len() >= 3);
+    assert_eq!(actions[0]["action"], "created");
+    assert_eq!(actions[1]["action"], "disabled");
+    assert_eq!(actions[2]["action"], "enabled");
+}
+
+#[tokio::test]
+async fn statistics_endpoint_counts_operations() {
+    let app = build_router();
+    let bot_id = create_test_bot(&app, "bot_stats").await;
+
+    let update_payload = json!({
+        "difficulty_level": 8,
+        "think_interval_minutes": 15
+    });
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}"))
+                .method("PUT")
+                .header("content-type", "application/json")
+                .body(Body::from(update_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/disable"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let _ = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/think"))
+                .method("POST")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/admin/bots/{bot_id}/statistics"))
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["data"]["created_count"], 1);
+    assert_eq!(body["data"]["update_count"], 1);
+    assert_eq!(body["data"]["disable_count"], 1);
+    assert_eq!(body["data"]["think_count"], 1);
+    assert_eq!(body["data"]["total_actions"], 4);
+}
+
+#[tokio::test]
+async fn actions_for_missing_bot_returns_not_found() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/bots/404/actions")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Bot not found");
 }

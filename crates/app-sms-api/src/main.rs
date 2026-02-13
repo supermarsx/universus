@@ -2,7 +2,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -65,6 +67,21 @@ struct SendAcceptedResponse {
 }
 
 #[derive(Clone, Serialize)]
+struct SendAcceptedItem {
+    request_id: String,
+    accepted_at_ms: u128,
+    envelope: SendEnvelope,
+}
+
+#[derive(Serialize)]
+struct BulkSendAcceptedResponse {
+    status: &'static str,
+    service: &'static str,
+    count: usize,
+    items: Vec<SendAcceptedItem>,
+}
+
+#[derive(Clone, Serialize)]
 struct HistoryItem {
     request_id: String,
     accepted_at_ms: u128,
@@ -89,9 +106,21 @@ struct MetricsResponse {
     last_request_id: Option<String>,
 }
 
+#[derive(Serialize)]
+struct ErrorResponse {
+    status: &'static str,
+    service: &'static str,
+    error: String,
+}
+
 #[derive(Deserialize)]
 struct HistoryQuery {
     limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+struct BulkSendRequest {
+    items: Vec<SendEnvelope>,
 }
 
 struct SmsApiState {
@@ -152,29 +181,79 @@ async fn send_sms_handler(
     Json(envelope): Json<SendEnvelope>,
 ) -> Json<SendAcceptedResponse> {
     let mut state = state.lock().await;
-    state.total_requests += 1;
-    state.next_request_sequence += 1;
-
-    let request_id = next_request_id(state.next_request_sequence);
-    let accepted_at_ms = now_unix_epoch_ms();
-
-    state.history.push(HistoryItem {
-        request_id: request_id.clone(),
-        accepted_at_ms,
-        envelope: envelope.clone(),
-    });
-
-    if state.history.len() > HISTORY_LIMIT {
-        state.history.remove(0);
-    }
+    let accepted = accept_envelope(&mut state, envelope.clone());
 
     Json(SendAcceptedResponse {
         status: "accepted",
         service: SERVICE_NAME,
-        request_id,
-        accepted_at_ms,
-        envelope,
+        request_id: accepted.request_id,
+        accepted_at_ms: accepted.accepted_at_ms,
+        envelope: accepted.envelope,
     })
+}
+
+async fn send_bulk_handler(
+    State(state): State<Arc<Mutex<SmsApiState>>>,
+    Json(request): Json<BulkSendRequest>,
+) -> (StatusCode, Json<BulkSendAcceptedResponse>) {
+    if request.items.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(BulkSendAcceptedResponse {
+                status: "rejected",
+                service: SERVICE_NAME,
+                count: 0,
+                items: Vec::new(),
+            }),
+        );
+    }
+
+    let mut state = state.lock().await;
+    let mut items = Vec::with_capacity(request.items.len());
+    for envelope in request.items {
+        let accepted = accept_envelope(&mut state, envelope);
+        items.push(accepted);
+    }
+
+    (
+        StatusCode::ACCEPTED,
+        Json(BulkSendAcceptedResponse {
+            status: "accepted",
+            service: SERVICE_NAME,
+            count: items.len(),
+            items,
+        }),
+    )
+}
+
+async fn get_send_request(
+    State(state): State<Arc<Mutex<SmsApiState>>>,
+    Path(request_id): Path<String>,
+) -> impl IntoResponse {
+    let state = state.lock().await;
+    let Some(item) = state.history.iter().find(|entry| entry.request_id == request_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                status: "not_found",
+                service: SERVICE_NAME,
+                error: "request_id not found".to_string(),
+            }),
+        )
+            .into_response();
+    };
+
+    (
+        StatusCode::OK,
+        Json(SendAcceptedResponse {
+            status: "accepted",
+            service: SERVICE_NAME,
+            request_id: item.request_id.clone(),
+            accepted_at_ms: item.accepted_at_ms,
+            envelope: item.envelope.clone(),
+        }),
+    )
+        .into_response()
 }
 
 async fn metrics(State(state): State<Arc<Mutex<SmsApiState>>>) -> Json<MetricsResponse> {
@@ -221,11 +300,37 @@ fn listen_port(default_port: u16) -> u16 {
 fn build_router(state: Arc<Mutex<SmsApiState>>) -> Router {
     Router::new()
         .route("/api/send", post(send_sms_handler))
+        .route("/api/send/bulk", post(send_bulk_handler))
+        .route("/api/send/:request_id", get(get_send_request))
         .route("/metrics", get(metrics))
         .route("/history", get(history))
         .route("/health", get(health))
         .route("/ready", get(ready))
         .with_state(state)
+}
+
+fn accept_envelope(state: &mut SmsApiState, envelope: SendEnvelope) -> SendAcceptedItem {
+    state.total_requests += 1;
+    state.next_request_sequence += 1;
+
+    let request_id = next_request_id(state.next_request_sequence);
+    let accepted_at_ms = now_unix_epoch_ms();
+
+    state.history.push(HistoryItem {
+        request_id: request_id.clone(),
+        accepted_at_ms,
+        envelope: envelope.clone(),
+    });
+
+    if state.history.len() > HISTORY_LIMIT {
+        state.history.remove(0);
+    }
+
+    SendAcceptedItem {
+        request_id,
+        accepted_at_ms,
+        envelope,
+    }
 }
 
 #[tokio::main]
@@ -393,5 +498,72 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[tokio::test]
+    async fn bulk_send_assigns_deterministic_ids_in_order() {
+        let app = test_app();
+        let payload = json!({
+            "items": [
+                sample_envelope("010"),
+                sample_envelope("011"),
+                sample_envelope("012")
+            ]
+        });
+
+        let (status, response) = json_response(&app, Method::POST, "/api/send/bulk", payload).await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert_eq!(response["status"], "accepted");
+        assert_eq!(response["count"], 3);
+        assert_eq!(response["items"][0]["request_id"], "sms-req-0000000000000001");
+        assert_eq!(response["items"][1]["request_id"], "sms-req-0000000000000002");
+        assert_eq!(response["items"][2]["request_id"], "sms-req-0000000000000003");
+    }
+
+    #[tokio::test]
+    async fn send_lookup_returns_existing_request() {
+        let app = test_app();
+        let (_, sent) = json_response(&app, Method::POST, "/api/send", sample_envelope("020")).await;
+        let request_id = sent["request_id"].as_str().expect("request id should exist");
+
+        let (status, lookup) = get_json(&app, &format!("/api/send/{request_id}")).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(lookup["request_id"], request_id);
+        assert_eq!(lookup["envelope"]["idempotency_key"], "idem-020");
+    }
+
+    #[tokio::test]
+    async fn send_lookup_returns_not_found_for_missing_request() {
+        let app = test_app();
+
+        let (status, payload) = get_json(&app, "/api/send/sms-req-0000000000009999").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(payload["status"], "not_found");
+        assert_eq!(payload["error"], "request_id not found");
+    }
+
+    #[tokio::test]
+    async fn bulk_send_updates_metrics_and_history() {
+        let app = test_app();
+        let _ = json_response(&app, Method::POST, "/api/send", sample_envelope("030")).await;
+        let bulk_payload = json!({
+            "items": [
+                sample_envelope("031"),
+                sample_envelope("032")
+            ]
+        });
+        let _ = json_response(&app, Method::POST, "/api/send/bulk", bulk_payload).await;
+
+        let (metrics_status, metrics_payload) = get_json(&app, "/metrics").await;
+        assert_eq!(metrics_status, StatusCode::OK);
+        assert_eq!(metrics_payload["total_requests"], 3);
+        assert_eq!(metrics_payload["stored_history"], 3);
+        assert_eq!(metrics_payload["last_request_id"], "sms-req-0000000000000003");
+
+        let (history_status, history_payload) = get_json(&app, "/history?limit=3").await;
+        assert_eq!(history_status, StatusCode::OK);
+        assert_eq!(history_payload["total"], 3);
+        assert_eq!(history_payload["items"][0]["request_id"], "sms-req-0000000000000003");
+        assert_eq!(history_payload["items"][2]["request_id"], "sms-req-0000000000000001");
     }
 }
