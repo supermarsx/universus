@@ -18,6 +18,7 @@ mod shipyard;
 mod shop;
 mod themes;
 mod universe;
+mod users;
 
 use axum::routing::get;
 use axum::{middleware, Extension, Json, Router};
@@ -47,6 +48,7 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(shipyard::protected_router())
         .merge(shards::router())
         .merge(universe::router())
+        .merge(users::router())
         .route_layer(middleware::from_fn(require_bearer_auth));
 
     Router::new()

@@ -378,6 +378,74 @@ async fn account_resources_with_invalid_token_returns_401() {
 }
 
 #[tokio::test]
+async fn users_me_without_auth_returns_401() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/users/me")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn users_me_with_auth_returns_parity_friendly_shape() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/users/me")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["id"], 1);
+    assert_eq!(body["username"], "Commander");
+    assert_eq!(body["data"]["id"], 1);
+    assert_eq!(body["user"]["id"], 1);
+    assert_eq!(body["research"]["energy_technology"], 12);
+}
+
+#[tokio::test]
+async fn users_leaderboard_with_auth_returns_sorted_entries() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/users/leaderboard")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert!(body.is_array());
+    assert_eq!(body[0]["username"], "AdmiralNova");
+    assert_eq!(body[0]["total_score"], 8_400_000);
+    assert_eq!(body[0]["total_score_value"], 8_400_000);
+    assert_eq!(body[1]["username"], "Commander");
+}
+
+#[tokio::test]
 async fn fleet_send_without_auth_returns_401() {
     let app = build_router(TEST_SERVICE_NAME);
     let payload = json!({
