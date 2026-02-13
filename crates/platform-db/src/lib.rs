@@ -222,9 +222,32 @@ impl Database {
                     event_type TEXT NOT NULL,
                     session_id TEXT,
                     properties JSONB,
+                    event_properties JSONB,
                     user_id BIGINT,
+                    user_agent TEXT,
+                    ip_address TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-                );",
+                );
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS properties JSONB;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS event_properties JSONB;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS user_agent TEXT;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS ip_address TEXT;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS user_id BIGINT;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS session_id TEXT;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS event_type TEXT;
+                ALTER TABLE analytics_events
+                    ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+                UPDATE analytics_events
+                SET properties = COALESCE(properties, event_properties),
+                    event_properties = COALESCE(event_properties, properties)
+                WHERE properties IS NULL OR event_properties IS NULL;",
             )
             .await
             .map_err(|error| error.to_string())
@@ -351,13 +374,42 @@ impl Database {
         properties: Option<serde_json::Value>,
         user_id: Option<i64>,
     ) -> DbResult<()> {
+        self.track_analytics_event_detailed(
+            event_type,
+            session_id,
+            properties,
+            user_id,
+            None,
+            None,
+        )
+        .await
+    }
+
+    pub async fn track_analytics_event_detailed(
+        &self,
+        event_type: &str,
+        session_id: Option<&str>,
+        properties: Option<serde_json::Value>,
+        user_id: Option<i64>,
+        user_agent: Option<&str>,
+        ip_address: Option<&str>,
+    ) -> DbResult<()> {
         self.ensure_analytics_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
         client
             .execute(
-                "INSERT INTO analytics_events (event_type, session_id, properties, user_id)
-                 VALUES ($1, $2, $3, $4)",
-                &[&event_type, &session_id, &properties.map(Json), &user_id],
+                "INSERT INTO analytics_events
+                    (event_type, session_id, properties, event_properties, user_id, user_agent, ip_address)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                &[
+                    &event_type,
+                    &session_id,
+                    &properties.as_ref().map(Json),
+                    &properties.as_ref().map(Json),
+                    &user_id,
+                    &user_agent,
+                    &ip_address,
+                ],
             )
             .await
             .map_err(|error| error.to_string())?;
