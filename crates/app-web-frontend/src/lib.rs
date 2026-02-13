@@ -9,26 +9,53 @@ use serde::Serialize;
 pub const SERVICE_NAME: &str = "app-web-frontend";
 pub const DEFAULT_PORT: u16 = 3005;
 
-const TEMPLATE_ROUTES: [(&str, &str); 23] = [
+const TEMPLATE_ROUTES: [(&str, &str); 40] = [
     ("/", "Home"),
+    ("/index.html", "Home"),
     ("/overview", "Overview"),
+    ("/overview.html", "Overview"),
     ("/buildings", "Buildings"),
+    ("/buildings.html", "Buildings"),
     ("/research", "Research"),
+    ("/research.html", "Research"),
     ("/shipyard", "Shipyard"),
+    ("/shipyard.html", "Shipyard"),
     ("/fleet", "Fleet"),
+    ("/fleet.html", "Fleet"),
     ("/galaxy", "Galaxy"),
+    ("/galaxy.html", "Galaxy"),
     ("/leaderboard", "Leaderboard"),
+    ("/leaderboard.html", "Leaderboard"),
     ("/messages", "Messages"),
+    ("/messages.html", "Messages"),
     ("/shop", "Shop"),
+    ("/shop.html", "Shop"),
     ("/notifications", "Notifications"),
+    ("/notifications.html", "Notifications"),
+    ("/matrix-shop", "Matrix Shop"),
+    ("/matrix-shop.html", "Matrix Shop"),
     ("/admin", "Admin"),
+    ("/admin.html", "Admin"),
     ("/admin/dashboard", "Admin Dashboard"),
     ("/admin/users", "Admin Users"),
     ("/admin/monitoring", "Admin Monitoring"),
     ("/admin/settings", "Admin Settings"),
+    ("/admin/events", "Admin Events"),
+    ("/admin/analytics", "Admin Analytics"),
+    ("/admin/audit", "Admin Audit Logs"),
+    ("/admin/sms-service", "Admin SMS Service"),
+    ("/admin/bots", "Admin Bot Management"),
+    ("/admin/bots.html", "Admin Bot Management"),
     ("/chat", "Chat"),
+    ("/chat.html", "Chat"),
     ("/account/settings", "Account Settings"),
-    ("/alliance", "Alliance"),
+    ("/account/security", "Security Dashboard"),
+    ("/account/2fa", "2FA Setup"),
+    ("/account/email", "Email Verification"),
+    ("/account/password", "Password Recovery"),
+    ("/account/privacy", "Privacy and Data Management"),
+    ("/account/transfer", "Account Transfer"),
+    ("/alliance", "Alliance Dashboard"),
     ("/alliance/dashboard", "Alliance Dashboard"),
     ("/alliance/wars", "Alliance Wars"),
     ("/alliance/diplomacy", "Alliance Diplomacy"),
@@ -90,6 +117,6 @@ async fn template_page(title: &'static str, OriginalUri(uri): OriginalUri) -> Ht
     let route_path = uri.path();
 
     Html(format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title} - Universus</title></head><body><main><h1>{title}</h1><p>Placeholder template page for <code>{route_path}</code>.</p></main></body></html>"
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"route-title\" content=\"{title}\"><meta name=\"route-path\" content=\"{route_path}\"><title>{title} - Universus</title></head><body><main><h1>{title}</h1><p>Placeholder template page for <code>{route_path}</code>.</p></main></body></html>"
     ))
 }

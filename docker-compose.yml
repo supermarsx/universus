@@ -169,7 +169,7 @@ services:
     environment:
       PORT: 3005
     ports:
-      - "8081:3005"
+      - "8080:3005"
     restart: unless-stopped
 
   rust-admin-api:
@@ -322,6 +322,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    profiles: ["legacy-frontend"]
     build:
       context: ./frontend
     container_name: universus_frontend
@@ -333,7 +334,7 @@ services:
         condition: service_started
         required: false
     ports:
-      - "8080:80"
+      - "8081:80"
     restart: unless-stopped
 
   prometheus:

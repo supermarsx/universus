@@ -3,6 +3,7 @@
 ## Status
 Updated on February 13, 2026.
 - Migration mode: hard-cut capable in runtime wiring via `docker compose --profile rust-only`.
+- UI entrypoint switch: rust-only now defaults to `rust-web-frontend` on host port `8080`; legacy Node `frontend` is opt-in via `--profile legacy-frontend` on host port `8081`.
 - Rust service binaries currently moved and wired:
   - `app-api-gateway` (`rust-api-gateway`)
   - `app-web-frontend` (`rust-web-frontend`, rust-only profile)
@@ -25,7 +26,7 @@ See `specification/spec-rust-route-ownership.md` for the crate-partitioned route
 | Service family | Implemented crate(s) | Runtime service | Endpoint families now in Rust |
 | --- | --- | --- | --- |
 | api-gateway | `app-api-gateway` | `rust-api-gateway` | Health/readiness plus `/api/auth/*`, `/api/planets*`, `/api/fleet*`, `/api/combat/simulate`, `/api/alliance*`, `/api/messages*`, `/api/leaderboard*`, `/api/galaxy*`, `/api/shop*`, `/api/research*`, `/api/shipyard*`. |
-| web-frontend | `app-web-frontend` | `rust-web-frontend` (rust-only profile) | Server-rendered page routes replacing Node template router during rust-only cutover path (parity checklist tracked in `rust-final-cutover-checklist.md`). |
+| web-frontend | `app-web-frontend` | `rust-web-frontend` (rust-only default UI entrypoint on `:8080`) | Server-rendered page routes replacing Node template router during rust-only cutover path (parity checklist tracked in `rust-final-cutover-checklist.md`). |
 | admin | `app-admin-api` | `rust-admin-api` | Health/readiness/status plus `/api/admin/dashboard`, `/users`, `/monitoring`, `/settings`, `/analytics`, `/audit`, `/status`, `/events`, `/status/incidents*`. |
 | bot | `app-bot-api` | `rust-bot-api` | Health/readiness plus `/api/admin/bots*` families: CRUD, filters, think/process triggers, leaderboard, personalities. |
 | sms | `app-sms-api` | `rust-sms-api` | `/api/send`, `/metrics`, `/history`, `/health`, `/ready`. |
@@ -36,7 +37,7 @@ See `specification/spec-rust-route-ownership.md` for the crate-partitioned route
 ## Remaining Legacy Hotspots
 - Node `backend` still owns major DB write paths and business parity for many production gameplay routes; hard-cut requires route-level SQL and behavior parity sign-off.
 - Node-side bridge/runtime paths remain in circulation (`backend-core-napi`, plus mixed helper fallbacks), so full Rust ownership is not yet complete.
-- Frontend cutover now has a dedicated rust-only runtime service (`rust-web-frontend`), but page/auth/session/realtime contract parity still requires final sign-off.
+- Frontend cutover now has a dedicated rust-only runtime service (`rust-web-frontend`) as the default rust-only UI entrypoint; legacy Node `frontend` remains available only via explicit `legacy-frontend` profile. Page/auth/session/realtime contract parity still requires final sign-off.
 
 ## Objective
 Reframe the entire backend as a Rust-first platform with explicit crate boundaries, preserving gameplay behavior while removing Node.js service ownership over time.
@@ -155,7 +156,7 @@ universus-rs/
 
 ## Service-to-Crate Mapping (From Current Code)
 - `backend` -> `app-api-gateway`, `app-realtime-gateway`, domain crates (`game-*`) and platform crates.
-- `frontend` + Node template routing path -> `app-web-frontend` (rust-only cutover path), with `app-api-gateway` and `app-realtime-gateway` as backend dependencies.
+- `frontend` + Node template routing path -> `app-web-frontend` (rust-only cutover path and default rust-only UI entrypoint), with `app-api-gateway` and `app-realtime-gateway` as backend dependencies. Legacy Node `frontend` runtime remains available only through the explicit `legacy-frontend` compose profile.
 - `backend-admin-service` -> `app-admin-api` + `platform-auth`, `platform-db`, `platform-observability`.
 - `backend-bot-service` -> `app-bot-api`, `app-bot-worker`, `game-antiabuse`, `game-fleet`, `game-economy`.
 - `backend-sms-service` -> `app-sms-api`, `adapter-provider-sms`, `platform-events`.
