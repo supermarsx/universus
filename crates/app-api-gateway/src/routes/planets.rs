@@ -1,10 +1,12 @@
-use axum::extract::{Path, rejection::JsonRejection};
+use axum::extract::{rejection::JsonRejection, Path};
 use axum::response::Response;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde::{Deserialize, Serialize};
 
+use crate::auth_guard::BearerToken;
 use crate::response::{bad_request, success};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +49,24 @@ struct RenamePlanetPayload {
     new_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildPlanetRequest {
+    #[serde(alias = "buildingType")]
+    building_type: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildPlanetResponse {
+    queue_id: String,
+    planet_id: String,
+    building_type: String,
+    level_target: i32,
+    finishes_in_seconds: i64,
+    queued: bool,
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/api/planets", get(list_planets_handler))
@@ -55,7 +75,14 @@ pub fn router() -> Router {
             "/api/planets/:planet_id/resources",
             get(get_planet_resources_handler),
         )
-        .route("/api/planets/:planet_id/rename", post(rename_planet_handler))
+        .route(
+            "/api/planets/:planet_id/rename",
+            post(rename_planet_handler),
+        )
+}
+
+pub fn protected_router() -> Router {
+    Router::new().route("/api/planets/:planet_id/build", post(build_planet_handler))
 }
 
 async fn list_planets_handler() -> Response {
@@ -72,7 +99,10 @@ async fn get_planet_handler(Path(planet_id): Path<String>) -> Response {
 }
 
 async fn get_planet_resources_handler(Path(planet_id): Path<String>) -> Response {
-    let Some(planet) = default_planets().into_iter().find(|planet| planet.id == planet_id) else {
+    let Some(planet) = default_planets()
+        .into_iter()
+        .find(|planet| planet.id == planet_id)
+    else {
         return bad_request("Planet not found");
     };
 
@@ -103,7 +133,10 @@ async fn rename_planet_handler(
         return bad_request("Planet name is required");
     }
 
-    let Some(planet) = default_planets().into_iter().find(|planet| planet.id == planet_id) else {
+    let Some(planet) = default_planets()
+        .into_iter()
+        .find(|planet| planet.id == planet_id)
+    else {
         return bad_request("Planet not found");
     };
 
@@ -112,6 +145,33 @@ async fn rename_planet_handler(
         old_name: planet.name,
         new_name: input.name.trim().to_string(),
     })
+}
+
+async fn build_planet_handler(
+    Path(planet_id): Path<String>,
+    BearerToken(token): BearerToken,
+    Extension(app_state): Extension<AppState>,
+    payload: Result<Json<BuildPlanetRequest>, JsonRejection>,
+) -> Response {
+    let Json(input) = match payload {
+        Ok(value) => value,
+        Err(_) => return bad_request("Invalid build payload"),
+    };
+    if input.building_type.trim().is_empty() {
+        return bad_request("Building type is required");
+    }
+
+    match app_state.enqueue_building_upgrade(&token, &planet_id, &input.building_type) {
+        Ok(item) => success(BuildPlanetResponse {
+            queue_id: item.queue_id,
+            planet_id: item.planet_id,
+            building_type: item.building_type,
+            level_target: item.level_target,
+            finishes_in_seconds: item.finishes_in_seconds,
+            queued: true,
+        }),
+        Err(message) => bad_request(message),
+    }
 }
 
 fn default_planets() -> Vec<PlanetPayload> {

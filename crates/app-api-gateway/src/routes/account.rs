@@ -1,9 +1,11 @@
 use axum::response::Response;
 use axum::routing::get;
-use axum::Router;
+use axum::{Extension, Router};
 use serde::Serialize;
 
+use crate::auth_guard::BearerToken;
 use crate::response::success;
+use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,11 +42,15 @@ async fn account_profile_handler() -> Response {
     })
 }
 
-async fn account_resources_handler() -> Response {
+async fn account_resources_handler(
+    BearerToken(token): BearerToken,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
+    let resources = app_state.account_resources(&token);
     success(AccountResources {
-        metal: 125_000,
-        crystal: 94_500,
-        deuterium: 40_250,
-        dark_matter: 1_500,
+        metal: resources.metal,
+        crystal: resources.crystal,
+        deuterium: resources.deuterium,
+        dark_matter: resources.dark_matter,
     })
 }

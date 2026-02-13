@@ -437,3 +437,304 @@ async fn fleet_send_with_auth_returns_success_envelope() {
     assert_eq!(body["data"]["accepted"], true);
     assert_eq!(body["data"]["totalShips"], 25);
 }
+
+#[tokio::test]
+async fn account_resources_drop_after_research_start() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let initial_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/resources")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(initial_response.status(), StatusCode::OK);
+    let initial_body = response_json(initial_response).await;
+
+    let start_payload = json!({
+        "planetId": "p-001",
+        "technologyType": "energy_technology"
+    });
+    let start_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/research/start")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(start_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(start_response.status(), StatusCode::OK);
+    let start_body = response_json(start_response).await;
+    assert_eq!(start_body["success"], true);
+    assert_eq!(start_body["data"]["queued"], true);
+
+    let final_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/resources")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(final_response.status(), StatusCode::OK);
+    let final_body = response_json(final_response).await;
+
+    assert_eq!(
+        final_body["data"]["metal"].as_i64().unwrap(),
+        initial_body["data"]["metal"].as_i64().unwrap() - 24_000
+    );
+    assert_eq!(
+        final_body["data"]["crystal"].as_i64().unwrap(),
+        initial_body["data"]["crystal"].as_i64().unwrap() - 12_000
+    );
+    assert_eq!(
+        final_body["data"]["deuterium"].as_i64().unwrap(),
+        initial_body["data"]["deuterium"].as_i64().unwrap() - 5_000
+    );
+}
+
+#[tokio::test]
+async fn research_start_rejects_unknown_technology() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "planetId": "p-001",
+        "technologyType": "invalid_tech"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/research/start")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Research technology not found");
+}
+
+#[tokio::test]
+async fn fleet_send_records_mission_sequence() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "mission": "attack",
+        "target": "[1:123:7]",
+        "ships": [
+            { "shipType": "lightFighter", "count": 10 }
+        ]
+    });
+
+    let first_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/fleet/send")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first_response.status(), StatusCode::OK);
+    let first_body = response_json(first_response).await;
+    assert_eq!(first_body["data"]["commandId"], "cmd-fleet-001");
+
+    let second_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fleet/send")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_response.status(), StatusCode::OK);
+    let second_body = response_json(second_response).await;
+    assert_eq!(second_body["data"]["commandId"], "cmd-fleet-002");
+}
+
+#[tokio::test]
+async fn shipyard_build_queues_and_decreases_resources() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let initial_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/resources")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(initial_response.status(), StatusCode::OK);
+    let initial_body = response_json(initial_response).await;
+
+    let payload = json!({
+        "planetId": "p-001",
+        "shipType": "small_cargo",
+        "quantity": 2
+    });
+    let build_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shipyard/build")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(build_response.status(), StatusCode::OK);
+    let build_body = response_json(build_response).await;
+    assert_eq!(build_body["success"], true);
+    assert_eq!(build_body["data"]["orderId"], "o-p001-001");
+
+    let final_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/resources")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(final_response.status(), StatusCode::OK);
+    let final_body = response_json(final_response).await;
+    assert_eq!(
+        final_body["data"]["metal"].as_i64().unwrap(),
+        initial_body["data"]["metal"].as_i64().unwrap() - 4_000
+    );
+    assert_eq!(
+        final_body["data"]["crystal"].as_i64().unwrap(),
+        initial_body["data"]["crystal"].as_i64().unwrap() - 4_000
+    );
+}
+
+#[tokio::test]
+async fn shipyard_build_rejects_non_positive_quantity() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "planetId": "p-001",
+        "shipType": "small_cargo",
+        "quantity": 0
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shipyard/build")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Quantity must be greater than zero");
+}
+
+#[tokio::test]
+async fn planet_build_queues_and_increments_level_target() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "buildingType": "metal_mine"
+    });
+
+    let first_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/planets/p-001/build")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first_response.status(), StatusCode::OK);
+    let first_body = response_json(first_response).await;
+    assert_eq!(first_body["data"]["levelTarget"], 1);
+
+    let second_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/planets/p-001/build")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_response.status(), StatusCode::OK);
+    let second_body = response_json(second_response).await;
+    assert_eq!(second_body["data"]["levelTarget"], 2);
+}
+
+#[tokio::test]
+async fn planet_build_requires_building_type() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "buildingType": " "
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/planets/p-001/build")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Building type is required");
+}

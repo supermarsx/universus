@@ -11,10 +11,11 @@ mod shipyard;
 mod shop;
 
 use axum::routing::get;
-use axum::{middleware, Json, Router};
+use axum::{middleware, Extension, Json, Router};
 use serde::Serialize;
 
 use crate::auth_guard::require_bearer_auth;
+use crate::state::AppState;
 
 #[derive(Serialize)]
 struct ServiceStatus {
@@ -25,7 +26,10 @@ struct ServiceStatus {
 pub fn build_router(service_name: &'static str) -> Router {
     let protected_routes = Router::new()
         .merge(account::router())
+        .merge(planets::protected_router())
         .merge(fleet::protected_router())
+        .merge(research::protected_router())
+        .merge(shipyard::protected_router())
         .route_layer(middleware::from_fn(require_bearer_auth));
 
     Router::new()
@@ -42,6 +46,7 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(research::router())
         .merge(shipyard::router())
         .merge(protected_routes)
+        .layer(Extension(AppState::new()))
 }
 
 async fn health(service_name: &'static str) -> Json<ServiceStatus> {

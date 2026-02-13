@@ -1,10 +1,12 @@
-use axum::extract::{Path, rejection::JsonRejection};
+use axum::extract::{rejection::JsonRejection, Path};
 use axum::response::Response;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde::{Deserialize, Serialize};
 
+use crate::auth_guard::BearerToken;
 use crate::response::{bad_request, success};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,6 +45,44 @@ struct BuildPreview {
     total_build_time_seconds: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipyardBuildRequest {
+    #[serde(alias = "planetId")]
+    planet_id: FlexiblePlanetId,
+    #[serde(alias = "shipType")]
+    ship_type: String,
+    #[serde(alias = "quantity", alias = "count")]
+    quantity: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum FlexiblePlanetId {
+    String(String),
+    Number(i64),
+}
+
+impl FlexiblePlanetId {
+    fn into_planet_id(self) -> String {
+        match self {
+            Self::String(value) => value,
+            Self::Number(value) => value.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShipyardBuildResponse {
+    order_id: String,
+    planet_id: String,
+    ship_type: String,
+    quantity: i64,
+    completes_in_seconds: i64,
+    queued: bool,
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/api/shipyard/:planet_id/queue", get(queue_handler))
@@ -54,6 +94,10 @@ pub fn router() -> Router {
             "/api/shipyard/:planet_id/build-preview",
             post(build_preview_handler),
         )
+}
+
+pub fn protected_router() -> Router {
+    Router::new().route("/api/shipyard/build", post(shipyard_build_handler))
 }
 
 async fn queue_handler(Path(_planet_id): Path<String>) -> Response {
@@ -119,4 +163,35 @@ async fn build_preview_handler(
         total_deuterium: deuterium * input.count,
         total_build_time_seconds: build_time * input.count,
     })
+}
+
+async fn shipyard_build_handler(
+    BearerToken(token): BearerToken,
+    Extension(app_state): Extension<AppState>,
+    payload: Result<Json<ShipyardBuildRequest>, JsonRejection>,
+) -> Response {
+    let Json(input) = match payload {
+        Ok(value) => value,
+        Err(_) => return bad_request("Invalid shipyard build payload"),
+    };
+    if input.ship_type.trim().is_empty() {
+        return bad_request("Ship type is required");
+    }
+
+    let planet_id = input.planet_id.into_planet_id();
+    if planet_id.trim().is_empty() {
+        return bad_request("Planet id is required");
+    }
+
+    match app_state.enqueue_ship_build(&token, &planet_id, &input.ship_type, input.quantity) {
+        Ok(item) => success(ShipyardBuildResponse {
+            order_id: item.order_id,
+            planet_id: item.planet_id,
+            ship_type: item.ship_type,
+            quantity: item.count,
+            completes_in_seconds: item.completes_in_seconds,
+            queued: true,
+        }),
+        Err(message) => bad_request(message),
+    }
 }

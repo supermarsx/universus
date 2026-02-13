@@ -1,16 +1,18 @@
 use axum::extract::Path;
 use axum::response::Response;
 use axum::routing::{get, post};
-use axum::{Json, Router};
-use game_combat::{CombatInput, CombatResult, simulate_combat};
-use game_fleet::{FleetMovementInput, FleetMovementResult, calculate_movement};
+use axum::{Extension, Json, Router};
+use game_combat::{simulate_combat, CombatInput, CombatResult};
+use game_fleet::{calculate_movement, FleetMovementInput, FleetMovementResult};
 use serde::{Deserialize, Serialize};
 
+use crate::auth_guard::BearerToken;
 use crate::helpers::{
     attacker_distribution_handler, defense_rebuild_handler, espionage_outcome_handler,
     harvest_collection_handler, helper_movement_handler, mission_cargo_transfer_handler,
 };
 use crate::response::{bad_request, success};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,7 +175,11 @@ async fn get_fleet_handler(Path(fleet_id): Path<String>) -> Response {
     success(detail)
 }
 
-async fn send_fleet_handler(Json(input): Json<FleetSendRequest>) -> Response {
+async fn send_fleet_handler(
+    BearerToken(token): BearerToken,
+    Extension(app_state): Extension<AppState>,
+    Json(input): Json<FleetSendRequest>,
+) -> Response {
     if input.mission.trim().is_empty() {
         return bad_request("Mission is required");
     }
@@ -197,8 +203,15 @@ async fn send_fleet_handler(Json(input): Json<FleetSendRequest>) -> Response {
         total_ships += ship.count;
     }
 
+    let mission_record = app_state.enqueue_fleet_mission(
+        &token,
+        input.mission.clone(),
+        input.target.clone(),
+        total_ships,
+    );
+
     success(FleetSendResponse {
-        command_id: "cmd-fleet-001".to_string(),
+        command_id: mission_record.command_id,
         mission: input.mission,
         target: input.target,
         total_ships,
