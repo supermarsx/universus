@@ -155,6 +155,23 @@ services:
       - "3300:3000"
     restart: unless-stopped
 
+  rust-web-frontend:
+    profiles: ["rust-only"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-web-frontend
+    container_name: universus_rust_web_frontend
+    depends_on:
+      rust-api-gateway:
+        condition: service_started
+    environment:
+      PORT: 3005
+    ports:
+      - "8081:3005"
+    restart: unless-stopped
+
   rust-admin-api:
     profiles: ["rust-backend", "rust-only"]
     build:
