@@ -1,7 +1,9 @@
 use std::net::SocketAddr;
 
 use axum::extract::OriginalUri;
-use axum::response::Html;
+use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
@@ -9,7 +11,7 @@ use serde::Serialize;
 pub const SERVICE_NAME: &str = "app-web-frontend";
 pub const DEFAULT_PORT: u16 = 3005;
 
-const TEMPLATE_ROUTES: [(&str, &str); 40] = [
+const TEMPLATE_ROUTES: [(&str, &str); 50] = [
     ("/", "Home"),
     ("/index.html", "Home"),
     ("/overview", "Overview"),
@@ -62,6 +64,9 @@ const TEMPLATE_ROUTES: [(&str, &str); 40] = [
     ("/alliance/manage", "Alliance Management"),
 ];
 
+const AUTH_TOKEN: &str = "dev-token";
+const ADMIN_TOKEN: &str = "admin-token";
+
 #[derive(Serialize)]
 struct ServiceStatus {
     status: &'static str,
@@ -69,15 +74,29 @@ struct ServiceStatus {
 }
 
 pub fn build_router() -> Router {
-    let mut router = Router::new()
+    let mut public_routes = Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready));
+    let mut authenticated_routes = Router::new();
+    let mut admin_routes = Router::new();
 
     for (path, title) in TEMPLATE_ROUTES {
-        router = router.route(path, get(move |uri: OriginalUri| template_page(title, uri)));
+        let route = get(move |uri: OriginalUri| template_page(title, uri));
+        if path.starts_with("/admin") {
+            admin_routes = admin_routes.route(path, route);
+        } else if path.starts_with("/account")
+            || path.starts_with("/alliance")
+            || path.starts_with("/chat")
+        {
+            authenticated_routes = authenticated_routes.route(path, route);
+        } else {
+            public_routes = public_routes.route(path, route);
+        }
     }
 
-    router
+    public_routes
+        .merge(authenticated_routes.route_layer(middleware::from_fn(require_authenticated)))
+        .merge(admin_routes.route_layer(middleware::from_fn(require_admin)))
 }
 
 pub fn listen_port(default_port: u16) -> u16 {
@@ -119,4 +138,34 @@ async fn template_page(title: &'static str, OriginalUri(uri): OriginalUri) -> Ht
     Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"route-title\" content=\"{title}\"><meta name=\"route-path\" content=\"{route_path}\"><title>{title} - Universus</title></head><body><main><h1>{title}</h1><p>Placeholder template page for <code>{route_path}</code>.</p></main></body></html>"
     ))
+}
+
+async fn require_authenticated(
+    request: axum::http::Request<axum::body::Body>,
+    next: Next<axum::body::Body>,
+) -> axum::response::Response {
+    match bearer_token(request.headers()) {
+        Some(token) if token == AUTH_TOKEN || token == ADMIN_TOKEN => next.run(request).await,
+        _ => StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+async fn require_admin(
+    request: axum::http::Request<axum::body::Body>,
+    next: Next<axum::body::Body>,
+) -> axum::response::Response {
+    match bearer_token(request.headers()) {
+        Some(token) if token == ADMIN_TOKEN => next.run(request).await,
+        Some(_) => StatusCode::FORBIDDEN.into_response(),
+        None => StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
