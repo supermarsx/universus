@@ -1,14 +1,13 @@
 use std::net::SocketAddr;
 
-use axum::extract::Path;
-use axum::http::StatusCode;
+use axum::extract::OriginalUri;
 use axum::response::Html;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
 pub const SERVICE_NAME: &str = "app-web-frontend";
-pub const DEFAULT_PORT: u16 = 3003;
+pub const DEFAULT_PORT: u16 = 3005;
 
 const TEMPLATE_ROUTES: [(&str, &str); 23] = [
     ("/", "Home"),
@@ -48,8 +47,7 @@ pub fn build_router() -> Router {
         .route("/ready", get(ready));
 
     for (path, title) in TEMPLATE_ROUTES {
-        let title = title.to_string();
-        router = router.route(path, get(move |path: Option<Path<String>>| template_page(title.clone(), path)));
+        router = router.route(path, get(move |uri: OriginalUri| template_page(title, uri)));
     }
 
     router
@@ -88,15 +86,10 @@ async fn ready() -> Json<ServiceStatus> {
     })
 }
 
-async fn template_page(title: String, path: Option<Path<String>>) -> (StatusCode, Html<String>) {
-    let route_path = path
-        .map(|Path(path)| path)
-        .map(|path| format!("/{path}"))
-        .unwrap_or_else(|| "/".to_string());
+async fn template_page(title: &'static str, OriginalUri(uri): OriginalUri) -> Html<String> {
+    let route_path = uri.path();
 
-    let body = format!(
+    Html(format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title} - Universus</title></head><body><main><h1>{title}</h1><p>Placeholder template page for <code>{route_path}</code>.</p></main></body></html>"
-    );
-
-    (StatusCode::OK, Html(body))
+    ))
 }
