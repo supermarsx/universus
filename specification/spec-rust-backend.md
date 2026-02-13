@@ -10,11 +10,15 @@ Updated on February 13, 2026.
   - `app-sms-api` (`rust-sms-api`)
   - `app-realtime-gateway` (`rust-realtime-gateway`)
   - `app-core-engine` (`rust-core-engine`)
+  - `app-email-worker` (`rust-email-worker`)
+  - `app-analytics-worker` (`rust-analytics-worker`)
 - Remaining migration gaps before full Node retirement:
   - `backend` route-by-route parity validation and production cutover sign-off.
-  - `app-email-worker` and `app-analytics-worker` runtime adoption.
+  - `app-email-worker` and `app-analytics-worker` provider and ingestion parity validation.
   - websocket/event contract parity validation for realtime replacement.
   - decommission of `backend-core-napi` bridge after parity/SLO acceptance.
+
+See `specification/spec-rust-route-ownership.md` for the crate-partitioned route ownership matrix and cutover checklist.
 
 ## Current Rust Coverage
 | Service family | Implemented crate(s) | Runtime service | Endpoint families now in Rust |

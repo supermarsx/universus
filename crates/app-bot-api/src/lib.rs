@@ -158,7 +158,8 @@ struct UniverseGenerateRequest {
 #[derive(Serialize)]
 struct UniverseGenerateResponse {
     success: bool,
-    botsGenerated: u16,
+    #[serde(rename = "botsGenerated")]
+    bots_generated: u16,
     message: String,
 }
 
@@ -579,7 +580,7 @@ async fn generate_bots_for_universe(
             StatusCode::BAD_REQUEST,
             Json(UniverseGenerateResponse {
                 success: false,
-                botsGenerated: 0,
+                bots_generated: 0,
                 message: "Invalid universe id".to_string(),
             }),
         );
@@ -595,7 +596,7 @@ async fn generate_bots_for_universe(
         StatusCode::OK,
         Json(UniverseGenerateResponse {
             success: true,
-            botsGenerated: bot_count,
+            bots_generated: bot_count,
             message: format!("Successfully generated {bot_count} bots for universe"),
         }),
     )

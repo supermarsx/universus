@@ -208,6 +208,45 @@ services:
       - "4303:4003"
     restart: unless-stopped
 
+  rust-email-worker:
+    profiles: ["rust-backend", "rust-only"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-email-worker
+    container_name: universus_rust_email_worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RUST_LOG: info
+      WORKER_INTERVAL_SECONDS: 10
+      EMAIL_QUEUE_NAME: email.outbound
+      EMAIL_DLQ_NAME: email.dead-letter
+    restart: unless-stopped
+
+  rust-analytics-worker:
+    profiles: ["rust-backend", "rust-only"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-analytics-worker
+    container_name: universus_rust_analytics_worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RUST_LOG: info
+      WORKER_INTERVAL_SECONDS: 10
+      ANALYTICS_BATCH_SIZE: 100
+    restart: unless-stopped
+
   rust-realtime-gateway:
     profiles: ["rust-backend", "rust-only"]
     build:

@@ -1,14 +1,17 @@
 mod account;
 mod alliance;
 mod auth;
+mod debris;
 mod fleet;
 mod galaxy;
 mod leaderboard;
 mod messages;
+mod moons;
 mod planets;
 mod research;
 mod shipyard;
 mod shop;
+mod universe;
 
 use axum::routing::get;
 use axum::{middleware, Extension, Json, Router};
@@ -26,10 +29,13 @@ struct ServiceStatus {
 pub fn build_router(service_name: &'static str) -> Router {
     let protected_routes = Router::new()
         .merge(account::router())
+        .merge(debris::router())
         .merge(planets::protected_router())
         .merge(fleet::protected_router())
+        .merge(moons::router())
         .merge(research::protected_router())
         .merge(shipyard::protected_router())
+        .merge(universe::router())
         .route_layer(middleware::from_fn(require_bearer_auth));
 
     Router::new()

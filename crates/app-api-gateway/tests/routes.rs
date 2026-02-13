@@ -738,3 +738,107 @@ async fn planet_build_requires_building_type() {
     assert_eq!(body["success"], false);
     assert_eq!(body["error"], "Building type is required");
 }
+
+#[tokio::test]
+async fn debris_routes_require_authentication() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn debris_location_with_auth_returns_scoped_field() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/location/2/222/9")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert_eq!(body["data"][0]["galaxy"], 2);
+    assert_eq!(body["data"][0]["system"], 222);
+    assert_eq!(body["data"][0]["position"], 9);
+}
+
+#[tokio::test]
+async fn moon_jump_gate_rejects_invalid_payload() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "toMoonId": 0,
+        "fleetIds": []
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/moons/101/jump-gate")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Invalid request");
+}
+
+#[tokio::test]
+async fn universe_routes_with_auth_return_expected_contracts() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = response_json(list_response).await;
+    assert_eq!(list_body["success"], true);
+    assert!(list_body["data"].is_array());
+
+    let stats_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe/7/stats")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stats_response.status(), StatusCode::OK);
+    let stats_body = response_json(stats_response).await;
+    assert_eq!(stats_body["data"]["universeId"], 7);
+}

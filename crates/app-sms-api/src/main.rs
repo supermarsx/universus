@@ -683,6 +683,7 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Method, Request};
     use hyper::body::to_bytes;
+    use serial_test::serial;
     use serde_json::{json, Value};
     use tower::ServiceExt;
 
@@ -730,6 +731,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn send_accepts_legacy_payload_shape() {
         std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
         let app = test_app();
@@ -749,6 +751,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn send_replays_idempotent_success() {
         std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
         let app = test_app();
@@ -775,6 +778,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn metrics_and_history_match_legacy_shape() {
         std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
         let app = test_app();
@@ -800,6 +804,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn health_reports_legacy_service_name() {
         let app = test_app();
 
@@ -810,6 +815,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn send_requires_api_key_when_configured() {
         std::env::set_var("SMS_SERVICE_API_KEY", "secret");
         std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
