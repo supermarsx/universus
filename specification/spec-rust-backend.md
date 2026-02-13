@@ -5,6 +5,7 @@ Updated on February 13, 2026.
 - Migration mode: hard-cut capable in runtime wiring via `docker compose --profile rust-only`.
 - Rust service binaries currently moved and wired:
   - `app-api-gateway` (`rust-api-gateway`)
+  - `app-web-frontend` (`rust-web-frontend`, rust-only profile)
   - `app-admin-api` (`rust-admin-api`)
   - `app-bot-api` (`rust-bot-api`)
   - `app-sms-api` (`rust-sms-api`)
@@ -24,6 +25,7 @@ See `specification/spec-rust-route-ownership.md` for the crate-partitioned route
 | Service family | Implemented crate(s) | Runtime service | Endpoint families now in Rust |
 | --- | --- | --- | --- |
 | api-gateway | `app-api-gateway` | `rust-api-gateway` | Health/readiness plus `/api/auth/*`, `/api/planets*`, `/api/fleet*`, `/api/combat/simulate`, `/api/alliance*`, `/api/messages*`, `/api/leaderboard*`, `/api/galaxy*`, `/api/shop*`, `/api/research*`, `/api/shipyard*`. |
+| web-frontend | `app-web-frontend` | `rust-web-frontend` (rust-only profile) | Server-rendered page routes replacing Node template router during rust-only cutover path (parity checklist tracked in `rust-final-cutover-checklist.md`). |
 | admin | `app-admin-api` | `rust-admin-api` | Health/readiness/status plus `/api/admin/dashboard`, `/users`, `/monitoring`, `/settings`, `/analytics`, `/audit`, `/status`, `/events`, `/status/incidents*`. |
 | bot | `app-bot-api` | `rust-bot-api` | Health/readiness plus `/api/admin/bots*` families: CRUD, filters, think/process triggers, leaderboard, personalities. |
 | sms | `app-sms-api` | `rust-sms-api` | `/api/send`, `/metrics`, `/history`, `/health`, `/ready`. |
@@ -34,7 +36,7 @@ See `specification/spec-rust-route-ownership.md` for the crate-partitioned route
 ## Remaining Legacy Hotspots
 - Node `backend` still owns major DB write paths and business parity for many production gameplay routes; hard-cut requires route-level SQL and behavior parity sign-off.
 - Node-side bridge/runtime paths remain in circulation (`backend-core-napi`, plus mixed helper fallbacks), so full Rust ownership is not yet complete.
-- Frontend wiring is still mixed between legacy and Rust backends (base URL, auth/session flow, realtime/socket contract handling), and needs a final Rust-only contract pass.
+- Frontend cutover now has a dedicated rust-only runtime service (`rust-web-frontend`), but page/auth/session/realtime contract parity still requires final sign-off.
 
 ## Objective
 Reframe the entire backend as a Rust-first platform with explicit crate boundaries, preserving gameplay behavior while removing Node.js service ownership over time.
@@ -136,22 +138,24 @@ universus-rs/
 20. `game-antiabuse`: throttle/challenge heuristics and bot-protection policy.
 21. `game-universe`: seeding, sharding placement, maintenance and health policies.
 22. `app-api-gateway`: main HTTP API replacing `backend`.
-23. `app-realtime-gateway`: websocket gateway replacing Socket.IO orchestration.
-24. `app-admin-api`: admin endpoints replacing `backend-admin-service`.
-25. `app-bot-api`: bot admin APIs replacing `backend-bot-service`.
-26. `app-bot-worker`: autonomous bot thinking loop worker.
-27. `app-sms-api`: outbound SMS/WhatsApp/Telegram/Discord dispatch API.
-28. `app-email-worker`: Redis email queue consumer and provider dispatch.
-29. `app-analytics-worker`: analytics ingestion/aggregation async worker.
-30. `app-core-engine`: evolved version of `backend-core` gRPC engine service.
-31. `adapter-http-compat`: compatibility surface for existing HTTP payload shapes.
-32. `adapter-provider-email`: SMTP/SendGrid/SES/MailerSend integrations.
-33. `adapter-provider-sms`: Twilio/Baileys/Telegram/Discord/custom HTTP channels.
-34. `adapter-provider-payments`: Stripe integration and webhook verification.
-35. `adapter-provider-bot`: remote bot integrations if externalized.
+23. `app-web-frontend`: frontend/page delivery service replacing Node template router in rust-only path.
+24. `app-realtime-gateway`: websocket gateway replacing Socket.IO orchestration.
+25. `app-admin-api`: admin endpoints replacing `backend-admin-service`.
+26. `app-bot-api`: bot admin APIs replacing `backend-bot-service`.
+27. `app-bot-worker`: autonomous bot thinking loop worker.
+28. `app-sms-api`: outbound SMS/WhatsApp/Telegram/Discord dispatch API.
+29. `app-email-worker`: Redis email queue consumer and provider dispatch.
+30. `app-analytics-worker`: analytics ingestion/aggregation async worker.
+31. `app-core-engine`: evolved version of `backend-core` gRPC engine service.
+32. `adapter-http-compat`: compatibility surface for existing HTTP payload shapes.
+33. `adapter-provider-email`: SMTP/SendGrid/SES/MailerSend integrations.
+34. `adapter-provider-sms`: Twilio/Baileys/Telegram/Discord/custom HTTP channels.
+35. `adapter-provider-payments`: Stripe integration and webhook verification.
+36. `adapter-provider-bot`: remote bot integrations if externalized.
 
 ## Service-to-Crate Mapping (From Current Code)
 - `backend` -> `app-api-gateway`, `app-realtime-gateway`, domain crates (`game-*`) and platform crates.
+- `frontend` + Node template routing path -> `app-web-frontend` (rust-only cutover path), with `app-api-gateway` and `app-realtime-gateway` as backend dependencies.
 - `backend-admin-service` -> `app-admin-api` + `platform-auth`, `platform-db`, `platform-observability`.
 - `backend-bot-service` -> `app-bot-api`, `app-bot-worker`, `game-antiabuse`, `game-fleet`, `game-economy`.
 - `backend-sms-service` -> `app-sms-api`, `adapter-provider-sms`, `platform-events`.
