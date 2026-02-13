@@ -79,3 +79,82 @@ async fn helper_movement_valid_payload_returns_200_and_distance_data() {
     assert!(body["data"]["distance"].is_number());
     assert_eq!(body["data"]["distance"], 2795);
 }
+
+#[tokio::test]
+async fn auth_login_returns_success_envelope_and_token() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "email": "commander@example.com",
+        "password": "secret"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/login")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert!(body["data"]["token"].is_string());
+    assert_eq!(body["data"]["user"]["email"], "commander@example.com");
+}
+
+#[tokio::test]
+async fn fleet_move_alias_matches_movement_response_shape() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "origin_galaxy": 1,
+        "origin_system": 1,
+        "origin_position": 1,
+        "target_galaxy": 1,
+        "target_system": 2,
+        "target_position": 1,
+        "ships": [
+          { "count": 10, "base_speed": 1000.0, "fuel_consumption": 2.0, "cargo": 50.0 }
+        ]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fleet/move")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["distance"], 2795);
+}
+
+#[tokio::test]
+async fn planets_list_returns_success_envelope() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/planets")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert!(body["data"].is_array());
+}
