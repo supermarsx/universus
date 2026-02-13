@@ -138,7 +138,6 @@ services:
     restart: unless-stopped
 
   rust-api-gateway:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -159,7 +158,6 @@ services:
     restart: unless-stopped
 
   rust-web-frontend:
-    profiles: ["rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -176,7 +174,6 @@ services:
     restart: unless-stopped
 
   rust-admin-api:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -191,7 +188,6 @@ services:
     restart: unless-stopped
 
   rust-bot-api:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -210,7 +206,6 @@ services:
     restart: unless-stopped
 
   rust-sms-api:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -229,7 +224,6 @@ services:
     restart: unless-stopped
 
   rust-email-worker:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -249,7 +243,6 @@ services:
     restart: unless-stopped
 
   rust-analytics-worker:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -268,7 +261,6 @@ services:
     restart: unless-stopped
 
   rust-realtime-gateway:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
@@ -285,7 +277,6 @@ services:
     restart: unless-stopped
 
   rust-core-engine:
-    profiles: ["rust-backend", "rust-only"]
     build:
       context: .
       dockerfile: crates/Dockerfile.service
