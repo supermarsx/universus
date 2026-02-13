@@ -842,3 +842,166 @@ async fn universe_routes_with_auth_return_expected_contracts() {
     let stats_body = response_json(stats_response).await;
     assert_eq!(stats_body["data"]["universeId"], 7);
 }
+
+#[tokio::test]
+async fn player_blocks_create_list_delete_flow_is_stateful() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let create_payload = json!({
+        "blockedUserId": 9001,
+        "username": "RaidBoss",
+        "scope": "chat",
+        "reason": "spam"
+    });
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/player-blocks")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(create_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::OK);
+    let create_body = response_json(create_response).await;
+    assert_eq!(create_body["data"]["blockedUserId"], 9001);
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/player-blocks")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = response_json(list_response).await;
+    assert_eq!(list_body["data"][0]["blockedUserId"], 9001);
+    assert_eq!(list_body["data"][0]["scope"], "chat");
+
+    let delete_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/player-blocks/9001")
+                .method("DELETE")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_response.status(), StatusCode::OK);
+    let delete_body = response_json(delete_response).await;
+    assert_eq!(delete_body["data"]["message"], "Player unblocked");
+}
+
+#[tokio::test]
+async fn config_update_persists_and_adds_history_entry() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let update_payload = json!({
+        "value": 2,
+        "reason": "test-adjustment"
+    });
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/config/parameters/economy.resource_multiplier")
+                .method("PUT")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::OK);
+    let update_body = response_json(update_response).await;
+    assert_eq!(update_body["data"]["value"], "2");
+
+    let history_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/config/history?limit=1")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(history_response.status(), StatusCode::OK);
+    let history_body = response_json(history_response).await;
+    assert_eq!(
+        history_body["data"][0]["parameterKey"],
+        "economy.resource_multiplier"
+    );
+    assert_eq!(history_body["data"][0]["newValue"], "2");
+}
+
+#[tokio::test]
+async fn themes_public_and_user_preference_routes_work() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let public_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/themes/current")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(public_response.status(), StatusCode::OK);
+    let public_body = response_json(public_response).await;
+    assert_eq!(public_body["success"], true);
+    assert_eq!(public_body["data"]["theme"]["key"], "default");
+
+    let update_payload = json!({
+        "themeKey": "solstice",
+        "reduceMotion": true
+    });
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/themes/user/preferences")
+                .method("PUT")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::OK);
+    let update_body = response_json(update_response).await;
+    assert_eq!(update_body["data"]["themeKey"], "solstice");
+    assert_eq!(update_body["data"]["reduceMotion"], true);
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/themes/user/preferences")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get_response.status(), StatusCode::OK);
+    let get_body = response_json(get_response).await;
+    assert_eq!(get_body["data"]["themeKey"], "solstice");
+}

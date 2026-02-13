@@ -23,9 +23,9 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/api/moons` | `backend/src/routes/moons.ts` | `crates/app-api-gateway` + `crates/game-moon` | In progress |
 | `/api/rips` | `backend/src/routes/rips.ts` | `crates/app-api-gateway` + `crates/game-moon` | Pending |
 | `/api/debris` | `backend/src/routes/debrisRoutes.ts` | `crates/app-api-gateway` + `crates/game-combat` | In progress |
-| `/api/player-blocks` | `backend/src/routes/playerBlocks.ts` | `crates/app-api-gateway` + `crates/game-antiabuse` | Pending |
-| `/api/config` | `backend/src/routes/configRoutes.ts` | `crates/app-api-gateway` + `crates/platform-config` | Pending |
-| `/api/themes` | `backend/src/routes/themeRoutes.ts` | `crates/app-api-gateway` + `crates/platform-config` | Pending |
+| `/api/player-blocks` | `backend/src/routes/playerBlocks.ts` | `crates/app-api-gateway` + `crates/game-antiabuse` | In progress |
+| `/api/config` | `backend/src/routes/configRoutes.ts` | `crates/app-api-gateway` + `crates/platform-config` | In progress |
+| `/api/themes` | `backend/src/routes/themeRoutes.ts` | `crates/app-api-gateway` + `crates/platform-config` | In progress |
 | `/api/universe` | `backend/src/routes/universeRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | In progress |
 | `/api/shards` | `backend/src/routes/shardingRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | Pending |
 | `/api/realtime` | `backend/src/routes/realtimeRoutes.ts` | `crates/app-realtime-gateway` + `crates/platform-events` | Pending parity pass |

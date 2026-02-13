@@ -1,6 +1,7 @@
 mod account;
 mod alliance;
 mod auth;
+mod config;
 mod debris;
 mod fleet;
 mod galaxy;
@@ -8,9 +9,11 @@ mod leaderboard;
 mod messages;
 mod moons;
 mod planets;
+mod player_blocks;
 mod research;
 mod shipyard;
 mod shop;
+mod themes;
 mod universe;
 
 use axum::routing::get;
@@ -30,9 +33,11 @@ pub fn build_router(service_name: &'static str) -> Router {
     let protected_routes = Router::new()
         .merge(account::router())
         .merge(debris::router())
+        .merge(config::router())
         .merge(planets::protected_router())
         .merge(fleet::protected_router())
         .merge(moons::router())
+        .merge(player_blocks::router())
         .merge(research::protected_router())
         .merge(shipyard::protected_router())
         .merge(universe::router())
@@ -49,6 +54,7 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(leaderboard::router())
         .merge(galaxy::router())
         .merge(shop::router())
+        .merge(themes::router())
         .merge(research::router())
         .merge(shipyard::router())
         .merge(protected_routes)
