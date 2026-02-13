@@ -1,0 +1,27 @@
+FROM rust:1.84-slim-bookworm AS builder
+
+ARG BIN_NAME
+
+WORKDIR /workspace
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+
+RUN cargo build --release -p ${BIN_NAME}
+
+FROM debian:bookworm-slim AS runtime
+
+ARG BIN_NAME
+
+WORKDIR /app
+
+COPY --from=builder /workspace/target/release/${BIN_NAME} /usr/local/bin/${BIN_NAME}
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+
+ENV RUST_LOG=info
+
+ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/${BIN_NAME}"]

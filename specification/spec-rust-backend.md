@@ -17,7 +17,7 @@ Reframe the entire backend as a Rust-first platform with explicit crate boundari
   - `backend-core` (gRPC + optional HTTP helpers + worker IPC)
   - `backend-core-napi` (Node addon bridge)
 - Existing top-level Cargo workspace:
-  - `Cargo.toml` includes only `backend-core` and `backend-core-napi`.
+  - `Cargo.toml` is a crates-based workspace (members under `crates/*`), including `crates/backend-core` and `crates/backend-core-napi`.
 
 ## Target Backend Shape
 - All server-side business logic and service processes are Rust.

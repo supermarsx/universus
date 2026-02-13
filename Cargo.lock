@@ -50,6 +50,8 @@ checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 name = "app-admin-api"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -68,15 +70,26 @@ dependencies = [
 name = "app-api-gateway"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "game-combat",
+ "game-fleet",
+ "hyper",
+ "platform-config",
+ "platform-errors",
+ "platform-observability",
+ "serde",
+ "serde_json",
  "tokio",
+ "tower",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
 name = "app-bot-api"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -113,6 +126,8 @@ dependencies = [
 name = "app-realtime-gateway"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -122,9 +137,13 @@ dependencies = [
 name = "app-sms-api"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -585,6 +604,18 @@ dependencies = [
  "cfg-if",
  "libc",
  "wasi",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "r-efi",
+ "wasip2",
 ]
 
 [[package]]
@@ -1132,6 +1163,9 @@ version = "0.1.0"
 [[package]]
 name = "platform-errors"
 version = "0.1.0"
+dependencies = [
+ "axum",
+]
 
 [[package]]
 name = "platform-events"
@@ -1140,6 +1174,10 @@ version = "0.1.0"
 [[package]]
 name = "platform-observability"
 version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "platform-proto"
@@ -1546,6 +1584,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "signal-hook-registry"
+version = "1.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b"
+dependencies = [
+ "errno",
+ "libc",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1672,6 +1720,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2 0.6.2",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -1881,6 +1930,17 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "uuid"
+version = "1.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee48d38b119b0cd71fe4141b30f5ba9c7c5d9f4e7a3a8b4a674e4b6ef789976f"
+dependencies = [
+ "getrandom 0.3.4",
+ "js-sys",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "valuable"

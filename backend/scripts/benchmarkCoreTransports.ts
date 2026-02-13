@@ -230,7 +230,7 @@ async function main() {
 
   console.log('');
   console.log('Tip: start backend-core for gRPC and set CORE_NAPI_BINDING_PATH for N-API.');
-  console.log(`Example N-API binding: ${path.resolve(process.cwd(), '..', 'backend-core-napi', 'index.node')}`);
+  console.log(`Example N-API binding: ${path.resolve(process.cwd(), '..', 'crates', 'backend-core-napi', 'index.node')}`);
 
   const saveDir = process.env.BENCH_SAVE_DIR || path.resolve(process.cwd(), 'benchmarks', 'history');
   fs.mkdirSync(saveDir, { recursive: true });

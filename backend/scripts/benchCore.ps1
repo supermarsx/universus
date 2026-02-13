@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $backendDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 $napiDll = Join-Path $repoRoot "target\release\backend_core_napi.dll"
-$napiNode = Join-Path $repoRoot "backend-core-napi\index.node"
+$napiNode = Join-Path $repoRoot "crates\backend-core-napi\index.node"
 
 Write-Host "[bench] building backend-core-napi (release)..."
 Push-Location $repoRoot

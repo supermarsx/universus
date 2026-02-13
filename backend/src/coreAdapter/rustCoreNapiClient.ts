@@ -90,6 +90,8 @@ const getBinding = (): RustNapiBinding => {
 
   const candidates = [
     process.env.CORE_NAPI_BINDING_PATH,
+    path.join(process.cwd(), 'crates', 'backend-core-napi', 'index.node'),
+    path.join(__dirname, '..', '..', '..', 'crates', 'backend-core-napi', 'index.node'),
     path.join(process.cwd(), 'backend-core-napi', 'index.node'),
     path.join(__dirname, '..', '..', '..', 'backend-core-napi', 'index.node'),
     'backend-core-napi',

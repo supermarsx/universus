@@ -4,7 +4,7 @@ This document explains how to integrate the Rust `backend-core` service with the
 
 Service contract
 ----------------
-- Proto: `backend-core/proto/core.proto`
+- Proto: `crates/backend-core/proto/core.proto`
 - Service: `GameLoop`
   - `StartBattle(BattleRequest) -> BattleState`
   - `StepBattle(StepRequest) -> BattleState`
@@ -22,7 +22,7 @@ Minimal example using `@grpc/grpc-js` + `@grpc/proto-loader`:
 ```js
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
-const packageDef = protoLoader.loadSync('backend-core/proto/core.proto', {});
+const packageDef = protoLoader.loadSync('crates/backend-core/proto/core.proto', {});
 const grpcObj = grpc.loadPackageDefinition(packageDef).core;
 const client = new grpcObj.GameLoop('backend-core:50051', grpc.credentials.createInsecure());
 

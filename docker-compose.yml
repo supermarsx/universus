@@ -123,7 +123,7 @@ services:
 
   backend-core:
     build:
-      context: ./backend-core
+      context: ./crates/backend-core
       dockerfile: Dockerfile
     container_name: universus_backend_core
     depends_on:
@@ -132,6 +132,80 @@ services:
     environment:
       CORE_BIND_ADDR: 0.0.0.0:50051
       RUST_LOG: info
+    ports:
+      - "50051:50051"
+    restart: unless-stopped
+
+  rust-api-gateway:
+    profiles: ["rust-backend"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-api-gateway
+    container_name: universus_rust_api_gateway
+    ports:
+      - "3300:3000"
+    restart: unless-stopped
+
+  rust-admin-api:
+    profiles: ["rust-backend"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-admin-api
+    container_name: universus_rust_admin_api
+    ports:
+      - "4302:4002"
+    restart: unless-stopped
+
+  rust-bot-api:
+    profiles: ["rust-backend"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-bot-api
+    container_name: universus_rust_bot_api
+    ports:
+      - "4301:4001"
+    restart: unless-stopped
+
+  rust-sms-api:
+    profiles: ["rust-backend"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-sms-api
+    container_name: universus_rust_sms_api
+    ports:
+      - "4303:4003"
+    restart: unless-stopped
+
+  rust-realtime-gateway:
+    profiles: ["rust-backend"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-realtime-gateway
+    container_name: universus_rust_realtime_gateway
+    ports:
+      - "4304:4004"
+    restart: unless-stopped
+
+  rust-core-engine:
+    profiles: ["rust-backend"]
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: backend-core
+    container_name: universus_rust_core_engine
+    environment:
+      CORE_BIND_ADDR: 0.0.0.0:50051
     ports:
       - "50051:50051"
     restart: unless-stopped
