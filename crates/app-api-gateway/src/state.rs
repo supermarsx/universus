@@ -6,6 +6,8 @@ pub struct AppState {
     inner: Arc<Mutex<GameState>>,
     shard_inner: Arc<Mutex<ShardState>>,
     analytics_inner: Arc<Mutex<AnalyticsState>>,
+    universe_inner: Arc<Mutex<UniverseState>>,
+    acs_inner: Arc<Mutex<AcsState>>,
 }
 
 struct GameState {
@@ -22,6 +24,37 @@ struct ShardState {
 struct AnalyticsState {
     total_events: i64,
     by_type: HashMap<String, i64>,
+}
+
+struct UniverseState {
+    universes: HashMap<i64, UniverseRecord>,
+    next_id: i64,
+}
+
+struct AcsState {
+    groups: HashMap<i64, AcsGroupRecord>,
+    next_id: i64,
+}
+
+#[derive(Clone)]
+struct UniverseRecord {
+    id: i64,
+    name: String,
+    speed: i32,
+    registration_open: bool,
+}
+
+#[derive(Clone)]
+struct AcsGroupRecord {
+    id: i64,
+    mission_type: String,
+    target_galaxy: i32,
+    target_system: i32,
+    target_position: i32,
+    member_planet_ids: Vec<i64>,
+    departure_window_start: String,
+    departure_window_end: String,
+    notes: Option<String>,
 }
 
 #[derive(Clone)]
@@ -240,12 +273,46 @@ pub struct AnalyticsUsageSnapshot {
     pub by_type: Vec<(String, i64)>,
 }
 
+#[derive(Clone)]
+pub struct UniverseSnapshot {
+    pub id: i64,
+    pub name: String,
+    pub speed: i32,
+    pub registration_open: bool,
+}
+
+#[derive(Clone)]
+pub struct AcsGroupSnapshot {
+    pub id: i64,
+    pub mission_type: String,
+    pub target_galaxy: i32,
+    pub target_system: i32,
+    pub target_position: i32,
+    pub member_count: i32,
+    pub departure_window_start: String,
+    pub departure_window_end: String,
+    pub notes: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct CreateAcsGroupInput {
+    pub mission_type: String,
+    pub target_galaxy: i32,
+    pub target_system: i32,
+    pub target_position: i32,
+    pub departure_window_start: Option<String>,
+    pub departure_window_end: Option<String>,
+    pub notes: Option<String>,
+}
+
 impl AppState {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(GameState::default())),
             shard_inner: Arc::new(Mutex::new(ShardState::default())),
             analytics_inner: Arc::new(Mutex::new(AnalyticsState::default())),
+            universe_inner: Arc::new(Mutex::new(UniverseState::default())),
+            acs_inner: Arc::new(Mutex::new(AcsState::default())),
         }
     }
 
@@ -793,6 +860,97 @@ impl AppState {
             by_type,
         }
     }
+
+    pub fn list_universes(&self) -> Vec<UniverseSnapshot> {
+        let universe_state = self.universe_inner.lock().expect("app state poisoned");
+        let mut universes = universe_state
+            .universes
+            .values()
+            .map(universe_snapshot)
+            .collect::<Vec<_>>();
+        universes.sort_by(|left, right| left.id.cmp(&right.id));
+        universes
+    }
+
+    pub fn get_universe(&self, id: i64) -> Option<UniverseSnapshot> {
+        let universe_state = self.universe_inner.lock().expect("app state poisoned");
+        universe_state.universes.get(&id).map(universe_snapshot)
+    }
+
+    pub fn create_universe(
+        &self,
+        name: &str,
+        speed: i32,
+        registration_open: bool,
+    ) -> UniverseSnapshot {
+        let mut universe_state = self.universe_inner.lock().expect("app state poisoned");
+        let id = universe_state.next_id;
+        universe_state.next_id += 1;
+        let record = UniverseRecord {
+            id,
+            name: name.to_string(),
+            speed,
+            registration_open,
+        };
+        universe_state.universes.insert(id, record.clone());
+        universe_snapshot(&record)
+    }
+
+    pub fn list_acs_groups(&self) -> Vec<AcsGroupSnapshot> {
+        let acs_state = self.acs_inner.lock().expect("app state poisoned");
+        let mut groups = acs_state
+            .groups
+            .values()
+            .map(acs_group_snapshot)
+            .collect::<Vec<_>>();
+        groups.sort_by(|left, right| left.id.cmp(&right.id));
+        groups
+    }
+
+    pub fn create_acs_group(&self, input: CreateAcsGroupInput) -> AcsGroupSnapshot {
+        let mut acs_state = self.acs_inner.lock().expect("app state poisoned");
+        let id = acs_state.next_id;
+        acs_state.next_id += 1;
+        let record = AcsGroupRecord {
+            id,
+            mission_type: input.mission_type,
+            target_galaxy: input.target_galaxy,
+            target_system: input.target_system,
+            target_position: input.target_position,
+            member_planet_ids: vec![1],
+            departure_window_start: input
+                .departure_window_start
+                .unwrap_or_else(|| "2026-02-13T20:15:00Z".to_string()),
+            departure_window_end: input
+                .departure_window_end
+                .unwrap_or_else(|| "2026-02-13T20:30:00Z".to_string()),
+            notes: input.notes,
+        };
+        acs_state.groups.insert(id, record.clone());
+        acs_group_snapshot(&record)
+    }
+
+    pub fn join_acs_group(&self, id: i64, planet_id: i64) -> Result<(), &'static str> {
+        let mut acs_state = self.acs_inner.lock().expect("app state poisoned");
+        let Some(group) = acs_state.groups.get_mut(&id) else {
+            return Err("ACS group not found");
+        };
+        if !group.member_planet_ids.contains(&planet_id) {
+            group.member_planet_ids.push(planet_id);
+        }
+        Ok(())
+    }
+
+    pub fn leave_acs_group(&self, id: i64) -> Result<(), &'static str> {
+        let mut acs_state = self.acs_inner.lock().expect("app state poisoned");
+        let Some(group) = acs_state.groups.get_mut(&id) else {
+            return Err("ACS group not found");
+        };
+        if group.member_planet_ids.len() > 1 {
+            group.member_planet_ids.pop();
+        }
+        Ok(())
+    }
 }
 
 fn player_mut<'a>(game_state: &'a mut GameState, player_key: &str) -> &'a mut PlayerState {
@@ -875,6 +1033,81 @@ impl Default for AnalyticsState {
             total_events: 0,
             by_type: HashMap::new(),
         }
+    }
+}
+
+impl Default for UniverseState {
+    fn default() -> Self {
+        let mut universes = HashMap::new();
+        universes.insert(
+            1,
+            UniverseRecord {
+                id: 1,
+                name: "Andromeda".to_string(),
+                speed: 4,
+                registration_open: true,
+            },
+        );
+        universes.insert(
+            2,
+            UniverseRecord {
+                id: 2,
+                name: "Pegasus".to_string(),
+                speed: 6,
+                registration_open: false,
+            },
+        );
+        Self {
+            universes,
+            next_id: 101,
+        }
+    }
+}
+
+impl Default for AcsState {
+    fn default() -> Self {
+        let mut groups = HashMap::new();
+        groups.insert(
+            101,
+            AcsGroupRecord {
+                id: 101,
+                mission_type: "attack".to_string(),
+                target_galaxy: 1,
+                target_system: 223,
+                target_position: 9,
+                member_planet_ids: vec![1, 2, 3],
+                departure_window_start: "2026-02-13T20:00:00Z".to_string(),
+                departure_window_end: "2026-02-13T20:10:00Z".to_string(),
+                notes: Some("Synchronized strike".to_string()),
+            },
+        );
+        Self {
+            groups,
+            next_id: 102,
+        }
+    }
+}
+
+fn universe_snapshot(entry: &UniverseRecord) -> UniverseSnapshot {
+    UniverseSnapshot {
+        id: entry.id,
+        name: entry.name.clone(),
+        speed: entry.speed,
+        registration_open: entry.registration_open,
+    }
+}
+
+fn acs_group_snapshot(entry: &AcsGroupRecord) -> AcsGroupSnapshot {
+    AcsGroupSnapshot {
+        id: entry.id,
+        mission_type: entry.mission_type.clone(),
+        target_galaxy: entry.target_galaxy,
+        target_system: entry.target_system,
+        target_position: entry.target_position,
+        member_count: entry.member_planet_ids.len() as i32,
+        departure_window_start: entry.departure_window_start.clone(),
+        departure_window_end: entry.departure_window_end.clone(),
+        notes: entry.notes.clone(),
     }
 }
 

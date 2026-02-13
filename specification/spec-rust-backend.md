@@ -19,7 +19,7 @@ Updated on February 13, 2026.
   - route-by-route DB behavior parity validation and production cutover sign-off for Rust gateways/services.
   - `app-email-worker` and `app-analytics-worker` provider and ingestion parity validation.
   - websocket/event contract parity validation for realtime replacement.
-  - source-level decommission of `backend-core-napi` bridge after parity/SLO acceptance.
+  - source-level decommission of `backend-core-napi` bridge after parity/SLO acceptance (decommission in progress: removed from default workspace build graph).
 
 See `specification/spec-rust-route-ownership.md` for the crate-partitioned route ownership matrix and cutover checklist.
 
@@ -54,7 +54,7 @@ Reframe the entire backend as a Rust-first platform with explicit crate boundari
   - `backend-core` (gRPC + optional HTTP helpers + worker IPC)
   - `backend-core-napi` (Node addon bridge)
 - Existing top-level Cargo workspace:
-  - `Cargo.toml` is a crates-based workspace (members under `crates/*`), including `crates/backend-core` and `crates/backend-core-napi`.
+  - `Cargo.toml` is a crates-based workspace (members under `crates/*`) with `crates/backend-core-napi` explicitly excluded from the default workspace build graph during decommission prep.
 
 ## Target Backend Shape
 - All server-side business logic and service processes are Rust.

@@ -53,10 +53,10 @@ These still need explicit retirement or remount decisions.
 | `email-delivery-service` | `crates/app-email-worker`, `crates/adapter-provider-email` | Runtime wired in compose; provider parity pending |
 | analytics queue worker (`backend/src/workers`) | `crates/app-analytics-worker` | Runtime wired in compose; ingestion parity pending |
 | `backend-core` | `crates/app-core-engine` + domain crates | Partial; legacy gRPC path still active |
-| `backend-core-napi` bridge | none (retire) | Pending |
+| `backend-core-napi` bridge | none (retire) | In progress (excluded from default Cargo workspace build graph) |
 
 ## Execution Gate (for Node retirement)
 - 100% route-family ownership mapped to a Rust crate.
 - No Node service in production traffic path for API/admin/bot/sms/email/analytics.
 - Realtime contract snapshots validated against current frontend client.
-- `backend-core-napi` removed from runtime dependency graph.
+- `backend-core-napi` removed from default workspace build graph and runtime dependency graph.

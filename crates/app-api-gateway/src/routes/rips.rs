@@ -1,6 +1,7 @@
 use axum::response::Response;
 use axum::routing::post;
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
+use platform_db::{Database, RipAttackInsert};
 use serde::Deserialize;
 
 use crate::response::{bad_request, success};
@@ -18,7 +19,10 @@ pub fn router() -> Router {
     Router::new().route("/api/rips/destroyMoon", post(destroy_moon_handler))
 }
 
-async fn destroy_moon_handler(Json(payload): Json<DestroyMoonRequest>) -> Response {
+async fn destroy_moon_handler(
+    Extension(db): Extension<Option<Database>>,
+    Json(payload): Json<DestroyMoonRequest>,
+) -> Response {
     let source_moon_id = payload.source_moon_id.unwrap_or(0);
     let target_moon_id = payload.target_moon_id.unwrap_or(0);
     let num_deathstars = payload.num_deathstars.unwrap_or(0);
@@ -33,6 +37,27 @@ async fn destroy_moon_handler(Json(payload): Json<DestroyMoonRequest>) -> Respon
         || !(10.0..=100.0).contains(&speed_percent)
     {
         return bad_request("Invalid destroy moon request");
+    }
+
+    if let Some(database) = db {
+        let insert_input = RipAttackInsert {
+            attacker_id: 1,
+            source_moon_id,
+            target_moon_id,
+            num_rips: num_deathstars,
+            speed_percent,
+        };
+        if let Ok(row) = database.queue_rip_attack(insert_input).await {
+            return success(serde_json::json!({
+                "missionId": format!("rip-destroy-{:03}", row.id),
+                "sourceMoonId": row.source_moon_id,
+                "targetMoonId": row.target_moon_id,
+                "numDeathstars": row.num_rips,
+                "speedPercent": row.speed_percent,
+                "accepted": true,
+                "etaSeconds": row.eta_seconds
+            }));
+        }
     }
 
     success(serde_json::json!({

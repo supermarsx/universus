@@ -1,7 +1,8 @@
 use axum::extract::Path;
 use axum::response::Response;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
+use platform_db::Database;
 use serde::{Deserialize, Serialize};
 
 use crate::response::{bad_request, success};
@@ -11,7 +12,7 @@ use crate::response::{bad_request, success};
 struct Moon {
     id: i64,
     planet_id: i64,
-    name: &'static str,
+    name: String,
     diameter: i32,
     has_jump_gate: bool,
 }
@@ -33,25 +34,66 @@ pub fn router() -> Router {
         .route("/api/moons/:moon_id/jump-gate", post(jump_gate_handler))
 }
 
-async fn list_moons_handler() -> Response {
-    success(vec![sample_moon(101, 1), sample_moon(102, 2)])
+async fn list_moons_handler(Extension(db): Extension<Option<Database>>) -> Response {
+    if let Some(database) = db {
+        if let Ok(rows) = database.list_moons().await {
+            if !rows.is_empty() {
+                return success(rows.into_iter().map(map_db_moon).collect::<Vec<_>>());
+            }
+        }
+    }
+
+    success(sample_moons())
 }
 
-async fn get_moon_by_planet_handler(Path(planet_id): Path<i64>) -> Response {
+async fn get_moon_by_planet_handler(
+    Extension(db): Extension<Option<Database>>,
+    Path(planet_id): Path<i64>,
+) -> Response {
+    if let Some(database) = db {
+        if let Ok(Some(row)) = database.moon_by_planet_id(planet_id).await {
+            return success(map_db_moon(row));
+        }
+    }
+
     success(sample_moon(planet_id + 100, planet_id))
 }
 
-async fn get_moon_by_id_handler(Path(moon_id): Path<i64>) -> Response {
+async fn get_moon_by_id_handler(
+    Extension(db): Extension<Option<Database>>,
+    Path(moon_id): Path<i64>,
+) -> Response {
+    if let Some(database) = db {
+        if let Ok(Some(row)) = database.moon_by_id(moon_id).await {
+            return success(map_db_moon(row));
+        }
+    }
+
     success(sample_moon(moon_id, moon_id.saturating_sub(100).max(1)))
 }
 
-async fn get_public_moon_handler(Path(moon_id): Path<i64>) -> Response {
+async fn get_public_moon_handler(
+    Extension(db): Extension<Option<Database>>,
+    Path(moon_id): Path<i64>,
+) -> Response {
+    let moon = if let Some(database) = db {
+        database
+            .moon_by_id(moon_id)
+            .await
+            .ok()
+            .flatten()
+            .map(map_db_moon)
+            .unwrap_or_else(|| sample_moon(moon_id, moon_id.saturating_sub(100).max(1)))
+    } else {
+        sample_moon(moon_id, moon_id.saturating_sub(100).max(1))
+    };
+
     success(serde_json::json!({
-        "id": moon_id,
-        "diameter": 8912,
+        "id": moon.id,
+        "diameter": moon.diameter,
         "ownerAlias": "Commander",
         "hasSensorPhalanx": true,
-        "hasJumpGate": true,
+        "hasJumpGate": moon.has_jump_gate,
         "coordinates": {
             "galaxy": 1,
             "system": 120,
@@ -113,8 +155,22 @@ fn sample_moon(id: i64, planet_id: i64) -> Moon {
     Moon {
         id,
         planet_id,
-        name: "Selene",
+        name: "Selene".to_string(),
         diameter: 8_912,
         has_jump_gate: true,
+    }
+}
+
+fn sample_moons() -> Vec<Moon> {
+    vec![sample_moon(101, 1), sample_moon(102, 2)]
+}
+
+fn map_db_moon(row: platform_db::MoonRow) -> Moon {
+    Moon {
+        id: row.id,
+        planet_id: row.planet_id,
+        name: row.name,
+        diameter: row.diameter,
+        has_jump_gate: row.has_jump_gate,
     }
 }

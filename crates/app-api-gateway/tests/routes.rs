@@ -936,6 +936,45 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
     let create_body = response_json(create_response).await;
     assert_eq!(create_body["success"], true);
     assert_eq!(create_body["data"]["created"], true);
+    let created_universe_id = create_body["data"]["universeId"].as_i64().unwrap();
+    assert!(created_universe_id >= 101);
+
+    let detail_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/universe/{created_universe_id}"))
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail_body = response_json(detail_response).await;
+    assert_eq!(detail_body["data"]["id"], created_universe_id);
+    assert_eq!(detail_body["data"]["name"], "Slice C");
+
+    let list_after_create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/universe")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_after_create_response.status(), StatusCode::OK);
+    let list_after_create_body = response_json(list_after_create_response).await;
+    assert!(list_after_create_body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|entry| entry["id"] == created_universe_id));
 
     let seed_payload = json!({
         "generateBots": false
@@ -1378,6 +1417,22 @@ async fn acs_routes_require_authentication() {
 async fn acs_create_join_and_leave_return_success_envelopes() {
     let app = build_router(TEST_SERVICE_NAME);
 
+    let list_before = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/acs")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_before.status(), StatusCode::OK);
+    let list_before_body = response_json(list_before).await;
+    let initial_count = list_before_body["data"].as_array().unwrap().len();
+
     let create_payload = json!({
         "missionType": "attack",
         "targetGalaxy": 2,
@@ -1401,13 +1456,15 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
     let create_body = response_json(create_response).await;
     assert_eq!(create_body["success"], true);
     assert_eq!(create_body["data"]["targetGalaxy"], 2);
+    let created_group_id = create_body["data"]["id"].as_i64().unwrap();
+    assert!(created_group_id >= 102);
 
-    let join_payload = json!({ "planetId": 1 });
+    let join_payload = json!({ "planetId": 9 });
     let join_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/acs/101/join")
+                .uri(format!("/api/acs/{created_group_id}/join"))
                 .method("POST")
                 .header("authorization", format!("Bearer {DEV_TOKEN}"))
                 .header("content-type", "application/json")
@@ -1422,9 +1479,10 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
     assert_eq!(join_body["data"]["joined"], true);
 
     let leave_response = app
+        .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/acs/101/leave")
+                .uri(format!("/api/acs/{created_group_id}/leave"))
                 .method("DELETE")
                 .header("authorization", format!("Bearer {DEV_TOKEN}"))
                 .body(Body::empty())
@@ -1436,6 +1494,27 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
     let leave_body = response_json(leave_response).await;
     assert_eq!(leave_body["success"], true);
     assert_eq!(leave_body["data"]["left"], true);
+
+    let list_after = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/acs")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_after.status(), StatusCode::OK);
+    let list_after_body = response_json(list_after).await;
+    let groups = list_after_body["data"].as_array().unwrap();
+    assert_eq!(groups.len(), initial_count + 1);
+    let created_group = groups
+        .iter()
+        .find(|group| group["id"] == created_group_id)
+        .unwrap();
+    assert_eq!(created_group["memberCount"], 1);
 }
 
 #[tokio::test]
