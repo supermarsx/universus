@@ -195,25 +195,6 @@ pub struct RipDestroyRequestUpsert {
     pub requested_at_unix: i64,
 }
 
-#[derive(Clone)]
-pub struct RipAttackInsert {
-    pub attacker_id: i64,
-    pub source_moon_id: i64,
-    pub target_moon_id: i64,
-    pub num_rips: i32,
-    pub speed_percent: f64,
-}
-
-#[derive(Clone)]
-pub struct RipAttackRow {
-    pub id: i64,
-    pub source_moon_id: i64,
-    pub target_moon_id: i64,
-    pub num_rips: i32,
-    pub speed_percent: f64,
-    pub eta_seconds: i64,
-}
-
 impl Database {
     pub fn from_env() -> Option<Self> {
         let database_url = std::env::var("DATABASE_URL")
@@ -649,6 +630,28 @@ impl Database {
         Ok(affected > 0)
     }
 
+    pub async fn universe_stats(&self, id: i64) -> DbResult<UniverseStatsRow> {
+        self.ensure_universe_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "SELECT
+                    $1::BIGINT AS universe_id,
+                    0::BIGINT AS active_players,
+                    0::BIGINT AS occupied_planets,
+                    0::BIGINT AS active_wars",
+                &[&id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(UniverseStatsRow {
+            universe_id: row.get::<_, i64>("universe_id"),
+            active_players: row.get::<_, i64>("active_players"),
+            occupied_planets: row.get::<_, i64>("occupied_planets"),
+            active_wars: row.get::<_, i64>("active_wars"),
+        })
+    }
+
     pub async fn list_acs_groups(&self) -> DbResult<Vec<AcsGroupRow>> {
         self.ensure_acs_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
@@ -778,13 +781,18 @@ impl Database {
         Ok(affected > 0)
     }
 
-    pub async fn leave_acs_group(&self, group_id: i64, planet_id: i64) -> DbResult<bool> {
+    pub async fn leave_acs_group(&self, group_id: i64) -> DbResult<bool> {
         self.ensure_acs_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
         let affected = client
             .execute(
-                "DELETE FROM acs_group_members WHERE group_id = $1 AND planet_id = $2",
-                &[&group_id, &planet_id],
+                "DELETE FROM acs_group_members
+                 WHERE ctid IN (
+                    SELECT ctid FROM acs_group_members
+                    WHERE group_id = $1
+                    LIMIT 1
+                 )",
+                &[&group_id],
             )
             .await
             .map_err(|error| error.to_string())?;

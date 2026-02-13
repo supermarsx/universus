@@ -1,7 +1,7 @@
 use axum::response::Response;
 use axum::routing::post;
 use axum::{Extension, Json, Router};
-use platform_db::{Database, RipAttackInsert};
+use platform_db::{Database, RipDestroyRequestCreateInput};
 use serde::Deserialize;
 
 use crate::response::{bad_request, success};
@@ -40,22 +40,28 @@ async fn destroy_moon_handler(
     }
 
     if let Some(database) = db {
-        let insert_input = RipAttackInsert {
-            attacker_id: 1,
+        let insert_input = RipDestroyRequestCreateInput {
+            mission_id: format!("rip-destroy-{}-{}", source_moon_id, target_moon_id),
             source_moon_id,
             target_moon_id,
-            num_rips: num_deathstars,
+            num_deathstars,
             speed_percent,
+            status: "queued".to_string(),
+            requested_at_unix: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_secs() as i64)
+                .unwrap_or(0),
         };
         if let Ok(row) = database.queue_rip_attack(insert_input).await {
+            let eta_seconds = ((10_000.0 / speed_percent) * 54.0).round() as i64;
             return success(serde_json::json!({
-                "missionId": format!("rip-destroy-{:03}", row.id),
+                "missionId": row.mission_id,
                 "sourceMoonId": row.source_moon_id,
                 "targetMoonId": row.target_moon_id,
-                "numDeathstars": row.num_rips,
+                "numDeathstars": row.num_deathstars,
                 "speedPercent": row.speed_percent,
                 "accepted": true,
-                "etaSeconds": row.eta_seconds
+                "etaSeconds": eta_seconds.max(1)
             }));
         }
     }
