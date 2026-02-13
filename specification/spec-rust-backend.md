@@ -3,6 +3,7 @@
 ## Status
 Updated on February 13, 2026.
 - Migration mode: hard-cut capable in runtime wiring via `docker compose --profile rust-only`.
+- Legacy Node services (`backend`, `bot-service`, `admin-service`, `backend-core`) are now gated behind compose profile `legacy-node` and no longer part of default/rust-only startup paths.
 - UI entrypoint switch: rust-only now defaults to `rust-web-frontend` on host port `8080`; legacy Node `frontend` is opt-in via `--profile legacy-frontend` on host port `8081`.
 - Rust service binaries currently moved and wired:
   - `app-api-gateway` (`rust-api-gateway`)
@@ -15,10 +16,10 @@ Updated on February 13, 2026.
   - `app-email-worker` (`rust-email-worker`)
   - `app-analytics-worker` (`rust-analytics-worker`)
 - Remaining migration gaps before full Node retirement:
-  - `backend` route-by-route parity validation and production cutover sign-off.
+  - route-by-route DB behavior parity validation and production cutover sign-off for Rust gateways/services.
   - `app-email-worker` and `app-analytics-worker` provider and ingestion parity validation.
   - websocket/event contract parity validation for realtime replacement.
-  - decommission of `backend-core-napi` bridge after parity/SLO acceptance.
+  - source-level decommission of `backend-core-napi` bridge after parity/SLO acceptance.
 
 See `specification/spec-rust-route-ownership.md` for the crate-partitioned route ownership matrix and cutover checklist.
 

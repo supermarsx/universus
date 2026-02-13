@@ -1646,3 +1646,108 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     let messages_status_body = response_json(messages_status).await;
     assert_eq!(messages_status_body["data"]["status"], "ok");
 }
+
+#[tokio::test]
+async fn shop_enhanced_public_and_auth_routes_work() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let cosmetics = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shop-enhanced/cosmetics")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(cosmetics.status(), StatusCode::OK);
+    let cosmetics_body = response_json(cosmetics).await;
+    assert_eq!(cosmetics_body["success"], true);
+    assert!(cosmetics_body["data"].is_array());
+
+    let my_cosmetics_unauth = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shop-enhanced/my-cosmetics")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(my_cosmetics_unauth.status(), StatusCode::UNAUTHORIZED);
+
+    let validate = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shop-enhanced/promotions/validate")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "promoCode": "WELCOME10" }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(validate.status(), StatusCode::OK);
+    let validate_body = response_json(validate).await;
+    assert_eq!(validate_body["data"]["valid"], true);
+}
+
+#[tokio::test]
+async fn analytics_events_and_usage_routes_work() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let event_payload = json!({
+        "eventType": "page_view",
+        "sessionId": "sess-1",
+        "properties": { "path": "/overview" }
+    });
+    let track = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/analytics/events")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(event_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(track.status(), StatusCode::OK);
+    let track_body = response_json(track).await;
+    assert_eq!(track_body["data"]["recorded"], true);
+
+    let usage_unauth = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/analytics/usage")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(usage_unauth.status(), StatusCode::UNAUTHORIZED);
+
+    let usage = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/analytics/usage?days=7")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(usage.status(), StatusCode::OK);
+    let usage_body = response_json(usage).await;
+    assert_eq!(usage_body["data"]["totalEvents"], 1);
+    assert_eq!(usage_body["data"]["eventsByType"][0]["eventType"], "page_view");
+}

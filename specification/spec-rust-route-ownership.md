@@ -19,7 +19,7 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/api/leaderboard` | `backend/src/routes/leaderboard.ts` | `crates/app-api-gateway` + `crates/game-leaderboard` | In progress |
 | `/api/messages` | `backend/src/routes/messages.ts` | `crates/app-api-gateway` + `crates/game-messaging` | In progress |
 | `/api/shop` | `backend/src/routes/shop.ts` | `crates/app-api-gateway` + `crates/adapter-provider-payments` | In progress |
-| `/api/shop-enhanced` | `backend/src/routes/enhancedShopRoutes.ts` | `crates/app-api-gateway` + `crates/game-economy` | Pending |
+| `/api/shop-enhanced` | `backend/src/routes/enhancedShopRoutes.ts` | `crates/app-api-gateway` + `crates/game-economy` | In progress |
 | `/api/alliances` | `backend/src/routes/allianceRoutes.ts` | `crates/app-api-gateway` + `crates/game-alliance` | In progress |
 | `/api/acs` | `backend/src/routes/acs.ts` | `crates/app-api-gateway` + `crates/game-fleet` | In progress |
 | `/api/moons` | `backend/src/routes/moons.ts` | `crates/app-api-gateway` + `crates/game-moon` | In progress |
@@ -31,10 +31,10 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/api/universe` | `backend/src/routes/universeRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | In progress |
 | `/api/shards` | `backend/src/routes/shardingRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | In progress |
 | `/api/realtime` | `backend/src/routes/realtimeRoutes.ts` | `crates/app-realtime-gateway` + `crates/platform-events` | In progress |
-| `/api/analytics` | `backend/src/routes/analytics.ts` | `crates/app-analytics-worker` + `crates/platform-events` | Pending ingestion API parity |
+| `/api/analytics` | `backend/src/routes/analytics.ts` | `crates/app-api-gateway`, `crates/app-analytics-worker` + `crates/platform-events` | In progress |
 | `/api/admin/*` | `backend/src/routes/admin.ts`, `backend/src/routes/adminRoutes.ts` | `crates/app-admin-api` | In progress |
 | `/api/admin/bots/*` | `backend/src/routes/bots.ts` | `crates/app-bot-api` + `crates/app-bot-worker` | In progress |
-| `/` template/static routes | `backend/src/routes/templates.ts` | frontend/static hosting; not backend business logic | Deferred from backend cutover |
+| `/` template/static routes | `backend/src/routes/templates.ts` | `crates/app-web-frontend` | In progress |
 
 ## Legacy Route Files Not Mounted in `backend/src/index.ts`
 These still need explicit retirement or remount decisions.

@@ -2,6 +2,7 @@ use axum::extract::{Path, Query};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
+use platform_db::{Database, ShardServerUpsert};
 use serde::{Deserialize, Serialize};
 
 use crate::response::{bad_request, not_found, success};
@@ -90,10 +91,33 @@ pub fn router() -> Router {
 }
 
 async fn list_servers_handler(
+    Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
     Query(query): Query<ServerListQuery>,
 ) -> Response {
-    let mut servers = app_state.list_shard_servers();
+    let mut servers = if let Some(database) = db {
+        database
+            .list_shard_servers()
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ShardServerSnapshot {
+                        server_id: row.server_id,
+                        server_type: row.server_type,
+                        region: row.region,
+                        endpoint: row.endpoint,
+                        status: row.status,
+                        current_load: row.current_load,
+                        max_capacity: row.max_capacity,
+                        health_score: row.health_score,
+                        last_heartbeat_unix: row.last_heartbeat_unix,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|_| app_state.list_shard_servers())
+    } else {
+        app_state.list_shard_servers()
+    };
     if let Some(region) = query.region {
         servers.retain(|entry| entry.region.eq_ignore_ascii_case(&region));
     }
@@ -108,6 +132,7 @@ async fn list_servers_handler(
 }
 
 async fn register_server_handler(
+    Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
     Json(payload): Json<RegisterServerRequest>,
 ) -> Response {
@@ -138,6 +163,32 @@ async fn register_server_handler(
         health_score: payload.health_score.unwrap_or(1.0),
     };
 
+    if let Some(database) = db {
+        let db_input = ShardServerUpsert {
+            server_id: input.server_id.clone(),
+            server_type: input.server_type.clone(),
+            region: input.region.clone(),
+            endpoint: input.endpoint.clone(),
+            status: input.status.clone(),
+            current_load: input.current_load,
+            max_capacity: input.max_capacity,
+            health_score: input.health_score,
+        };
+        if let Ok(row) = database.upsert_shard_server(db_input).await {
+            return success(ServerPayload {
+                server_id: row.server_id,
+                server_type: row.server_type,
+                region: row.region,
+                endpoint: row.endpoint,
+                status: row.status,
+                current_load: row.current_load,
+                max_capacity: row.max_capacity,
+                health_score: row.health_score,
+                last_heartbeat_unix: row.last_heartbeat_unix,
+            });
+        }
+    }
+
     match app_state.register_shard_server(input) {
         Ok(server) => success(server_payload(server)),
         Err(message) => bad_request(message),
@@ -145,24 +196,78 @@ async fn register_server_handler(
 }
 
 async fn server_health_handler(
+    Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
     Path(id): Path<String>,
 ) -> Response {
+    if let Some(database) = db {
+        if let Ok(Some(health)) = database.shard_health(&id).await {
+            return success(HealthPayload {
+                server_id: health.server_id,
+                status: health.status,
+                health_score: health.health_score,
+                current_load: health.current_load,
+                max_capacity: health.max_capacity,
+                load_percent: health.load_percent,
+                last_heartbeat_unix: health.last_heartbeat_unix,
+            });
+        }
+    }
+
     match app_state.shard_server_health(&id) {
         Some(health) => success(health_payload(health)),
         None => not_found("Server not found"),
     }
 }
 
-async fn routing_stats_handler(Extension(app_state): Extension<AppState>) -> Response {
+async fn routing_stats_handler(
+    Extension(db): Extension<Option<Database>>,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
+    if let Some(database) = db {
+        if let Ok(stats) = database.shard_routing_stats().await {
+            return success(RoutingStatsPayload {
+                total_servers: stats.total_servers,
+                healthy_servers: stats.healthy_servers,
+                overloaded_servers: stats.overloaded_servers,
+                total_capacity: stats.total_capacity,
+                total_load: stats.total_load,
+                average_load_percent: stats.average_load_percent,
+                migration_count: stats.migration_count,
+            });
+        }
+    }
     success(routing_stats_payload(app_state.shard_routing_stats()))
 }
 
 async fn routing_player_handler(
+    Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
     Path(player_id): Path<String>,
 ) -> Response {
-    let servers = app_state.list_shard_servers();
+    let servers = if let Some(database) = db {
+        database
+            .list_shard_servers()
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ShardServerSnapshot {
+                        server_id: row.server_id,
+                        server_type: row.server_type,
+                        region: row.region,
+                        endpoint: row.endpoint,
+                        status: row.status,
+                        current_load: row.current_load,
+                        max_capacity: row.max_capacity,
+                        health_score: row.health_score,
+                        last_heartbeat_unix: row.last_heartbeat_unix,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|_| app_state.list_shard_servers())
+    } else {
+        app_state.list_shard_servers()
+    };
     if servers.is_empty() {
         return not_found("No shard servers available");
     }
@@ -177,9 +282,34 @@ async fn routing_player_handler(
     }))
 }
 
-async fn routing_available_servers_handler(Extension(app_state): Extension<AppState>) -> Response {
-    let available = app_state
-        .list_shard_servers()
+async fn routing_available_servers_handler(
+    Extension(db): Extension<Option<Database>>,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
+    let servers = if let Some(database) = db {
+        database
+            .list_shard_servers()
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ShardServerSnapshot {
+                        server_id: row.server_id,
+                        server_type: row.server_type,
+                        region: row.region,
+                        endpoint: row.endpoint,
+                        status: row.status,
+                        current_load: row.current_load,
+                        max_capacity: row.max_capacity,
+                        health_score: row.health_score,
+                        last_heartbeat_unix: row.last_heartbeat_unix,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|_| app_state.list_shard_servers())
+    } else {
+        app_state.list_shard_servers()
+    };
+    let available = servers
         .into_iter()
         .filter(|server| server.status.eq_ignore_ascii_case("online"))
         .filter(|server| server.current_load < server.max_capacity)
@@ -188,8 +318,27 @@ async fn routing_available_servers_handler(Extension(app_state): Extension<AppSt
     success(available)
 }
 
-async fn health_overview_handler(Extension(app_state): Extension<AppState>) -> Response {
-    let stats = app_state.shard_routing_stats();
+async fn health_overview_handler(
+    Extension(db): Extension<Option<Database>>,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
+    let stats = if let Some(database) = db {
+        database
+            .shard_routing_stats()
+            .await
+            .map(|row| RoutingStatsSnapshot {
+                total_servers: row.total_servers,
+                healthy_servers: row.healthy_servers,
+                overloaded_servers: row.overloaded_servers,
+                total_capacity: row.total_capacity,
+                total_load: row.total_load,
+                average_load_percent: row.average_load_percent,
+                migration_count: row.migration_count,
+            })
+            .unwrap_or_else(|_| app_state.shard_routing_stats())
+    } else {
+        app_state.shard_routing_stats()
+    };
     success(serde_json::json!({
         "status": if stats.healthy_servers > 0 { "healthy" } else { "degraded" },
         "totalServers": stats.total_servers,
@@ -198,8 +347,27 @@ async fn health_overview_handler(Extension(app_state): Extension<AppState>) -> R
     }))
 }
 
-async fn messages_status_handler(Extension(app_state): Extension<AppState>) -> Response {
-    let stats = app_state.shard_routing_stats();
+async fn messages_status_handler(
+    Extension(db): Extension<Option<Database>>,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
+    let stats = if let Some(database) = db {
+        database
+            .shard_routing_stats()
+            .await
+            .map(|row| RoutingStatsSnapshot {
+                total_servers: row.total_servers,
+                healthy_servers: row.healthy_servers,
+                overloaded_servers: row.overloaded_servers,
+                total_capacity: row.total_capacity,
+                total_load: row.total_load,
+                average_load_percent: row.average_load_percent,
+                migration_count: row.migration_count,
+            })
+            .unwrap_or_else(|_| app_state.shard_routing_stats())
+    } else {
+        app_state.shard_routing_stats()
+    };
     success(serde_json::json!({
         "connectedServers": stats.total_servers,
         "deliveryMode": "at-least-once",

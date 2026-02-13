@@ -1,6 +1,7 @@
 mod account;
 mod acs;
 mod alliance;
+mod analytics;
 mod auth;
 mod config;
 mod debris;
@@ -16,12 +17,14 @@ mod rips;
 mod shards;
 mod shipyard;
 mod shop;
+mod shop_enhanced;
 mod themes;
 mod universe;
 mod users;
 
 use axum::routing::get;
 use axum::{middleware, Extension, Json, Router};
+use platform_db::Database;
 use serde::Serialize;
 
 use crate::auth_guard::require_bearer_auth;
@@ -34,6 +37,8 @@ struct ServiceStatus {
 }
 
 pub fn build_router(service_name: &'static str) -> Router {
+    let db = Database::from_env();
+
     let protected_routes = Router::new()
         .merge(account::router())
         .merge(acs::router())
@@ -62,11 +67,14 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(leaderboard::router())
         .merge(galaxy::router())
         .merge(shop::router())
+        .merge(shop_enhanced::router())
+        .merge(analytics::router())
         .merge(themes::router())
         .merge(research::router())
         .merge(shipyard::router())
         .merge(protected_routes)
         .layer(Extension(AppState::new()))
+        .layer(Extension(db))
 }
 
 async fn health(service_name: &'static str) -> Json<ServiceStatus> {
