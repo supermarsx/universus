@@ -18,10 +18,7 @@ Excluded from this file:
 - Node surfaces already represented by existing Rust crates (API/admin/bot/sms/realtime/email/analytics/core families).
 
 ## Route-Level Checklist
-| TODO ID | Node route surface | Node source of truth | Crate owner (primary) | Crate owner (supporting) | Concrete cutover checklist |
-| --- | --- | --- | --- | --- | --- |
-| R-001 | `/api/users` (`GET /me`, `GET /leaderboard`) | `backend/src/routes/users.ts` mounted in `backend/src/index.ts` | `crates/app-api-gateway` | `crates/platform-auth`, `crates/game-leaderboard`, `crates/game-economy`, `crates/platform-db` | [ ] Add `users` route module in `app-api-gateway` with contract-compatible JSON shape.<br>[ ] Implement auth-guarded user context read equivalent to Node `authenticateToken` + `AuthRequest` flow.<br>[ ] Port leaderboard query path (or repository call) and preserve sorting/limit behavior.<br>[ ] Add parity tests for `/api/users/me` and `/api/users/leaderboard` vs Node fixtures.<br>[ ] Switch gateway routing and remove Node `/api/users` mount from production traffic path. |
-| R-002 | `/api/acs` (`GET /`, `POST /`, `POST /:id/join`, `DELETE /:id/leave`) | `backend/src/routes/acs.ts` mounted in `backend/src/index.ts` | `crates/app-api-gateway` | `crates/game-fleet`, `crates/game-alliance`, `crates/platform-auth`, `crates/platform-db` | [ ] Add `acs` route module in `app-api-gateway` with route/verb parity.<br>[ ] Port ACS validation rules and error envelope semantics (`success/message`).<br>[ ] Implement DB-backed ACS group CRUD + join/leave operations with transaction safety.<br>[ ] Add auth and permission parity tests for all ACS endpoints.<br>[ ] Cut traffic to Rust route and retire Node `/api/acs` mount. |
+All previously unrepresented mounted route surfaces (`/api/users`, `/api/acs`) are now represented in `crates/app-api-gateway` with parity tests. Remaining route-level work is behavior-depth hardening (DB parity), tracked in `specification/spec-rust-route-ownership.md`.
 
 ## Service-Level Checklist
 | TODO ID | Node service/surface | Node source of truth | Crate owner (primary) | Crate owner (supporting) | Concrete cutover checklist |
@@ -30,6 +27,6 @@ Excluded from this file:
 
 ## Cutover Exit Criteria For This File
 - [ ] Every row above has an assigned crate owner (no `TBD`).
-- [ ] Rust integration/contract tests exist for each route/service row.
+- [ ] Rust integration/contract tests exist for each row.
 - [ ] Node mounts for these rows are removed from production traffic path.
-- [ ] `specification/spec-rust-route-ownership.md` is updated to mark these rows as represented.
+- [ ] `specification/spec-rust-route-ownership.md` reflects final ownership status.

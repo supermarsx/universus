@@ -1489,3 +1489,160 @@ async fn rips_destroy_moon_validates_and_returns_success_envelope() {
     assert_eq!(valid_body["data"]["accepted"], true);
     assert_eq!(valid_body["data"]["numDeathstars"], 5);
 }
+
+#[tokio::test]
+async fn moons_extended_endpoints_return_expected_contracts() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let by_id = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/moons/id/101")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(by_id.status(), StatusCode::OK);
+    let by_id_body = response_json(by_id).await;
+    assert_eq!(by_id_body["success"], true);
+    assert_eq!(by_id_body["data"]["id"], 101);
+
+    let public = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/moons/public/101")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(public.status(), StatusCode::OK);
+    let public_body = response_json(public).await;
+    assert_eq!(public_body["data"]["ownerAlias"], "Commander");
+
+    let phalanx = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/moons/101/phalanx")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "targetGalaxy": 1,
+                        "targetSystem": 200,
+                        "targetPosition": 8
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(phalanx.status(), StatusCode::OK);
+    let phalanx_body = response_json(phalanx).await;
+    assert_eq!(phalanx_body["data"]["target"]["system"], 200);
+    assert_eq!(phalanx_body["data"]["missions"][0]["mission"], "attack");
+}
+
+#[tokio::test]
+async fn shards_extended_endpoints_return_expected_contracts() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let register = json!({
+        "serverId": "eu-central-1",
+        "serverType": "game",
+        "region": "eu-central",
+        "endpoint": "http://eu-central-1.internal",
+        "status": "online",
+        "currentLoad": 450,
+        "maxCapacity": 1000,
+        "healthScore": 0.88
+    });
+    let register_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/register")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(register.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register_response.status(), StatusCode::OK);
+
+    let player_route = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/routing/player/42")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(player_route.status(), StatusCode::OK);
+    let player_route_body = response_json(player_route).await;
+    assert_eq!(player_route_body["data"]["playerId"], "42");
+    assert_eq!(player_route_body["data"]["serverId"], "eu-central-1");
+
+    let available = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/routing/servers/available")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(available.status(), StatusCode::OK);
+    let available_body = response_json(available).await;
+    assert_eq!(available_body["data"].as_array().unwrap().len(), 1);
+
+    let overview = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/health/overview")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(overview.status(), StatusCode::OK);
+    let overview_body = response_json(overview).await;
+    assert_eq!(overview_body["data"]["status"], "healthy");
+    assert_eq!(overview_body["data"]["totalServers"], 1);
+
+    let messages_status = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/messages/status")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(messages_status.status(), StatusCode::OK);
+    let messages_status_body = response_json(messages_status).await;
+    assert_eq!(messages_status_body["data"]["status"], "ok");
+}

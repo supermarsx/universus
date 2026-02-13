@@ -76,7 +76,17 @@ pub fn router() -> Router {
             post(register_server_handler),
         )
         .route("/api/shards/servers/:id/health", get(server_health_handler))
+        .route(
+            "/api/shards/routing/player/:id",
+            get(routing_player_handler),
+        )
+        .route(
+            "/api/shards/routing/servers/available",
+            get(routing_available_servers_handler),
+        )
         .route("/api/shards/routing/stats", get(routing_stats_handler))
+        .route("/api/shards/health/overview", get(health_overview_handler))
+        .route("/api/shards/messages/status", get(messages_status_handler))
 }
 
 async fn list_servers_handler(
@@ -148,6 +158,56 @@ async fn routing_stats_handler(Extension(app_state): Extension<AppState>) -> Res
     success(routing_stats_payload(app_state.shard_routing_stats()))
 }
 
+async fn routing_player_handler(
+    Extension(app_state): Extension<AppState>,
+    Path(player_id): Path<String>,
+) -> Response {
+    let servers = app_state.list_shard_servers();
+    if servers.is_empty() {
+        return not_found("No shard servers available");
+    }
+
+    let selected_index = stable_bucket(&player_id, servers.len());
+    let selected = &servers[selected_index];
+    success(serde_json::json!({
+        "playerId": player_id,
+        "serverId": selected.server_id,
+        "region": selected.region,
+        "endpoint": selected.endpoint
+    }))
+}
+
+async fn routing_available_servers_handler(Extension(app_state): Extension<AppState>) -> Response {
+    let available = app_state
+        .list_shard_servers()
+        .into_iter()
+        .filter(|server| server.status.eq_ignore_ascii_case("online"))
+        .filter(|server| server.current_load < server.max_capacity)
+        .map(server_payload)
+        .collect::<Vec<_>>();
+    success(available)
+}
+
+async fn health_overview_handler(Extension(app_state): Extension<AppState>) -> Response {
+    let stats = app_state.shard_routing_stats();
+    success(serde_json::json!({
+        "status": if stats.healthy_servers > 0 { "healthy" } else { "degraded" },
+        "totalServers": stats.total_servers,
+        "healthyServers": stats.healthy_servers,
+        "averageLoadPercent": stats.average_load_percent
+    }))
+}
+
+async fn messages_status_handler(Extension(app_state): Extension<AppState>) -> Response {
+    let stats = app_state.shard_routing_stats();
+    success(serde_json::json!({
+        "connectedServers": stats.total_servers,
+        "deliveryMode": "at-least-once",
+        "queueLag": 0,
+        "status": "ok"
+    }))
+}
+
 fn server_payload(server: ShardServerSnapshot) -> ServerPayload {
     ServerPayload {
         server_id: server.server_id,
@@ -184,4 +244,11 @@ fn routing_stats_payload(stats: RoutingStatsSnapshot) -> RoutingStatsPayload {
         average_load_percent: stats.average_load_percent,
         migration_count: stats.migration_count,
     }
+}
+
+fn stable_bucket(value: &str, buckets: usize) -> usize {
+    value
+        .bytes()
+        .fold(0usize, |acc, byte| acc.wrapping_add(byte as usize))
+        % buckets.max(1)
 }

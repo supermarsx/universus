@@ -327,3 +327,105 @@ async fn realtime_prefixed_parity_aliases_match_family_shapes() {
     let trade_body = json_body(trade).await;
     assert!(trade_body["offers"].is_array());
 }
+
+#[tokio::test]
+async fn notifications_unread_count_and_preferences_update_work() {
+    let app = build_router();
+
+    let unread = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/notifications/unread/count")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unread.status(), StatusCode::OK);
+    let unread_body = json_body(unread).await;
+    assert_eq!(unread_body["unread_count"], 1);
+
+    let update = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/notifications/preferences/trade")
+                .method(Method::PUT)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "enabled": false }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update.status(), StatusCode::OK);
+    let update_body = json_body(update).await;
+    assert_eq!(update_body["preferences"]["trade"], false);
+
+    let get_prefs = app
+        .oneshot(
+            Request::builder()
+                .uri("/notifications/preferences")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get_prefs.status(), StatusCode::OK);
+    let get_prefs_body = json_body(get_prefs).await;
+    assert_eq!(get_prefs_body["preferences"]["trade"], false);
+}
+
+#[tokio::test]
+async fn conversations_and_trade_history_endpoints_return_expected_shapes() {
+    let app = build_router();
+
+    let conv = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/chat/conversations")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(conv.status(), StatusCode::OK);
+    let conv_body = json_body(conv).await;
+    assert!(conv_body["conversations"].is_array());
+    assert!(conv_body["total"].is_u64());
+
+    let messages = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/chat/conversations/conv-1/messages")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(messages.status(), StatusCode::OK);
+    let messages_body = json_body(messages).await;
+    assert_eq!(messages_body["conversation_id"], "conv-1");
+    assert!(messages_body["messages"].is_array());
+
+    let history = app
+        .oneshot(
+            Request::builder()
+                .uri("/trade/history")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(history.status(), StatusCode::OK);
+    let history_body = json_body(history).await;
+    assert!(history_body["entries"].is_array());
+    assert!(history_body["total"].is_u64());
+}

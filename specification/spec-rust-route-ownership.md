@@ -10,6 +10,7 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | --- | --- | --- | --- |
 | `/api/auth` | `backend/src/routes/auth.ts` | `crates/app-api-gateway` + `crates/platform-auth` | In progress |
 | `/api/account` | `backend/src/routes/accountRoutes.ts` | `crates/app-api-gateway` + `crates/platform-auth` | In progress |
+| `/api/users` | `backend/src/routes/users.ts` | `crates/app-api-gateway` + `crates/game-leaderboard` | In progress |
 | `/api/planets` | `backend/src/routes/planets.ts` | `crates/app-api-gateway` + `crates/game-economy` | In progress |
 | `/api/fleet` | `backend/src/routes/fleet.ts` | `crates/app-api-gateway` + `crates/game-fleet` | In progress |
 | `/api/research` | `backend/src/routes/research.ts` | `crates/app-api-gateway` + `crates/game-economy` | In progress |

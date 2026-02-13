@@ -22,12 +22,16 @@ async fn destroy_moon_handler(Json(payload): Json<DestroyMoonRequest>) -> Respon
     let source_moon_id = payload.source_moon_id.unwrap_or(0);
     let target_moon_id = payload.target_moon_id.unwrap_or(0);
     let num_deathstars = payload.num_deathstars.unwrap_or(0);
-    let speed_percent = payload
-        .speed_percent
-        .filter(|value| value.is_finite() && *value > 0.0)
-        .unwrap_or(100.0);
+    let speed_percent = payload.speed_percent.unwrap_or(100.0);
 
-    if source_moon_id <= 0 || target_moon_id <= 0 || num_deathstars < 1 {
+    if source_moon_id <= 0
+        || target_moon_id <= 0
+        || source_moon_id == target_moon_id
+        || num_deathstars < 1
+        || num_deathstars > 10_000
+        || !speed_percent.is_finite()
+        || !(10.0..=100.0).contains(&speed_percent)
+    {
         return bad_request("Invalid destroy moon request");
     }
 

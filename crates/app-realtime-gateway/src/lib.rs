@@ -28,8 +28,11 @@ struct RealtimeState {
     subscriptions: HashMap<String, HashSet<String>>,
     publish_sequence: u64,
     notifications: Vec<NotificationItem>,
+    notification_preferences: HashMap<String, bool>,
     online_players: Vec<OnlinePlayer>,
     trade_offers: Vec<TradeOfferItem>,
+    trade_history: Vec<TradeHistoryItem>,
+    chat_conversations: Vec<ChatConversationItem>,
 }
 
 impl Default for RealtimeState {
@@ -53,6 +56,11 @@ impl Default for RealtimeState {
                     created_at: "2026-02-12T08:00:00Z".to_string(),
                 },
             ],
+            notification_preferences: HashMap::from([
+                ("trade".to_string(), true),
+                ("chat".to_string(), true),
+                ("combat".to_string(), true),
+            ]),
             online_players: vec![
                 OnlinePlayer {
                     user_id: 7,
@@ -87,6 +95,29 @@ impl Default for RealtimeState {
                     resource_wanted: "metal".to_string(),
                     amount_wanted: 8000,
                     seller_username: "Trader".to_string(),
+                },
+            ],
+            trade_history: vec![TradeHistoryItem {
+                id: 501,
+                offer_id: 101,
+                seller_username: "Trader".to_string(),
+                buyer_username: "Commander".to_string(),
+                resource_offered: "deuterium".to_string(),
+                amount_offered: 2000,
+                resource_wanted: "metal".to_string(),
+                amount_wanted: 8000,
+                completed_at: "2026-02-13T09:00:00Z".to_string(),
+            }],
+            chat_conversations: vec![
+                ChatConversationItem {
+                    id: "conv-1".to_string(),
+                    participant: "Scout".to_string(),
+                    unread_count: 2,
+                },
+                ChatConversationItem {
+                    id: "conv-2".to_string(),
+                    participant: "AdmiralNova".to_string(),
+                    unread_count: 0,
                 },
             ],
         }
@@ -198,6 +229,75 @@ struct TradeOffersResponse {
     total: usize,
 }
 
+#[derive(Clone, Serialize)]
+struct TradeHistoryItem {
+    id: u64,
+    offer_id: u64,
+    seller_username: String,
+    buyer_username: String,
+    resource_offered: String,
+    amount_offered: u64,
+    resource_wanted: String,
+    amount_wanted: u64,
+    completed_at: String,
+}
+
+#[derive(Serialize)]
+struct TradeHistoryResponse {
+    entries: Vec<TradeHistoryItem>,
+    total: usize,
+}
+
+#[derive(Default, Deserialize)]
+struct TradeHistoryQuery {
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+#[derive(Clone, Serialize)]
+struct ChatConversationItem {
+    id: String,
+    participant: String,
+    unread_count: u64,
+}
+
+#[derive(Serialize)]
+struct ConversationsResponse {
+    conversations: Vec<ChatConversationItem>,
+    total: usize,
+}
+
+#[derive(Clone, Serialize)]
+struct ChatMessageItem {
+    id: String,
+    conversation_id: String,
+    sender: String,
+    text: String,
+    sent_at: String,
+}
+
+#[derive(Serialize)]
+struct ConversationMessagesResponse {
+    conversation_id: String,
+    messages: Vec<ChatMessageItem>,
+    total: usize,
+}
+
+#[derive(Serialize)]
+struct UnreadCountResponse {
+    unread_count: u64,
+}
+
+#[derive(Serialize)]
+struct NotificationPreferencesResponse {
+    preferences: HashMap<String, bool>,
+}
+
+#[derive(Deserialize)]
+struct UpdatePreferenceRequest {
+    enabled: bool,
+}
+
 #[derive(Default, Deserialize)]
 struct TradeOffersQuery {
     status: Option<String>,
@@ -245,12 +345,42 @@ pub fn build_router() -> Router {
         .route("/ws-info", get(ws_info))
         .route("/chat/channels", get(rest_chat_channels))
         .route("/notifications", get(rest_notifications))
+        .route("/notifications/unread/count", get(rest_notifications_unread_count))
+        .route("/notifications/preferences", get(rest_notifications_preferences))
+        .route(
+            "/notifications/preferences/:type_id",
+            axum::routing::put(rest_update_notification_preference),
+        )
+        .route("/chat/conversations", get(rest_chat_conversations))
+        .route(
+            "/chat/conversations/:conversation_id/messages",
+            get(rest_chat_conversation_messages),
+        )
         .route("/players/online", get(rest_players_online))
         .route("/trade/offers", get(rest_trade_offers))
+        .route("/trade/history", get(rest_trade_history))
         .route("/api/realtime/chat/channels", get(rest_chat_channels))
+        .route("/api/realtime/chat/conversations", get(rest_chat_conversations))
+        .route(
+            "/api/realtime/chat/conversations/:conversation_id/messages",
+            get(rest_chat_conversation_messages),
+        )
         .route("/api/realtime/notifications", get(rest_notifications))
+        .route(
+            "/api/realtime/notifications/unread/count",
+            get(rest_notifications_unread_count),
+        )
+        .route(
+            "/api/realtime/notifications/preferences",
+            get(rest_notifications_preferences),
+        )
+        .route(
+            "/api/realtime/notifications/preferences/:type_id",
+            axum::routing::put(rest_update_notification_preference),
+        )
         .route("/api/realtime/players/online", get(rest_players_online))
         .route("/api/realtime/trade/offers", get(rest_trade_offers))
+        .route("/api/realtime/trade/history", get(rest_trade_history))
         .route("/api/realtime/channels", get(list_channels))
         .route("/api/realtime/subscribe", post(subscribe))
         .route("/api/realtime/publish", post(publish))
@@ -341,6 +471,71 @@ async fn rest_notifications(
     })
 }
 
+async fn rest_notifications_unread_count(State(state): State<AppState>) -> Json<UnreadCountResponse> {
+    let store = state.inner.lock().expect("state lock poisoned");
+    let unread_count = store.notifications.iter().filter(|item| !item.read).count() as u64;
+    Json(UnreadCountResponse { unread_count })
+}
+
+async fn rest_notifications_preferences(
+    State(state): State<AppState>,
+) -> Json<NotificationPreferencesResponse> {
+    let store = state.inner.lock().expect("state lock poisoned");
+    Json(NotificationPreferencesResponse {
+        preferences: store.notification_preferences.clone(),
+    })
+}
+
+async fn rest_update_notification_preference(
+    State(state): State<AppState>,
+    axum::extract::Path(type_id): axum::extract::Path<String>,
+    Json(payload): Json<UpdatePreferenceRequest>,
+) -> Json<NotificationPreferencesResponse> {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    store
+        .notification_preferences
+        .insert(type_id, payload.enabled);
+    Json(NotificationPreferencesResponse {
+        preferences: store.notification_preferences.clone(),
+    })
+}
+
+async fn rest_chat_conversations(State(state): State<AppState>) -> Json<ConversationsResponse> {
+    let store = state.inner.lock().expect("state lock poisoned");
+    Json(ConversationsResponse {
+        conversations: store.chat_conversations.clone(),
+        total: store.chat_conversations.len(),
+    })
+}
+
+async fn rest_chat_conversation_messages(
+    State(_state): State<AppState>,
+    axum::extract::Path(conversation_id): axum::extract::Path<String>,
+) -> Json<ConversationMessagesResponse> {
+    let messages = vec![
+        ChatMessageItem {
+            id: "msg-1".to_string(),
+            conversation_id: conversation_id.clone(),
+            sender: "Scout".to_string(),
+            text: "Ping from frontier".to_string(),
+            sent_at: "2026-02-13T10:00:00Z".to_string(),
+        },
+        ChatMessageItem {
+            id: "msg-2".to_string(),
+            conversation_id: conversation_id.clone(),
+            sender: "Commander".to_string(),
+            text: "Acknowledged".to_string(),
+            sent_at: "2026-02-13T10:01:00Z".to_string(),
+        },
+    ];
+
+    Json(ConversationMessagesResponse {
+        conversation_id,
+        total: messages.len(),
+        messages,
+    })
+}
+
 async fn rest_players_online(
     State(state): State<AppState>,
     Query(query): Query<OnlinePlayersQuery>,
@@ -383,6 +578,25 @@ async fn rest_trade_offers(
     let offers = offers.into_iter().skip(offset).take(limit).collect();
 
     Json(TradeOffersResponse { offers, total })
+}
+
+async fn rest_trade_history(
+    State(state): State<AppState>,
+    Query(query): Query<TradeHistoryQuery>,
+) -> Json<TradeHistoryResponse> {
+    let store = state.inner.lock().expect("state lock poisoned");
+    let total = store.trade_history.len();
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(50);
+    let entries = store
+        .trade_history
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    Json(TradeHistoryResponse { entries, total })
 }
 
 async fn list_channels(State(state): State<AppState>) -> Json<Envelope<ChannelsPayload>> {
