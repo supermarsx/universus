@@ -1,3 +1,4 @@
+mod account;
 mod alliance;
 mod auth;
 mod fleet;
@@ -10,8 +11,10 @@ mod shipyard;
 mod shop;
 
 use axum::routing::get;
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use serde::Serialize;
+
+use crate::auth_guard::require_bearer_auth;
 
 #[derive(Serialize)]
 struct ServiceStatus {
@@ -20,6 +23,11 @@ struct ServiceStatus {
 }
 
 pub fn build_router(service_name: &'static str) -> Router {
+    let protected_routes = Router::new()
+        .merge(account::router())
+        .merge(fleet::protected_router())
+        .route_layer(middleware::from_fn(require_bearer_auth));
+
     Router::new()
         .route("/health", get(move || health(service_name)))
         .route("/ready", get(move || ready(service_name)))
@@ -33,6 +41,7 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(shop::router())
         .merge(research::router())
         .merge(shipyard::router())
+        .merge(protected_routes)
 }
 
 async fn health(service_name: &'static str) -> Json<ServiceStatus> {

@@ -56,22 +56,17 @@ Quick Start — Docker (recommended)
 
    docker-compose down
 
-Rust-only hard-cut runbook
-1. Start the Rust-first stack profile:
+Rust Hard-Cut Workflow
+1. Use the hard-cut helper scripts under `scripts/rust` to run the Rust-only profile commands.
+2. Start (equivalent command):
 
    docker compose --profile rust-only up -d --build database redis rabbitmq rust-core-engine rust-api-gateway rust-admin-api rust-bot-api rust-sms-api rust-realtime-gateway frontend
 
-2. In this mode, `frontend` waits for `rust-api-gateway` (and can still run if legacy `backend` is not started).
-3. Primary Rust services in this profile are:
-   - `rust-api-gateway`
-   - `rust-admin-api`
-   - `rust-bot-api`
-   - `rust-sms-api`
-   - `rust-realtime-gateway`
-   - `rust-core-engine`
-4. Stop the profile:
+3. Stop (equivalent command):
 
    docker compose --profile rust-only down
+
+4. Current hard-cut runtime wiring: `frontend` can run against `rust-api-gateway` without requiring legacy `backend`.
 
 Local development (service by service)
 - Backend

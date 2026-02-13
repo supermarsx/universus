@@ -31,6 +31,10 @@ pub fn bad_request(message: &str) -> Response {
     app_error_response(AppError::bad_request(message))
 }
 
+pub fn unauthorized(message: &str) -> Response {
+    app_error_response(AppError::unauthorized(message))
+}
+
 fn app_error_response(error: AppError) -> Response {
     let (status, message) = match error {
         AppError::BadRequest(message) => (StatusCode::BAD_REQUEST, message),

@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 const TEST_SERVICE_NAME: &str = "app-api-gateway";
+const DEV_TOKEN: &str = "dev-token";
 
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body()).await.unwrap();
@@ -312,4 +313,127 @@ async fn shipyard_build_preview_requires_positive_count() {
     let body = response_json(response).await;
     assert_eq!(body["success"], false);
     assert_eq!(body["error"], "Count must be greater than zero");
+}
+
+#[tokio::test]
+async fn account_profile_without_auth_returns_401() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/profile")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn account_profile_with_valid_bearer_token_returns_200() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/profile")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert_eq!(body["data"]["username"], "Commander");
+}
+
+#[tokio::test]
+async fn account_resources_with_invalid_token_returns_401() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/resources")
+                .method("GET")
+                .header("authorization", "Bearer wrong-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn fleet_send_without_auth_returns_401() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "mission": "attack",
+        "target": "[1:123:7]",
+        "ships": [
+            { "shipType": "lightFighter", "count": 20 }
+        ]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fleet/send")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn fleet_send_with_auth_returns_success_envelope() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "mission": "attack",
+        "target": "[1:123:7]",
+        "ships": [
+            { "shipType": "lightFighter", "count": 20 },
+            { "shipType": "cruiser", "count": 5 }
+        ]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/fleet/send")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert_eq!(body["data"]["accepted"], true);
+    assert_eq!(body["data"]["totalShips"], 25);
 }

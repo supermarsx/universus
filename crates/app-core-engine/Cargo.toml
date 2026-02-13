@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+axum = { workspace = true }
+game-combat = { path = "../game-combat" }
+game-fleet = { path = "../game-fleet" }
+serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+hyper = "0.14"
+serde_json = "1"
+tower = "0.4"

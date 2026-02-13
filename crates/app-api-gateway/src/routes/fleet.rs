@@ -4,7 +4,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use game_combat::{CombatInput, CombatResult, simulate_combat};
 use game_fleet::{FleetMovementInput, FleetMovementResult, calculate_movement};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::helpers::{
     attacker_distribution_handler, defense_rebuild_handler, espionage_outcome_handler,
@@ -40,6 +40,31 @@ struct FleetShip {
     count: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FleetSendRequest {
+    mission: String,
+    target: String,
+    ships: Vec<FleetSendShip>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FleetSendShip {
+    ship_type: String,
+    count: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FleetSendResponse {
+    command_id: String,
+    mission: String,
+    target: String,
+    total_ships: i64,
+    accepted: bool,
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/api/combat/simulate", post(simulate_combat_handler))
@@ -68,6 +93,10 @@ pub fn router() -> Router {
             "/api/fleet/helpers/harvest-collection",
             post(harvest_collection_handler),
         )
+}
+
+pub fn protected_router() -> Router {
+    Router::new().route("/api/fleet/send", post(send_fleet_handler))
 }
 
 async fn simulate_combat_handler(Json(input): Json<CombatInput>) -> Json<CombatResult> {
@@ -142,4 +171,37 @@ async fn get_fleet_handler(Path(fleet_id): Path<String>) -> Response {
         _ => return bad_request("Fleet not found"),
     };
     success(detail)
+}
+
+async fn send_fleet_handler(Json(input): Json<FleetSendRequest>) -> Response {
+    if input.mission.trim().is_empty() {
+        return bad_request("Mission is required");
+    }
+
+    if input.target.trim().is_empty() {
+        return bad_request("Target is required");
+    }
+
+    if input.ships.is_empty() {
+        return bad_request("At least one ship entry is required");
+    }
+
+    let mut total_ships = 0_i64;
+    for ship in &input.ships {
+        if ship.ship_type.trim().is_empty() {
+            return bad_request("Ship type is required");
+        }
+        if ship.count <= 0 {
+            return bad_request("Ship count must be greater than zero");
+        }
+        total_ships += ship.count;
+    }
+
+    success(FleetSendResponse {
+        command_id: "cmd-fleet-001".to_string(),
+        mission: input.mission,
+        target: input.target,
+        total_ships,
+        accepted: true,
+    })
 }

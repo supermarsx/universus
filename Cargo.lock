@@ -114,7 +114,14 @@ dependencies = [
 name = "app-core-engine"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "game-combat",
+ "game-fleet",
+ "hyper",
+ "serde",
+ "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]
@@ -133,8 +140,11 @@ name = "app-realtime-gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "hyper",
  "serde",
+ "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

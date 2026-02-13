@@ -16,6 +16,22 @@ Updated on February 13, 2026.
   - websocket/event contract parity validation for realtime replacement.
   - decommission of `backend-core-napi` bridge after parity/SLO acceptance.
 
+## Current Rust Coverage
+| Service family | Implemented crate(s) | Runtime service | Endpoint families now in Rust |
+| --- | --- | --- | --- |
+| api-gateway | `app-api-gateway` | `rust-api-gateway` | Health/readiness plus `/api/auth/*`, `/api/planets*`, `/api/fleet*`, `/api/combat/simulate`, `/api/alliance*`, `/api/messages*`, `/api/leaderboard*`, `/api/galaxy*`, `/api/shop*`, `/api/research*`, `/api/shipyard*`. |
+| admin | `app-admin-api` | `rust-admin-api` | Health/readiness/status plus `/api/admin/dashboard`, `/users`, `/monitoring`, `/settings`, `/analytics`, `/audit`, `/status`, `/events`, `/status/incidents*`. |
+| bot | `app-bot-api` | `rust-bot-api` | Health/readiness plus `/api/admin/bots*` families: CRUD, filters, think/process triggers, leaderboard, personalities. |
+| sms | `app-sms-api` | `rust-sms-api` | `/api/send`, `/metrics`, `/history`, `/health`, `/ready`. |
+| realtime | `app-realtime-gateway` | `rust-realtime-gateway` | `/health`, `/ready`, `/ws-info` (WebSocket metadata endpoint). |
+| core-engine | `backend-core` (binary) | `rust-core-engine` | gRPC `GameLoop`: `StartBattle`, `StepBattle`, `StreamBattle`, `SimulateBattle`, `CalculateFleetMovement`. |
+| core | `backend-core` (HTTP helper), `game-combat`, `game-fleet` | Consumed by `rust-api-gateway` and `rust-core-engine` | Fleet/combat helper routes: `/api/fleet/helpers/*`, plus deterministic combat/movement handlers. |
+
+## Remaining Legacy Hotspots
+- Node `backend` still owns major DB write paths and business parity for many production gameplay routes; hard-cut requires route-level SQL and behavior parity sign-off.
+- Node-side bridge/runtime paths remain in circulation (`backend-core-napi`, plus mixed helper fallbacks), so full Rust ownership is not yet complete.
+- Frontend wiring is still mixed between legacy and Rust backends (base URL, auth/session flow, realtime/socket contract handling), and needs a final Rust-only contract pass.
+
 ## Objective
 Reframe the entire backend as a Rust-first platform with explicit crate boundaries, preserving gameplay behavior while removing Node.js service ownership over time.
 
