@@ -1,16 +1,10 @@
 import { SHIPS } from '../config/gameConfig';
-import type { RustFleetMovementRequest } from '../coreAdapter/rustCoreClient';
 import {
-  calculateFleetMovementByTypeNapi,
-  calculateFleetMovementNapi,
-  computeAttackerPostCombatDistributionNapi,
-  computeEspionageOutcomeNapi,
-  computeHarvestCollectionNapi,
-  computeMissionCargoTransferNapi,
-  resolveDefenseLossesNapi,
-} from '../coreAdapter/rustCoreNapiClient';
+  calculateFleetMovementRust,
+  type RustFleetMovementRequest,
+} from '../coreAdapter/rustCoreClient';
 
-export type EngineSource = 'rust-napi' | 'typescript';
+export type EngineSource = 'rust-grpc' | 'typescript';
 
 export interface FleetCoordinates {
   galaxy: number;
@@ -397,19 +391,14 @@ export class FleetHelperService {
   static async calculateMovement(input: FleetMovementInput): Promise<FleetMovementOutput> {
     try {
       const request = buildRustMovementRequest(input);
-      let result;
-      try {
-        result = await calculateFleetMovementByTypeNapi(request);
-      } catch {
-        result = await calculateFleetMovementNapi(request);
-      }
+      const result = await calculateFleetMovementRust(request);
       return {
         distance: Number(result.distance || 0),
         fleetSpeed: Number(result.fleetSpeed || 0),
         travelTimeSeconds: Number(result.travelTimeSeconds || 0),
         fuelNeeded: Number(result.fuelNeeded || 0),
         cargoCapacity: Number(result.cargoCapacity || 0),
-        engine: 'rust-napi',
+        engine: 'rust-grpc',
       };
     } catch {
       return movementFallback(input);
@@ -417,91 +406,26 @@ export class FleetHelperService {
   }
 
   static async resolveDefenseRebuild(input: DefenseRebuildInput): Promise<DefenseRebuildOutput> {
-    try {
-      const response = await resolveDefenseLossesNapi({
-        current: input.current,
-        losses: input.losses,
-        rebuild_rate: input.rebuildRate,
-        seed: input.seed,
-      });
-      return {
-        updated: response.updated || {},
-        engine: 'rust-napi',
-      };
-    } catch {
-      return defenseRebuildFallback(input);
-    }
+    return defenseRebuildFallback(input);
   }
 
   static async computeAttackerDistribution(
     input: CombatDistributionInput
   ): Promise<CombatDistributionOutput> {
-    try {
-      const response = await computeAttackerPostCombatDistributionNapi({
-        participants: input.participants,
-        total_losses: input.totalLosses,
-        loot: input.loot,
-        winner: input.winner,
-      });
-      return {
-        participants: response.participants || [],
-        engine: 'rust-napi',
-      };
-    } catch {
-      return combatDistributionFallback(input);
-    }
+    return combatDistributionFallback(input);
   }
 
   static async computeMissionCargoTransfer(
     input: MissionCargoTransferInput
   ): Promise<MissionCargoTransferOutput> {
-    try {
-      const response = await computeMissionCargoTransferNapi({
-        metal: input.metal,
-        crystal: input.crystal,
-        deuterium: input.deuterium,
-        clamp_non_negative: input.clampNonNegative,
-      });
-      return {
-        ...response,
-        engine: 'rust-napi',
-      };
-    } catch {
-      return missionCargoTransferFallback(input);
-    }
+    return missionCargoTransferFallback(input);
   }
 
   static async computeHarvestCollection(input: HarvestCollectionInput): Promise<HarvestCollectionOutput> {
-    try {
-      const response = await computeHarvestCollectionNapi({
-        debris_metal: input.debrisMetal,
-        debris_crystal: input.debrisCrystal,
-        recycler_count: input.recyclerCount,
-        recycler_cargo_capacity: input.recyclerCargoCapacity,
-      });
-      return {
-        ...response,
-        engine: 'rust-napi',
-      };
-    } catch {
-      return harvestCollectionFallback(input);
-    }
+    return harvestCollectionFallback(input);
   }
 
   static async computeEspionageOutcome(input: EspionageOutcomeInput): Promise<EspionageOutcomeOutput> {
-    try {
-      const response = await computeEspionageOutcomeNapi({
-        probes: input.probes,
-        attacker_espionage: input.attackerEspionage,
-        defender_espionage: input.defenderEspionage,
-        seed: input.seed,
-      });
-      return {
-        ...response,
-        engine: 'rust-napi',
-      };
-    } catch {
-      return espionageOutcomeFallback(input);
-    }
+    return espionageOutcomeFallback(input);
   }
 }

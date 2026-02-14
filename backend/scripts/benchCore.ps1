@@ -7,24 +7,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$backendDir = Resolve-Path (Join-Path $PSScriptRoot "..")
-$napiDll = Join-Path $repoRoot "target\release\backend_core_napi.dll"
-$napiNode = Join-Path $repoRoot "crates\backend-core-napi\index.node"
-
-Write-Host "[bench] building backend-core-napi (release)..."
-Push-Location $repoRoot
-cargo build -p backend-core-napi --release | Out-Host
-Pop-Location
-
-if (-not (Test-Path $napiDll)) {
-  throw "N-API dll not found: $napiDll"
-}
-
-Copy-Item -Path $napiDll -Destination $napiNode -Force
-$env:CORE_NAPI_BINDING_PATH = $napiNode
 $env:BENCH_ITERATIONS = [string]$Iterations
 $env:BENCH_WARMUP = [string]$Warmup
-Write-Host "[bench] CORE_NAPI_BINDING_PATH=$($env:CORE_NAPI_BINDING_PATH)"
 Write-Host "[bench] BENCH_ITERATIONS=$($env:BENCH_ITERATIONS) BENCH_WARMUP=$($env:BENCH_WARMUP)"
 
 $coreProc = $null

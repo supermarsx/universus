@@ -10,18 +10,18 @@ Goal: Design and implement a full-stack browser-based multiplayer RPG (strategy 
 The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy simulation:
 - HTTP/WebSocket/API orchestration remains in Node.js/TypeScript.
 - **Combat simulation is delegated to `backend-core` (Rust, gRPC)** by default (`CORE_ENGINE=rust`), with TypeScript fallback for resilience.
-- **Fleet movement now uses a Rust-first path with N-API by-type kernel first, then fast N-API, then gRPC, then local TypeScript fallback** for resilience.
+- **Fleet movement now uses a Rust-first path with gRPC first, then local TypeScript fallback** for resilience.
 - **Fleet/combat helper calculator endpoints now support a Rust HTTP helper proxy migration path**:
   - `POST /api/fleet/helpers/movement`
   - `POST /api/fleet/helpers/combat/defense-rebuild`
   - `POST /api/fleet/helpers/combat/attacker-distribution`
   - If `RUST_HTTP_HELPER_URL` is configured, backend routes call that Rust HTTP helper first.
   - On proxy failure (or when unset), routes fall back to existing local `FleetHelperService` logic.
-  - Local `FleetHelperService` remains Rust N-API first with TypeScript fallback.
+  - Local `FleetHelperService` now uses Rust gRPC for movement and TypeScript fallback mission kernels.
 - Backend and Rust core interoperate through protobuf (`backend/src/coreAdapter/proto/core.proto`).
 - Runtime controls:
   - `CORE_ENGINE=rust|ts` to select Rust-first or TypeScript-only simulation path.
-  - `CORE_TRANSPORT=auto|grpc|napi|http` to choose Rust invocation transport (default `auto`).
+  - `CORE_TRANSPORT=auto|grpc|http` to choose Rust invocation transport (default `auto`).
     - `CORE_TRANSPORT=http` routes combat simulation through Rust HTTP `POST /api/combat/simulate`.
   - `CORE_HELPER_TRANSPORT=http` to enable Rust HTTP helper transport for fleet mission helper kernels.
   - `CORE_HTTP_HELPER_TOKEN` to send shared helper auth token as `x-core-helper-token` (required when Rust HTTP helper token auth is enabled, including `/api/combat/simulate`).
@@ -33,18 +33,17 @@ The backend now uses a **hybrid Node.js + Rust architecture** for compute-heavy 
 | Step | Scope | Current completion status | Next milestone |
 | --- | --- | --- | --- |
 | 1 | Combat simulation on Rust core | Completed (Rust-first live, TS fallback retained) | Staging rust-only fail-closed canary for combat path. |
-| 2 | Fleet movement Rust-first transport chain | Completed (N-API by-type -> fast N-API -> gRPC -> TS fallback) | Move TS movement fallback behind emergency-only flag after SLO validation. |
-| 3 | Mission helper kernels in fleet orchestration | In progress (Rust N-API/HTTP live; TS fallback still active) | Roll out `CORE_HELPER_TRANSPORT=http` with `RUST_HTTP_HELPER_URL` and `CORE_HTTP_HELPER_TOKEN`. |
+| 2 | Fleet movement Rust-first transport chain | Completed (gRPC -> TS fallback) | Move TS movement fallback behind emergency-only flag after SLO validation. |
+| 3 | Mission helper kernels in fleet orchestration | In progress (Rust HTTP helper + local TS fallback live) | Roll out `CORE_HELPER_TRANSPORT=http` with `RUST_HTTP_HELPER_URL` and `CORE_HTTP_HELPER_TOKEN`. |
 | 4 | Fleet helper REST shim proxying to Rust | In progress (proxy-first when configured, local fallback on errors) | Make Rust helper proxy default in non-test and enforce helper token ingress. |
-| 5 | Full backend cutover posture | Pending | Standardize runtime profile on Rust-first (`CORE_ENGINE=rust`, `CORE_TRANSPORT=auto|napi|grpc|http`, `CORE_HELPER_TRANSPORT=http`) and then retire TS combat/mission fallbacks after stability window. |
+| 5 | Full backend cutover posture | Pending | Standardize runtime profile on Rust-first (`CORE_ENGINE=rust`, `CORE_TRANSPORT=auto|grpc|http`, `CORE_HELPER_TRANSPORT=http`) and then retire TS combat/mission fallbacks after stability window. |
 - Backend benchmark tooling now includes:
   - transport benchmark (`backend/scripts/benchmarkCoreTransports.ts`)
   - memory benchmark (`backend/scripts/benchmarkCoreMemory.ts`, runs with Node `--expose-gc`)
   - snapshot outputs under `backend/benchmarks/history/` (`core-bench-*.json`, `core-memory-bench-*.json`)
 
 Movement kernel note:
-- N-API by-type movement (`calculateFleetMovementByTypeNapi`) accepts a deterministic ship type/count map.
-- `FleetService` movement cache keys use deterministic ship-map ordering for the by-type path (ship stats are not included in that key).
+- `FleetService` movement cache keys remain deterministic for equivalent route payloads and ship specs.
 
 This update supersedes prior wording that all game modules run solely inside the Node.js process.
 See `specification/spec-rust-backend.md` for the Rust boundary and migration details.

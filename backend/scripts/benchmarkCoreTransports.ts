@@ -3,13 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
 import { calculateFleetMovementRust } from '../src/coreAdapter/rustCoreClient';
-import {
-  calculateFleetMovementBatchNapi,
-  calculateFleetMovementByTypeNapi,
-  calculateFleetMovementNapiLegacyJson,
-  calculateFleetMovementNapi,
-  isNapiAvailable,
-} from '../src/coreAdapter/rustCoreNapiClient';
 
 type ShipSpec = {
   ship_type: string;
@@ -146,46 +139,13 @@ async function main() {
     },
   };
 
-  const napiCase: BenchmarkCase = {
-    name: 'napi_json_compat',
-    run: async (iteration) => {
-      await calculateFleetMovementNapiLegacyJson(buildMovementRequest(iteration));
-    },
-  };
-
-  const napiFastCase: BenchmarkCase = {
-    name: 'napi_fast',
-    run: async (iteration) => {
-      await calculateFleetMovementNapi(buildMovementRequest(iteration));
-    },
-  };
-
-  const napiByTypeCase: BenchmarkCase = {
-    name: 'napi_by_type',
-    run: async (iteration) => {
-      await calculateFleetMovementByTypeNapi(buildMovementRequest(iteration));
-    },
-  };
-
-  const napiBatchCase: BenchmarkCase = {
-    name: 'napi_batch_x256',
-    actionsPerRun: 256,
-    run: async (iteration) => {
-      const batchSize = 256;
-      const batch = Array.from({ length: batchSize }, (_, offset) => buildMovementRequest(iteration * batchSize + offset));
-      await calculateFleetMovementBatchNapi(batch);
-    },
-  };
-
-  const suite = [tsCase, grpcCase, napiCase, napiByTypeCase, napiFastCase, napiBatchCase];
+  const suite = [tsCase, grpcCase];
 
   console.log('Core Transport Benchmark (Fleet Movement)');
   console.log(`iterations: ${iterations}`);
   console.log(`warmup: ${warmup}`);
   console.log(`actions per transport: ${iterations}`);
   console.log(`grpc target: ${process.env.BACKEND_CORE_ADDR || 'backend-core:50051'}`);
-  console.log(`napi binding path: ${process.env.CORE_NAPI_BINDING_PATH || '(auto-detect)'}`);
-  console.log(`napi available: ${isNapiAvailable()}`);
   console.log('');
 
   const summaries: BenchmarkSummary[] = [];
@@ -229,8 +189,7 @@ async function main() {
   }
 
   console.log('');
-  console.log('Tip: start backend-core for gRPC and set CORE_NAPI_BINDING_PATH for N-API.');
-  console.log(`Example N-API binding: ${path.resolve(process.cwd(), '..', 'crates', 'backend-core-napi', 'index.node')}`);
+  console.log('Tip: start backend-core for gRPC.');
 
   const saveDir = process.env.BENCH_SAVE_DIR || path.resolve(process.cwd(), 'benchmarks', 'history');
   fs.mkdirSync(saveDir, { recursive: true });
@@ -250,14 +209,11 @@ async function main() {
     iterations,
     warmup,
     grpcTarget: process.env.BACKEND_CORE_ADDR || 'backend-core:50051',
-    napiBindingPath: process.env.CORE_NAPI_BINDING_PATH || null,
     metadata: {
-      rustFirstMovementPath: ['napi_by_type', 'napi_fast', 'grpc', 'typescript_local'],
+      rustFirstMovementPath: ['grpc', 'typescript_local'],
       kernels: {
-        byType: 'calculateFleetMovementByTypeNapi',
-        fast: 'calculateFleetMovementNapi',
-        batch: 'calculateFleetMovementBatchNapi',
-        legacyJson: 'calculateFleetMovementNapiLegacyJson',
+        grpc: 'calculateFleetMovementRust',
+        localTs: 'calculateFleetMovementTs',
       },
     },
     summaries,

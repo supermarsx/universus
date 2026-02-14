@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-02-13T21:43:25.029Z",
+  "gitCommit": "8f4d559",
+  "iterations": 150,
+  "warmup": 25,
+  "grpcTarget": "backend-core:50051",
+  "metadata": {
+    "rustFirstMovementPath": [
+      "grpc",
+      "typescript_local"
+    ],
+    "kernels": {
+      "grpc": "calculateFleetMovementRust",
+      "localTs": "calculateFleetMovementTs"
+    }
+  },
+  "summaries": [
+    {
+      "name": "ts",
+      "totalMs": 0.16970000000000013,
+      "opsPerSec": 883912.7872716552,
+      "p50": 0.001,
+      "p95": 0.0017,
+      "p99": 0.0041,
+      "avg": 0.0011313333333333342,
+      "min": 0.0009,
+      "max": 0.0075
+    }
+  ]
+}

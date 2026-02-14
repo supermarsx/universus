@@ -1830,3 +1830,59 @@ async fn analytics_events_and_usage_routes_work() {
     assert_eq!(usage_body["data"]["totalEvents"], 1);
     assert_eq!(usage_body["data"]["eventsByType"][0]["eventType"], "page_view");
 }
+
+#[tokio::test]
+async fn achievements_routes_and_awards_work() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let public_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/achievements")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(public_response.status(), StatusCode::OK);
+    let public_body = response_json(public_response).await;
+    assert_eq!(public_body["success"], true);
+    assert!(public_body["data"].is_array());
+
+    let award_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/achievements/user/17/achievements/1")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(award_response.status(), StatusCode::OK);
+    let award_body = response_json(award_response).await;
+    assert_eq!(award_body["success"], true);
+    assert_eq!(award_body["data"]["success"], true);
+
+    let user_achievements_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/achievements/user/17/achievements")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(user_achievements_response.status(), StatusCode::OK);
+    let user_achievements_body = response_json(user_achievements_response).await;
+    assert_eq!(user_achievements_body["success"], true);
+    assert!(user_achievements_body["data"].is_array());
+    assert_eq!(user_achievements_body["data"][0]["id"], 1);
+    assert_eq!(user_achievements_body["data"][0]["progress"], 1);
+}

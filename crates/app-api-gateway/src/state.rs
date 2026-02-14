@@ -8,6 +8,7 @@ pub struct AppState {
     analytics_inner: Arc<Mutex<AnalyticsState>>,
     universe_inner: Arc<Mutex<UniverseState>>,
     acs_inner: Arc<Mutex<AcsState>>,
+    marketplace_inner: Arc<Mutex<MarketplaceState>>,
 }
 
 struct GameState {
@@ -33,6 +34,11 @@ struct UniverseState {
 
 struct AcsState {
     groups: HashMap<i64, AcsGroupRecord>,
+    next_id: i64,
+}
+
+struct MarketplaceState {
+    listings: HashMap<i64, MarketplaceListingRecord>,
     next_id: i64,
 }
 
@@ -68,6 +74,31 @@ struct ShardServerRecord {
     max_capacity: i64,
     health_score: f64,
     last_heartbeat_unix: i64,
+}
+
+#[derive(Clone)]
+struct MarketplaceListingRecord {
+    id: i64,
+    user_id: i64,
+    planet_id: i64,
+    listing_type: String,
+    resource_type: Option<String>,
+    quantity: Option<i64>,
+    price_per_unit: Option<i64>,
+    total_price: Option<i64>,
+    fleet_type: Option<String>,
+    fleet_quantity: Option<i64>,
+    wanted_type: String,
+    wanted_amount: i64,
+    status: String,
+    created_at: String,
+    created_at_unix: i64,
+    completed_at: Option<String>,
+    cancelled_at: Option<String>,
+    buyer_id: Option<i64>,
+    buyer_planet_id: Option<i64>,
+    delivery_eta: Option<String>,
+    tax_paid: i64,
 }
 
 #[derive(Clone)]
@@ -294,6 +325,72 @@ pub struct AcsGroupSnapshot {
     pub notes: Option<String>,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct MarketplaceListingSnapshot {
+    pub id: i64,
+    pub user_id: i64,
+    pub planet_id: i64,
+    pub listing_type: String,
+    pub resource_type: Option<String>,
+    pub quantity: Option<i64>,
+    pub price_per_unit: Option<i64>,
+    pub total_price: Option<i64>,
+    pub fleet_type: Option<String>,
+    pub fleet_quantity: Option<i64>,
+    pub wanted_type: String,
+    pub wanted_amount: i64,
+    pub status: String,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+    pub cancelled_at: Option<String>,
+    pub buyer_id: Option<i64>,
+    pub buyer_planet_id: Option<i64>,
+    pub delivery_eta: Option<String>,
+    pub tax_paid: i64,
+}
+
+#[derive(Clone)]
+pub struct MarketplaceTransactionSnapshot {
+    pub listing_id: i64,
+    pub buyer_id: i64,
+    pub buyer_planet_id: i64,
+    pub seller_id: i64,
+    pub seller_planet_id: i64,
+}
+
+#[derive(Clone)]
+pub struct MarketplaceAcceptSnapshot {
+    pub delivery_eta: Option<String>,
+    pub transaction: MarketplaceTransactionSnapshot,
+}
+
+#[derive(Clone)]
+pub struct MarketplaceListFilters {
+    pub listing_type: Option<String>,
+    pub resource_type: Option<String>,
+    pub fleet_type: Option<String>,
+    pub wanted_type: Option<String>,
+    pub min: Option<i64>,
+    pub max: Option<i64>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Clone)]
+pub struct MarketplaceListingInput {
+    pub user_id: i64,
+    pub planet_id: i64,
+    pub listing_type: String,
+    pub resource_type: Option<String>,
+    pub quantity: Option<i64>,
+    pub price_per_unit: Option<i64>,
+    pub total_price: Option<i64>,
+    pub fleet_type: Option<String>,
+    pub fleet_quantity: Option<i64>,
+    pub wanted_type: String,
+    pub wanted_amount: i64,
+}
+
 #[derive(Clone)]
 pub struct CreateAcsGroupInput {
     pub mission_type: String,
@@ -313,6 +410,7 @@ impl AppState {
             analytics_inner: Arc::new(Mutex::new(AnalyticsState::default())),
             universe_inner: Arc::new(Mutex::new(UniverseState::default())),
             acs_inner: Arc::new(Mutex::new(AcsState::default())),
+            marketplace_inner: Arc::new(Mutex::new(MarketplaceState::default())),
         }
     }
 
@@ -951,6 +1049,233 @@ impl AppState {
         }
         Ok(())
     }
+
+    pub fn list_marketplace_listings(
+        &self,
+        filters: MarketplaceListFilters,
+    ) -> (Vec<MarketplaceListingSnapshot>, i64) {
+        let marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+        let mut listings = marketplace_state
+            .listings
+            .values()
+            .filter(|listing| listing.status == "active")
+            .filter(|listing| {
+                filters
+                    .listing_type
+                    .as_ref()
+                    .map(|value| listing.listing_type == *value)
+                    .unwrap_or(true)
+            })
+            .filter(|listing| {
+                filters
+                    .resource_type
+                    .as_ref()
+                    .map(|value| listing.resource_type.as_deref() == Some(value.as_str()))
+                    .unwrap_or(true)
+            })
+            .filter(|listing| {
+                filters
+                    .fleet_type
+                    .as_ref()
+                    .map(|value| listing.fleet_type.as_deref() == Some(value.as_str()))
+                    .unwrap_or(true)
+            })
+            .filter(|listing| {
+                filters
+                    .wanted_type
+                    .as_ref()
+                    .map(|value| listing.wanted_type == *value)
+                    .unwrap_or(true)
+            })
+            .filter(|listing| {
+                filters
+                    .min
+                    .map(|value| listing.wanted_amount >= value)
+                    .unwrap_or(true)
+            })
+            .filter(|listing| {
+                filters
+                    .max
+                    .map(|value| listing.wanted_amount <= value)
+                    .unwrap_or(true)
+            })
+            .map(marketplace_listing_snapshot)
+            .collect::<Vec<_>>();
+
+        listings.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+
+        let total = listings.len() as i64;
+        let page = filters.page.max(1);
+        let page_size = filters.page_size.max(1) as usize;
+        let start = ((page - 1) as usize).saturating_mul(page_size);
+        let end = start.saturating_add(page_size).min(listings.len());
+        let page_slice = if start >= listings.len() {
+            Vec::new()
+        } else {
+            listings[start..end].to_vec()
+        };
+
+        (page_slice, total)
+    }
+
+    pub fn create_marketplace_listing(
+        &self,
+        input: MarketplaceListingInput,
+    ) -> MarketplaceListingSnapshot {
+        let mut marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+
+        let listing_id = marketplace_state.next_id;
+        marketplace_state.next_id += 1;
+        let created_at_unix = unix_timestamp();
+        let created_at = marketplace_timestamp(created_at_unix);
+        let record = MarketplaceListingRecord {
+            id: listing_id,
+            user_id: input.user_id,
+            planet_id: input.planet_id,
+            listing_type: input.listing_type,
+            resource_type: input.resource_type,
+            quantity: input.quantity,
+            price_per_unit: input.price_per_unit,
+            total_price: input.total_price,
+            fleet_type: input.fleet_type,
+            fleet_quantity: input.fleet_quantity,
+            wanted_type: input.wanted_type,
+            wanted_amount: input.wanted_amount,
+            status: "active".to_string(),
+            created_at,
+            created_at_unix,
+            completed_at: None,
+            cancelled_at: None,
+            buyer_id: None,
+            buyer_planet_id: None,
+            delivery_eta: None,
+            tax_paid: 0,
+        };
+
+        marketplace_state
+            .listings
+            .insert(listing_id, record.clone());
+
+        marketplace_listing_snapshot(&record)
+    }
+
+    pub fn accept_marketplace_listing(
+        &self,
+        buyer_id: i64,
+        listing_id: i64,
+        buyer_planet_id: i64,
+    ) -> Result<MarketplaceAcceptSnapshot, &'static str> {
+        let mut marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+        let Some(listing) = marketplace_state.listings.get_mut(&listing_id) else {
+            return Err("Listing not found");
+        };
+        if listing.status != "active" {
+            return Err("Listing is not active");
+        }
+        if listing.user_id == buyer_id {
+            return Err("Cannot accept your own listing");
+        }
+
+        listing.status = "completed".to_string();
+        listing.completed_at = Some(marketplace_timestamp(unix_timestamp()));
+        listing.buyer_id = Some(buyer_id);
+        listing.buyer_planet_id = Some(buyer_planet_id);
+
+        Ok(MarketplaceAcceptSnapshot {
+            delivery_eta: listing.delivery_eta.clone(),
+            transaction: MarketplaceTransactionSnapshot {
+                listing_id,
+                buyer_id,
+                buyer_planet_id,
+                seller_id: listing.user_id,
+                seller_planet_id: listing.planet_id,
+            },
+        })
+    }
+
+    pub fn cancel_marketplace_listing(
+        &self,
+        user_id: i64,
+        listing_id: i64,
+    ) -> Result<(), &'static str> {
+        let mut marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+        let Some(listing) = marketplace_state.listings.get_mut(&listing_id) else {
+            return Err("Listing not found");
+        };
+        if listing.user_id != user_id {
+            return Err("You do not own this listing");
+        }
+        if listing.status != "active" {
+            return Err("Listing is not active");
+        }
+
+        listing.status = "cancelled".to_string();
+        listing.cancelled_at = Some(marketplace_timestamp(unix_timestamp()));
+        Ok(())
+    }
+
+    pub fn list_marketplace_user_listings(
+        &self,
+        user_id: i64,
+    ) -> Vec<MarketplaceListingSnapshot> {
+        let marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+        let mut listings = marketplace_state
+            .listings
+            .values()
+            .filter(|listing| listing.user_id == user_id)
+            .map(marketplace_listing_snapshot)
+            .collect::<Vec<_>>();
+        listings.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        listings
+    }
+
+    pub fn list_marketplace_user_history(
+        &self,
+        user_id: i64,
+    ) -> Vec<MarketplaceListingSnapshot> {
+        let marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+        let mut listings = marketplace_state
+            .listings
+            .values()
+            .filter(|listing| {
+                listing.status == "completed"
+                    && (listing.user_id == user_id || listing.buyer_id == Some(user_id))
+            })
+            .map(marketplace_listing_snapshot)
+            .collect::<Vec<_>>();
+        listings.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        listings.truncate(100);
+        listings
+    }
+
+    pub fn get_marketplace_listing(&self, listing_id: i64) -> Option<MarketplaceListingSnapshot> {
+        let marketplace_state = self
+            .marketplace_inner
+            .lock()
+            .expect("app state poisoned");
+        marketplace_state
+            .listings
+            .get(&listing_id)
+            .map(marketplace_listing_snapshot)
+    }
 }
 
 fn player_mut<'a>(game_state: &'a mut GameState, player_key: &str) -> &'a mut PlayerState {
@@ -1088,6 +1413,95 @@ impl Default for AcsState {
     }
 }
 
+impl Default for MarketplaceState {
+    fn default() -> Self {
+        let mut listings = HashMap::new();
+        listings.insert(
+            101,
+            MarketplaceListingRecord {
+                id: 101,
+                user_id: 501,
+                planet_id: 21,
+                listing_type: "resource".to_string(),
+                resource_type: Some("metal".to_string()),
+                quantity: Some(40_000),
+                price_per_unit: Some(3),
+                total_price: Some(120_000),
+                fleet_type: None,
+                fleet_quantity: None,
+                wanted_type: "crystal".to_string(),
+                wanted_amount: 75_000,
+                status: "active".to_string(),
+                created_at: "2026-02-13T20:05:00Z".to_string(),
+                created_at_unix: unix_timestamp(),
+                completed_at: None,
+                cancelled_at: None,
+                buyer_id: None,
+                buyer_planet_id: None,
+                delivery_eta: None,
+                tax_paid: 0,
+            },
+        );
+        listings.insert(
+            102,
+            MarketplaceListingRecord {
+                id: 102,
+                user_id: 502,
+                planet_id: 22,
+                listing_type: "fleet".to_string(),
+                resource_type: None,
+                quantity: None,
+                price_per_unit: Some(8500),
+                total_price: Some(85_000),
+                fleet_type: Some("cruiser".to_string()),
+                fleet_quantity: Some(10),
+                wanted_type: "metal".to_string(),
+                wanted_amount: 85_000,
+                status: "active".to_string(),
+                created_at: "2026-02-13T20:10:00Z".to_string(),
+                created_at_unix: unix_timestamp(),
+                completed_at: None,
+                cancelled_at: None,
+                buyer_id: None,
+                buyer_planet_id: None,
+                delivery_eta: None,
+                tax_paid: 0,
+            },
+        );
+        listings.insert(
+            103,
+            MarketplaceListingRecord {
+                id: 103,
+                user_id: 503,
+                planet_id: 25,
+                listing_type: "resource".to_string(),
+                resource_type: Some("deuterium".to_string()),
+                quantity: Some(12_000),
+                price_per_unit: Some(8),
+                total_price: Some(96_000),
+                fleet_type: None,
+                fleet_quantity: None,
+                wanted_type: "metal".to_string(),
+                wanted_amount: 96_000,
+                status: "completed".to_string(),
+                created_at: "2026-02-13T19:45:00Z".to_string(),
+                created_at_unix: unix_timestamp(),
+                completed_at: Some("2026-02-13T20:20:00Z".to_string()),
+                cancelled_at: None,
+                buyer_id: Some(504),
+                buyer_planet_id: Some(26),
+                delivery_eta: None,
+                tax_paid: 0,
+            },
+        );
+
+        Self {
+            listings,
+            next_id: 104,
+        }
+    }
+}
+
 fn universe_snapshot(entry: &UniverseRecord) -> UniverseSnapshot {
     UniverseSnapshot {
         id: entry.id,
@@ -1108,6 +1522,31 @@ fn acs_group_snapshot(entry: &AcsGroupRecord) -> AcsGroupSnapshot {
         departure_window_start: entry.departure_window_start.clone(),
         departure_window_end: entry.departure_window_end.clone(),
         notes: entry.notes.clone(),
+    }
+}
+
+fn marketplace_listing_snapshot(entry: &MarketplaceListingRecord) -> MarketplaceListingSnapshot {
+    MarketplaceListingSnapshot {
+        id: entry.id,
+        user_id: entry.user_id,
+        planet_id: entry.planet_id,
+        listing_type: entry.listing_type.clone(),
+        resource_type: entry.resource_type.clone(),
+        quantity: entry.quantity,
+        price_per_unit: entry.price_per_unit,
+        total_price: entry.total_price,
+        fleet_type: entry.fleet_type.clone(),
+        fleet_quantity: entry.fleet_quantity,
+        wanted_type: entry.wanted_type.clone(),
+        wanted_amount: entry.wanted_amount,
+        status: entry.status.clone(),
+        created_at: entry.created_at.clone(),
+        completed_at: entry.completed_at.clone(),
+        cancelled_at: entry.cancelled_at.clone(),
+        buyer_id: entry.buyer_id,
+        buyer_planet_id: entry.buyer_planet_id,
+        delivery_eta: entry.delivery_eta.clone(),
+        tax_paid: entry.tax_paid,
     }
 }
 
@@ -1153,6 +1592,11 @@ fn unix_timestamp() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+fn marketplace_timestamp(timestamp: i64) -> String {
+    let seconds = (timestamp % 60).abs();
+    format!("2026-02-13T20:{:02}:00Z", seconds)
 }
 
 fn load_percent(current_load: i64, max_capacity: i64) -> f64 {

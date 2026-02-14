@@ -21,15 +21,6 @@ import { MessagingService } from './messagingService';
 import { gameConfig } from './gameConfigAdapter';
 import { RustHttpHelperClientService } from './rustHttpHelperClientService';
 import { calculateFleetMovementRust } from '../coreAdapter/rustCoreClient';
-import {
-  computeCombatReportSummaryNapi,
-  computeAttackerPostCombatDistributionNapi,
-  computeHarvestCollectionNapi,
-  computeEspionageOutcomeNapi,
-  computeMissionCargoTransferNapi,
-  isNapiAvailable,
-  resolveDefenseLossesNapi,
-} from '../coreAdapter/rustCoreNapiClient';
 
 interface FleetParticipant {
   fleet: Fleet;
@@ -1325,26 +1316,9 @@ export class FleetService {
         }));
       } catch (error) {
         console.warn(
-          '[FleetService] Rust HTTP helper attacker distribution unavailable, falling back to N-API/local:',
+          '[FleetService] Rust HTTP helper attacker distribution unavailable, using local fallback:',
           error
         );
-      }
-    }
-
-    if (!distributions && this.shouldUseNapiMissionMath()) {
-      try {
-        const response = await computeAttackerPostCombatDistributionNapi({
-          participants: participants.map((participant) => participant.ships),
-          total_losses: totalLosses,
-          loot: lootPool,
-          winner: result.winner,
-        });
-        distributions = response.participants.map((entry) => ({
-          survivors: entry.survivors || {},
-          loot: entry.loot || { metal: 0, crystal: 0, deuterium: 0 },
-        }));
-      } catch (error) {
-        console.warn('[FleetService] Rust N-API post-combat distribution unavailable, using local fallback:', error);
       }
     }
 
@@ -1481,35 +1455,11 @@ export class FleetService {
     if (process.env.NODE_ENV !== 'test') {
       const coreEngine = (process.env.CORE_ENGINE || 'rust').toLowerCase();
       let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
-      if (coreTransport === 'auto') {
-        coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
+      if (coreTransport === 'auto' || coreTransport === 'napi') {
+        coreTransport = 'grpc';
       }
-
-      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'napi') {
-        try {
-          return await computeCombatReportSummaryNapi({
-            report_id: reportId,
-            mission: fleet.mission_type,
-            target: {
-              galaxy: fleet.target_galaxy,
-              system: fleet.target_system,
-              position: fleet.target_position,
-            },
-            attacker_id: fleet.user_id,
-            defender_id: defenderId,
-            winner: result.winner,
-            loot: {
-              metal: Number(result.loot?.metal || 0),
-              crystal: Number(result.loot?.crystal || 0),
-              deuterium: Number(result.loot?.deuterium || 0),
-            },
-            attacker_losses: result.attackerLosses || {},
-            defender_losses: result.defenderLosses || {},
-            attacker_allies: attackerAllies,
-          });
-        } catch (error) {
-          console.warn('[FleetService] Rust N-API combat summary unavailable, using local fallback:', error);
-        }
+      if (coreEngine !== 'ts' && coreEngine !== 'typescript' && coreEngine !== 'js' && coreTransport === 'grpc') {
+        return this.buildCombatSummaryLocal(reportId, fleet, defenderId, result, attackerAllies);
       }
     }
 
@@ -1708,7 +1658,6 @@ export class FleetService {
           cargo: shipConfig?.cargo || 0,
         };
       });
-    const byTypeShips = this.buildMovementShipCountMap(payload.ships);
 
     const cacheKey = this.buildMovementCacheKey(
       originPlanet.galaxy,
@@ -1718,15 +1667,6 @@ export class FleetService {
       payload.targetSystem,
       payload.targetPosition,
       rustShips
-    );
-    const byTypeCacheKey = this.buildMovementCacheKeyByType(
-      originPlanet.galaxy,
-      originPlanet.system,
-      originPlanet.position,
-      payload.targetGalaxy,
-      payload.targetSystem,
-      payload.targetPosition,
-      byTypeShips
     );
     const now = Date.now();
 
@@ -1740,46 +1680,8 @@ export class FleetService {
       ships: rustShips,
     };
     let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
-
-    if (coreTransport === 'auto') {
-      coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
-    }
-
-    if (coreTransport === 'napi') {
-      try {
-        const byTypeCached = this.movementCache.get(byTypeCacheKey);
-        if (byTypeCached && byTypeCached.expiresAt > now) {
-          return byTypeCached.value;
-        }
-        const { calculateFleetMovementByTypeNapi } = require('../coreAdapter/rustCoreNapiClient');
-        const byTypeResult = await calculateFleetMovementByTypeNapi(grpcRequest);
-        const byTypeValue = {
-          fuelNeeded: byTypeResult.fuelNeeded,
-          travelTimeSeconds: byTypeResult.travelTimeSeconds,
-          cargoCapacity: byTypeResult.cargoCapacity,
-        };
-        this.setMovementCache(byTypeCacheKey, byTypeValue);
-        return byTypeValue;
-      } catch (error) {
-        console.warn('[FleetService] Rust N-API by-type movement unavailable, falling back to fast movement:', error);
-        try {
-          const cached = this.movementCache.get(cacheKey);
-          if (cached && cached.expiresAt > now) {
-            return cached.value;
-          }
-          const { calculateFleetMovementNapi } = require('../coreAdapter/rustCoreNapiClient');
-          const rustResult = await calculateFleetMovementNapi(grpcRequest);
-          const value = {
-            fuelNeeded: rustResult.fuelNeeded,
-            travelTimeSeconds: rustResult.travelTimeSeconds,
-            cargoCapacity: rustResult.cargoCapacity,
-          };
-          this.setMovementCache(cacheKey, value);
-          return value;
-        } catch (innerError) {
-          console.warn('[FleetService] Rust N-API movement unavailable, falling back to gRPC/local:', innerError);
-        }
-      }
+    if (coreTransport === 'auto' || coreTransport === 'napi') {
+      coreTransport = 'grpc';
     }
 
     const cached = this.movementCache.get(cacheKey);
@@ -1868,32 +1770,6 @@ export class FleetService {
     return `${originGalaxy}:${originSystem}:${originPosition}->${targetGalaxy}:${targetSystem}:${targetPosition}#${shipPart}`;
   }
 
-  private static buildMovementShipCountMap(ships: { [key: string]: number }): Record<string, number> {
-    const normalized: Record<string, number> = {};
-    Object.entries(ships).forEach(([shipType, rawCount]) => {
-      const count = Math.max(0, Math.trunc(Number(rawCount) || 0));
-      if (!count) return;
-      normalized[shipType] = count;
-    });
-    return normalized;
-  }
-
-  private static buildMovementCacheKeyByType(
-    originGalaxy: number,
-    originSystem: number,
-    originPosition: number,
-    targetGalaxy: number,
-    targetSystem: number,
-    targetPosition: number,
-    shipsByType: Record<string, number>
-  ): string {
-    const shipPart = Object.keys(shipsByType)
-      .sort((a, b) => a.localeCompare(b))
-      .map((shipType) => `${shipType}:${shipsByType[shipType]}`)
-      .join('|');
-    return `${originGalaxy}:${originSystem}:${originPosition}->${targetGalaxy}:${targetSystem}:${targetPosition}#${shipPart}`;
-  }
-
   private static setMovementCache(key: string, value: FleetMovementCalc): void {
     this.movementCache.set(key, {
       value,
@@ -1931,24 +1807,7 @@ export class FleetService {
           detected: outcome.detected,
         };
       } catch (error) {
-        console.warn('[FleetService] Rust HTTP helper espionage outcome unavailable, falling back to N-API/local:', error);
-      }
-    }
-
-    if (this.shouldUseNapiMissionMath()) {
-      try {
-        const outcome = await computeEspionageOutcomeNapi({
-          probes,
-          attacker_espionage: attackerEspionage,
-          defender_espionage: defenderEspionage,
-          seed,
-        });
-        return {
-          intelLevel: outcome.intelLevel,
-          detected: outcome.detected,
-        };
-      } catch (error) {
-        console.warn('[FleetService] Rust N-API espionage outcome unavailable, using local fallback:', error);
+        console.warn('[FleetService] Rust HTTP helper espionage outcome unavailable, using local fallback:', error);
       }
     }
 
@@ -1977,19 +1836,6 @@ export class FleetService {
     );
     const detected = Math.random() < detectionChance;
     return { intelLevel, detected };
-  }
-
-  private static shouldUseNapiMissionMath(): boolean {
-    if (!this.shouldUseRustMissionMath()) {
-      return false;
-    }
-
-    let coreTransport = (process.env.CORE_TRANSPORT || 'auto').toLowerCase();
-    if (coreTransport === 'auto') {
-      coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
-    }
-
-    return coreTransport === 'napi';
   }
 
   private static shouldUseRustMissionMath(): boolean {
@@ -2036,22 +1882,9 @@ export class FleetService {
         });
       } catch (error) {
         console.warn(
-          '[FleetService] Rust HTTP helper mission cargo transfer unavailable, falling back to N-API/local:',
+          '[FleetService] Rust HTTP helper mission cargo transfer unavailable, using local fallback:',
           error
         );
-      }
-    }
-
-    if (this.shouldUseNapiMissionMath()) {
-      try {
-        return await computeMissionCargoTransferNapi({
-          metal: cargo.metal,
-          crystal: cargo.crystal,
-          deuterium: cargo.deuterium,
-          clamp_non_negative: clampNonNegative,
-        });
-      } catch (error) {
-        console.warn('[FleetService] Rust N-API mission cargo transfer unavailable, using local fallback:', error);
       }
     }
 
@@ -2111,22 +1944,9 @@ export class FleetService {
         });
       } catch (error) {
         console.warn(
-          '[FleetService] Rust HTTP helper harvest collection unavailable, falling back to N-API/local:',
+          '[FleetService] Rust HTTP helper harvest collection unavailable, using local fallback:',
           error
         );
-      }
-    }
-
-    if (this.shouldUseNapiMissionMath()) {
-      try {
-        return await computeHarvestCollectionNapi({
-          debris_metal: debrisMetal,
-          debris_crystal: debrisCrystal,
-          recycler_count: recyclerCount,
-          recycler_cargo_capacity: recyclerCargoCapacity,
-        });
-      } catch (error) {
-        console.warn('[FleetService] Rust N-API harvest collection unavailable, using local fallback:', error);
       }
     }
 
@@ -2205,23 +2025,7 @@ export class FleetService {
             updatePayload[unit] = Math.max(0, Number(value || 0));
           });
         } catch (error) {
-          console.warn('[FleetService] Rust HTTP helper defense rebuild unavailable, falling back to N-API/local:', error);
-        }
-      }
-
-      if (Object.keys(updatePayload).length === 0 && this.shouldUseNapiMissionMath()) {
-        try {
-          const resolved = await resolveDefenseLossesNapi({
-            current: defenseCurrent,
-            losses: defenseLosses,
-            rebuild_rate: 0.7,
-            seed,
-          });
-          Object.entries(resolved.updated).forEach(([unit, value]) => {
-            updatePayload[unit] = Math.max(0, Number(value || 0));
-          });
-        } catch (error) {
-          console.warn('[FleetService] Rust N-API defense rebuild unavailable, using local fallback:', error);
+          console.warn('[FleetService] Rust HTTP helper defense rebuild unavailable, using local fallback:', error);
         }
       }
     }

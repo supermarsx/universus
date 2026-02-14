@@ -20,7 +20,9 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/api/messages` | `backend/src/routes/messages.ts` | `crates/app-api-gateway` + `crates/game-messaging` | In progress |
 | `/api/shop` | `backend/src/routes/shop.ts` | `crates/app-api-gateway` + `crates/adapter-provider-payments` | In progress |
 | `/api/shop-enhanced` | `backend/src/routes/enhancedShopRoutes.ts` | `crates/app-api-gateway` + `crates/game-economy` | In progress |
+| `/api/marketplace` | `backend/src/routes/marketplaceRoutes.ts` | `crates/app-api-gateway` + `crates/game-economy` | In progress |
 | `/api/alliances` | `backend/src/routes/allianceRoutes.ts` | `crates/app-api-gateway` + `crates/game-alliance` | In progress |
+| `/api/achievements` | `backend/src/routes/achievementRoutes.ts` | `crates/app-api-gateway` + `crates/game-achievements` | In progress |
 | `/api/acs` | `backend/src/routes/acs.ts` | `crates/app-api-gateway` + `crates/game-fleet` | In progress |
 | `/api/moons` | `backend/src/routes/moons.ts` | `crates/app-api-gateway` + `crates/game-moon` | In progress |
 | `/api/rips` | `backend/src/routes/rips.ts` | `crates/app-api-gateway` + `crates/game-moon` | In progress |
@@ -37,10 +39,7 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/` template/static routes | `backend/src/routes/templates.ts` | `crates/app-web-frontend` | In progress |
 
 ## Legacy Route Files Not Mounted in `backend/src/index.ts`
-These still need explicit retirement or remount decisions.
-
-- `backend/src/routes/achievementRoutes.ts` -> target `crates/game-achievements` + `crates/app-api-gateway`
-- `backend/src/routes/marketplaceRoutes.ts` -> target `crates/game-economy` + `crates/app-api-gateway`
+No remaining unmounted route files requiring new Rust ownership mapping from this audit slice.
 
 ## Service Cutover Ownership by Crate
 | Legacy service/process | Rust replacement crate(s) | Runtime readiness |
@@ -51,9 +50,9 @@ These still need explicit retirement or remount decisions.
 | `backend-bot-service` worker | `crates/app-bot-worker` | Pending full behavior parity |
 | `backend-sms-service` | `crates/app-sms-api`, `crates/adapter-provider-sms` | Partial |
 | `email-delivery-service` | `crates/app-email-worker`, `crates/adapter-provider-email` | Runtime wired in compose; provider parity pending |
-| analytics queue worker (`backend/src/workers`) | `crates/app-analytics-worker` | Runtime wired in compose; ingestion parity pending |
+| analytics queue worker (`backend/src/workers`) | `crates/app-analytics-worker` | Runtime wired in compose; RabbitMQ consumer + DB persistence implemented; aggregation parity pending |
 | `backend-core` | `crates/app-core-engine` + domain crates | Partial; legacy gRPC path still active |
-| `backend-core-napi` bridge | none (retire) | In progress (excluded from default Cargo workspace build graph) |
+| `backend-core-napi` bridge | none (retire) | In progress (excluded from default Cargo workspace build graph; runtime service paths migrated to gRPC/local fallback, test cleanup pending) |
 
 ## Execution Gate (for Node retirement)
 - 100% route-family ownership mapped to a Rust crate.

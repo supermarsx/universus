@@ -104,13 +104,8 @@ export class CombatService {
         universe: process.env.CORE_UNIVERSE || 'default',
       };
 
-      if (coreTransport === 'auto') {
-        try {
-          const { isNapiAvailable } = require('../coreAdapter/rustCoreNapiClient');
-          coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
-        } catch {
-          coreTransport = 'grpc';
-        }
+      if (coreTransport === 'auto' || coreTransport === 'napi') {
+        coreTransport = 'grpc';
       }
 
       if (coreTransport === 'http') {
@@ -120,28 +115,8 @@ export class CombatService {
           if (result && result.winner) return result as CombatResult;
           throw new Error('Rust HTTP helper returned invalid combat result payload');
         } catch (error) {
-          console.error('Rust HTTP combat call failed, falling back to gRPC/N-API/TS implementation:', error);
-          coreTransport = 'auto';
-        }
-
-        if (coreTransport === 'auto') {
-          try {
-            const { isNapiAvailable } = require('../coreAdapter/rustCoreNapiClient');
-            coreTransport = isNapiAvailable() ? 'napi' : 'grpc';
-          } catch {
-            coreTransport = 'grpc';
-          }
-        }
-      }
-
-      if (coreTransport === 'napi') {
-        try {
-          const { simulateBattleNapi } = require('../coreAdapter/rustCoreNapiClient');
-          const result = await simulateBattleNapi(rustRequest);
-          if (result && result.winner) return result as CombatResult;
-          throw new Error('Rust N-API returned invalid combat result payload');
-        } catch (error) {
-          console.error('Rust N-API call failed, falling back to gRPC/TS implementation:', error);
+          console.error('Rust HTTP combat call failed, falling back to gRPC/TS implementation:', error);
+          coreTransport = 'grpc';
         }
       }
 

@@ -3,12 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
 import { calculateFleetMovementRust } from '../src/coreAdapter/rustCoreClient';
-import {
-  calculateFleetMovementBatchNapi,
-  calculateFleetMovementByTypeNapi,
-  calculateFleetMovementNapi,
-  isNapiAvailable,
-} from '../src/coreAdapter/rustCoreNapiClient';
 
 type ShipSpec = {
   ship_type: string;
@@ -217,27 +211,6 @@ async function main() {
       },
     },
     {
-      name: 'rust_napi_by_type',
-      run: async (iteration) => {
-        await calculateFleetMovementByTypeNapi(buildMovementRequest(iteration));
-      },
-    },
-    {
-      name: 'rust_napi_fast',
-      run: async (iteration) => {
-        await calculateFleetMovementNapi(buildMovementRequest(iteration));
-      },
-    },
-    {
-      name: 'rust_napi_batch_x256',
-      actionsPerRun: 256,
-      run: async (iteration) => {
-        const batchSize = 256;
-        const batch = Array.from({ length: batchSize }, (_, offset) => buildMovementRequest(iteration * batchSize + offset));
-        await calculateFleetMovementBatchNapi(batch);
-      },
-    },
-    {
       name: 'rust_grpc',
       run: async (iteration) => {
         await calculateFleetMovementRust(buildMovementRequest(iteration));
@@ -250,8 +223,6 @@ async function main() {
   console.log(`warmup: ${warmup}`);
   console.log(`sampleEvery: ${sampleEvery}`);
   console.log(`grpc target: ${process.env.BACKEND_CORE_ADDR || 'backend-core:50051'}`);
-  console.log(`napi binding path: ${process.env.CORE_NAPI_BINDING_PATH || '(auto-detect)'}`);
-  console.log(`napi available: ${isNapiAvailable()}`);
   console.log(`gc exposed: ${typeof (global as any).gc === 'function'}`);
   console.log('');
 
@@ -289,10 +260,9 @@ async function main() {
     warmup,
     sampleEvery,
     grpcTarget: process.env.BACKEND_CORE_ADDR || 'backend-core:50051',
-    napiBindingPath: process.env.CORE_NAPI_BINDING_PATH || null,
     metadata: {
       benchmarkType: 'memory',
-      rustVsNode: ['node_ts_local', 'rust_napi_by_type', 'rust_napi_fast', 'rust_napi_batch_x256', 'rust_grpc'],
+      rustVsNode: ['node_ts_local', 'rust_grpc'],
     },
     summaries,
   };

@@ -1,5 +1,6 @@
 mod account;
 mod acs;
+mod achievements;
 mod alliance;
 mod analytics;
 mod auth;
@@ -9,6 +10,7 @@ mod fleet;
 mod galaxy;
 mod leaderboard;
 mod messages;
+mod marketplace;
 mod moons;
 mod planets;
 mod player_blocks;
@@ -42,10 +44,12 @@ pub fn build_router(service_name: &'static str) -> Router {
     let protected_routes = Router::new()
         .merge(account::router())
         .merge(acs::router())
+        .merge(achievements::protected_router())
         .merge(debris::router())
         .merge(config::router())
         .merge(planets::protected_router())
         .merge(fleet::protected_router())
+        .merge(marketplace::router())
         .merge(moons::router())
         .merge(player_blocks::router())
         .merge(research::protected_router())
@@ -60,6 +64,7 @@ pub fn build_router(service_name: &'static str) -> Router {
         .route("/health", get(move || health(service_name)))
         .route("/ready", get(move || ready(service_name)))
         .merge(auth::router())
+        .merge(achievements::router())
         .merge(planets::router())
         .merge(fleet::router())
         .merge(alliance::router())
