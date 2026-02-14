@@ -1,6 +1,6 @@
 # Rust Route Ownership Matrix
 
-Updated: February 13, 2026
+Updated: February 14, 2026
 
 ## Purpose
 This matrix reframes the Node backend migration by crate ownership. Every legacy route family is mapped to a Rust crate (or marked intentionally deferred) so cutover can be driven by explicit boundaries.
@@ -34,6 +34,7 @@ This matrix reframes the Node backend migration by crate ownership. Every legacy
 | `/api/shards` | `backend/src/routes/shardingRoutes.ts` | `crates/app-api-gateway` + `crates/game-universe` | In progress |
 | `/api/realtime` | `backend/src/routes/realtimeRoutes.ts` | `crates/app-realtime-gateway` + `crates/platform-events` | In progress |
 | `/api/analytics` | `backend/src/routes/analytics.ts` | `crates/app-api-gateway`, `crates/app-analytics-worker` + `crates/platform-events` | In progress |
+| `/api/notifications` | `backend/src/services/notificationService.ts` (service-owned surface) | `crates/app-api-gateway` + `crates/game-notifications` | In progress |
 | `/api/admin/*` | `backend/src/routes/admin.ts`, `backend/src/routes/adminRoutes.ts` | `crates/app-admin-api` | In progress |
 | `/api/admin/bots/*` | `backend/src/routes/bots.ts` | `crates/app-bot-api` + `crates/app-bot-worker` | In progress |
 | `/` template/static routes | `backend/src/routes/templates.ts` | `crates/app-web-frontend` | In progress |
@@ -50,6 +51,7 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
 | `backend-bot-service` worker | `crates/app-bot-worker` | Pending full behavior parity |
 | `backend-sms-service` | `crates/app-sms-api`, `crates/adapter-provider-sms` | Partial |
 | `email-delivery-service` | `crates/app-email-worker`, `crates/adapter-provider-email` | Runtime wired in compose; provider parity pending |
+| notification orchestration (`notificationService`) | `crates/game-notifications`, `crates/app-api-gateway` | Base API parity landed (list/create/read-state endpoints); DB + realtime fanout parity pending |
 | analytics queue worker (`backend/src/workers`) | `crates/app-analytics-worker` | Runtime wired in compose; RabbitMQ consumer + DB persistence implemented; aggregation parity pending |
 | `backend-core` | `crates/app-core-engine` + domain crates | Partial; legacy gRPC path still active |
 | `backend-core-napi` bridge | none (retire) | Runtime service paths migrated to gRPC/local fallback and Node unit-test cleanup completed; source retention/deletion steps pending |

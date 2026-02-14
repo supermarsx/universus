@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use adapter_provider_sms::{
-    CircuitBreaker, HistoryRecord, HistoryRecordInput, HistoryStatsItem as ProviderHistoryStatsItem,
-    HistoryStore, InsertHistoryError,
+    CircuitBreaker, HistoryRecord, HistoryRecordInput,
+    HistoryStatsItem as ProviderHistoryStatsItem, HistoryStore, InsertHistoryError,
 };
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -113,232 +113,6 @@ struct HistoryQuery {
     limit: Option<usize>,
 }
 
-#[derive(Default)]
-struct ChannelCircuitState {
-    consecutive_failures: u64,
-    open_until_ms: Option<u128>,
-}
-
-struct SmsDispatcher {
-    provider: SmsProviderAdapter,
-}
-
-impl SmsDispatcher {
-    fn new(provider: SmsProviderAdapter) -> Self {
-        Self { provider }
-    }
-
-    fn dispatch(
-        &self,
-        _channel: &str,
-        destination: &str,
-        message: &str,
-        _metadata: Option<&serde_json::Value>,
-    ) -> Result<(), String> {
-        let _provider = &self.provider;
-        if destination.trim().is_empty() || message.trim().is_empty() {
-            return Err("contact and message are required".to_string());
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
-struct HistoryStore {
-    db_path: String,
-}
-
-impl HistoryStore {
-    fn from_env() -> Result<Self, String> {
-        let db_path = std::env::var("SMS_HISTORY_DB_PATH")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| DEFAULT_HISTORY_DB_PATH.to_string());
-
-        let store = Self { db_path };
-        store.init_schema()?;
-        Ok(store)
-    }
-
-    fn connect(&self) -> Result<Connection, String> {
-        Connection::open(&self.db_path)
-            .map_err(|err| format!("Failed to open SMS history DB: {err}"))
-    }
-
-    fn init_schema(&self) -> Result<(), String> {
-        let conn = self.connect()?;
-        conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS sms_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL,
-                idempotency_key TEXT,
-                contact TEXT NOT NULL,
-                destination TEXT NOT NULL,
-                channel TEXT NOT NULL,
-                status TEXT NOT NULL,
-                error TEXT,
-                metadata TEXT,
-                created_at_ms INTEGER NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_sms_history_success_idempotency
-                ON sms_history(idempotency_key)
-                WHERE idempotency_key IS NOT NULL AND status = 'success';
-            ",
-        )
-        .map_err(|err| format!("Failed to initialize SMS history schema: {err}"))?;
-        Ok(())
-    }
-
-    fn row_to_history_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
-        let metadata_raw: Option<String> = row.get("metadata")?;
-        let created_at_ms_raw: i64 = row.get("created_at_ms")?;
-        Ok(HistoryEntry {
-            id: row.get::<_, i64>("id")? as u64,
-            request_id: row.get("request_id")?,
-            idempotency_key: row.get("idempotency_key")?,
-            contact: row.get("contact")?,
-            destination: row.get("destination")?,
-            channel: row.get("channel")?,
-            status: row.get("status")?,
-            error: row.get("error")?,
-            metadata: metadata_raw
-                .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok()),
-            created_at_ms: created_at_ms_raw.max(0) as u128,
-        })
-    }
-
-    fn find_success_by_idempotency(&self, key: &str) -> Result<Option<HistoryEntry>, String> {
-        let conn = self.connect()?;
-        conn.query_row(
-            "
-            SELECT id, request_id, idempotency_key, contact, destination, channel, status, error, metadata, created_at_ms
-            FROM sms_history
-            WHERE idempotency_key = ?1 AND status = 'success'
-            ORDER BY id DESC
-            LIMIT 1
-            ",
-            params![key],
-            Self::row_to_history_entry,
-        )
-        .optional()
-        .map_err(|err| format!("Failed to query idempotency history: {err}"))
-    }
-
-    fn count_recent_for_contact(
-        &self,
-        contact: &str,
-        window_seconds: u64,
-    ) -> Result<usize, String> {
-        let now = now_unix_epoch_ms();
-        let lower_bound = now.saturating_sub((window_seconds as u128) * 1000);
-        let conn = self.connect()?;
-        let count: i64 = conn
-            .query_row(
-                "
-                SELECT COUNT(*)
-                FROM sms_history
-                WHERE contact = ?1 AND created_at_ms >= ?2
-                ",
-                params![contact, lower_bound as i64],
-                |row| row.get(0),
-            )
-            .map_err(|err| format!("Failed to query recent history: {err}"))?;
-        Ok(count.max(0) as usize)
-    }
-
-    fn insert_history(&self, entry: &HistoryEntry) -> Result<u64, InsertHistoryError> {
-        let conn = self.connect().map_err(InsertHistoryError::Other)?;
-        let metadata_json = entry.metadata.as_ref().map(|value| value.to_string());
-
-        let result = conn.execute(
-            "
-            INSERT INTO sms_history (
-                request_id, idempotency_key, contact, destination, channel, status, error, metadata, created_at_ms
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-            ",
-            params![
-                &entry.request_id,
-                &entry.idempotency_key,
-                &entry.contact,
-                &entry.destination,
-                &entry.channel,
-                &entry.status,
-                &entry.error,
-                &metadata_json,
-                entry.created_at_ms as i64
-            ],
-        );
-
-        match result {
-            Ok(_) => Ok(conn.last_insert_rowid().max(0) as u64),
-            Err(SqliteError::SqliteFailure(code, _))
-                if code.code == ErrorCode::ConstraintViolation =>
-            {
-                Err(InsertHistoryError::DuplicateIdempotency)
-            }
-            Err(err) => Err(InsertHistoryError::Other(format!(
-                "Failed to insert history entry: {err}"
-            ))),
-        }
-    }
-
-    fn load_recent_history(&self, limit: usize) -> Result<Vec<HistoryEntry>, String> {
-        let conn = self.connect()?;
-        let mut statement = conn
-            .prepare(
-                "
-                SELECT id, request_id, idempotency_key, contact, destination, channel, status, error, metadata, created_at_ms
-                FROM sms_history
-                ORDER BY id DESC
-                LIMIT ?1
-                ",
-            )
-            .map_err(|err| format!("Failed to prepare history query: {err}"))?;
-
-        let rows = statement
-            .query_map(params![limit as i64], Self::row_to_history_entry)
-            .map_err(|err| format!("Failed to read history rows: {err}"))?;
-
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|err| format!("Failed to parse history rows: {err}"))
-    }
-
-    fn history_stats(&self) -> Result<Vec<HistoryStatsItem>, String> {
-        let conn = self.connect()?;
-        let mut statement = conn
-            .prepare(
-                "
-                SELECT channel, status, COUNT(*) as count
-                FROM sms_history
-                GROUP BY channel, status
-                ORDER BY channel ASC, status ASC
-                ",
-            )
-            .map_err(|err| format!("Failed to prepare history stats query: {err}"))?;
-
-        let rows = statement
-            .query_map([], |row| {
-                Ok(HistoryStatsItem {
-                    channel: row.get("channel")?,
-                    status: row.get("status")?,
-                    count: row.get::<_, i64>("count")?.max(0) as u64,
-                })
-            })
-            .map_err(|err| format!("Failed to read history stats rows: {err}"))?;
-
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|err| format!("Failed to parse history stats rows: {err}"))
-    }
-}
-
-enum InsertHistoryError {
-    DuplicateIdempotency,
-    Other(String),
-}
-
 struct SmsApiState {
     started_at: Instant,
     request_count: u64,
@@ -349,13 +123,12 @@ struct SmsApiState {
     response_times_ms: Vec<u128>,
     next_request_sequence: u64,
     history_store: HistoryStore,
-    channel_circuits: HashMap<String, ChannelCircuitState>,
-    sms_dispatcher: SmsDispatcher,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl SmsApiState {
     fn new() -> Result<Self, String> {
-        let history_store = HistoryStore::from_env()?;
+        let history_store = HistoryStore::from_env().map_err(|error| error.to_string())?;
         Ok(Self {
             started_at: Instant::now(),
             request_count: 0,
@@ -366,8 +139,7 @@ impl SmsApiState {
             response_times_ms: Vec::new(),
             next_request_sequence: 0,
             history_store,
-            channel_circuits: HashMap::new(),
-            sms_dispatcher: SmsDispatcher::new(SmsProviderAdapter),
+            circuit_breaker: CircuitBreaker::from_env(),
         })
     }
 
@@ -402,52 +174,22 @@ impl SmsApiState {
             .per_channel_failure
             .entry(channel.to_string())
             .or_insert(0) += 1;
-
-        let threshold = channel_failure_threshold();
-        if threshold == 0 {
-            return;
-        }
-
-        let now = now_unix_epoch_ms();
-        let state = self
-            .channel_circuits
-            .entry(channel.to_string())
-            .or_default();
-        state.consecutive_failures = state.consecutive_failures.saturating_add(1);
-
-        if state.consecutive_failures >= threshold {
-            state.consecutive_failures = 0;
-            state.open_until_ms = Some(now.saturating_add(channel_cooldown_ms()));
-        }
+        self.circuit_breaker
+            .record_failure(channel, now_unix_epoch_ms());
     }
 
     fn reset_channel_circuit(&mut self, channel: &str) {
-        if let Some(state) = self.channel_circuits.get_mut(channel) {
-            state.consecutive_failures = 0;
-            state.open_until_ms = None;
-        }
+        self.circuit_breaker.record_success(channel);
     }
 
     fn is_channel_open(&mut self, channel: &str, now_ms: u128) -> bool {
-        let Some(state) = self.channel_circuits.get_mut(channel) else {
-            return false;
-        };
-
-        let Some(open_until_ms) = state.open_until_ms else {
-            return false;
-        };
-
-        if open_until_ms > now_ms {
-            return true;
-        }
-
-        state.open_until_ms = None;
-        state.consecutive_failures = 0;
-        false
+        self.circuit_breaker.is_open(channel, now_ms)
     }
 
-    fn find_history_by_idempotency(&self, key: &str) -> Result<Option<HistoryEntry>, String> {
-        self.history_store.find_success_by_idempotency(key)
+    fn find_history_by_idempotency(&self, key: &str) -> Result<Option<HistoryRecord>, String> {
+        self.history_store
+            .find_success_by_idempotency(key)
+            .map_err(|error| error.to_string())
     }
 
     fn count_recent_for_contact(
@@ -456,19 +198,24 @@ impl SmsApiState {
         window_seconds: u64,
     ) -> Result<usize, String> {
         self.history_store
-            .count_recent_for_contact(contact, window_seconds)
+            .count_recent_for_contact(contact, window_seconds, now_unix_epoch_ms())
+            .map_err(|error| error.to_string())
     }
 
-    fn insert_history(&self, entry: &HistoryEntry) -> Result<u64, InsertHistoryError> {
+    fn insert_history(&self, entry: &HistoryRecordInput) -> Result<u64, InsertHistoryError> {
         self.history_store.insert_history(entry)
     }
 
-    fn load_recent_history(&self, limit: usize) -> Result<Vec<HistoryEntry>, String> {
-        self.history_store.load_recent_history(limit)
+    fn load_recent_history(&self, limit: usize) -> Result<Vec<HistoryRecord>, String> {
+        self.history_store
+            .load_recent_history(limit)
+            .map_err(|error| error.to_string())
     }
 
-    fn history_stats(&self) -> Result<Vec<HistoryStatsItem>, String> {
-        self.history_store.history_stats()
+    fn history_stats(&self) -> Result<Vec<ProviderHistoryStatsItem>, String> {
+        self.history_store
+            .history_stats()
+            .map_err(|error| error.to_string())
     }
 
     fn metrics_snapshot(&self) -> MetricsSnapshot {
@@ -638,20 +385,6 @@ fn rate_limit_max_per_contact() -> u64 {
         .unwrap_or(5)
 }
 
-fn channel_failure_threshold() -> u64 {
-    std::env::var("SMS_CHANNEL_FAILURE_THRESHOLD")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(DEFAULT_CHANNEL_FAILURE_THRESHOLD)
-}
-
-fn channel_cooldown_ms() -> u128 {
-    std::env::var("SMS_CHANNEL_COOLDOWN_MS")
-        .ok()
-        .and_then(|value| value.parse::<u128>().ok())
-        .unwrap_or(DEFAULT_CHANNEL_COOLDOWN_MS)
-}
-
 async fn health() -> Json<ServiceStatus> {
     Json(ServiceStatus {
         status: "ok",
@@ -779,8 +512,7 @@ async fn send_sms(
         Err(error) => {
             state.record_failure();
             state.record_channel_failure_attempt("unknown");
-            let insert_result = state.insert_history(&HistoryEntry {
-                id: 0,
+            let insert_result = state.insert_history(&HistoryRecordInput {
                 request_id,
                 idempotency_key,
                 contact,
@@ -791,8 +523,8 @@ async fn send_sms(
                 metadata: payload.metadata,
                 created_at_ms: now_unix_epoch_ms(),
             });
-            if let Err(InsertHistoryError::Other(err)) = insert_result {
-                return db_error_response(err);
+            if let Err(InsertHistoryError::Store(err)) = insert_result {
+                return db_error_response(err.to_string());
             }
 
             return (
@@ -816,8 +548,7 @@ async fn send_sms(
         state.record_failure();
         state.record_channel_failure_attempt("unknown");
         let error = "All configured channels are in cooldown".to_string();
-        let insert_result = state.insert_history(&HistoryEntry {
-            id: 0,
+        let insert_result = state.insert_history(&HistoryRecordInput {
             request_id,
             idempotency_key,
             contact: contact.clone(),
@@ -828,8 +559,8 @@ async fn send_sms(
             metadata: payload.metadata,
             created_at_ms: now_unix_epoch_ms(),
         });
-        if let Err(InsertHistoryError::Other(err)) = insert_result {
-            return db_error_response(err);
+        if let Err(InsertHistoryError::Store(err)) = insert_result {
+            return db_error_response(err.to_string());
         }
 
         return (
@@ -849,22 +580,10 @@ async fn send_sms(
         last_channel = channel.clone();
         match normalize_destination(&channel, &contact) {
             Ok(destination) => {
-                if let Err(error) = state.sms_dispatcher.dispatch(
-                    &channel,
-                    &destination,
-                    &payload.message,
-                    payload.metadata.as_ref(),
-                ) {
-                    state.record_channel_failure_attempt(&channel);
-                    last_error = Some(error);
-                    continue;
-                }
-
                 let duration_ms = now_unix_epoch_ms().saturating_sub(started_at_ms);
                 state.record_success(&channel, duration_ms);
 
-                let entry = HistoryEntry {
-                    id: 0,
+                let entry = HistoryRecordInput {
                     request_id: request_id.clone(),
                     idempotency_key: idempotency_key.clone(),
                     contact: contact.clone(),
@@ -901,7 +620,9 @@ async fn send_sms(
                             "Idempotency conflict but no prior record found".to_string(),
                         );
                     }
-                    Err(InsertHistoryError::Other(err)) => return db_error_response(err),
+                    Err(InsertHistoryError::Store(err)) => {
+                        return db_error_response(err.to_string())
+                    }
                 }
 
                 return (
@@ -924,8 +645,7 @@ async fn send_sms(
 
     state.record_failure();
     let error = last_error.unwrap_or_else(|| "No channel could process this request".to_string());
-    let insert_result = state.insert_history(&HistoryEntry {
-        id: 0,
+    let insert_result = state.insert_history(&HistoryRecordInput {
         request_id,
         idempotency_key,
         contact: contact.clone(),
@@ -936,8 +656,8 @@ async fn send_sms(
         metadata: payload.metadata,
         created_at_ms: now_unix_epoch_ms(),
     });
-    if let Err(InsertHistoryError::Other(err)) = insert_result {
-        return db_error_response(err);
+    if let Err(InsertHistoryError::Store(err)) = insert_result {
+        return db_error_response(err.to_string());
     }
 
     (
@@ -960,10 +680,18 @@ async fn metrics(
 
     let state = state.lock().await;
     let _ = state.started_at.elapsed();
-    let history = match state.history_stats() {
+    let history_raw = match state.history_stats() {
         Ok(value) => value,
         Err(error) => return db_error_response(error),
     };
+    let history = history_raw
+        .into_iter()
+        .map(|item| HistoryStatsItem {
+            channel: item.channel,
+            status: item.status,
+            count: item.count,
+        })
+        .collect::<Vec<_>>();
 
     (
         StatusCode::OK,

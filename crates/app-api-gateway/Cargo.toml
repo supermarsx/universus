@@ -12,6 +12,7 @@ tracing = { workspace = true }
 game-achievements = { path = "../game-achievements" }
 game-combat = { path = "../game-combat" }
 game-fleet = { path = "../game-fleet" }
+game-notifications = { path = "../game-notifications" }
 platform-config = { path = "../platform-config" }
 platform-db = { path = "../platform-db" }
 platform-errors = { path = "../platform-errors" }

@@ -1886,3 +1886,104 @@ async fn achievements_routes_and_awards_work() {
     assert_eq!(user_achievements_body["data"][0]["id"], 1);
     assert_eq!(user_achievements_body["data"][0]["progress"], 1);
 }
+
+#[tokio::test]
+async fn notifications_routes_require_authentication() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Unauthorized");
+}
+
+#[tokio::test]
+async fn notifications_create_and_mark_read_flow_works() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let create_payload = json!({
+        "title": "Under Attack",
+        "message": "Hostile fleet inbound.",
+        "category": "combat",
+        "priority": 5
+    });
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(create_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::OK);
+    let created = response_json(create_response).await;
+    assert_eq!(created["success"], true);
+    let created_id = created["data"]["id"].as_i64().unwrap();
+
+    let unread_before = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications/unread-count")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unread_before.status(), StatusCode::OK);
+    let unread_before_body = response_json(unread_before).await;
+    assert!(unread_before_body["data"]["unreadCount"].as_u64().unwrap() >= 1);
+
+    let mark_read = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/notifications/{created_id}/read"))
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(mark_read.status(), StatusCode::OK);
+    let mark_read_body = response_json(mark_read).await;
+    assert_eq!(mark_read_body["data"]["success"], true);
+
+    let unread_filtered = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications?unreadOnly=true")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unread_filtered.status(), StatusCode::OK);
+    let unread_filtered_body = response_json(unread_filtered).await;
+    let any_match = unread_filtered_body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == created_id);
+    assert!(!any_match);
+}

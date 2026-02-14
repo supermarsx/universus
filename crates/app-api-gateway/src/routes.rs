@@ -12,6 +12,7 @@ mod leaderboard;
 mod messages;
 mod marketplace;
 mod moons;
+mod notifications;
 mod planets;
 mod player_blocks;
 mod research;
@@ -51,6 +52,7 @@ pub fn build_router(service_name: &'static str) -> Router {
         .merge(fleet::protected_router())
         .merge(marketplace::router())
         .merge(moons::router())
+        .merge(notifications::protected_router())
         .merge(player_blocks::router())
         .merge(research::protected_router())
         .merge(rips::router())

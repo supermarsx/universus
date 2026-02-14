@@ -1,6 +1,6 @@
 use std::env;
 
-use adapter_provider_email::EmailProviderAdapter;
+use adapter_provider_email::{parse_email_job_payload_bytes, EmailProvider, LoggingEmailProvider};
 use redis::aio::MultiplexedConnection;
 use redis::{cmd, Client};
 use tokio::signal;
@@ -11,21 +11,22 @@ const DEFAULT_EMAIL_QUEUE_NAME: &str = "email.outbound";
 const DEFAULT_EMAIL_DLQ_NAME: &str = "email.dead-letter";
 
 struct EmailDispatcher {
-    provider: EmailProviderAdapter,
+    provider: Box<dyn EmailProvider>,
 }
 
 impl EmailDispatcher {
-    fn new(provider: EmailProviderAdapter) -> Self {
-        Self { provider }
+    fn new(provider: impl EmailProvider + 'static) -> Self {
+        Self {
+            provider: Box::new(provider),
+        }
     }
 
-    fn dispatch(&self, payload: &[u8]) -> Result<(), &'static str> {
-        let _provider = &self.provider;
-        if payload.is_empty() {
-            return Err("empty job payload");
-        }
-
-        Ok(())
+    fn dispatch(&self, payload: &[u8]) -> Result<(), String> {
+        let job = parse_email_job_payload_bytes(payload).map_err(|error| error.to_string())?;
+        self.provider
+            .dispatch(&job)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -60,7 +61,7 @@ async fn pop_job(
     Ok(popped.map(|(_, payload)| payload))
 }
 
-fn process_job(dispatcher: &EmailDispatcher, payload: &[u8]) -> Result<(), &'static str> {
+fn process_job(dispatcher: &EmailDispatcher, payload: &[u8]) -> Result<(), String> {
     dispatcher.dispatch(payload)
 }
 
@@ -76,16 +77,25 @@ async fn main() {
         .filter(|value| !value.is_empty());
 
     let Some(redis_url) = redis_url else {
-        tracing::info!(service = "app-email-worker", "REDIS_URL not set; worker disabled");
+        tracing::info!(
+            service = "app-email-worker",
+            "REDIS_URL not set; worker disabled"
+        );
         return;
     };
 
     let poll_timeout_seconds =
         parse_poll_timeout_seconds(env::var("WORKER_POLL_TIMEOUT_SECONDS").ok().as_deref());
-    let email_queue_key =
-        read_redis_key("EMAIL_QUEUE_KEY", "EMAIL_QUEUE_NAME", DEFAULT_EMAIL_QUEUE_NAME);
-    let email_dlq_key =
-        read_redis_key("EMAIL_DEAD_LETTER_KEY", "EMAIL_DLQ_NAME", DEFAULT_EMAIL_DLQ_NAME);
+    let email_queue_key = read_redis_key(
+        "EMAIL_QUEUE_KEY",
+        "EMAIL_QUEUE_NAME",
+        DEFAULT_EMAIL_QUEUE_NAME,
+    );
+    let email_dlq_key = read_redis_key(
+        "EMAIL_DEAD_LETTER_KEY",
+        "EMAIL_DLQ_NAME",
+        DEFAULT_EMAIL_DLQ_NAME,
+    );
 
     let client = match Client::open(redis_url.as_str()) {
         Ok(client) => client,
@@ -119,7 +129,7 @@ async fn main() {
         "worker startup"
     );
 
-    let dispatcher = EmailDispatcher::new(EmailProviderAdapter);
+    let dispatcher = EmailDispatcher::new(LoggingEmailProvider::default());
 
     loop {
         tokio::select! {

@@ -163,6 +163,7 @@ dependencies = [
  "game-achievements",
  "game-combat",
  "game-fleet",
+ "game-notifications",
  "hyper 0.14.32",
  "platform-config",
  "platform-db",
@@ -249,7 +250,6 @@ dependencies = [
  "axum",
  "chrono",
  "hyper 0.14.32",
- "rusqlite",
  "serde",
  "serde_json",
  "serial_test",
@@ -1200,6 +1200,13 @@ version = "0.1.0"
 [[package]]
 name = "game-moon"
 version = "0.1.0"
+
+[[package]]
+name = "game-notifications"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-universe"
