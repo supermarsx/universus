@@ -52,7 +52,7 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
 | `email-delivery-service` | `crates/app-email-worker`, `crates/adapter-provider-email` | Runtime wired in compose; provider parity pending |
 | analytics queue worker (`backend/src/workers`) | `crates/app-analytics-worker` | Runtime wired in compose; RabbitMQ consumer + DB persistence implemented; aggregation parity pending |
 | `backend-core` | `crates/app-core-engine` + domain crates | Partial; legacy gRPC path still active |
-| `backend-core-napi` bridge | none (retire) | In progress (excluded from default Cargo workspace build graph; runtime service paths migrated to gRPC/local fallback, test cleanup pending) |
+| `backend-core-napi` bridge | none (retire) | Runtime service paths migrated to gRPC/local fallback and Node unit-test cleanup completed; source retention/deletion steps pending |
 
 ## Execution Gate (for Node retirement)
 - 100% route-family ownership mapped to a Rust crate.

@@ -265,6 +265,7 @@ pub fn build_router() -> Router {
         .route("/health", get(health))
         .route("/ready", get(ready))
         .route("/api/admin/bots/health", get(bots_health))
+        .route("/api/admin/bots/process-all", post(process_all_bots))
         .route("/api/admin/bots/process/all", post(process_all_bots))
         .route("/api/admin/bots/bulk", post(bulk_create_bots))
         .route(
