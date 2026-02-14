@@ -1,6 +1,4 @@
 const mockSimulateCombatHttp = jest.fn();
-const mockIsNapiAvailable = jest.fn();
-const mockSimulateBattleNapi = jest.fn();
 const mockSimulateBattleRust = jest.fn();
 
 jest.mock('../../src/config/database', () => ({
@@ -42,11 +40,6 @@ jest.mock('../../src/services/rustHttpHelperClientService', () => ({
   RustHttpHelperClientService: {
     simulateCombat: mockSimulateCombatHttp,
   },
-}));
-
-jest.mock('../../src/coreAdapter/rustCoreNapiClient', () => ({
-  isNapiAvailable: mockIsNapiAvailable,
-  simulateBattleNapi: mockSimulateBattleNapi,
 }));
 
 jest.mock('../../src/coreAdapter/rustCoreClient', () => ({
@@ -103,15 +96,12 @@ describe('CombatService HTTP transport', () => {
         max_rounds: 6,
       })
     );
-    expect(mockIsNapiAvailable).not.toHaveBeenCalled();
-    expect(mockSimulateBattleNapi).not.toHaveBeenCalled();
     expect(mockSimulateBattleRust).not.toHaveBeenCalled();
   });
 
-  it('falls back to grpc transport when HTTP fails and napi is unavailable', async () => {
+  it('falls back to grpc transport when HTTP fails', async () => {
     process.env.CORE_TRANSPORT = 'http';
     mockSimulateCombatHttp.mockRejectedValue(new Error('http timeout'));
-    mockIsNapiAvailable.mockReturnValue(false);
     mockSimulateBattleRust.mockResolvedValue({
       winner: 'defender',
       rounds: [],
@@ -134,15 +124,12 @@ describe('CombatService HTTP transport', () => {
 
     expect(result.winner).toBe('defender');
     expect(mockSimulateCombatHttp).toHaveBeenCalledTimes(1);
-    expect(mockIsNapiAvailable).toHaveBeenCalledTimes(1);
-    expect(mockSimulateBattleNapi).not.toHaveBeenCalled();
     expect(mockSimulateBattleRust).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps auto transport behavior unchanged (does not call HTTP)', async () => {
+  it('uses grpc transport for auto mode (does not call HTTP)', async () => {
     process.env.CORE_TRANSPORT = 'auto';
-    mockIsNapiAvailable.mockReturnValue(true);
-    mockSimulateBattleNapi.mockResolvedValue({
+    mockSimulateBattleRust.mockResolvedValue({
       winner: 'attacker',
       rounds: [],
       attackerLosses: {},
@@ -164,8 +151,6 @@ describe('CombatService HTTP transport', () => {
 
     expect(result.winner).toBe('attacker');
     expect(mockSimulateCombatHttp).not.toHaveBeenCalled();
-    expect(mockIsNapiAvailable).toHaveBeenCalledTimes(1);
-    expect(mockSimulateBattleNapi).toHaveBeenCalledTimes(1);
-    expect(mockSimulateBattleRust).not.toHaveBeenCalled();
+    expect(mockSimulateBattleRust).toHaveBeenCalledTimes(1);
   });
 });

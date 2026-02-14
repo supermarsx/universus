@@ -1,16 +1,8 @@
 import { FleetHelperService } from '../../src/services/fleetHelperService';
-import {
-  calculateFleetMovementByTypeNapi,
-  calculateFleetMovementNapi,
-  computeAttackerPostCombatDistributionNapi,
-  resolveDefenseLossesNapi,
-} from '../../src/coreAdapter/rustCoreNapiClient';
+import { calculateFleetMovementRust } from '../../src/coreAdapter/rustCoreClient';
 
-jest.mock('../../src/coreAdapter/rustCoreNapiClient', () => ({
-  calculateFleetMovementByTypeNapi: jest.fn(),
-  calculateFleetMovementNapi: jest.fn(),
-  resolveDefenseLossesNapi: jest.fn(),
-  computeAttackerPostCombatDistributionNapi: jest.fn(),
+jest.mock('../../src/coreAdapter/rustCoreClient', () => ({
+  calculateFleetMovementRust: jest.fn(),
 }));
 
 describe('FleetHelperService', () => {
@@ -18,8 +10,8 @@ describe('FleetHelperService', () => {
     jest.clearAllMocks();
   });
 
-  test('uses Rust N-API by-type movement result when available', async () => {
-    (calculateFleetMovementByTypeNapi as jest.Mock).mockResolvedValue({
+  test('uses Rust gRPC movement result when available', async () => {
+    (calculateFleetMovementRust as jest.Mock).mockResolvedValue({
       distance: 1100,
       fleetSpeed: 5000,
       travelTimeSeconds: 792,
@@ -33,36 +25,13 @@ describe('FleetHelperService', () => {
       ships: { small_cargo: 10 },
     });
 
-    expect(result.engine).toBe('rust-napi');
+    expect(result.engine).toBe('rust-grpc');
     expect(result.distance).toBe(1100);
-    expect(calculateFleetMovementByTypeNapi).toHaveBeenCalled();
-    expect(calculateFleetMovementNapi).not.toHaveBeenCalled();
+    expect(calculateFleetMovementRust).toHaveBeenCalledTimes(1);
   });
 
-  test('falls back from by-type to fast Rust N-API movement', async () => {
-    (calculateFleetMovementByTypeNapi as jest.Mock).mockRejectedValue(new Error('missing by-type binding'));
-    (calculateFleetMovementNapi as jest.Mock).mockResolvedValue({
-      distance: 1100,
-      fleetSpeed: 5000,
-      travelTimeSeconds: 792,
-      fuelNeeded: 110,
-      cargoCapacity: 4890,
-    });
-
-    const result = await FleetHelperService.calculateMovement({
-      origin: { galaxy: 1, system: 1, position: 1 },
-      target: { galaxy: 1, system: 1, position: 21 },
-      ships: { small_cargo: 10 },
-    });
-
-    expect(result.engine).toBe('rust-napi');
-    expect(calculateFleetMovementByTypeNapi).toHaveBeenCalled();
-    expect(calculateFleetMovementNapi).toHaveBeenCalled();
-  });
-
-  test('falls back to TypeScript movement when Rust N-API fails', async () => {
-    (calculateFleetMovementByTypeNapi as jest.Mock).mockRejectedValue(new Error('missing binding'));
-    (calculateFleetMovementNapi as jest.Mock).mockRejectedValue(new Error('missing binding'));
+  test('falls back to TypeScript movement when Rust gRPC fails', async () => {
+    (calculateFleetMovementRust as jest.Mock).mockRejectedValue(new Error('grpc unavailable'));
 
     const result = await FleetHelperService.calculateMovement({
       origin: { galaxy: 1, system: 1, position: 1 },
@@ -78,9 +47,7 @@ describe('FleetHelperService', () => {
     expect(result.cargoCapacity).toBe(4899);
   });
 
-  test('falls back to deterministic TypeScript defense rebuild with seed', async () => {
-    (resolveDefenseLossesNapi as jest.Mock).mockRejectedValue(new Error('missing binding'));
-
+  test('returns deterministic TypeScript defense rebuild with seed', async () => {
     const input = {
       current: { rocket_launcher: 12 },
       losses: { rocket_launcher: 6 },
@@ -97,9 +64,7 @@ describe('FleetHelperService', () => {
     expect(a).toEqual(b);
   });
 
-  test('falls back to TypeScript attacker distribution', async () => {
-    (computeAttackerPostCombatDistributionNapi as jest.Mock).mockRejectedValue(new Error('missing binding'));
-
+  test('returns TypeScript attacker distribution', async () => {
     const result = await FleetHelperService.computeAttackerDistribution({
       participants: [
         { light_fighter: 10 },

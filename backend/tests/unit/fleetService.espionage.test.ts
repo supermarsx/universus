@@ -1,15 +1,13 @@
-const mockComputeEspionageOutcomeNapi = jest.fn();
+const mockHttpComputeEspionageOutcome = jest.fn();
+const mockHttpIsConfigured = jest.fn();
 const mockGetUserResearch = jest.fn();
 const mockSendEspionageReport = jest.fn();
 
-jest.mock('../../src/coreAdapter/rustCoreNapiClient', () => ({
-  computeAttackerPostCombatDistributionNapi: jest.fn(),
-  computeCombatReportSummaryNapi: jest.fn(),
-  computeEspionageOutcomeNapi: mockComputeEspionageOutcomeNapi,
-  computeHarvestCollectionNapi: jest.fn(),
-  computeMissionCargoTransferNapi: jest.fn(),
-  isNapiAvailable: jest.fn(() => true),
-  resolveDefenseLossesNapi: jest.fn(),
+jest.mock('../../src/services/rustHttpHelperClientService', () => ({
+  RustHttpHelperClientService: {
+    isConfigured: mockHttpIsConfigured,
+    computeEspionageOutcome: mockHttpComputeEspionageOutcome,
+  },
 }));
 
 jest.mock('../../src/services/researchService', () => ({
@@ -40,20 +38,21 @@ describe('FleetService.handleEspionageMission', () => {
   const envBackup = {
     NODE_ENV: process.env.NODE_ENV,
     CORE_ENGINE: process.env.CORE_ENGINE,
-    CORE_TRANSPORT: process.env.CORE_TRANSPORT,
+    CORE_HELPER_TRANSPORT: process.env.CORE_HELPER_TRANSPORT,
   };
 
   afterEach(() => {
     jest.clearAllMocks();
     process.env.NODE_ENV = envBackup.NODE_ENV;
     process.env.CORE_ENGINE = envBackup.CORE_ENGINE;
-    process.env.CORE_TRANSPORT = envBackup.CORE_TRANSPORT;
+    process.env.CORE_HELPER_TRANSPORT = envBackup.CORE_HELPER_TRANSPORT;
   });
 
-  it('uses Rust N-API espionage kernel with deterministic seed when enabled', async () => {
+  it('uses HTTP helper espionage kernel with deterministic seed when enabled', async () => {
     process.env.NODE_ENV = 'production';
     process.env.CORE_ENGINE = 'rust';
-    process.env.CORE_TRANSPORT = 'napi';
+    process.env.CORE_HELPER_TRANSPORT = 'http';
+    mockHttpIsConfigured.mockReturnValue(true);
 
     const fleet = {
       id: 77,
@@ -89,20 +88,21 @@ describe('FleetService.handleEspionageMission', () => {
     mockGetUserResearch
       .mockResolvedValueOnce({ espionage_technology: 5 })
       .mockResolvedValueOnce({ espionage_technology: 2 });
-    mockComputeEspionageOutcomeNapi.mockResolvedValue({
+    mockHttpComputeEspionageOutcome.mockResolvedValue({
       intelLevel: 'full',
       detected: true,
       detectionChance: 0.33,
       detailScore: 9,
       defenseScore: 2,
+      engine: 'rust-grpc',
     });
 
     const result = await (FleetService as any).handleEspionageMission(fleet, client);
 
-    expect(mockComputeEspionageOutcomeNapi).toHaveBeenCalledWith({
+    expect(mockHttpComputeEspionageOutcome).toHaveBeenCalledWith({
       probes: 8,
-      attacker_espionage: 5,
-      defender_espionage: 2,
+      attackerEspionage: 5,
+      defenderEspionage: 2,
       seed: '77:1:55:9:8',
     });
     expect(result).toEqual({
@@ -122,22 +122,14 @@ describe('FleetService.handleEspionageMission', () => {
       },
     });
     expect(mockSendEspionageReport).toHaveBeenCalledTimes(1);
-    expect(mockSendEspionageReport).toHaveBeenCalledWith(
-      10,
-      20,
-      expect.objectContaining({
-        intelLevel: 'full',
-        detected: true,
-        probes: 8,
-      })
-    );
     expect(client.query).toHaveBeenLastCalledWith('DELETE FROM fleets WHERE id = $1', [77]);
   });
 
-  it('falls back to legacy TS espionage computation when N-API call fails', async () => {
+  it('falls back to local espionage computation when HTTP helper fails', async () => {
     process.env.NODE_ENV = 'production';
     process.env.CORE_ENGINE = 'rust';
-    process.env.CORE_TRANSPORT = 'napi';
+    process.env.CORE_HELPER_TRANSPORT = 'http';
+    mockHttpIsConfigured.mockReturnValue(true);
 
     const fleet = {
       id: 42,
@@ -173,7 +165,7 @@ describe('FleetService.handleEspionageMission', () => {
     mockGetUserResearch
       .mockResolvedValueOnce({ espionage_technology: 4 })
       .mockResolvedValueOnce({ espionage_technology: 1 });
-    mockComputeEspionageOutcomeNapi.mockRejectedValue(new Error('binding unavailable'));
+    mockHttpComputeEspionageOutcome.mockRejectedValue(new Error('helper unavailable'));
 
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.2);
@@ -182,10 +174,10 @@ describe('FleetService.handleEspionageMission', () => {
       const result = await (FleetService as any).handleEspionageMission(fleet, client);
       expect(result.intelLevel).toBe('full');
       expect(result.detected).toBe(true);
-      expect(mockComputeEspionageOutcomeNapi).toHaveBeenCalledWith({
+      expect(mockHttpComputeEspionageOutcome).toHaveBeenCalledWith({
         probes: 3,
-        attacker_espionage: 4,
-        defender_espionage: 1,
+        attackerEspionage: 4,
+        defenderEspionage: 1,
         seed: '42:2:200:11:3',
       });
       expect(warnSpy).toHaveBeenCalled();

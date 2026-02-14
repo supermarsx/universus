@@ -1,26 +1,9 @@
-const mockComputeAttackerPostCombatDistributionNapi = jest.fn();
-const mockComputeEspionageOutcomeNapi = jest.fn();
-const mockComputeHarvestCollectionNapi = jest.fn();
-const mockComputeMissionCargoTransferNapi = jest.fn();
-const mockResolveDefenseLossesNapi = jest.fn();
-const mockIsNapiAvailable = jest.fn(() => true);
-
 const mockHttpIsConfigured = jest.fn();
 const mockHttpResolveDefenseRebuild = jest.fn();
 const mockHttpComputeAttackerDistribution = jest.fn();
 const mockHttpComputeEspionageOutcome = jest.fn();
 const mockHttpComputeMissionCargoTransfer = jest.fn();
 const mockHttpComputeHarvestCollection = jest.fn();
-
-jest.mock('../../src/coreAdapter/rustCoreNapiClient', () => ({
-  computeAttackerPostCombatDistributionNapi: mockComputeAttackerPostCombatDistributionNapi,
-  computeCombatReportSummaryNapi: jest.fn(),
-  computeEspionageOutcomeNapi: mockComputeEspionageOutcomeNapi,
-  computeHarvestCollectionNapi: mockComputeHarvestCollectionNapi,
-  computeMissionCargoTransferNapi: mockComputeMissionCargoTransferNapi,
-  isNapiAvailable: mockIsNapiAvailable,
-  resolveDefenseLossesNapi: mockResolveDefenseLossesNapi,
-}));
 
 jest.mock('../../src/services/rustHttpHelperClientService', () => ({
   RustHttpHelperClientService: {
@@ -55,7 +38,6 @@ describe('FleetService helper transport selection', () => {
   const envBackup = {
     NODE_ENV: process.env.NODE_ENV,
     CORE_ENGINE: process.env.CORE_ENGINE,
-    CORE_TRANSPORT: process.env.CORE_TRANSPORT,
     CORE_HELPER_TRANSPORT: process.env.CORE_HELPER_TRANSPORT,
     RUST_HTTP_HELPER_URL: process.env.RUST_HTTP_HELPER_URL,
   };
@@ -64,7 +46,6 @@ describe('FleetService helper transport selection', () => {
     jest.clearAllMocks();
     process.env.NODE_ENV = 'production';
     process.env.CORE_ENGINE = 'rust';
-    process.env.CORE_TRANSPORT = 'napi';
     process.env.CORE_HELPER_TRANSPORT = 'http';
     process.env.RUST_HTTP_HELPER_URL = 'http://rust-helper:8080';
     mockHttpIsConfigured.mockReturnValue(true);
@@ -73,19 +54,18 @@ describe('FleetService helper transport selection', () => {
   afterAll(() => {
     process.env.NODE_ENV = envBackup.NODE_ENV;
     process.env.CORE_ENGINE = envBackup.CORE_ENGINE;
-    process.env.CORE_TRANSPORT = envBackup.CORE_TRANSPORT;
     process.env.CORE_HELPER_TRANSPORT = envBackup.CORE_HELPER_TRANSPORT;
     process.env.RUST_HTTP_HELPER_URL = envBackup.RUST_HTTP_HELPER_URL;
   });
 
-  it('uses HTTP helper for espionage outcome before N-API', async () => {
+  it('uses HTTP helper for espionage outcome before local fallback', async () => {
     mockHttpComputeEspionageOutcome.mockResolvedValue({
       intelLevel: 'standard',
       detected: false,
       detectionChance: 0.2,
       detailScore: 3,
       defenseScore: 4,
-      engine: 'rust-http',
+      engine: 'rust-grpc',
     });
 
     const result = await (FleetService as any).computeEspionageOutcome(6, 3, 4, 'seed-123');
@@ -97,20 +77,10 @@ describe('FleetService helper transport selection', () => {
       defenderEspionage: 4,
       seed: 'seed-123',
     });
-    expect(mockComputeEspionageOutcomeNapi).not.toHaveBeenCalled();
   });
 
-  it('falls back from HTTP helper to N-API for mission cargo transfer', async () => {
+  it('falls back from HTTP helper to local mission cargo transfer', async () => {
     mockHttpComputeMissionCargoTransfer.mockRejectedValue(new Error('gateway timeout'));
-    mockComputeMissionCargoTransferNapi.mockResolvedValue({
-      transferMetal: 100,
-      transferCrystal: 200,
-      transferDeuterium: 300,
-      remainingMetal: 1,
-      remainingCrystal: 2,
-      remainingDeuterium: 3,
-      totalTransfer: 600,
-    });
 
     const result = await (FleetService as any).computeMissionCargoTransfer(
       { metal: 100, crystal: 200, deuterium: 300 },
@@ -123,16 +93,18 @@ describe('FleetService helper transport selection', () => {
       deuterium: 300,
       clampNonNegative: true,
     });
-    expect(mockComputeMissionCargoTransferNapi).toHaveBeenCalledWith({
-      metal: 100,
-      crystal: 200,
-      deuterium: 300,
-      clamp_non_negative: true,
+    expect(result).toEqual({
+      transferMetal: 100,
+      transferCrystal: 200,
+      transferDeuterium: 300,
+      remainingMetal: 0,
+      remainingCrystal: 0,
+      remainingDeuterium: 0,
+      totalTransfer: 600,
     });
-    expect(result.totalTransfer).toBe(600);
   });
 
-  it('uses HTTP helper for harvest collection before N-API', async () => {
+  it('uses HTTP helper for harvest collection before local fallback', async () => {
     mockHttpComputeHarvestCollection.mockResolvedValue({
       collectedMetal: 300,
       collectedCrystal: 200,
@@ -140,7 +112,7 @@ describe('FleetService helper transport selection', () => {
       updatedCrystal: 0,
       recyclerCapacity: 500,
       empty: false,
-      engine: 'rust-http',
+      engine: 'rust-grpc',
     });
 
     const result = await (FleetService as any).computeHarvestCollection(310, 200, 1, 500);
@@ -152,7 +124,7 @@ describe('FleetService helper transport selection', () => {
       updatedCrystal: 0,
       recyclerCapacity: 500,
       empty: false,
-      engine: 'rust-http',
+      engine: 'rust-grpc',
     });
     expect(mockHttpComputeHarvestCollection).toHaveBeenCalledWith({
       debrisMetal: 310,
@@ -160,10 +132,9 @@ describe('FleetService helper transport selection', () => {
       recyclerCount: 1,
       recyclerCargoCapacity: 500,
     });
-    expect(mockComputeHarvestCollectionNapi).not.toHaveBeenCalled();
   });
 
-  it('uses HTTP helper for attacker distribution before N-API', async () => {
+  it('uses HTTP helper for attacker distribution before local fallback', async () => {
     const participants = [
       {
         fleet: { id: 201, return_time: new Date().toISOString() },
@@ -186,7 +157,7 @@ describe('FleetService helper transport selection', () => {
           loot: { metal: 70, crystal: 40, deuterium: 30 },
         },
       ],
-      engine: 'rust-http',
+      engine: 'rust-grpc',
     });
 
     const client = {
@@ -209,14 +180,13 @@ describe('FleetService helper transport selection', () => {
       loot: { metal: 100, crystal: 60, deuterium: 40 },
       winner: 'attacker',
     });
-    expect(mockComputeAttackerPostCombatDistributionNapi).not.toHaveBeenCalled();
     expect(client.query).toHaveBeenCalledTimes(2);
   });
 
-  it('uses HTTP helper for defense rebuild before N-API', async () => {
+  it('uses HTTP helper for defense rebuild before local fallback', async () => {
     mockHttpResolveDefenseRebuild.mockResolvedValue({
       updated: { rocket_launcher: 8 },
-      engine: 'rust-http',
+      engine: 'rust-grpc',
     });
 
     const client = {
@@ -239,7 +209,6 @@ describe('FleetService helper transport selection', () => {
       rebuildRate: 0.7,
       seed: '55:99:defense',
     });
-    expect(mockResolveDefenseLossesNapi).not.toHaveBeenCalled();
     expect(client.query).toHaveBeenCalledTimes(1);
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE planets SET rocket_launcher = $1 WHERE id = $2'),
@@ -247,15 +216,17 @@ describe('FleetService helper transport selection', () => {
     );
   });
 
-  it('skips HTTP helper when URL is not configured and uses N-API', async () => {
+  it('skips HTTP helper when URL is not configured and uses local computation', async () => {
     process.env.RUST_HTTP_HELPER_URL = '';
     mockHttpIsConfigured.mockReturnValue(false);
-    mockComputeEspionageOutcomeNapi.mockResolvedValue({ intelLevel: 'full', detected: true });
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.1);
 
-    const result = await (FleetService as any).computeEspionageOutcome(9, 5, 1, 'seed-napi');
-
-    expect(mockHttpComputeEspionageOutcome).not.toHaveBeenCalled();
-    expect(mockComputeEspionageOutcomeNapi).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ intelLevel: 'full', detected: true });
+    try {
+      const result = await (FleetService as any).computeEspionageOutcome(9, 5, 1, 'seed-local');
+      expect(mockHttpComputeEspionageOutcome).not.toHaveBeenCalled();
+      expect(result).toEqual({ intelLevel: 'full', detected: true });
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 });
