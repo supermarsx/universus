@@ -3,12 +3,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use adapter_provider_sms::{
+    CircuitBreaker, HistoryRecord, HistoryRecordInput, HistoryStatsItem as ProviderHistoryStatsItem,
+    HistoryStore, InsertHistoryError,
+};
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use rusqlite::{params, Connection, Error as SqliteError, ErrorCode, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -16,9 +19,6 @@ const SERVICE_NAME: &str = "sms";
 const DEFAULT_PORT: u16 = 3003;
 const HISTORY_DEFAULT_LIMIT: usize = 50;
 const HISTORY_MAX_LIMIT: usize = 200;
-const DEFAULT_HISTORY_DB_PATH: &str = "sms-history.sqlite3";
-const DEFAULT_CHANNEL_FAILURE_THRESHOLD: u64 = 3;
-const DEFAULT_CHANNEL_COOLDOWN_MS: u128 = 30_000;
 
 const SUPPORTED_CHANNELS: [&str; 7] = [
     "sms_twilio",
@@ -59,20 +59,6 @@ struct SendResponse {
     destination: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     idempotent: Option<bool>,
-}
-
-#[derive(Clone, Debug)]
-struct HistoryEntry {
-    id: u64,
-    request_id: String,
-    idempotency_key: Option<String>,
-    contact: String,
-    destination: String,
-    channel: String,
-    status: String,
-    error: Option<String>,
-    metadata: Option<serde_json::Value>,
-    created_at_ms: u128,
 }
 
 #[derive(Serialize)]
@@ -131,6 +117,31 @@ struct HistoryQuery {
 struct ChannelCircuitState {
     consecutive_failures: u64,
     open_until_ms: Option<u128>,
+}
+
+struct SmsDispatcher {
+    provider: SmsProviderAdapter,
+}
+
+impl SmsDispatcher {
+    fn new(provider: SmsProviderAdapter) -> Self {
+        Self { provider }
+    }
+
+    fn dispatch(
+        &self,
+        _channel: &str,
+        destination: &str,
+        message: &str,
+        _metadata: Option<&serde_json::Value>,
+    ) -> Result<(), String> {
+        let _provider = &self.provider;
+        if destination.trim().is_empty() || message.trim().is_empty() {
+            return Err("contact and message are required".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -339,6 +350,7 @@ struct SmsApiState {
     next_request_sequence: u64,
     history_store: HistoryStore,
     channel_circuits: HashMap<String, ChannelCircuitState>,
+    sms_dispatcher: SmsDispatcher,
 }
 
 impl SmsApiState {
@@ -355,6 +367,7 @@ impl SmsApiState {
             next_request_sequence: 0,
             history_store,
             channel_circuits: HashMap::new(),
+            sms_dispatcher: SmsDispatcher::new(SmsProviderAdapter),
         })
     }
 
@@ -836,6 +849,17 @@ async fn send_sms(
         last_channel = channel.clone();
         match normalize_destination(&channel, &contact) {
             Ok(destination) => {
+                if let Err(error) = state.sms_dispatcher.dispatch(
+                    &channel,
+                    &destination,
+                    &payload.message,
+                    payload.metadata.as_ref(),
+                ) {
+                    state.record_channel_failure_attempt(&channel);
+                    last_error = Some(error);
+                    continue;
+                }
+
                 let duration_ms = now_unix_epoch_ms().saturating_sub(started_at_ms);
                 state.record_success(&channel, duration_ms);
 

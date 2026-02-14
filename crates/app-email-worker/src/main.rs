@@ -1,5 +1,6 @@
 use std::env;
 
+use adapter_provider_email::EmailProviderAdapter;
 use redis::aio::MultiplexedConnection;
 use redis::{cmd, Client};
 use tokio::signal;
@@ -8,6 +9,25 @@ use tracing_subscriber::EnvFilter;
 const DEFAULT_POLL_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_EMAIL_QUEUE_NAME: &str = "email.outbound";
 const DEFAULT_EMAIL_DLQ_NAME: &str = "email.dead-letter";
+
+struct EmailDispatcher {
+    provider: EmailProviderAdapter,
+}
+
+impl EmailDispatcher {
+    fn new(provider: EmailProviderAdapter) -> Self {
+        Self { provider }
+    }
+
+    fn dispatch(&self, payload: &[u8]) -> Result<(), &'static str> {
+        let _provider = &self.provider;
+        if payload.is_empty() {
+            return Err("empty job payload");
+        }
+
+        Ok(())
+    }
+}
 
 fn parse_poll_timeout_seconds(raw: Option<&str>) -> u64 {
     raw.and_then(|value| value.parse::<u64>().ok())
@@ -40,12 +60,8 @@ async fn pop_job(
     Ok(popped.map(|(_, payload)| payload))
 }
 
-fn process_job(payload: &[u8]) -> Result<(), &'static str> {
-    if payload.is_empty() {
-        return Err("empty job payload");
-    }
-
-    Ok(())
+fn process_job(dispatcher: &EmailDispatcher, payload: &[u8]) -> Result<(), &'static str> {
+    dispatcher.dispatch(payload)
 }
 
 #[tokio::main]
@@ -103,6 +119,8 @@ async fn main() {
         "worker startup"
     );
 
+    let dispatcher = EmailDispatcher::new(EmailProviderAdapter);
+
     loop {
         tokio::select! {
             _ = signal::ctrl_c() => {
@@ -112,7 +130,7 @@ async fn main() {
             pop_result = pop_job(&mut conn, &email_queue_key, poll_timeout_seconds) => {
                 match pop_result {
                     Ok(Some(payload)) => {
-                        match process_job(&payload) {
+                        match process_job(&dispatcher, &payload) {
                             Ok(()) => {
                                 tracing::info!(
                                     service = "app-email-worker",
