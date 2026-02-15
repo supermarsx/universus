@@ -15,6 +15,28 @@ pub struct AnalyticsUsageRow {
 }
 
 #[derive(Clone)]
+pub struct NotificationRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub title: String,
+    pub message: String,
+    pub category: String,
+    pub priority: i16,
+    pub is_read: bool,
+    pub created_at_unix: i64,
+    pub read_at_unix: Option<i64>,
+}
+
+#[derive(Clone)]
+pub struct NotificationCreateInput {
+    pub user_id: i64,
+    pub title: String,
+    pub message: String,
+    pub category: String,
+    pub priority: i16,
+}
+
+#[derive(Clone)]
 pub struct AnalyticsUsage {
     pub total_events: i64,
     pub active_users: i64,
@@ -248,6 +270,28 @@ impl Database {
                 SET properties = COALESCE(properties, event_properties),
                     event_properties = COALESCE(event_properties, properties)
                 WHERE properties IS NULL OR event_properties IS NULL;",
+            )
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    async fn ensure_notifications_schema(&self) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        client
+            .batch_execute(
+                "CREATE TABLE IF NOT EXISTS notifications (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    priority SMALLINT NOT NULL DEFAULT 1,
+                    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    read_at TIMESTAMPTZ
+                );
+                CREATE INDEX IF NOT EXISTS idx_notifications_user_created
+                    ON notifications (user_id, created_at DESC);",
             )
             .await
             .map_err(|error| error.to_string())
@@ -605,6 +649,131 @@ impl Database {
             average_load_percent,
             migration_count: meta.get::<_, i64>("migration_count"),
         })
+    }
+
+    pub async fn create_notification(
+        &self,
+        input: NotificationCreateInput,
+    ) -> DbResult<NotificationRow> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "INSERT INTO notifications (user_id, title, message, category, priority)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING
+                    id,
+                    user_id,
+                    title,
+                    message,
+                    category,
+                    priority,
+                    is_read,
+                    EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix,
+                    CASE
+                        WHEN read_at IS NULL THEN NULL
+                        ELSE EXTRACT(EPOCH FROM read_at)::BIGINT
+                    END AS read_at_unix",
+                &[
+                    &input.user_id,
+                    &input.title,
+                    &input.message,
+                    &input.category,
+                    &input.priority,
+                ],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(map_notification_row(&row))
+    }
+
+    pub async fn list_notifications(
+        &self,
+        user_id: i64,
+        unread_only: bool,
+        limit: i64,
+    ) -> DbResult<Vec<NotificationRow>> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_limit = limit.clamp(1, 500);
+        let rows = client
+            .query(
+                "SELECT
+                    id,
+                    user_id,
+                    title,
+                    message,
+                    category,
+                    priority,
+                    is_read,
+                    EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix,
+                    CASE
+                        WHEN read_at IS NULL THEN NULL
+                        ELSE EXTRACT(EPOCH FROM read_at)::BIGINT
+                    END AS read_at_unix
+                 FROM notifications
+                 WHERE user_id = $1
+                   AND ($2::BOOLEAN = FALSE OR is_read = FALSE)
+                 ORDER BY id DESC
+                 LIMIT $3",
+                &[&user_id, &unread_only, &safe_limit],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| map_notification_row(&row))
+            .collect())
+    }
+
+    pub async fn notification_unread_count(&self, user_id: i64) -> DbResult<i64> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "SELECT COUNT(*)::BIGINT AS unread_count
+                 FROM notifications
+                 WHERE user_id = $1
+                   AND is_read = FALSE",
+                &[&user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(row.get::<_, i64>("unread_count"))
+    }
+
+    pub async fn mark_notification_read(&self, user_id: i64, notification_id: i64) -> DbResult<bool> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "UPDATE notifications
+                 SET is_read = TRUE,
+                     read_at = COALESCE(read_at, now())
+                 WHERE id = $1
+                   AND user_id = $2",
+                &[&notification_id, &user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn mark_all_notifications_read(&self, user_id: i64) -> DbResult<i64> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "UPDATE notifications
+                 SET is_read = TRUE,
+                     read_at = COALESCE(read_at, now())
+                 WHERE user_id = $1
+                   AND is_read = FALSE",
+                &[&user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected as i64)
     }
 
     pub async fn list_universes(&self) -> DbResult<Vec<UniverseRow>> {
@@ -1134,6 +1303,20 @@ fn map_rip_destroy_request_row(row: &tokio_postgres::Row) -> RipDestroyRequestRo
         speed_percent: row.get::<_, f64>("speed_percent"),
         status: row.get::<_, String>("status"),
         requested_at_unix: row.get::<_, i64>("requested_at_unix"),
+    }
+}
+
+fn map_notification_row(row: &tokio_postgres::Row) -> NotificationRow {
+    NotificationRow {
+        id: row.get::<_, i64>("id"),
+        user_id: row.get::<_, i64>("user_id"),
+        title: row.get::<_, String>("title"),
+        message: row.get::<_, String>("message"),
+        category: row.get::<_, String>("category"),
+        priority: row.get::<_, i16>("priority"),
+        is_read: row.get::<_, bool>("is_read"),
+        created_at_unix: row.get::<_, i64>("created_at_unix"),
+        read_at_unix: row.get::<_, Option<i64>>("read_at_unix"),
     }
 }
 

@@ -24,7 +24,7 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 | Area | Current Rust owner | Status | Gap to close |
 | --- | --- | --- | --- |
 | API route families | `app-api-gateway` | Broad coverage landed | Deep parity for DB-backed behavior and side-effects |
-| Notifications | `game-notifications` + `app-api-gateway` | Base endpoints landed | Persist/read prefs/realtime fanout parity |
+| Notifications | `game-notifications` + `app-api-gateway` + `platform-db` | DB-first endpoints landed with fallback | Preference filtering + realtime fanout parity |
 | Chat restriction cleanup | `game-chat` + `app-chat-worker` | Worker + domain cleanup loop landed | DB-backed restriction state + moderation parity |
 | SMS | `app-sms-api` + `adapter-provider-sms` | API + SQLite + idempotency + circuit breaker landed | Provider-level production integration hardening |
 | Email worker | `app-email-worker` + `adapter-provider-email` | Queue parse/provider interface landed | Production provider + retry/backoff policy parity |
