@@ -1,6 +1,6 @@
 # Rust Backend Reframe by Crate Boundaries
 
-Updated: 2026-02-14
+Updated: 2026-02-15
 
 ## Intent
 Define the backend as a Rust-first system partitioned by strict crate layers so legacy Node services can be retired in controlled tranches.
@@ -8,8 +8,8 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 ## Layering Model
 | Layer | Responsibility | Crates |
 | --- | --- | --- |
-| App (edge/runtime) | HTTP APIs, workers, process entrypoints | `app-api-gateway`, `app-admin-api`, `app-bot-api`, `app-bot-worker`, `app-email-worker`, `app-sms-api`, `app-analytics-worker`, `app-realtime-gateway`, `app-web-frontend`, `app-core-engine` |
-| Domain (game logic) | Pure game rules and domain state transitions | `game-fleet`, `game-combat`, `game-economy`, `game-galaxy`, `game-alliance`, `game-moon`, `game-universe`, `game-achievements`, `game-messaging`, `game-notifications`, `game-antiabuse`, `game-leaderboard`, `game-domain` |
+| App (edge/runtime) | HTTP APIs, workers, process entrypoints | `app-api-gateway`, `app-admin-api`, `app-bot-api`, `app-bot-worker`, `app-chat-worker`, `app-email-worker`, `app-sms-api`, `app-analytics-worker`, `app-realtime-gateway`, `app-web-frontend`, `app-core-engine` |
+| Domain (game logic) | Pure game rules and domain state transitions | `game-fleet`, `game-combat`, `game-economy`, `game-galaxy`, `game-alliance`, `game-moon`, `game-universe`, `game-achievements`, `game-messaging`, `game-notifications`, `game-chat`, `game-antiabuse`, `game-leaderboard`, `game-domain` |
 | Platform (cross-cutting infra) | Config, auth, DB, cache, events, observability, shared errors/common | `platform-config`, `platform-auth`, `platform-db`, `platform-cache`, `platform-events`, `platform-observability`, `platform-errors`, `platform-common`, `platform-proto` |
 | Adapter (external providers/compat) | Provider integrations and protocol adapters | `adapter-provider-email`, `adapter-provider-sms`, `adapter-provider-bot`, `adapter-provider-payments`, `adapter-http-compat` |
 
@@ -25,6 +25,7 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 | --- | --- | --- | --- |
 | API route families | `app-api-gateway` | Broad coverage landed | Deep parity for DB-backed behavior and side-effects |
 | Notifications | `game-notifications` + `app-api-gateway` | Base endpoints landed | Persist/read prefs/realtime fanout parity |
+| Chat restriction cleanup | `game-chat` + `app-chat-worker` | Worker + domain cleanup loop landed | DB-backed restriction state + moderation parity |
 | SMS | `app-sms-api` + `adapter-provider-sms` | API + SQLite + idempotency + circuit breaker landed | Provider-level production integration hardening |
 | Email worker | `app-email-worker` + `adapter-provider-email` | Queue parse/provider interface landed | Production provider + retry/backoff policy parity |
 | Bot processing | `app-bot-api` + `app-bot-worker` + `adapter-provider-bot` | Worker-trigger path landed | DB-backed bot scheduling parity |
@@ -35,7 +36,7 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 ## Highest-Priority Remaining Legacy Surfaces
 1. `backend/src/routes/templates.ts` and server-rendered auth/page gates.
 2. `backend/src/services/notificationService.ts` full parity (DB, preferences, realtime push).
-3. `backend/src/services/chatService.ts` and moderation/expiry behavior in domain + realtime crates.
+3. `backend/src/services/chatService.ts` moderation behavior-depth parity (cleanup loop is now crate-owned).
 4. `backend/src/services/serverDiscoveryService.ts` and `crossServerCommunicationService.ts` sharding parity hardening.
 5. `backend/src/services/gameLoopService.ts`, `fleetScheduler.ts`, `destroyMoonService.ts` scheduler parity in Rust workers.
 6. `backend-admin-service/src/index.ts` admin behavior-depth parity and production rollout validation.

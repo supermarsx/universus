@@ -202,6 +202,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-chat-worker"
+version = "0.1.0"
+dependencies = [
+ "game-chat",
+ "platform-observability",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "app-core-engine"
 version = "0.1.0"
 dependencies = [
@@ -1159,6 +1169,13 @@ version = "0.1.0"
 [[package]]
 name = "game-antiabuse"
 version = "0.1.0"
+
+[[package]]
+name = "game-chat"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-combat"

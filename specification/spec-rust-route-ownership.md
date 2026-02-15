@@ -1,6 +1,6 @@
 # Rust Route Ownership Matrix
 
-Updated: February 14, 2026
+Updated: February 15, 2026
 
 ## Purpose
 This matrix reframes the Node backend migration by crate ownership. Every legacy route family is mapped to a Rust crate (or marked intentionally deferred) so cutover can be driven by explicit boundaries.
@@ -61,3 +61,8 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
 - No Node service in production traffic path for API/admin/bot/sms/email/analytics.
 - Realtime contract snapshots validated against current frontend client.
 - `backend-core-napi` removed from default workspace build graph and runtime dependency graph.
+
+## Latest parity increments
+- Added Rust API compatibility aliases for legacy Node paths:
+  - `/api/health` now served by `app-api-gateway` in addition to `/health`.
+  - `/api/alliances/*` now aliases to existing alliance handlers (`/api/alliance/*`).

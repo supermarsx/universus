@@ -27,6 +27,8 @@ mod users;
 
 use axum::routing::get;
 use axum::{middleware, Extension, Json, Router};
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::response::IntoResponse;
 use platform_db::Database;
 use serde::Serialize;
 
@@ -64,6 +66,8 @@ pub fn build_router(service_name: &'static str) -> Router {
 
     Router::new()
         .route("/health", get(move || health(service_name)))
+        .route("/api/health", get(move || health(service_name)))
+        .route("/metrics", get(metrics))
         .route("/ready", get(move || ready(service_name)))
         .merge(auth::router())
         .merge(achievements::router())
@@ -96,4 +100,13 @@ async fn ready(service_name: &'static str) -> Json<ServiceStatus> {
         status: "ok",
         service: service_name,
     })
+}
+
+async fn metrics() -> impl IntoResponse {
+    let body = "# HELP universus_gateway_up Service availability\n# TYPE universus_gateway_up gauge\nuniversus_gateway_up 1\n";
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; version=0.0.4"))],
+        body,
+    )
 }

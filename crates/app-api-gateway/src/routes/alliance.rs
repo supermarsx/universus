@@ -34,8 +34,11 @@ struct AllianceDiplomacy {
 pub fn router() -> Router {
     Router::new()
         .route("/api/alliance", get(get_alliance_handler))
+        .route("/api/alliances", get(get_alliance_handler))
         .route("/api/alliance/members", get(list_members_handler))
+        .route("/api/alliances/members", get(list_members_handler))
         .route("/api/alliance/diplomacy", get(list_diplomacy_handler))
+        .route("/api/alliances/diplomacy", get(list_diplomacy_handler))
 }
 
 async fn get_alliance_handler() -> Response {

@@ -1,0 +1,10 @@
+[package]
+name = "app-chat-worker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game-chat = { path = "../game-chat" }
+tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
+tracing = { workspace = true }
+platform-observability = { path = "../platform-observability" }

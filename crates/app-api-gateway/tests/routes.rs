@@ -33,6 +33,46 @@ async fn health_returns_200_and_service_name() {
 }
 
 #[tokio::test]
+async fn api_health_alias_returns_200_and_service_name() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["service"], TEST_SERVICE_NAME);
+}
+
+#[tokio::test]
+async fn metrics_endpoint_returns_prometheus_content_type() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "text/plain; version=0.0.4"
+    );
+}
+
+#[tokio::test]
 async fn helper_movement_invalid_payload_returns_400_and_error_envelope() {
     let app = build_router(TEST_SERVICE_NAME);
     let response = app
@@ -167,6 +207,27 @@ async fn alliance_members_returns_success_array() {
         .oneshot(
             Request::builder()
                 .uri("/api/alliance/members")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], true);
+    assert!(body["data"].is_array());
+    assert_eq!(body["data"][0]["username"], "Commander");
+}
+
+#[tokio::test]
+async fn alliances_alias_members_returns_success_array() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/alliances/members")
                 .method("GET")
                 .body(Body::empty())
                 .unwrap(),
