@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
@@ -356,6 +356,58 @@ struct RecentEventsQuery {
     limit: Option<usize>,
 }
 
+#[derive(Clone, Serialize)]
+struct ChatRestrictionItem {
+    id: i64,
+    user_id: i64,
+    channel_id: Option<i64>,
+    restriction_type: String,
+    reason: String,
+    restricted_by: i64,
+    expires_at_unix: Option<i64>,
+    created_at_unix: i64,
+}
+
+#[derive(Serialize)]
+struct ChatRestrictionsResponse {
+    restrictions: Vec<ChatRestrictionItem>,
+    total: usize,
+}
+
+#[derive(Default, Deserialize)]
+struct ChatRestrictionsQuery {
+    #[serde(rename = "userId")]
+    user_id: Option<i64>,
+    #[serde(rename = "channelId")]
+    channel_id: Option<i64>,
+    limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct UpsertChatRestrictionRequest {
+    #[serde(rename = "userId")]
+    user_id: i64,
+    #[serde(rename = "channelId")]
+    channel_id: Option<i64>,
+    #[serde(rename = "restrictionType")]
+    restriction_type: String,
+    reason: String,
+    #[serde(rename = "restrictedBy")]
+    restricted_by: i64,
+    #[serde(rename = "expiresAtUnix")]
+    expires_at_unix: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct DeleteChatRestrictionRequest {
+    #[serde(rename = "userId")]
+    user_id: i64,
+    #[serde(rename = "channelId")]
+    channel_id: Option<i64>,
+    #[serde(rename = "restrictionType")]
+    restriction_type: String,
+}
+
 pub fn build_router() -> Router {
     let state = AppState::default();
 
@@ -364,6 +416,9 @@ pub fn build_router() -> Router {
         .route("/ready", get(ready))
         .route("/ws-info", get(ws_info))
         .route("/chat/channels", get(rest_chat_channels))
+        .route("/chat/restrictions", get(rest_chat_restrictions))
+        .route("/chat/restrictions", post(rest_upsert_chat_restriction))
+        .route("/chat/restrictions", delete(rest_delete_chat_restriction))
         .route("/notifications", get(rest_notifications))
         .route("/notifications/unread/count", get(rest_notifications_unread_count))
         .route("/notifications/preferences", get(rest_notifications_preferences))
@@ -380,6 +435,15 @@ pub fn build_router() -> Router {
         .route("/trade/offers", get(rest_trade_offers))
         .route("/trade/history", get(rest_trade_history))
         .route("/api/realtime/chat/channels", get(rest_chat_channels))
+        .route("/api/realtime/chat/restrictions", get(rest_chat_restrictions))
+        .route(
+            "/api/realtime/chat/restrictions",
+            post(rest_upsert_chat_restriction),
+        )
+        .route(
+            "/api/realtime/chat/restrictions",
+            delete(rest_delete_chat_restriction),
+        )
         .route("/api/realtime/chat/conversations", get(rest_chat_conversations))
         .route(
             "/api/realtime/chat/conversations/:conversation_id/messages",
@@ -464,6 +528,142 @@ async fn rest_chat_channels(State(state): State<AppState>) -> Json<ChatChannelsR
     channels.sort_by(|left, right| left.name.cmp(&right.name));
 
     Json(ChatChannelsResponse { channels })
+}
+
+async fn rest_chat_restrictions(
+    Query(query): Query<ChatRestrictionsQuery>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let Some(database) = platform_db::Database::from_env() else {
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!(ChatRestrictionsResponse {
+                restrictions: Vec::new(),
+                total: 0
+            })),
+        );
+    };
+
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    match database
+        .list_chat_restrictions(query.user_id, query.channel_id, limit)
+        .await
+    {
+        Ok(rows) => {
+            let restrictions = rows.into_iter().map(map_chat_restriction).collect::<Vec<_>>();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!(ChatRestrictionsResponse {
+                    total: restrictions.len(),
+                    restrictions
+                })),
+            )
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: format!("failed to load chat restrictions: {error}"),
+            })),
+        ),
+    }
+}
+
+async fn rest_upsert_chat_restriction(
+    Json(payload): Json<UpsertChatRestrictionRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    if payload.user_id <= 0
+        || payload.restricted_by <= 0
+        || payload.restriction_type.trim().is_empty()
+        || payload.reason.trim().is_empty()
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: "userId, restrictedBy, restrictionType, and reason are required".to_string(),
+            })),
+        );
+    }
+
+    let Some(database) = platform_db::Database::from_env() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: "DATABASE_URL not configured".to_string(),
+            })),
+        );
+    };
+
+    let input = platform_db::ChatRestrictionUpsert {
+        user_id: payload.user_id,
+        channel_id: payload.channel_id,
+        restriction_type: payload.restriction_type,
+        reason: payload.reason,
+        restricted_by: payload.restricted_by,
+        expires_at_unix: payload.expires_at_unix,
+    };
+
+    match database.upsert_chat_restriction(input).await {
+        Ok(row) => (
+            StatusCode::OK,
+            Json(serde_json::json!(map_chat_restriction(row))),
+        ),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: format!("failed to upsert chat restriction: {error}"),
+            })),
+        ),
+    }
+}
+
+async fn rest_delete_chat_restriction(
+    Json(payload): Json<DeleteChatRestrictionRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    if payload.user_id <= 0 || payload.restriction_type.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: "userId and restrictionType are required".to_string(),
+            })),
+        );
+    }
+
+    let Some(database) = platform_db::Database::from_env() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: "DATABASE_URL not configured".to_string(),
+            })),
+        );
+    };
+
+    match database
+        .remove_chat_restriction(
+            payload.user_id,
+            payload.channel_id,
+            payload.restriction_type.as_str(),
+        )
+        .await
+    {
+        Ok(removed) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "removed": removed
+            })),
+        ),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: format!("failed to remove chat restriction: {error}"),
+            })),
+        ),
+    }
 }
 
 async fn rest_notifications(
@@ -735,4 +935,17 @@ async fn recent_events(
         .cloned()
         .collect::<Vec<_>>();
     Json(RecentEventsResponse { events, total })
+}
+
+fn map_chat_restriction(row: platform_db::ChatRestrictionRow) -> ChatRestrictionItem {
+    ChatRestrictionItem {
+        id: row.id,
+        user_id: row.user_id,
+        channel_id: row.channel_id,
+        restriction_type: row.restriction_type,
+        reason: row.reason,
+        restricted_by: row.restricted_by,
+        expires_at_unix: row.expires_at_unix,
+        created_at_unix: row.created_at_unix,
+    }
 }

@@ -107,6 +107,25 @@ pub struct ShardServerUpsert {
 }
 
 #[derive(Clone)]
+pub struct CrossServerMessageRow {
+    pub id: i64,
+    pub source_server_id: String,
+    pub target_server_id: String,
+    pub message_type: String,
+    pub payload: serde_json::Value,
+    pub status: String,
+    pub attempt_count: i32,
+}
+
+#[derive(Clone)]
+pub struct CrossServerMessageCreateInput {
+    pub source_server_id: String,
+    pub target_server_id: String,
+    pub message_type: String,
+    pub payload: serde_json::Value,
+}
+
+#[derive(Clone)]
 pub struct UniverseRow {
     pub id: i64,
     pub name: String,
@@ -233,6 +252,47 @@ pub struct RipDestroyRequestUpsert {
     pub requested_at_unix: i64,
 }
 
+#[derive(Clone)]
+pub struct ScheduledTaskRow {
+    pub id: i64,
+    pub task_type: String,
+    pub payload: serde_json::Value,
+    pub status: String,
+    pub run_at_unix: i64,
+    pub attempt_count: i32,
+    pub lease_owner: Option<String>,
+    pub lease_until_unix: Option<i64>,
+}
+
+#[derive(Clone)]
+pub struct ScheduledTaskCreateInput {
+    pub task_type: String,
+    pub payload: serde_json::Value,
+    pub run_at_unix: i64,
+}
+
+#[derive(Clone)]
+pub struct ChatRestrictionRow {
+    pub id: i64,
+    pub user_id: i64,
+    pub channel_id: Option<i64>,
+    pub restriction_type: String,
+    pub reason: String,
+    pub restricted_by: i64,
+    pub expires_at_unix: Option<i64>,
+    pub created_at_unix: i64,
+}
+
+#[derive(Clone)]
+pub struct ChatRestrictionUpsert {
+    pub user_id: i64,
+    pub channel_id: Option<i64>,
+    pub restriction_type: String,
+    pub reason: String,
+    pub restricted_by: i64,
+    pub expires_at_unix: Option<i64>,
+}
+
 impl Database {
     pub fn from_env() -> Option<Self> {
         let database_url = std::env::var("DATABASE_URL")
@@ -349,6 +409,23 @@ impl Database {
                     id INTEGER PRIMARY KEY,
                     migration_count BIGINT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS cross_server_messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    source_server_id TEXT NOT NULL,
+                    target_server_id TEXT NOT NULL,
+                    message_type TEXT NOT NULL,
+                    payload JSONB NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    lease_owner TEXT,
+                    lease_until TIMESTAMPTZ,
+                    last_error TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    processed_at TIMESTAMPTZ
+                );
+                CREATE INDEX IF NOT EXISTS idx_cross_server_messages_target_status
+                    ON cross_server_messages (target_server_id, status, created_at);
                 INSERT INTO shard_routing_meta (id, migration_count)
                 VALUES (1, 0)
                 ON CONFLICT (id) DO NOTHING;",
@@ -439,6 +516,59 @@ impl Database {
                     ON rip_destroy_requests (source_moon_id);
                 CREATE INDEX IF NOT EXISTS idx_rip_destroy_requests_target_moon_id
                     ON rip_destroy_requests (target_moon_id);",
+            )
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    async fn ensure_scheduler_schema(&self) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        client
+            .batch_execute(
+                "CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                    id BIGSERIAL PRIMARY KEY,
+                    task_type TEXT NOT NULL,
+                    payload JSONB NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'queued',
+                    run_at TIMESTAMPTZ NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    lease_owner TEXT,
+                    lease_until TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    completed_at TIMESTAMPTZ
+                );
+                CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due
+                    ON scheduled_tasks (status, run_at);
+                CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_lease
+                    ON scheduled_tasks (lease_until);",
+            )
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    async fn ensure_chat_schema(&self) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        client
+            .batch_execute(
+                "CREATE TABLE IF NOT EXISTS chat_restrictions (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    channel_id BIGINT,
+                    restriction_type TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    restricted_by BIGINT NOT NULL,
+                    expires_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS idx_chat_restrictions_user
+                    ON chat_restrictions (user_id);
+                CREATE INDEX IF NOT EXISTS idx_chat_restrictions_expiry
+                    ON chat_restrictions (expires_at);
+                CREATE INDEX IF NOT EXISTS idx_chat_restrictions_scope
+                    ON chat_restrictions (user_id, channel_id, restriction_type);",
             )
             .await
             .map_err(|error| error.to_string())
@@ -696,6 +826,416 @@ impl Database {
                  WHERE last_heartbeat_unix < $1
                    AND status <> 'offline'",
                 &[&stale_before],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected as i64)
+    }
+
+    pub async fn enqueue_cross_server_message(
+        &self,
+        input: CrossServerMessageCreateInput,
+    ) -> DbResult<CrossServerMessageRow> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "INSERT INTO cross_server_messages
+                    (source_server_id, target_server_id, message_type, payload)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING
+                    id,
+                    source_server_id,
+                    target_server_id,
+                    message_type,
+                    payload,
+                    status,
+                    attempt_count",
+                &[
+                    &input.source_server_id,
+                    &input.target_server_id,
+                    &input.message_type,
+                    &Json(input.payload),
+                ],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(map_cross_server_message_row(&row))
+    }
+
+    pub async fn claim_cross_server_messages(
+        &self,
+        target_server_id: &str,
+        worker_id: &str,
+        limit: i64,
+        lease_seconds: i64,
+    ) -> DbResult<Vec<CrossServerMessageRow>> {
+        self.ensure_shard_schema().await?;
+        let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_limit = limit.clamp(1, 500);
+        let safe_lease = lease_seconds.max(5);
+        let tx = client.transaction().await.map_err(|error| error.to_string())?;
+        let rows = tx
+            .query(
+                "WITH candidates AS (
+                    SELECT id
+                    FROM cross_server_messages
+                    WHERE target_server_id = $1
+                      AND status IN ('queued', 'retry')
+                      AND (lease_until IS NULL OR lease_until < now())
+                    ORDER BY created_at ASC, id ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT $2
+                )
+                UPDATE cross_server_messages m
+                SET
+                    status = 'processing',
+                    lease_owner = $3,
+                    lease_until = now() + ($4::TEXT || ' seconds')::INTERVAL,
+                    updated_at = now()
+                FROM candidates
+                WHERE m.id = candidates.id
+                RETURNING
+                    m.id,
+                    m.source_server_id,
+                    m.target_server_id,
+                    m.message_type,
+                    m.payload,
+                    m.status,
+                    m.attempt_count",
+                &[&target_server_id, &safe_limit, &worker_id, &safe_lease],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        tx.commit().await.map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| map_cross_server_message_row(&row))
+            .collect())
+    }
+
+    pub async fn ack_cross_server_message(&self, message_id: i64) -> DbResult<bool> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "UPDATE cross_server_messages
+                 SET
+                    status = 'processed',
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    processed_at = now(),
+                    updated_at = now()
+                 WHERE id = $1",
+                &[&message_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn fail_cross_server_message(
+        &self,
+        message_id: i64,
+        error_message: &str,
+        retry_delay_secs: i64,
+        max_attempts: i32,
+    ) -> DbResult<bool> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_delay = retry_delay_secs.max(1);
+        let safe_attempts = max_attempts.max(1);
+        let affected = client
+            .execute(
+                "UPDATE cross_server_messages
+                 SET
+                    attempt_count = attempt_count + 1,
+                    status = CASE
+                        WHEN attempt_count + 1 >= $4 THEN 'failed'
+                        ELSE 'retry'
+                    END,
+                    lease_owner = NULL,
+                    lease_until = CASE
+                        WHEN attempt_count + 1 >= $4 THEN NULL
+                        ELSE now() + ($3::TEXT || ' seconds')::INTERVAL
+                    END,
+                    last_error = $2,
+                    updated_at = now()
+                 WHERE id = $1",
+                &[&message_id, &error_message, &safe_delay, &safe_attempts],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn enqueue_scheduled_task(
+        &self,
+        input: ScheduledTaskCreateInput,
+    ) -> DbResult<ScheduledTaskRow> {
+        self.ensure_scheduler_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "INSERT INTO scheduled_tasks (task_type, payload, run_at)
+                 VALUES ($1, $2, to_timestamp($3))
+                 RETURNING
+                    id,
+                    task_type,
+                    payload,
+                    status,
+                    EXTRACT(EPOCH FROM run_at)::BIGINT AS run_at_unix,
+                    attempt_count,
+                    lease_owner,
+                    CASE
+                        WHEN lease_until IS NULL THEN NULL
+                        ELSE EXTRACT(EPOCH FROM lease_until)::BIGINT
+                    END AS lease_until_unix",
+                &[
+                    &input.task_type,
+                    &Json(input.payload),
+                    &input.run_at_unix,
+                ],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(map_scheduled_task_row(&row))
+    }
+
+    pub async fn claim_due_scheduled_tasks(
+        &self,
+        worker_id: &str,
+        limit: i64,
+        lease_seconds: i64,
+    ) -> DbResult<Vec<ScheduledTaskRow>> {
+        self.ensure_scheduler_schema().await?;
+        let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_limit = limit.clamp(1, 500);
+        let safe_lease = lease_seconds.max(5);
+        let tx = client.transaction().await.map_err(|error| error.to_string())?;
+        let rows = tx
+            .query(
+                "WITH candidates AS (
+                    SELECT id
+                    FROM scheduled_tasks
+                    WHERE status IN ('queued', 'retry')
+                      AND run_at <= now()
+                      AND (lease_until IS NULL OR lease_until < now())
+                    ORDER BY run_at ASC, id ASC
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT $1
+                )
+                UPDATE scheduled_tasks t
+                SET
+                    status = 'running',
+                    lease_owner = $2,
+                    lease_until = now() + ($3::TEXT || ' seconds')::INTERVAL,
+                    updated_at = now()
+                FROM candidates
+                WHERE t.id = candidates.id
+                RETURNING
+                    t.id,
+                    t.task_type,
+                    t.payload,
+                    t.status,
+                    EXTRACT(EPOCH FROM t.run_at)::BIGINT AS run_at_unix,
+                    t.attempt_count,
+                    t.lease_owner,
+                    CASE
+                        WHEN t.lease_until IS NULL THEN NULL
+                        ELSE EXTRACT(EPOCH FROM t.lease_until)::BIGINT
+                    END AS lease_until_unix",
+                &[&safe_limit, &worker_id, &safe_lease],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        tx.commit().await.map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| map_scheduled_task_row(&row))
+            .collect())
+    }
+
+    pub async fn complete_scheduled_task(&self, task_id: i64) -> DbResult<bool> {
+        self.ensure_scheduler_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "UPDATE scheduled_tasks
+                 SET
+                    status = 'completed',
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    completed_at = now(),
+                    updated_at = now()
+                 WHERE id = $1",
+                &[&task_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn fail_scheduled_task(
+        &self,
+        task_id: i64,
+        error_message: &str,
+        retry_delay_secs: i64,
+        max_attempts: i32,
+    ) -> DbResult<bool> {
+        self.ensure_scheduler_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let delay_secs = retry_delay_secs.max(1);
+        let attempts = max_attempts.max(1);
+        let affected = client
+            .execute(
+                "UPDATE scheduled_tasks
+                 SET
+                    attempt_count = attempt_count + 1,
+                    status = CASE
+                        WHEN attempt_count + 1 >= $4 THEN 'failed'
+                        ELSE 'retry'
+                    END,
+                    run_at = CASE
+                        WHEN attempt_count + 1 >= $4 THEN run_at
+                        ELSE now() + ($3::TEXT || ' seconds')::INTERVAL
+                    END,
+                    last_error = $2,
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    updated_at = now()
+                 WHERE id = $1",
+                &[&task_id, &error_message, &delay_secs, &attempts],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn upsert_chat_restriction(
+        &self,
+        input: ChatRestrictionUpsert,
+    ) -> DbResult<ChatRestrictionRow> {
+        self.ensure_chat_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+
+        client
+            .execute(
+                "DELETE FROM chat_restrictions
+                 WHERE user_id = $1
+                   AND restriction_type = $2
+                   AND (
+                     (channel_id IS NULL AND $3::BIGINT IS NULL)
+                     OR channel_id = $3
+                   )",
+                &[&input.user_id, &input.restriction_type, &input.channel_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
+        let row = client
+            .query_one(
+                "INSERT INTO chat_restrictions
+                    (user_id, channel_id, restriction_type, reason, restricted_by, expires_at)
+                 VALUES ($1, $2, $3, $4, $5, CASE WHEN $6::BIGINT IS NULL THEN NULL ELSE to_timestamp($6) END)
+                 RETURNING
+                    id,
+                    user_id,
+                    channel_id,
+                    restriction_type,
+                    reason,
+                    restricted_by,
+                    CASE WHEN expires_at IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM expires_at)::BIGINT END AS expires_at_unix,
+                    EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix",
+                &[
+                    &input.user_id,
+                    &input.channel_id,
+                    &input.restriction_type,
+                    &input.reason,
+                    &input.restricted_by,
+                    &input.expires_at_unix,
+                ],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
+        Ok(map_chat_restriction_row(&row))
+    }
+
+    pub async fn remove_chat_restriction(
+        &self,
+        user_id: i64,
+        channel_id: Option<i64>,
+        restriction_type: &str,
+    ) -> DbResult<bool> {
+        self.ensure_chat_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "DELETE FROM chat_restrictions
+                 WHERE user_id = $1
+                   AND restriction_type = $2
+                   AND (
+                     (channel_id IS NULL AND $3::BIGINT IS NULL)
+                     OR channel_id = $3
+                   )",
+                &[&user_id, &restriction_type, &channel_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn list_chat_restrictions(
+        &self,
+        user_id: Option<i64>,
+        channel_id: Option<i64>,
+        limit: i64,
+    ) -> DbResult<Vec<ChatRestrictionRow>> {
+        self.ensure_chat_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_limit = limit.clamp(1, 500);
+        let rows = client
+            .query(
+                "SELECT
+                    id,
+                    user_id,
+                    channel_id,
+                    restriction_type,
+                    reason,
+                    restricted_by,
+                    CASE WHEN expires_at IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM expires_at)::BIGINT END AS expires_at_unix,
+                    EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix
+                 FROM chat_restrictions
+                 WHERE ($1::BIGINT IS NULL OR user_id = $1)
+                   AND (
+                     $2::BIGINT IS NULL
+                     OR channel_id = $2
+                     OR (channel_id IS NULL AND $2::BIGINT IS NULL)
+                   )
+                   AND (expires_at IS NULL OR expires_at > now())
+                 ORDER BY id DESC
+                 LIMIT $3",
+                &[&user_id, &channel_id, &safe_limit],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| map_chat_restriction_row(&row))
+            .collect())
+    }
+
+    pub async fn cleanup_expired_chat_restrictions(&self, now_unix: i64) -> DbResult<i64> {
+        self.ensure_chat_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "DELETE FROM chat_restrictions
+                 WHERE expires_at IS NOT NULL
+                   AND expires_at <= to_timestamp($1)",
+                &[&now_unix],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -1499,6 +2039,48 @@ fn map_notification_preference_row(row: &tokio_postgres::Row) -> NotificationPre
         category: row.get::<_, String>("category"),
         enabled: row.get::<_, bool>("enabled"),
         min_priority: row.get::<_, i16>("min_priority"),
+    }
+}
+
+fn map_scheduled_task_row(row: &tokio_postgres::Row) -> ScheduledTaskRow {
+    ScheduledTaskRow {
+        id: row.get::<_, i64>("id"),
+        task_type: row.get::<_, String>("task_type"),
+        payload: row
+            .get::<_, Json<serde_json::Value>>("payload")
+            .0,
+        status: row.get::<_, String>("status"),
+        run_at_unix: row.get::<_, i64>("run_at_unix"),
+        attempt_count: row.get::<_, i32>("attempt_count"),
+        lease_owner: row.get::<_, Option<String>>("lease_owner"),
+        lease_until_unix: row.get::<_, Option<i64>>("lease_until_unix"),
+    }
+}
+
+fn map_cross_server_message_row(row: &tokio_postgres::Row) -> CrossServerMessageRow {
+    CrossServerMessageRow {
+        id: row.get::<_, i64>("id"),
+        source_server_id: row.get::<_, String>("source_server_id"),
+        target_server_id: row.get::<_, String>("target_server_id"),
+        message_type: row.get::<_, String>("message_type"),
+        payload: row
+            .get::<_, Json<serde_json::Value>>("payload")
+            .0,
+        status: row.get::<_, String>("status"),
+        attempt_count: row.get::<_, i32>("attempt_count"),
+    }
+}
+
+fn map_chat_restriction_row(row: &tokio_postgres::Row) -> ChatRestrictionRow {
+    ChatRestrictionRow {
+        id: row.get::<_, i64>("id"),
+        user_id: row.get::<_, i64>("user_id"),
+        channel_id: row.get::<_, Option<i64>>("channel_id"),
+        restriction_type: row.get::<_, String>("restriction_type"),
+        reason: row.get::<_, String>("reason"),
+        restricted_by: row.get::<_, i64>("restricted_by"),
+        expires_at_unix: row.get::<_, Option<i64>>("expires_at_unix"),
+        created_at_unix: row.get::<_, i64>("created_at_unix"),
     }
 }
 

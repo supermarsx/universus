@@ -206,8 +206,10 @@ dependencies = [
 name = "app-chat-worker"
 version = "0.1.0"
 dependencies = [
- "game-chat",
+ "platform-db",
+ "platform-events",
  "platform-observability",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -220,6 +222,8 @@ dependencies = [
  "game-combat",
  "game-fleet",
  "hyper 0.14.32",
+ "platform-db",
+ "platform-events",
  "serde",
  "serde_json",
  "tokio",
@@ -257,6 +261,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "hyper 0.14.32",
+ "platform-db",
  "serde",
  "serde_json",
  "tokio",
@@ -269,6 +274,7 @@ dependencies = [
 name = "app-scheduler-worker"
 version = "0.1.0"
 dependencies = [
+ "platform-db",
  "platform-events",
  "platform-observability",
  "serde_json",

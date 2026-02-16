@@ -11,12 +11,16 @@ async fn main() {
     let fleet_secs = u64_env("FLEET_SCHEDULER_INTERVAL_SECS", 10);
     let moon_secs = u64_env("MOON_DESTROY_INTERVAL_SECS", 10);
     let shard_health_secs = u64_env("SHARD_HEALTH_INTERVAL_SECS", 60);
-    let backend_url = std::env::var("RUST_BACKEND_URL")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
     let realtime_url = std::env::var("REALTIME_GATEWAY_URL")
         .ok()
         .filter(|value| !value.trim().is_empty());
+    let worker_id = std::env::var("SCHEDULER_WORKER_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "app-scheduler-worker".to_string());
+    let lease_secs = i64_env("SCHED_TASK_LEASE_SECS", 30);
+    let retry_delay_secs = i64_env("SCHED_TASK_RETRY_DELAY_SECS", 15);
+    let max_attempts = i32_env("SCHED_TASK_MAX_ATTEMPTS", 3);
 
     tracing::info!(
         service = SERVICE_NAME,
@@ -25,8 +29,11 @@ async fn main() {
         fleet_secs,
         moon_secs,
         shard_health_secs,
-        has_backend_url = backend_url.is_some(),
         has_realtime_url = realtime_url.is_some(),
+        worker_id,
+        lease_secs,
+        retry_delay_secs,
+        max_attempts,
         "scheduler worker started"
     );
 
@@ -38,16 +45,44 @@ async fn main() {
     loop {
         tokio::select! {
             _ = game_tick.tick() => {
-                run_tick("game_loop", backend_url.as_deref(), realtime_url.as_deref()).await;
+                enqueue_and_process_tick(
+                    "scheduler.game_loop",
+                    realtime_url.as_deref(),
+                    &worker_id,
+                    lease_secs,
+                    retry_delay_secs,
+                    max_attempts,
+                ).await;
             }
             _ = fleet_tick.tick() => {
-                run_tick("fleet_scheduler", backend_url.as_deref(), realtime_url.as_deref()).await;
+                enqueue_and_process_tick(
+                    "scheduler.fleet",
+                    realtime_url.as_deref(),
+                    &worker_id,
+                    lease_secs,
+                    retry_delay_secs,
+                    max_attempts,
+                ).await;
             }
             _ = moon_tick.tick() => {
-                run_tick("moon_destroy", backend_url.as_deref(), realtime_url.as_deref()).await;
+                enqueue_and_process_tick(
+                    "scheduler.moon_destroy",
+                    realtime_url.as_deref(),
+                    &worker_id,
+                    lease_secs,
+                    retry_delay_secs,
+                    max_attempts,
+                ).await;
             }
             _ = shard_tick.tick() => {
-                run_tick("shard_health", backend_url.as_deref(), realtime_url.as_deref()).await;
+                enqueue_and_process_tick(
+                    "scheduler.shard_health",
+                    realtime_url.as_deref(),
+                    &worker_id,
+                    lease_secs,
+                    retry_delay_secs,
+                    max_attempts,
+                ).await;
             }
         }
 
@@ -60,28 +95,139 @@ async fn main() {
     sleep(Duration::from_millis(25)).await;
 }
 
-async fn run_tick(
-    job: &str,
-    backend_url: Option<&str>,
+async fn enqueue_and_process_tick(
+    task_type: &str,
     realtime_url: Option<&str>,
+    worker_id: &str,
+    lease_secs: i64,
+    retry_delay_secs: i64,
+    max_attempts: i32,
 ) {
-    tracing::info!(service = SERVICE_NAME, job, "tick start");
-    if backend_url.is_none() {
-        tracing::info!(service = SERVICE_NAME, job, "backend url missing; running in event-only mode");
+    tracing::info!(service = SERVICE_NAME, task_type, "tick start");
+    let Some(database) = platform_db::Database::from_env() else {
+        tracing::warn!(
+            service = SERVICE_NAME,
+            task_type,
+            "DATABASE_URL not configured; skipping enqueue/process cycle"
+        );
+        return;
+    };
+
+    let run_at_unix = unix_timestamp();
+    let enqueue_result = database
+        .enqueue_scheduled_task(platform_db::ScheduledTaskCreateInput {
+            task_type: task_type.to_string(),
+            payload: serde_json::json!({
+                "taskType": task_type,
+                "scheduledAtUnix": run_at_unix
+            }),
+            run_at_unix,
+        })
+        .await;
+    if let Err(error) = enqueue_result {
+        tracing::error!(service = SERVICE_NAME, task_type, %error, "failed enqueue scheduled task");
+        return;
+    }
+
+    let claimed = match database
+        .claim_due_scheduled_tasks(worker_id, 16, lease_secs)
+        .await
+    {
+        Ok(tasks) => tasks,
+        Err(error) => {
+            tracing::error!(service = SERVICE_NAME, task_type, %error, "failed claim due tasks");
+            return;
+        }
+    };
+
+    if claimed.is_empty() {
+        return;
     }
 
     if let Some(url) = realtime_url {
-        let event = platform_events::build_event(
-            "scheduler.tick",
-            &serde_json::json!({
-                "job": job,
-                "backendUrlConfigured": backend_url.is_some()
-            }),
-        );
-        match platform_events::publish_http(url, "ops.scheduler", &event).await {
-            Ok(status) => tracing::info!(service = SERVICE_NAME, job, status, "tick event published"),
-            Err(error) => tracing::warn!(service = SERVICE_NAME, job, %error, "tick event publish failed"),
+        let event = platform_events::build_event("scheduler.claim", &serde_json::json!({
+            "workerId": worker_id,
+            "count": claimed.len()
+        }));
+        let _ = platform_events::publish_http(url, "ops.scheduler", &event).await;
+    }
+
+    for task in claimed {
+        let process_result = process_task(&task.task_type, &task.payload).await;
+        match process_result {
+            Ok(result_payload) => {
+                let _ = database.complete_scheduled_task(task.id).await;
+                tracing::info!(
+                    service = SERVICE_NAME,
+                    task_id = task.id,
+                    task_type = %task.task_type,
+                    "scheduled task completed"
+                );
+                if let Some(url) = realtime_url {
+                    let event = platform_events::build_event(
+                        "scheduler.task_completed",
+                        &serde_json::json!({
+                            "taskId": task.id,
+                            "taskType": task.task_type,
+                            "result": result_payload
+                        }),
+                    );
+                    let _ = platform_events::publish_http(url, "ops.scheduler", &event).await;
+                }
+            }
+            Err(error_message) => {
+                let _ = database
+                    .fail_scheduled_task(task.id, &error_message, retry_delay_secs, max_attempts)
+                    .await;
+                tracing::warn!(
+                    service = SERVICE_NAME,
+                    task_id = task.id,
+                    task_type = %task.task_type,
+                    error = %error_message,
+                    "scheduled task failed"
+                );
+                if let Some(url) = realtime_url {
+                    let event = platform_events::build_event(
+                        "scheduler.task_failed",
+                        &serde_json::json!({
+                            "taskId": task.id,
+                            "taskType": task.task_type,
+                            "error": error_message
+                        }),
+                    );
+                    let _ = platform_events::publish_http(url, "ops.scheduler", &event).await;
+                }
+            }
         }
+    }
+}
+
+async fn process_task(
+    task_type: &str,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    match task_type {
+        "scheduler.game_loop" => Ok(serde_json::json!({
+            "kind": "game_loop_tick",
+            "applied": true,
+            "payload": payload
+        })),
+        "scheduler.fleet" => Ok(serde_json::json!({
+            "kind": "fleet_tick",
+            "applied": true,
+            "payload": payload
+        })),
+        "scheduler.moon_destroy" => Ok(serde_json::json!({
+            "kind": "moon_destroy_tick",
+            "applied": true,
+            "payload": payload
+        })),
+        "scheduler.shard_health" => Ok(serde_json::json!({
+            "kind": "shard_health_tick",
+            "applied": true,
+            "payload": payload
+        })),
+        other => Err(format!("unsupported task type: {other}")),
     }
 }
 
@@ -96,4 +242,25 @@ fn u64_env(key: &str, default: u64) -> u64 {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(default)
+}
+
+fn i64_env(key: &str, default: i64) -> i64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(default)
+}
+
+fn i32_env(key: &str, default: i32) -> i32 {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(default)
+}
+
+fn unix_timestamp() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
 }

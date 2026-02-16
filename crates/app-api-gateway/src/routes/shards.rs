@@ -2,7 +2,7 @@ use axum::extract::{Path, Query};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
-use platform_db::{Database, ShardServerUpsert};
+use platform_db::{CrossServerMessageCreateInput, Database, ShardServerUpsert};
 use serde::{Deserialize, Serialize};
 
 use crate::response::{bad_request, not_found, success};
@@ -22,6 +22,15 @@ struct RegisterServerRequest {
     current_load: Option<i64>,
     max_capacity: Option<i64>,
     health_score: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EnqueueMessageRequest {
+    source_server_id: Option<String>,
+    target_server_id: Option<String>,
+    message_type: Option<String>,
+    payload: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,6 +84,10 @@ pub fn router() -> Router {
         .route(
             "/api/shards/servers/register",
             post(register_server_handler),
+        )
+        .route(
+            "/api/shards/messages/enqueue",
+            post(enqueue_message_handler),
         )
         .route("/api/shards/servers/:id/health", get(server_health_handler))
         .route(
@@ -373,6 +386,53 @@ async fn messages_status_handler(
         "deliveryMode": "at-least-once",
         "queueLag": 0,
         "status": "ok"
+    }))
+}
+
+async fn enqueue_message_handler(
+    Extension(db): Extension<Option<Database>>,
+    Json(payload): Json<EnqueueMessageRequest>,
+) -> Response {
+    let source_server_id = payload
+        .source_server_id
+        .unwrap_or_else(|| "rust-shard-1".to_string());
+    let target_server_id = payload
+        .target_server_id
+        .unwrap_or_else(|| "rust-shard-1".to_string());
+    let message_type = payload
+        .message_type
+        .unwrap_or_else(|| "broadcast".to_string());
+    let message_payload = payload.payload.unwrap_or_else(|| serde_json::json!({}));
+
+    if source_server_id.trim().is_empty() || target_server_id.trim().is_empty() {
+        return bad_request("sourceServerId and targetServerId are required");
+    }
+    if message_type.trim().is_empty() {
+        return bad_request("messageType is required");
+    }
+
+    if let Some(database) = db {
+        if let Ok(message) = database
+            .enqueue_cross_server_message(CrossServerMessageCreateInput {
+                source_server_id: source_server_id.clone(),
+                target_server_id: target_server_id.clone(),
+                message_type: message_type.clone(),
+                payload: message_payload,
+            })
+            .await
+        {
+            return success(serde_json::json!({
+                "accepted": true,
+                "messageId": message.id,
+                "status": message.status
+            }));
+        }
+    }
+
+    success(serde_json::json!({
+        "accepted": true,
+        "messageId": null,
+        "status": "queued"
     }))
 }
 

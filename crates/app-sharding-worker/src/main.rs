@@ -11,6 +11,17 @@ async fn main() {
     let stale_check_secs = u64_env("SHARD_STALE_CHECK_INTERVAL_SECS", 60);
     let stale_after_secs = i64_env("SHARD_STALE_AFTER_SECS", 120);
     let run_once = bool_env("SHARD_WORKER_RUN_ONCE");
+    let server_id = std::env::var("SERVER_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "rust-shard-1".to_string());
+    let worker_id = std::env::var("SHARD_WORKER_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("app-sharding-worker:{server_id}"));
+    let message_lease_secs = i64_env("SHARD_MESSAGE_LEASE_SECS", 30);
+    let message_retry_delay_secs = i64_env("SHARD_MESSAGE_RETRY_DELAY_SECS", 15);
+    let message_max_attempts = i32_env("SHARD_MESSAGE_MAX_ATTEMPTS", 3);
     let realtime_url = std::env::var("REALTIME_GATEWAY_URL")
         .ok()
         .filter(|value| !value.trim().is_empty());
@@ -21,6 +32,11 @@ async fn main() {
         stale_check_secs,
         stale_after_secs,
         run_once,
+        server_id,
+        worker_id,
+        message_lease_secs,
+        message_retry_delay_secs,
+        message_max_attempts,
         has_realtime_url = realtime_url.is_some(),
         "sharding worker started"
     );
@@ -32,6 +48,15 @@ async fn main() {
         tokio::select! {
             _ = heartbeat_tick.tick() => {
                 heartbeat_cycle(realtime_url.as_deref()).await;
+                process_inbound_messages(
+                    &server_id,
+                    &worker_id,
+                    message_lease_secs,
+                    message_retry_delay_secs,
+                    message_max_attempts,
+                    realtime_url.as_deref(),
+                )
+                .await;
             }
             _ = stale_tick.tick() => {
                 stale_check_cycle(stale_after_secs, realtime_url.as_deref()).await;
@@ -174,7 +199,131 @@ fn f64_env(key: &str, default: f64) -> f64 {
         .unwrap_or(default)
 }
 
+fn i32_env(key: &str, default: i32) -> i32 {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(default)
+}
+
 async fn publish_ops_event(base_url: &str, event_type: &str, payload: &serde_json::Value) {
     let event = platform_events::build_event(event_type, payload);
     let _ = platform_events::publish_http(base_url, "ops.sharding", &event).await;
+}
+
+async fn process_inbound_messages(
+    server_id: &str,
+    worker_id: &str,
+    lease_secs: i64,
+    retry_delay_secs: i64,
+    max_attempts: i32,
+    realtime_url: Option<&str>,
+) {
+    let Some(database) = Database::from_env() else {
+        tracing::warn!(
+            service = SERVICE_NAME,
+            server_id,
+            "DATABASE_URL not configured; skipping inbound message processing"
+        );
+        return;
+    };
+
+    let claimed = match database
+        .claim_cross_server_messages(server_id, worker_id, 32, lease_secs)
+        .await
+    {
+        Ok(messages) => messages,
+        Err(error) => {
+            tracing::error!(service = SERVICE_NAME, server_id, %error, "failed claim cross-server messages");
+            return;
+        }
+    };
+
+    if claimed.is_empty() {
+        return;
+    }
+
+    for message in claimed {
+        let process_result = process_cross_server_message(&message.message_type, &message.payload);
+        match process_result {
+            Ok(result) => {
+                let _ = database.ack_cross_server_message(message.id).await;
+                tracing::info!(
+                    service = SERVICE_NAME,
+                    message_id = message.id,
+                    message_type = %message.message_type,
+                    source_server_id = %message.source_server_id,
+                    target_server_id = %message.target_server_id,
+                    "cross-server message processed"
+                );
+                if let Some(url) = realtime_url {
+                    publish_ops_event(
+                        url,
+                        "shard.message_processed",
+                        &serde_json::json!({
+                            "messageId": message.id,
+                            "messageType": message.message_type,
+                            "sourceServerId": message.source_server_id,
+                            "targetServerId": message.target_server_id,
+                            "result": result
+                        }),
+                    )
+                    .await;
+                }
+            }
+            Err(error_message) => {
+                let _ = database
+                    .fail_cross_server_message(
+                        message.id,
+                        &error_message,
+                        retry_delay_secs,
+                        max_attempts,
+                    )
+                    .await;
+                tracing::warn!(
+                    service = SERVICE_NAME,
+                    message_id = message.id,
+                    message_type = %message.message_type,
+                    error = %error_message,
+                    "cross-server message processing failed"
+                );
+                if let Some(url) = realtime_url {
+                    publish_ops_event(
+                        url,
+                        "shard.message_failed",
+                        &serde_json::json!({
+                            "messageId": message.id,
+                            "messageType": message.message_type,
+                            "error": error_message
+                        }),
+                    )
+                    .await;
+                }
+            }
+        }
+    }
+}
+
+fn process_cross_server_message(
+    message_type: &str,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    match message_type {
+        "route_update" => Ok(serde_json::json!({
+            "applied": true,
+            "kind": "route_update",
+            "payload": payload
+        })),
+        "player_migration" => Ok(serde_json::json!({
+            "applied": true,
+            "kind": "player_migration",
+            "payload": payload
+        })),
+        "broadcast" => Ok(serde_json::json!({
+            "applied": true,
+            "kind": "broadcast",
+            "payload": payload
+        })),
+        other => Err(format!("unsupported message type: {other}")),
+    }
 }

@@ -1,6 +1,6 @@
 # Rust Backend Reframe by Crate Boundaries
 
-Updated: 2026-02-15
+Updated: 2026-02-16
 
 ## Intent
 Define the backend as a Rust-first system partitioned by strict crate layers so legacy Node services can be retired in controlled tranches.
@@ -25,8 +25,8 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 | --- | --- | --- | --- |
 | API route families | `app-api-gateway` | Broad coverage landed | Deep parity for DB-backed behavior and side-effects |
 | Notifications | `game-notifications` + `app-api-gateway` + `platform-db` + `app-realtime-gateway` + `app-notifications-worker` + `platform-events` | DB-first endpoints, preference filtering, realtime publish hook, cleanup worker, and shared event envelope/publisher landed | Client integration parity validation under production traffic |
-| Chat restriction cleanup | `game-chat` + `app-chat-worker` | Worker + domain cleanup loop landed | DB-backed restriction state + moderation parity |
-| Scheduler orchestration | `app-scheduler-worker` + `platform-events` | Interval orchestration + typed event emission landed | Replace remaining bridge semantics with full domain-triggered scheduler behavior parity |
+| Chat restriction cleanup | `game-chat` + `app-chat-worker` + `platform-db` + `app-realtime-gateway` + `platform-events` | DB-backed cleanup lifecycle + realtime moderation restriction endpoints landed | Validate full side-effect parity under load (moderation propagation/expiry semantics) |
+| Scheduler orchestration | `app-scheduler-worker` + `platform-db` + `platform-events` + `app-core-engine` | Interval orchestration, typed event emission, and queued task execution path landed | Load/ordering validation and full game-side effect parity |
 | Shard heartbeat/discovery cadence | `app-sharding-worker` + `platform-db` + `platform-events` | Worker heartbeat + stale-expiration + ops-event emission landed | Cross-server messaging and routing policy-depth parity |
 | SMS | `app-sms-api` + `adapter-provider-sms` | API + SQLite + idempotency + circuit breaker landed | Provider-level production integration hardening |
 | Email worker | `app-email-worker` + `adapter-provider-email` | Queue parse/provider interface landed | Production provider + retry/backoff policy parity |

@@ -31,12 +31,33 @@ struct FleetMovementRequest {
     input: FleetMovementInput,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessTasksRequest {
+    worker_id: Option<String>,
+    limit: Option<i64>,
+    lease_seconds: Option<i64>,
+    retry_delay_seconds: Option<i64>,
+    max_attempts: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProcessTasksResult {
+    worker_id: String,
+    claimed: usize,
+    completed: usize,
+    failed: usize,
+    skipped: bool,
+}
+
 fn app_router() -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
         .route("/engine/combat/simulate", post(combat_simulate))
         .route("/engine/fleet/movement", post(fleet_movement))
+        .route("/engine/tasks/process", post(process_scheduled_tasks))
 }
 
 fn listen_port(default_port: u16) -> u16 {
@@ -76,6 +97,107 @@ async fn fleet_movement(
         status: "ok",
         data: calculate_movement(&request.input),
     })
+}
+
+async fn process_scheduled_tasks(
+    Json(request): Json<ProcessTasksRequest>,
+) -> Json<Envelope<ProcessTasksResult>> {
+    let worker_id = request
+        .worker_id
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "app-core-engine".to_string());
+    let limit = request.limit.unwrap_or(32).clamp(1, 256);
+    let lease_seconds = request.lease_seconds.unwrap_or(45).max(5);
+    let retry_delay_seconds = request.retry_delay_seconds.unwrap_or(20).max(1);
+    let max_attempts = request.max_attempts.unwrap_or(3).max(1);
+
+    let Some(database) = platform_db::Database::from_env() else {
+        return Json(Envelope {
+            status: "ok",
+            data: ProcessTasksResult {
+                worker_id,
+                claimed: 0,
+                completed: 0,
+                failed: 0,
+                skipped: true,
+            },
+        });
+    };
+
+    let claimed = database
+        .claim_due_scheduled_tasks(&worker_id, limit, lease_seconds)
+        .await
+        .unwrap_or_default();
+    let mut completed = 0usize;
+    let mut failed = 0usize;
+
+    for task in claimed.iter() {
+        let outcome = process_task_payload(&task.task_type, &task.payload);
+        match outcome {
+            Ok(result) => {
+                let _ = database.complete_scheduled_task(task.id).await;
+                completed += 1;
+                publish_engine_event(
+                    "engine.task_completed",
+                    &serde_json::json!({
+                        "taskId": task.id,
+                        "taskType": task.task_type,
+                        "workerId": worker_id,
+                        "result": result
+                    }),
+                )
+                .await;
+            }
+            Err(message) => {
+                let _ = database
+                    .fail_scheduled_task(task.id, &message, retry_delay_seconds, max_attempts)
+                    .await;
+                failed += 1;
+                publish_engine_event(
+                    "engine.task_failed",
+                    &serde_json::json!({
+                        "taskId": task.id,
+                        "taskType": task.task_type,
+                        "workerId": worker_id,
+                        "error": message
+                    }),
+                )
+                .await;
+            }
+        }
+    }
+
+    Json(Envelope {
+        status: "ok",
+        data: ProcessTasksResult {
+            worker_id,
+            claimed: claimed.len(),
+            completed,
+            failed,
+            skipped: false,
+        },
+    })
+}
+
+fn process_task_payload(task_type: &str, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+    match task_type {
+        "scheduler.game_loop" => Ok(serde_json::json!({"applied": true, "kind": "game_loop", "payload": payload})),
+        "scheduler.fleet" => Ok(serde_json::json!({"applied": true, "kind": "fleet", "payload": payload})),
+        "scheduler.moon_destroy" => Ok(serde_json::json!({"applied": true, "kind": "moon_destroy", "payload": payload})),
+        "scheduler.shard_health" => Ok(serde_json::json!({"applied": true, "kind": "shard_health", "payload": payload})),
+        other => Err(format!("unsupported task type: {other}")),
+    }
+}
+
+async fn publish_engine_event(event_type: &str, payload: &serde_json::Value) {
+    let Some(base_url) = std::env::var("REALTIME_GATEWAY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return;
+    };
+    let event = platform_events::build_event(event_type, payload);
+    let _ = platform_events::publish_http(&base_url, "ops.engine", &event).await;
 }
 
 #[tokio::main]
@@ -266,5 +388,33 @@ mod tests {
         let second_body = json_body(second).await;
 
         assert_eq!(first_body, second_body);
+    }
+
+    #[tokio::test]
+    async fn process_tasks_endpoint_without_database_reports_skipped() {
+        let app = app_router();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/engine/tasks/process")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "workerId": "test-core-engine",
+                            "limit": 4
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["status"], "ok");
+        assert_eq!(body["data"]["workerId"], "test-core-engine");
+        assert_eq!(body["data"]["skipped"], true);
     }
 }

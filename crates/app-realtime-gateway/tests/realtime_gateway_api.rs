@@ -469,3 +469,52 @@ async fn recent_events_endpoint_tracks_published_events() {
     assert_eq!(events_body["events"][0]["channel"], "ops.scheduler");
     assert!(events_body["events"][0]["event"].as_str().unwrap().contains("scheduler.tick"));
 }
+
+#[tokio::test]
+async fn chat_restrictions_endpoint_returns_empty_list_without_database() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/restrictions")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert!(body["restrictions"].is_array());
+    assert_eq!(body["total"], 0);
+}
+
+#[tokio::test]
+async fn chat_restriction_upsert_requires_database_url() {
+    let app = build_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/restrictions")
+                .method(Method::POST)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "userId": 42,
+                        "restrictionType": "mute",
+                        "reason": "spam",
+                        "restrictedBy": 1
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = json_body(response).await;
+    assert_eq!(body["status"], "error");
+    assert_eq!(body["error"], "DATABASE_URL not configured");
+}

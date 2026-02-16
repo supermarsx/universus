@@ -1772,6 +1772,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     assert_eq!(overview_body["data"]["totalServers"], 1);
 
     let messages_status = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/shards/messages/status")
@@ -1785,6 +1786,31 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     assert_eq!(messages_status.status(), StatusCode::OK);
     let messages_status_body = response_json(messages_status).await;
     assert_eq!(messages_status_body["data"]["status"], "ok");
+
+    let enqueue_message = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/messages/enqueue")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "sourceServerId": "eu-central-1",
+                        "targetServerId": "eu-central-1",
+                        "messageType": "broadcast",
+                        "payload": { "event": "sync" }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(enqueue_message.status(), StatusCode::OK);
+    let enqueue_body = response_json(enqueue_message).await;
+    assert_eq!(enqueue_body["success"], true);
+    assert_eq!(enqueue_body["data"]["accepted"], true);
 }
 
 #[tokio::test]

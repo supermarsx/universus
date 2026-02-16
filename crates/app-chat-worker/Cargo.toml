@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-game-chat = { path = "../game-chat" }
 tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
 tracing = { workspace = true }
 platform-observability = { path = "../platform-observability" }
+platform-db = { path = "../platform-db" }
+platform-events = { path = "../platform-events" }
+serde_json = "1.0"
