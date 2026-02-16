@@ -24,7 +24,7 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 | Area | Current Rust owner | Status | Gap to close |
 | --- | --- | --- | --- |
 | API route families | `app-api-gateway` | Broad coverage landed | Deep parity for DB-backed behavior and side-effects |
-| Notifications | `game-notifications` + `app-api-gateway` + `platform-db` | DB-first endpoints landed with fallback | Preference filtering + realtime fanout parity |
+| Notifications | `game-notifications` + `app-api-gateway` + `platform-db` + `app-realtime-gateway` | DB-first endpoints, preference filtering, and realtime publish hook landed | End-to-end realtime contract validation + cleanup scheduler parity |
 | Chat restriction cleanup | `game-chat` + `app-chat-worker` | Worker + domain cleanup loop landed | DB-backed restriction state + moderation parity |
 | SMS | `app-sms-api` + `adapter-provider-sms` | API + SQLite + idempotency + circuit breaker landed | Provider-level production integration hardening |
 | Email worker | `app-email-worker` + `adapter-provider-email` | Queue parse/provider interface landed | Production provider + retry/backoff policy parity |
@@ -35,7 +35,7 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 
 ## Highest-Priority Remaining Legacy Surfaces
 1. `backend/src/routes/templates.ts` and server-rendered auth/page gates.
-2. `backend/src/services/notificationService.ts` full parity (DB, preferences, realtime push).
+2. `backend/src/services/notificationService.ts` full parity hardening (realtime contract validation + scheduled cleanup behavior).
 3. `backend/src/services/chatService.ts` moderation behavior-depth parity (cleanup loop is now crate-owned).
 4. `backend/src/services/serverDiscoveryService.ts` and `crossServerCommunicationService.ts` sharding parity hardening.
 5. `backend/src/services/gameLoopService.ts`, `fleetScheduler.ts`, `destroyMoonService.ts` scheduler parity in Rust workers.

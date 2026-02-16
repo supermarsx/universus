@@ -37,6 +37,22 @@ pub struct NotificationCreateInput {
 }
 
 #[derive(Clone)]
+pub struct NotificationPreferenceRow {
+    pub user_id: i64,
+    pub category: String,
+    pub enabled: bool,
+    pub min_priority: i16,
+}
+
+#[derive(Clone)]
+pub struct NotificationPreferenceUpsert {
+    pub user_id: i64,
+    pub category: String,
+    pub enabled: bool,
+    pub min_priority: i16,
+}
+
+#[derive(Clone)]
 pub struct AnalyticsUsage {
     pub total_events: i64,
     pub active_users: i64,
@@ -291,7 +307,15 @@ impl Database {
                     read_at TIMESTAMPTZ
                 );
                 CREATE INDEX IF NOT EXISTS idx_notifications_user_created
-                    ON notifications (user_id, created_at DESC);",
+                    ON notifications (user_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS notification_preferences (
+                    user_id BIGINT NOT NULL,
+                    category TEXT NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    min_priority SMALLINT NOT NULL DEFAULT 1,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    PRIMARY KEY (user_id, category)
+                );",
             )
             .await
             .map_err(|error| error.to_string())
@@ -774,6 +798,75 @@ impl Database {
             .await
             .map_err(|error| error.to_string())?;
         Ok(affected as i64)
+    }
+
+    pub async fn list_notification_preferences(
+        &self,
+        user_id: i64,
+    ) -> DbResult<Vec<NotificationPreferenceRow>> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let rows = client
+            .query(
+                "SELECT user_id, category, enabled, min_priority
+                 FROM notification_preferences
+                 WHERE user_id = $1
+                 ORDER BY category ASC",
+                &[&user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| map_notification_preference_row(&row))
+            .collect())
+    }
+
+    pub async fn notification_preference(
+        &self,
+        user_id: i64,
+        category: &str,
+    ) -> DbResult<Option<NotificationPreferenceRow>> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_opt(
+                "SELECT user_id, category, enabled, min_priority
+                 FROM notification_preferences
+                 WHERE user_id = $1
+                   AND category = $2",
+                &[&user_id, &category],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(row.map(|row| map_notification_preference_row(&row)))
+    }
+
+    pub async fn upsert_notification_preference(
+        &self,
+        input: NotificationPreferenceUpsert,
+    ) -> DbResult<NotificationPreferenceRow> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "INSERT INTO notification_preferences (user_id, category, enabled, min_priority)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (user_id, category) DO UPDATE SET
+                    enabled = EXCLUDED.enabled,
+                    min_priority = EXCLUDED.min_priority,
+                    updated_at = now()
+                 RETURNING user_id, category, enabled, min_priority",
+                &[
+                    &input.user_id,
+                    &input.category,
+                    &input.enabled,
+                    &input.min_priority,
+                ],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(map_notification_preference_row(&row))
     }
 
     pub async fn list_universes(&self) -> DbResult<Vec<UniverseRow>> {
@@ -1317,6 +1410,15 @@ fn map_notification_row(row: &tokio_postgres::Row) -> NotificationRow {
         is_read: row.get::<_, bool>("is_read"),
         created_at_unix: row.get::<_, i64>("created_at_unix"),
         read_at_unix: row.get::<_, Option<i64>>("read_at_unix"),
+    }
+}
+
+fn map_notification_preference_row(row: &tokio_postgres::Row) -> NotificationPreferenceRow {
+    NotificationPreferenceRow {
+        user_id: row.get::<_, i64>("user_id"),
+        category: row.get::<_, String>("category"),
+        enabled: row.get::<_, bool>("enabled"),
+        min_priority: row.get::<_, i16>("min_priority"),
     }
 }
 

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use axum::Extension;
@@ -6,7 +7,9 @@ use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use game_notifications::{NewNotification, Notification, NotificationStore};
-use platform_db::{Database, NotificationCreateInput, NotificationRow};
+use platform_db::{
+    Database, NotificationCreateInput, NotificationPreferenceUpsert, NotificationRow,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::auth_guard::BearerToken;
@@ -15,6 +18,17 @@ use crate::response::{bad_request, success};
 fn store() -> &'static Mutex<NotificationStore> {
     static STORE: OnceLock<Mutex<NotificationStore>> = OnceLock::new();
     STORE.get_or_init(|| Mutex::new(NotificationStore::default()))
+}
+
+#[derive(Clone, Copy)]
+struct PreferenceState {
+    enabled: bool,
+    min_priority: u8,
+}
+
+fn preference_store() -> &'static Mutex<HashMap<(i64, String), PreferenceState>> {
+    static PREFS: OnceLock<Mutex<HashMap<(i64, String), PreferenceState>>> = OnceLock::new();
+    PREFS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,11 +55,36 @@ struct UnreadCount {
     unread_count: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreferenceUpdateRequest {
+    user_id: Option<i64>,
+    enabled: bool,
+    min_priority: Option<u8>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreferencePayload {
+    user_id: i64,
+    category: String,
+    enabled: bool,
+    min_priority: u8,
+}
+
 pub fn protected_router() -> Router {
     Router::new()
         .route("/api/notifications", get(list_notifications_handler))
         .route("/api/notifications", post(create_notification_handler))
         .route("/api/notifications/unread-count", get(unread_count_handler))
+        .route(
+            "/api/notifications/preferences",
+            get(list_preferences_handler),
+        )
+        .route(
+            "/api/notifications/preferences/:category",
+            axum::routing::put(update_preference_handler),
+        )
         .route(
             "/api/notifications/:notification_id/read",
             post(mark_read_handler),
@@ -114,6 +153,12 @@ async fn create_notification_handler(
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
+    let priority = input.priority.unwrap_or(1);
+    let category = input.category.trim().to_string();
+
+    if !is_preference_allowed(db.as_ref(), user_id, &category, priority).await {
+        return bad_request("Notification blocked by user preferences");
+    }
 
     if let Some(database) = db {
         if let Ok(row) = database
@@ -121,25 +166,30 @@ async fn create_notification_handler(
                 user_id,
                 title: input.title.trim().to_string(),
                 message: input.message.trim().to_string(),
-                category: input.category.trim().to_string(),
-                priority: input.priority.unwrap_or(1) as i16,
+                category: category.clone(),
+                priority: priority as i16,
             })
             .await
         {
-            return success(to_notification(row));
+            let created = to_notification(row);
+            publish_realtime_notification(user_id, "created", &created).await;
+            return success(created);
         }
     }
 
-    let mut state = store().lock().expect("notifications store poisoned");
-    let created = state.create_notification(
-        user_id,
-        NewNotification {
-            title: input.title.trim().to_string(),
-            message: input.message.trim().to_string(),
-            category: input.category.trim().to_string(),
-            priority: input.priority.unwrap_or(1),
-        },
-    );
+    let created = {
+        let mut state = store().lock().expect("notifications store poisoned");
+        state.create_notification(
+            user_id,
+            NewNotification {
+                title: input.title.trim().to_string(),
+                message: input.message.trim().to_string(),
+                category,
+                priority,
+            },
+        )
+    };
+    publish_realtime_notification(user_id, "created", &created).await;
     success(created)
 }
 
@@ -159,14 +209,29 @@ async fn mark_read_handler(
             if !updated {
                 return bad_request("Notification not found");
             }
+            publish_realtime_notification(
+                user_id,
+                "read",
+                &serde_json::json!({ "notificationId": notification_id }),
+            )
+            .await;
             return success(serde_json::json!({ "success": true }));
         }
     }
 
-    let mut state = store().lock().expect("notifications store poisoned");
-    if !state.mark_read(user_id, notification_id) {
+    let updated = {
+        let mut state = store().lock().expect("notifications store poisoned");
+        state.mark_read(user_id, notification_id)
+    };
+    if !updated {
         return bad_request("Notification not found");
     }
+    publish_realtime_notification(
+        user_id,
+        "read",
+        &serde_json::json!({ "notificationId": notification_id }),
+    )
+    .await;
     success(serde_json::json!({ "success": true }))
 }
 
@@ -182,12 +247,26 @@ async fn mark_all_read_handler(
 
     if let Some(database) = db {
         if let Ok(updated) = database.mark_all_notifications_read(user_id).await {
+            publish_realtime_notification(
+                user_id,
+                "read_all",
+                &serde_json::json!({ "updated": updated }),
+            )
+            .await;
             return success(serde_json::json!({ "updated": updated }));
         }
     }
 
-    let mut state = store().lock().expect("notifications store poisoned");
-    let updated = state.mark_all_read(user_id);
+    let updated = {
+        let mut state = store().lock().expect("notifications store poisoned");
+        state.mark_all_read(user_id)
+    };
+    publish_realtime_notification(
+        user_id,
+        "read_all",
+        &serde_json::json!({ "updated": updated }),
+    )
+    .await;
     success(serde_json::json!({ "updated": updated }))
 }
 
@@ -203,4 +282,144 @@ fn to_notification(row: NotificationRow) -> Notification {
         created_at: format!("unix:{}", row.created_at_unix),
         read_at: row.read_at_unix.map(|value| format!("unix:{value}")),
     }
+}
+
+async fn list_preferences_handler(
+    BearerToken(_token): BearerToken,
+    Extension(db): Extension<Option<Database>>,
+    Query(query): Query<ListQuery>,
+) -> Response {
+    let user_id = query.user_id.unwrap_or(1);
+    if user_id <= 0 {
+        return bad_request("Invalid user id");
+    }
+
+    if let Some(database) = db {
+        if let Ok(rows) = database.list_notification_preferences(user_id).await {
+            let payload = rows
+                .into_iter()
+                .map(|row| PreferencePayload {
+                    user_id: row.user_id,
+                    category: row.category,
+                    enabled: row.enabled,
+                    min_priority: row.min_priority.clamp(0, u8::MAX as i16) as u8,
+                })
+                .collect::<Vec<_>>();
+            return success(payload);
+        }
+    }
+
+    let prefs = preference_store()
+        .lock()
+        .expect("notification preferences store poisoned");
+    let payload = prefs
+        .iter()
+        .filter(|((pref_user_id, _), _)| *pref_user_id == user_id)
+        .map(|((pref_user_id, category), value)| PreferencePayload {
+            user_id: *pref_user_id,
+            category: category.clone(),
+            enabled: value.enabled,
+            min_priority: value.min_priority,
+        })
+        .collect::<Vec<_>>();
+    success(payload)
+}
+
+async fn update_preference_handler(
+    BearerToken(_token): BearerToken,
+    Extension(db): Extension<Option<Database>>,
+    Path(category): Path<String>,
+    Json(input): Json<PreferenceUpdateRequest>,
+) -> Response {
+    let user_id = input.user_id.unwrap_or(1);
+    if user_id <= 0 {
+        return bad_request("Invalid user id");
+    }
+    let category = category.trim().to_string();
+    if category.is_empty() {
+        return bad_request("Category is required");
+    }
+    let min_priority = input.min_priority.unwrap_or(1);
+
+    if let Some(database) = db {
+        if let Ok(row) = database
+            .upsert_notification_preference(NotificationPreferenceUpsert {
+                user_id,
+                category: category.clone(),
+                enabled: input.enabled,
+                min_priority: min_priority as i16,
+            })
+            .await
+        {
+            return success(PreferencePayload {
+                user_id: row.user_id,
+                category: row.category,
+                enabled: row.enabled,
+                min_priority: row.min_priority.clamp(0, u8::MAX as i16) as u8,
+            });
+        }
+    }
+
+    let mut prefs = preference_store()
+        .lock()
+        .expect("notification preferences store poisoned");
+    prefs.insert(
+        (user_id, category.clone()),
+        PreferenceState {
+            enabled: input.enabled,
+            min_priority,
+        },
+    );
+    success(PreferencePayload {
+        user_id,
+        category,
+        enabled: input.enabled,
+        min_priority,
+    })
+}
+
+async fn is_preference_allowed(
+    db: Option<&Database>,
+    user_id: i64,
+    category: &str,
+    priority: u8,
+) -> bool {
+    if let Some(database) = db {
+        if let Ok(Some(pref)) = database.notification_preference(user_id, category).await {
+            return pref.enabled && priority as i16 >= pref.min_priority;
+        }
+    }
+
+    let prefs = preference_store()
+        .lock()
+        .expect("notification preferences store poisoned");
+    if let Some(pref) = prefs.get(&(user_id, category.to_string())) {
+        return pref.enabled && priority >= pref.min_priority;
+    }
+    true
+}
+
+async fn publish_realtime_notification<T: Serialize>(user_id: i64, event_type: &str, payload: &T) {
+    let base = std::env::var("REALTIME_GATEWAY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    let Some(base_url) = base else {
+        return;
+    };
+
+    let url = format!(
+        "{}/api/realtime/publish",
+        base_url.trim_end_matches('/')
+    );
+    let event_body = serde_json::json!({
+        "type": event_type,
+        "payload": payload
+    });
+    let body = serde_json::json!({
+        "channel": format!("user.{user_id}.notifications"),
+        "event": event_body.to_string()
+    });
+
+    let client = reqwest::Client::new();
+    let _ = client.post(url).json(&body).send().await;
 }

@@ -2048,3 +2048,90 @@ async fn notifications_create_and_mark_read_flow_works() {
         .any(|item| item["id"] == created_id);
     assert!(!any_match);
 }
+
+#[tokio::test]
+async fn notifications_preferences_can_block_low_priority_notifications() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let update_pref_payload = json!({
+        "enabled": true,
+        "minPriority": 5
+    });
+    let pref_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications/preferences/combat")
+                .method("PUT")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_pref_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(pref_response.status(), StatusCode::OK);
+    let pref_body = response_json(pref_response).await;
+    assert_eq!(pref_body["data"]["category"], "combat");
+    assert_eq!(pref_body["data"]["minPriority"], 5);
+
+    let blocked_payload = json!({
+        "title": "Low Priority Ping",
+        "message": "This should be blocked",
+        "category": "combat",
+        "priority": 1
+    });
+    let blocked_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(blocked_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked_response.status(), StatusCode::BAD_REQUEST);
+    let blocked_body = response_json(blocked_response).await;
+    assert_eq!(blocked_body["error"], "Notification blocked by user preferences");
+
+    let allowed_payload = json!({
+        "title": "Critical Warning",
+        "message": "This should pass",
+        "category": "combat",
+        "priority": 6
+    });
+    let allowed_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(allowed_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(allowed_response.status(), StatusCode::OK);
+
+    let list_prefs = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications/preferences")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_prefs.status(), StatusCode::OK);
+    let list_prefs_body = response_json(list_prefs).await;
+    assert_eq!(list_prefs_body["success"], true);
+    assert!(list_prefs_body["data"].is_array());
+}

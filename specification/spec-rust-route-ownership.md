@@ -1,6 +1,6 @@
 # Rust Route Ownership Matrix
 
-Updated: February 15, 2026
+Updated: February 16, 2026
 
 ## Purpose
 This matrix reframes the Node backend migration by crate ownership. Every legacy route family is mapped to a Rust crate (or marked intentionally deferred) so cutover can be driven by explicit boundaries.
@@ -66,3 +66,6 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
 - Added Rust API compatibility aliases for legacy Node paths:
   - `/api/health` now served by `app-api-gateway` in addition to `/health`.
   - `/api/alliances/*` now aliases to existing alliance handlers (`/api/alliance/*`).
+- Notifications parity slice advanced:
+  - DB-backed notification preferences (`enabled`, `minPriority`) now represented on Rust API routes.
+  - Notification create/read events can publish to realtime gateway via `REALTIME_GATEWAY_URL` hook.
