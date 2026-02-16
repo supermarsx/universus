@@ -69,3 +69,6 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
 - Notifications parity slice advanced:
   - DB-backed notification preferences (`enabled`, `minPriority`) now represented on Rust API routes.
   - Notification create/read events can publish to realtime gateway via `REALTIME_GATEWAY_URL` hook.
+  - Scheduled cleanup moved to Rust worker (`app-notifications-worker`) using `platform-db` cleanup methods.
+- Scheduler parity slice advanced:
+  - Rust `app-scheduler-worker` introduced for interval-based orchestration replacement (`gameLoop`, fleet, moon-destroy, shard-health cadence scaffold).

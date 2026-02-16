@@ -264,6 +264,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-scheduler-worker"
+version = "0.1.0"
+dependencies = [
+ "platform-observability",
+ "reqwest",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "app-sms-api"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,10 @@
+[package]
+name = "app-scheduler-worker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tracing = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+platform-observability = { path = "../platform-observability" }
