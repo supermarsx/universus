@@ -1786,6 +1786,8 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     assert_eq!(messages_status.status(), StatusCode::OK);
     let messages_status_body = response_json(messages_status).await;
     assert_eq!(messages_status_body["data"]["status"], "ok");
+    assert!(messages_status_body["data"]["queues"].is_object());
+    assert_eq!(messages_status_body["data"]["queues"]["queued"], 0);
 
     let failed_messages = app
         .clone()

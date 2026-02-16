@@ -153,6 +153,10 @@ services:
         condition: service_healthy
       rust-core-engine:
         condition: service_started
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
     ports:
       - "3300:3000"
     restart: unless-stopped
@@ -183,6 +187,9 @@ services:
     depends_on:
       database:
         condition: service_healthy
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
       - "4302:4002"
     restart: unless-stopped
@@ -201,8 +208,27 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
       - "4301:4001"
+    restart: unless-stopped
+
+  rust-bot-worker:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-bot-worker
+    container_name: universus_rust_bot_worker
+    depends_on:
+      rust-bot-api:
+        condition: service_started
+    environment:
+      RUST_LOG: info
+      BOT_API_URL: http://rust-bot-api:4001
+      BOT_WORKER_INTERVAL_MS: 60000
     restart: unless-stopped
 
   rust-sms-api:
@@ -219,6 +245,9 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
       - "4303:4003"
     restart: unless-stopped
@@ -237,6 +266,7 @@ services:
         condition: service_healthy
     environment:
       RUST_LOG: info
+      REDIS_URL: redis://redis:6379
       WORKER_INTERVAL_SECONDS: 10
       EMAIL_QUEUE_NAME: email.outbound
       EMAIL_DLQ_NAME: email.dead-letter
@@ -256,6 +286,8 @@ services:
         condition: service_healthy
     environment:
       RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
       WORKER_INTERVAL_SECONDS: 10
       ANALYTICS_BATCH_SIZE: 100
     restart: unless-stopped
@@ -268,10 +300,16 @@ services:
         BIN_NAME: app-realtime-gateway
     container_name: universus_rust_realtime_gateway
     depends_on:
+      database:
+        condition: service_healthy
       redis:
         condition: service_healthy
       rust-core-engine:
         condition: service_started
+    environment:
+      RUST_LOG: info
+      PORT: 4004
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
       - "4304:4004"
     restart: unless-stopped
@@ -292,6 +330,119 @@ services:
       CORE_BIND_ADDR: 0.0.0.0:50051
     ports:
       - "50051:50051"
+    restart: unless-stopped
+
+  rust-app-core-engine:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-core-engine
+    container_name: universus_rust_app_core_engine
+    depends_on:
+      database:
+        condition: service_healthy
+      rust-realtime-gateway:
+        condition: service_started
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+    ports:
+      - "4307:3007"
+    restart: unless-stopped
+
+  rust-notifications-worker:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-notifications-worker
+    container_name: universus_rust_notifications_worker
+    depends_on:
+      database:
+        condition: service_healthy
+      rust-realtime-gateway:
+        condition: service_started
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      NOTIFICATION_CLEANUP_INTERVAL_SECS: 900
+      NOTIFICATION_RETENTION_DAYS: 30
+      NOTIFICATION_ARCHIVE_GRACE_DAYS: 7
+    restart: unless-stopped
+
+  rust-chat-worker:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-chat-worker
+    container_name: universus_rust_chat_worker
+    depends_on:
+      database:
+        condition: service_healthy
+      rust-realtime-gateway:
+        condition: service_started
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      CHAT_CLEANUP_INTERVAL_SECS: 300
+    restart: unless-stopped
+
+  rust-scheduler-worker:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-scheduler-worker
+    container_name: universus_rust_scheduler_worker
+    depends_on:
+      database:
+        condition: service_healthy
+      rust-realtime-gateway:
+        condition: service_started
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      GAME_LOOP_INTERVAL_SECS: 5
+      FLEET_SCHEDULER_INTERVAL_SECS: 10
+      MOON_DESTROY_INTERVAL_SECS: 10
+      SHARD_HEALTH_INTERVAL_SECS: 60
+      SCHED_TASK_LEASE_SECS: 30
+      SCHED_TASK_RETRY_DELAY_SECS: 15
+      SCHED_TASK_MAX_ATTEMPTS: 3
+    restart: unless-stopped
+
+  rust-sharding-worker:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-sharding-worker
+    container_name: universus_rust_sharding_worker
+    depends_on:
+      database:
+        condition: service_healthy
+      rust-realtime-gateway:
+        condition: service_started
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      SERVER_ID: rust-shard-1
+      SERVER_TYPE: game
+      SERVER_REGION: global
+      SERVER_ENDPOINT: http://rust-api-gateway:3000
+      SHARD_HEARTBEAT_INTERVAL_SECS: 30
+      SHARD_STALE_CHECK_INTERVAL_SECS: 60
+      SHARD_STALE_AFTER_SECS: 120
+      SHARD_MESSAGE_LEASE_SECS: 30
+      SHARD_MESSAGE_RETRY_DELAY_SECS: 15
+      SHARD_MESSAGE_MAX_ATTEMPTS: 3
     restart: unless-stopped
 
   admin-service:

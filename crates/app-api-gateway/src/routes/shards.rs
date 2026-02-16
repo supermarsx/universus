@@ -433,7 +433,14 @@ async fn messages_status_handler(
         "connectedServers": routing_stats.total_servers,
         "deliveryMode": "at-least-once",
         "queueLag": 0,
-        "status": "ok"
+        "status": "ok",
+        "queues": {
+            "queued": 0,
+            "retry": 0,
+            "processing": 0,
+            "failed": 0,
+            "processed": 0
+        }
     }))
 }
 

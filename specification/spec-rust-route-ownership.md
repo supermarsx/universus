@@ -84,6 +84,14 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
     - `GET /api/shards/messages/status` returns queue state counts and lag when DB is configured.
     - `GET /api/shards/messages/failed` returns failed messages for diagnostics and replay planning.
     - `POST /api/shards/messages/requeue-failed` requeues failed cross-server messages for retry.
+- Default runtime compose wiring now includes crate-owned workers:
+  - `rust-app-core-engine` (HTTP task processing API for queued scheduler work)
+  - `rust-notifications-worker`
+  - `rust-chat-worker`
+  - `rust-scheduler-worker`
+  - `rust-sharding-worker`
+  - `rust-bot-worker`
+  - Rust service env wiring now includes `DATABASE_URL`/`REALTIME_GATEWAY_URL`/`REDIS_URL`/`RABBITMQ_URL` where required.
 - Chat moderation/restriction parity advanced:
   - Chat restriction source of truth moved to `platform-db` (`chat_restrictions` + cleanup API methods).
   - `app-chat-worker` now performs DB-backed expired restriction cleanup and emits `ops.chat` cleanup events.
