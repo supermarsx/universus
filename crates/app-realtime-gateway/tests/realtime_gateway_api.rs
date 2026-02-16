@@ -429,3 +429,43 @@ async fn conversations_and_trade_history_endpoints_return_expected_shapes() {
     assert!(history_body["entries"].is_array());
     assert!(history_body["total"].is_u64());
 }
+
+#[tokio::test]
+async fn recent_events_endpoint_tracks_published_events() {
+    let app = build_router();
+
+    let publish_payload = json!({
+        "channel": "ops.scheduler",
+        "event": "{\"eventType\":\"scheduler.tick\",\"payload\":{\"job\":\"game_loop\"}}"
+    });
+    let publish_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/realtime/publish")
+                .header("content-type", "application/json")
+                .body(Body::from(publish_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(publish_response.status(), StatusCode::OK);
+
+    let events_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/events/recent?limit=10")
+                .method(Method::GET)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(events_response.status(), StatusCode::OK);
+    let events_body = json_body(events_response).await;
+    assert!(events_body["events"].is_array());
+    assert!(events_body["total"].as_u64().unwrap() >= 1);
+    assert_eq!(events_body["events"][0]["channel"], "ops.scheduler");
+    assert!(events_body["events"][0]["event"].as_str().unwrap().contains("scheduler.tick"));
+}

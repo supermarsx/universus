@@ -11,6 +11,9 @@ async fn main() {
     let stale_check_secs = u64_env("SHARD_STALE_CHECK_INTERVAL_SECS", 60);
     let stale_after_secs = i64_env("SHARD_STALE_AFTER_SECS", 120);
     let run_once = bool_env("SHARD_WORKER_RUN_ONCE");
+    let realtime_url = std::env::var("REALTIME_GATEWAY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
 
     tracing::info!(
         service = SERVICE_NAME,
@@ -18,6 +21,7 @@ async fn main() {
         stale_check_secs,
         stale_after_secs,
         run_once,
+        has_realtime_url = realtime_url.is_some(),
         "sharding worker started"
     );
 
@@ -27,10 +31,10 @@ async fn main() {
     loop {
         tokio::select! {
             _ = heartbeat_tick.tick() => {
-                heartbeat_cycle().await;
+                heartbeat_cycle(realtime_url.as_deref()).await;
             }
             _ = stale_tick.tick() => {
-                stale_check_cycle(stale_after_secs).await;
+                stale_check_cycle(stale_after_secs, realtime_url.as_deref()).await;
             }
         }
 
@@ -42,7 +46,7 @@ async fn main() {
     sleep(Duration::from_millis(25)).await;
 }
 
-async fn heartbeat_cycle() {
+async fn heartbeat_cycle(realtime_url: Option<&str>) {
     let Some(database) = Database::from_env() else {
         tracing::warn!(
             service = SERVICE_NAME,
@@ -64,19 +68,34 @@ async fn heartbeat_cycle() {
     };
 
     match database.upsert_shard_server(input).await {
-        Ok(server) => tracing::info!(
-            service = SERVICE_NAME,
-            server_id = %server.server_id,
-            current_load = server.current_load,
-            max_capacity = server.max_capacity,
-            status = %server.status,
-            "shard heartbeat upserted"
-        ),
+        Ok(server) => {
+            tracing::info!(
+                service = SERVICE_NAME,
+                server_id = %server.server_id,
+                current_load = server.current_load,
+                max_capacity = server.max_capacity,
+                status = %server.status,
+                "shard heartbeat upserted"
+            );
+            if let Some(url) = realtime_url {
+                publish_ops_event(
+                    url,
+                    "shard.heartbeat",
+                    &serde_json::json!({
+                        "serverId": server.server_id,
+                        "status": server.status,
+                        "currentLoad": server.current_load,
+                        "maxCapacity": server.max_capacity
+                    }),
+                )
+                .await;
+            }
+        }
         Err(error) => tracing::error!(service = SERVICE_NAME, %error, "shard heartbeat failed"),
     }
 }
 
-async fn stale_check_cycle(stale_after_secs: i64) {
+async fn stale_check_cycle(stale_after_secs: i64, realtime_url: Option<&str>) {
     let Some(database) = Database::from_env() else {
         tracing::warn!(
             service = SERVICE_NAME,
@@ -95,15 +114,30 @@ async fn stale_check_cycle(stale_after_secs: i64) {
 
     let stats = database.shard_routing_stats().await;
     match stats {
-        Ok(stats) => tracing::info!(
-            service = SERVICE_NAME,
-            expired,
-            total_servers = stats.total_servers,
-            healthy_servers = stats.healthy_servers,
-            overloaded_servers = stats.overloaded_servers,
-            migration_count = stats.migration_count,
-            "stale shard check completed"
-        ),
+        Ok(stats) => {
+            tracing::info!(
+                service = SERVICE_NAME,
+                expired,
+                total_servers = stats.total_servers,
+                healthy_servers = stats.healthy_servers,
+                overloaded_servers = stats.overloaded_servers,
+                migration_count = stats.migration_count,
+                "stale shard check completed"
+            );
+            if let Some(url) = realtime_url {
+                publish_ops_event(
+                    url,
+                    "shard.stale_check",
+                    &serde_json::json!({
+                        "expired": expired,
+                        "totalServers": stats.total_servers,
+                        "healthyServers": stats.healthy_servers,
+                        "overloadedServers": stats.overloaded_servers
+                    }),
+                )
+                .await;
+            }
+        }
         Err(error) => tracing::warn!(
             service = SERVICE_NAME,
             expired,
@@ -138,4 +172,9 @@ fn f64_env(key: &str, default: f64) -> f64 {
         .ok()
         .and_then(|value| value.parse::<f64>().ok())
         .unwrap_or(default)
+}
+
+async fn publish_ops_event(base_url: &str, event_type: &str, payload: &serde_json::Value) {
+    let event = platform_events::build_event(event_type, payload);
+    let _ = platform_events::publish_http(base_url, "ops.sharding", &event).await;
 }

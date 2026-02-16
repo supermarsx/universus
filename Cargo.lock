@@ -168,8 +168,8 @@ dependencies = [
  "platform-config",
  "platform-db",
  "platform-errors",
+ "platform-events",
  "platform-observability",
- "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -244,7 +244,9 @@ name = "app-notifications-worker"
 version = "0.1.0"
 dependencies = [
  "platform-db",
+ "platform-events",
  "platform-observability",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -267,8 +269,9 @@ dependencies = [
 name = "app-scheduler-worker"
 version = "0.1.0"
 dependencies = [
+ "platform-events",
  "platform-observability",
- "reqwest",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -278,7 +281,9 @@ name = "app-sharding-worker"
 version = "0.1.0"
 dependencies = [
  "platform-db",
+ "platform-events",
  "platform-observability",
+ "serde_json",
  "tokio",
  "tracing",
 ]
@@ -2340,6 +2345,11 @@ dependencies = [
 [[package]]
 name = "platform-events"
 version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "platform-observability"

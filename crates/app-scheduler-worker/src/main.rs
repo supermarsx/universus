@@ -14,6 +14,9 @@ async fn main() {
     let backend_url = std::env::var("RUST_BACKEND_URL")
         .ok()
         .filter(|value| !value.trim().is_empty());
+    let realtime_url = std::env::var("REALTIME_GATEWAY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
 
     tracing::info!(
         service = SERVICE_NAME,
@@ -23,6 +26,7 @@ async fn main() {
         moon_secs,
         shard_health_secs,
         has_backend_url = backend_url.is_some(),
+        has_realtime_url = realtime_url.is_some(),
         "scheduler worker started"
     );
 
@@ -31,21 +35,19 @@ async fn main() {
     let mut moon_tick = tokio::time::interval(Duration::from_secs(moon_secs));
     let mut shard_tick = tokio::time::interval(Duration::from_secs(shard_health_secs));
 
-    let client = reqwest::Client::new();
-
     loop {
         tokio::select! {
             _ = game_tick.tick() => {
-                run_tick("game_loop", backend_url.as_deref(), &client, "/api/universe/1/maintenance/start").await;
+                run_tick("game_loop", backend_url.as_deref(), realtime_url.as_deref()).await;
             }
             _ = fleet_tick.tick() => {
-                run_tick("fleet_scheduler", backend_url.as_deref(), &client, "/api/analytics/events").await;
+                run_tick("fleet_scheduler", backend_url.as_deref(), realtime_url.as_deref()).await;
             }
             _ = moon_tick.tick() => {
-                run_tick("moon_destroy", backend_url.as_deref(), &client, "/api/rips/destroyMoon").await;
+                run_tick("moon_destroy", backend_url.as_deref(), realtime_url.as_deref()).await;
             }
             _ = shard_tick.tick() => {
-                run_tick("shard_health", backend_url.as_deref(), &client, "/api/shards/health/overview").await;
+                run_tick("shard_health", backend_url.as_deref(), realtime_url.as_deref()).await;
             }
         }
 
@@ -61,24 +63,25 @@ async fn main() {
 async fn run_tick(
     job: &str,
     backend_url: Option<&str>,
-    client: &reqwest::Client,
-    path: &str,
+    realtime_url: Option<&str>,
 ) {
     tracing::info!(service = SERVICE_NAME, job, "tick start");
-    if let Some(base) = backend_url {
-        let url = format!("{}{}", base.trim_end_matches('/'), path);
-        let response = client.get(url).send().await;
-        match response {
-            Ok(resp) => tracing::info!(
-                service = SERVICE_NAME,
-                job,
-                status = resp.status().as_u16(),
-                "tick request completed"
-            ),
-            Err(error) => tracing::warn!(service = SERVICE_NAME, job, %error, "tick request failed"),
+    if backend_url.is_none() {
+        tracing::info!(service = SERVICE_NAME, job, "backend url missing; running in event-only mode");
+    }
+
+    if let Some(url) = realtime_url {
+        let event = platform_events::build_event(
+            "scheduler.tick",
+            &serde_json::json!({
+                "job": job,
+                "backendUrlConfigured": backend_url.is_some()
+            }),
+        );
+        match platform_events::publish_http(url, "ops.scheduler", &event).await {
+            Ok(status) => tracing::info!(service = SERVICE_NAME, job, status, "tick event published"),
+            Err(error) => tracing::warn!(service = SERVICE_NAME, job, %error, "tick event publish failed"),
         }
-    } else {
-        tracing::info!(service = SERVICE_NAME, job, "backend url missing; running in noop mode");
     }
 }
 

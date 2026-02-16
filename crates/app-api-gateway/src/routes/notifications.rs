@@ -406,20 +406,11 @@ async fn publish_realtime_notification<T: Serialize>(user_id: i64, event_type: &
     let Some(base_url) = base else {
         return;
     };
-
-    let url = format!(
-        "{}/api/realtime/publish",
-        base_url.trim_end_matches('/')
-    );
-    let event_body = serde_json::json!({
-        "type": event_type,
-        "payload": payload
-    });
-    let body = serde_json::json!({
-        "channel": format!("user.{user_id}.notifications"),
-        "event": event_body.to_string()
-    });
-
-    let client = reqwest::Client::new();
-    let _ = client.post(url).json(&body).send().await;
+    let envelope = platform_events::build_event(event_type, payload);
+    let _ = platform_events::publish_http(
+        &base_url,
+        &format!("user.{user_id}.notifications"),
+        &envelope,
+    )
+    .await;
 }

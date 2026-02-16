@@ -33,6 +33,7 @@ struct RealtimeState {
     trade_offers: Vec<TradeOfferItem>,
     trade_history: Vec<TradeHistoryItem>,
     chat_conversations: Vec<ChatConversationItem>,
+    recent_events: Vec<RecentEventItem>,
 }
 
 impl Default for RealtimeState {
@@ -120,6 +121,7 @@ impl Default for RealtimeState {
                     unread_count: 0,
                 },
             ],
+            recent_events: Vec::new(),
         }
     }
 }
@@ -336,6 +338,24 @@ struct PublishPayload {
     publish_sequence: u64,
 }
 
+#[derive(Clone, Serialize)]
+struct RecentEventItem {
+    channel: String,
+    event: String,
+    publish_sequence: u64,
+}
+
+#[derive(Serialize)]
+struct RecentEventsResponse {
+    events: Vec<RecentEventItem>,
+    total: usize,
+}
+
+#[derive(Default, Deserialize)]
+struct RecentEventsQuery {
+    limit: Option<usize>,
+}
+
 pub fn build_router() -> Router {
     let state = AppState::default();
 
@@ -384,6 +404,7 @@ pub fn build_router() -> Router {
         .route("/api/realtime/channels", get(list_channels))
         .route("/api/realtime/subscribe", post(subscribe))
         .route("/api/realtime/publish", post(publish))
+        .route("/api/realtime/events/recent", get(recent_events))
         .with_state(state)
 }
 
@@ -674,6 +695,16 @@ async fn publish(
         .map_or(0, HashSet::len);
 
     store.publish_sequence += 1;
+    let publish_sequence = store.publish_sequence;
+    store.recent_events.push(RecentEventItem {
+        channel: request.channel.clone(),
+        event: request.event.clone(),
+        publish_sequence,
+    });
+    if store.recent_events.len() > 200 {
+        let drop_count = store.recent_events.len() - 200;
+        store.recent_events.drain(0..drop_count);
+    }
 
     (
         StatusCode::OK,
@@ -683,8 +714,25 @@ async fn publish(
                 channel: request.channel,
                 event: request.event,
                 delivered_to,
-                publish_sequence: store.publish_sequence,
+                publish_sequence,
             },
         })),
     )
+}
+
+async fn recent_events(
+    State(state): State<AppState>,
+    Query(query): Query<RecentEventsQuery>,
+) -> Json<RecentEventsResponse> {
+    let store = state.inner.lock().expect("state lock poisoned");
+    let limit = query.limit.unwrap_or(50).max(1);
+    let total = store.recent_events.len();
+    let events = store
+        .recent_events
+        .iter()
+        .rev()
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>();
+    Json(RecentEventsResponse { events, total })
 }

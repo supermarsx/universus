@@ -67,4 +67,25 @@ async fn run_cleanup_cycle(archive_days: i32) {
         archive_days,
         "notifications cleanup cycle completed"
     );
+
+    publish_ops_event(
+        "notifications.cleanup.completed",
+        &serde_json::json!({
+            "expiredRemoved": expired_removed,
+            "archivedRemoved": archived_removed,
+            "archiveDays": archive_days
+        }),
+    )
+    .await;
+}
+
+async fn publish_ops_event(event_type: &str, payload: &serde_json::Value) {
+    let Some(base_url) = std::env::var("REALTIME_GATEWAY_URL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return;
+    };
+    let event = platform_events::build_event(event_type, payload);
+    let _ = platform_events::publish_http(&base_url, "ops.notifications", &event).await;
 }

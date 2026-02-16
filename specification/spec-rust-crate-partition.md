@@ -24,10 +24,10 @@ Define the backend as a Rust-first system partitioned by strict crate layers so 
 | Area | Current Rust owner | Status | Gap to close |
 | --- | --- | --- | --- |
 | API route families | `app-api-gateway` | Broad coverage landed | Deep parity for DB-backed behavior and side-effects |
-| Notifications | `game-notifications` + `app-api-gateway` + `platform-db` + `app-realtime-gateway` + `app-notifications-worker` | DB-first endpoints, preference filtering, realtime publish hook, and cleanup worker landed | End-to-end realtime contract validation |
+| Notifications | `game-notifications` + `app-api-gateway` + `platform-db` + `app-realtime-gateway` + `app-notifications-worker` + `platform-events` | DB-first endpoints, preference filtering, realtime publish hook, cleanup worker, and shared event envelope/publisher landed | Client integration parity validation under production traffic |
 | Chat restriction cleanup | `game-chat` + `app-chat-worker` | Worker + domain cleanup loop landed | DB-backed restriction state + moderation parity |
-| Scheduler orchestration | `app-scheduler-worker` | Interval orchestration worker landed | Replace noop/bridge calls with full domain-triggered scheduler behavior parity |
-| Shard heartbeat/discovery cadence | `app-sharding-worker` + `platform-db` | Worker heartbeat + stale-expiration loop landed | Cross-server messaging and routing policy-depth parity |
+| Scheduler orchestration | `app-scheduler-worker` + `platform-events` | Interval orchestration + typed event emission landed | Replace remaining bridge semantics with full domain-triggered scheduler behavior parity |
+| Shard heartbeat/discovery cadence | `app-sharding-worker` + `platform-db` + `platform-events` | Worker heartbeat + stale-expiration + ops-event emission landed | Cross-server messaging and routing policy-depth parity |
 | SMS | `app-sms-api` + `adapter-provider-sms` | API + SQLite + idempotency + circuit breaker landed | Provider-level production integration hardening |
 | Email worker | `app-email-worker` + `adapter-provider-email` | Queue parse/provider interface landed | Production provider + retry/backoff policy parity |
 | Bot processing | `app-bot-api` + `app-bot-worker` + `adapter-provider-bot` | Worker-trigger path landed | DB-backed bot scheduling parity |
