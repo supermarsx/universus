@@ -1787,7 +1787,25 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     let messages_status_body = response_json(messages_status).await;
     assert_eq!(messages_status_body["data"]["status"], "ok");
 
+    let failed_messages = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/messages/failed?targetServerId=eu-central-1&limit=25")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(failed_messages.status(), StatusCode::OK);
+    let failed_messages_body = response_json(failed_messages).await;
+    assert_eq!(failed_messages_body["success"], true);
+    assert!(failed_messages_body["data"].is_array());
+
     let enqueue_message = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/shards/messages/enqueue")
@@ -1811,6 +1829,29 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     let enqueue_body = response_json(enqueue_message).await;
     assert_eq!(enqueue_body["success"], true);
     assert_eq!(enqueue_body["data"]["accepted"], true);
+
+    let requeue_failed = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/messages/requeue-failed")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "targetServerId": "eu-central-1",
+                        "limit": 50
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(requeue_failed.status(), StatusCode::OK);
+    let requeue_body = response_json(requeue_failed).await;
+    assert_eq!(requeue_body["success"], true);
+    assert_eq!(requeue_body["data"]["accepted"], true);
 }
 
 #[tokio::test]

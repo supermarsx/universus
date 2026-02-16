@@ -34,10 +34,30 @@ struct EnqueueMessageRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RequeueFailedMessagesRequest {
+    target_server_id: Option<String>,
+    limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ServerListQuery {
     region: Option<String>,
     status: Option<String>,
     server_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MessagesStatusQuery {
+    target_server_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FailedMessagesQuery {
+    target_server_id: Option<String>,
+    limit: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,6 +121,11 @@ pub fn router() -> Router {
         .route("/api/shards/routing/stats", get(routing_stats_handler))
         .route("/api/shards/health/overview", get(health_overview_handler))
         .route("/api/shards/messages/status", get(messages_status_handler))
+        .route("/api/shards/messages/failed", get(list_failed_messages_handler))
+        .route(
+            "/api/shards/messages/requeue-failed",
+            post(requeue_failed_messages_handler),
+        )
 }
 
 async fn list_servers_handler(
@@ -363,8 +388,9 @@ async fn health_overview_handler(
 async fn messages_status_handler(
     Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
+    Query(query): Query<MessagesStatusQuery>,
 ) -> Response {
-    let stats = if let Some(database) = db {
+    let routing_stats = if let Some(database) = db.clone() {
         database
             .shard_routing_stats()
             .await
@@ -381,12 +407,102 @@ async fn messages_status_handler(
     } else {
         app_state.shard_routing_stats()
     };
+
+    if let Some(database) = db {
+        if let Ok(message_stats) = database
+            .cross_server_message_stats(query.target_server_id.as_deref())
+            .await
+        {
+            return success(serde_json::json!({
+                "connectedServers": routing_stats.total_servers,
+                "deliveryMode": "at-least-once",
+                "queueLag": message_stats.queue_lag_seconds,
+                "status": "ok",
+                "queues": {
+                    "queued": message_stats.queued,
+                    "retry": message_stats.retry,
+                    "processing": message_stats.processing,
+                    "failed": message_stats.failed,
+                    "processed": message_stats.processed
+                }
+            }));
+        }
+    }
+
     success(serde_json::json!({
-        "connectedServers": stats.total_servers,
+        "connectedServers": routing_stats.total_servers,
         "deliveryMode": "at-least-once",
         "queueLag": 0,
         "status": "ok"
     }))
+}
+
+async fn requeue_failed_messages_handler(
+    Extension(db): Extension<Option<Database>>,
+    Json(payload): Json<RequeueFailedMessagesRequest>,
+) -> Response {
+    let Some(database) = db else {
+        return success(serde_json::json!({
+            "accepted": true,
+            "requeued": 0
+        }));
+    };
+
+    let limit = payload.limit.unwrap_or(100).clamp(1, 5000);
+    match database
+        .requeue_failed_cross_server_messages(payload.target_server_id.as_deref(), limit)
+        .await
+    {
+        Ok(requeued) => success(serde_json::json!({
+            "accepted": true,
+            "requeued": requeued
+        })),
+        Err(error) => {
+            let message = format!("failed to requeue messages: {error}");
+            bad_request(&message)
+        }
+    }
+}
+
+async fn list_failed_messages_handler(
+    Extension(db): Extension<Option<Database>>,
+    Query(query): Query<FailedMessagesQuery>,
+) -> Response {
+    let Some(database) = db else {
+        return success(serde_json::json!([]));
+    };
+
+    let limit = query.limit.unwrap_or(100).clamp(1, 500);
+    match database
+        .list_cross_server_messages(
+            query.target_server_id.as_deref(),
+            Some("failed"),
+            limit,
+        )
+        .await
+    {
+        Ok(messages) => success(
+            messages
+                .into_iter()
+                .map(|message| {
+                    serde_json::json!({
+                        "messageId": message.id,
+                        "sourceServerId": message.source_server_id,
+                        "targetServerId": message.target_server_id,
+                        "messageType": message.message_type,
+                        "status": message.status,
+                        "attemptCount": message.attempt_count,
+                        "lastError": message.last_error,
+                        "payload": message.payload
+                    })
+                })
+                .collect::<Vec<_>>(),
+        ),
+        Err(error) => {
+            let message = format!("failed to list failed messages: {error}");
+            bad_request(&message)
+        }
+    }
 }
 
 async fn enqueue_message_handler(

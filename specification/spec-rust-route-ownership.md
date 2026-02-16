@@ -74,11 +74,16 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
   - Rust `app-scheduler-worker` introduced for interval-based orchestration replacement (`gameLoop`, fleet, moon-destroy, shard-health cadence scaffold).
   - Scheduler ticks emit typed ops events through `platform-events`.
   - Scheduler now uses DB-backed queued task lifecycle (`enqueue -> claim -> complete/fail`) via `platform-db`.
+  - Scheduler enqueue now includes cadence-bucket dedupe keys in `platform-db` to reduce duplicate tasks across concurrent workers.
   - `app-core-engine` now includes `/engine/tasks/process` for centralized scheduled task processing.
 - Sharding parity slice advanced:
   - Rust `app-sharding-worker` introduced for server heartbeat upsert cadence and stale shard expiration using `platform-db`.
   - Sharding maintenance cycles emit typed ops events through `platform-events`.
   - `app-realtime-gateway` now exposes `/api/realtime/events/recent` for contract/ops validation of published events.
+  - Shard message bus ops now expose queue metrics and recovery controls on Rust API:
+    - `GET /api/shards/messages/status` returns queue state counts and lag when DB is configured.
+    - `GET /api/shards/messages/failed` returns failed messages for diagnostics and replay planning.
+    - `POST /api/shards/messages/requeue-failed` requeues failed cross-server messages for retry.
 - Chat moderation/restriction parity advanced:
   - Chat restriction source of truth moved to `platform-db` (`chat_restrictions` + cleanup API methods).
   - `app-chat-worker` now performs DB-backed expired restriction cleanup and emits `ops.chat` cleanup events.

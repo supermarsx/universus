@@ -47,6 +47,7 @@ async fn main() {
             _ = game_tick.tick() => {
                 enqueue_and_process_tick(
                     "scheduler.game_loop",
+                    game_loop_secs,
                     realtime_url.as_deref(),
                     &worker_id,
                     lease_secs,
@@ -57,6 +58,7 @@ async fn main() {
             _ = fleet_tick.tick() => {
                 enqueue_and_process_tick(
                     "scheduler.fleet",
+                    fleet_secs,
                     realtime_url.as_deref(),
                     &worker_id,
                     lease_secs,
@@ -67,6 +69,7 @@ async fn main() {
             _ = moon_tick.tick() => {
                 enqueue_and_process_tick(
                     "scheduler.moon_destroy",
+                    moon_secs,
                     realtime_url.as_deref(),
                     &worker_id,
                     lease_secs,
@@ -77,6 +80,7 @@ async fn main() {
             _ = shard_tick.tick() => {
                 enqueue_and_process_tick(
                     "scheduler.shard_health",
+                    shard_health_secs,
                     realtime_url.as_deref(),
                     &worker_id,
                     lease_secs,
@@ -97,6 +101,7 @@ async fn main() {
 
 async fn enqueue_and_process_tick(
     task_type: &str,
+    cadence_secs: u64,
     realtime_url: Option<&str>,
     worker_id: &str,
     lease_secs: i64,
@@ -114,14 +119,19 @@ async fn enqueue_and_process_tick(
     };
 
     let run_at_unix = unix_timestamp();
+    let cadence_bucket = run_at_unix / cadence_secs.max(1) as i64;
+    let task_key = format!("{task_type}:{cadence_bucket}");
     let enqueue_result = database
         .enqueue_scheduled_task(platform_db::ScheduledTaskCreateInput {
             task_type: task_type.to_string(),
             payload: serde_json::json!({
                 "taskType": task_type,
-                "scheduledAtUnix": run_at_unix
+                "scheduledAtUnix": run_at_unix,
+                "cadenceSecs": cadence_secs,
+                "cadenceBucket": cadence_bucket
             }),
             run_at_unix,
+            task_key: Some(task_key),
         })
         .await;
     if let Err(error) = enqueue_result {

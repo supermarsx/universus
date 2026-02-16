@@ -115,6 +115,7 @@ pub struct CrossServerMessageRow {
     pub payload: serde_json::Value,
     pub status: String,
     pub attempt_count: i32,
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -123,6 +124,16 @@ pub struct CrossServerMessageCreateInput {
     pub target_server_id: String,
     pub message_type: String,
     pub payload: serde_json::Value,
+}
+
+#[derive(Clone)]
+pub struct CrossServerMessageStats {
+    pub queued: i64,
+    pub retry: i64,
+    pub processing: i64,
+    pub failed: i64,
+    pub processed: i64,
+    pub queue_lag_seconds: i64,
 }
 
 #[derive(Clone)]
@@ -269,6 +280,7 @@ pub struct ScheduledTaskCreateInput {
     pub task_type: String,
     pub payload: serde_json::Value,
     pub run_at_unix: i64,
+    pub task_key: Option<String>,
 }
 
 #[derive(Clone)]
@@ -531,6 +543,7 @@ impl Database {
                     payload JSONB NOT NULL,
                     status TEXT NOT NULL DEFAULT 'queued',
                     run_at TIMESTAMPTZ NOT NULL,
+                    task_key TEXT,
                     attempt_count INTEGER NOT NULL DEFAULT 0,
                     last_error TEXT,
                     lease_owner TEXT,
@@ -542,7 +555,9 @@ impl Database {
                 CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_due
                     ON scheduled_tasks (status, run_at);
                 CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_lease
-                    ON scheduled_tasks (lease_until);",
+                    ON scheduled_tasks (lease_until);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_tasks_task_key
+                    ON scheduled_tasks (task_key);",
             )
             .await
             .map_err(|error| error.to_string())
@@ -850,7 +865,8 @@ impl Database {
                     message_type,
                     payload,
                     status,
-                    attempt_count",
+                    attempt_count,
+                    last_error",
                 &[
                     &input.source_server_id,
                     &input.target_server_id,
@@ -902,7 +918,8 @@ impl Database {
                     m.message_type,
                     m.payload,
                     m.status,
-                    m.attempt_count",
+                    m.attempt_count,
+                    m.last_error",
                 &[&target_server_id, &safe_limit, &worker_id, &safe_lease],
             )
             .await
@@ -969,6 +986,111 @@ impl Database {
         Ok(affected > 0)
     }
 
+    pub async fn cross_server_message_stats(
+        &self,
+        target_server_id: Option<&str>,
+    ) -> DbResult<CrossServerMessageStats> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "SELECT
+                    COUNT(*) FILTER (WHERE status = 'queued')::BIGINT AS queued,
+                    COUNT(*) FILTER (WHERE status = 'retry')::BIGINT AS retry,
+                    COUNT(*) FILTER (WHERE status = 'processing')::BIGINT AS processing,
+                    COUNT(*) FILTER (WHERE status = 'failed')::BIGINT AS failed,
+                    COUNT(*) FILTER (WHERE status = 'processed')::BIGINT AS processed,
+                    COALESCE(
+                        FLOOR(EXTRACT(EPOCH FROM (now() - MIN(created_at))))::BIGINT,
+                        0
+                    ) AS queue_lag_seconds
+                 FROM cross_server_messages
+                 WHERE ($1::TEXT IS NULL OR target_server_id = $1)
+                   AND status IN ('queued', 'retry', 'processing', 'failed', 'processed')",
+                &[&target_server_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+
+        Ok(CrossServerMessageStats {
+            queued: row.get::<_, i64>("queued"),
+            retry: row.get::<_, i64>("retry"),
+            processing: row.get::<_, i64>("processing"),
+            failed: row.get::<_, i64>("failed"),
+            processed: row.get::<_, i64>("processed"),
+            queue_lag_seconds: row.get::<_, i64>("queue_lag_seconds"),
+        })
+    }
+
+    pub async fn requeue_failed_cross_server_messages(
+        &self,
+        target_server_id: Option<&str>,
+        limit: i64,
+    ) -> DbResult<i64> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_limit = limit.clamp(1, 5000);
+        let affected = client
+            .execute(
+                "WITH candidates AS (
+                    SELECT id
+                    FROM cross_server_messages
+                    WHERE status = 'failed'
+                      AND ($1::TEXT IS NULL OR target_server_id = $1)
+                    ORDER BY updated_at ASC, id ASC
+                    LIMIT $2
+                )
+                UPDATE cross_server_messages m
+                SET
+                    status = 'retry',
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    last_error = NULL,
+                    updated_at = now()
+                FROM candidates
+                WHERE m.id = candidates.id",
+                &[&target_server_id, &safe_limit],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected as i64)
+    }
+
+    pub async fn list_cross_server_messages(
+        &self,
+        target_server_id: Option<&str>,
+        status: Option<&str>,
+        limit: i64,
+    ) -> DbResult<Vec<CrossServerMessageRow>> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let safe_limit = limit.clamp(1, 500);
+        let rows = client
+            .query(
+                "SELECT
+                    id,
+                    source_server_id,
+                    target_server_id,
+                    message_type,
+                    payload,
+                    status,
+                    attempt_count,
+                    last_error
+                 FROM cross_server_messages
+                 WHERE ($1::TEXT IS NULL OR target_server_id = $1)
+                   AND ($2::TEXT IS NULL OR status = $2)
+                 ORDER BY updated_at DESC, id DESC
+                 LIMIT $3",
+                &[&target_server_id, &status, &safe_limit],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(rows
+            .into_iter()
+            .map(|row| map_cross_server_message_row(&row))
+            .collect())
+    }
+
     pub async fn enqueue_scheduled_task(
         &self,
         input: ScheduledTaskCreateInput,
@@ -977,8 +1099,11 @@ impl Database {
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
         let row = client
             .query_one(
-                "INSERT INTO scheduled_tasks (task_type, payload, run_at)
-                 VALUES ($1, $2, to_timestamp($3))
+                "INSERT INTO scheduled_tasks (task_type, payload, run_at, task_key)
+                 VALUES ($1, $2, to_timestamp($3), $4)
+                 ON CONFLICT (task_key) DO UPDATE SET
+                    run_at = LEAST(scheduled_tasks.run_at, EXCLUDED.run_at),
+                    updated_at = now()
                  RETURNING
                     id,
                     task_type,
@@ -995,6 +1120,7 @@ impl Database {
                     &input.task_type,
                     &Json(input.payload),
                     &input.run_at_unix,
+                    &input.task_key,
                 ],
             )
             .await
@@ -2068,6 +2194,7 @@ fn map_cross_server_message_row(row: &tokio_postgres::Row) -> CrossServerMessage
             .0,
         status: row.get::<_, String>("status"),
         attempt_count: row.get::<_, i32>("attempt_count"),
+        last_error: row.get::<_, Option<String>>("last_error"),
     }
 }
 
