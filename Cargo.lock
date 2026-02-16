@@ -274,6 +274,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-sharding-worker"
+version = "0.1.0"
+dependencies = [
+ "platform-db",
+ "platform-observability",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "app-sms-api"
 version = "0.1.0"
 dependencies = [

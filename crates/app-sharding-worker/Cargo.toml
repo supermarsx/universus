@@ -1,0 +1,10 @@
+[package]
+name = "app-sharding-worker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tracing = { workspace = true }
+platform-db = { path = "../platform-db" }
+platform-observability = { path = "../platform-observability" }

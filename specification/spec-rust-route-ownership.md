@@ -72,3 +72,5 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
   - Scheduled cleanup moved to Rust worker (`app-notifications-worker`) using `platform-db` cleanup methods.
 - Scheduler parity slice advanced:
   - Rust `app-scheduler-worker` introduced for interval-based orchestration replacement (`gameLoop`, fleet, moon-destroy, shard-health cadence scaffold).
+- Sharding parity slice advanced:
+  - Rust `app-sharding-worker` introduced for server heartbeat upsert cadence and stale shard expiration using `platform-db`.

@@ -684,6 +684,24 @@ impl Database {
         })
     }
 
+    pub async fn expire_stale_shard_servers(&self, stale_after_secs: i64) -> DbResult<i64> {
+        self.ensure_shard_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let now = unix_timestamp();
+        let stale_before = now - stale_after_secs.max(1);
+        let affected = client
+            .execute(
+                "UPDATE shard_servers
+                 SET status = 'offline'
+                 WHERE last_heartbeat_unix < $1
+                   AND status <> 'offline'",
+                &[&stale_before],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected as i64)
+    }
+
     pub async fn create_notification(
         &self,
         input: NotificationCreateInput,
