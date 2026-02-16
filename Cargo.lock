@@ -240,6 +240,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-notifications-worker"
+version = "0.1.0"
+dependencies = [
+ "platform-db",
+ "platform-observability",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "app-realtime-gateway"
 version = "0.1.0"
 dependencies = [

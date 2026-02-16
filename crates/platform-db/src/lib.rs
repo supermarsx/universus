@@ -303,9 +303,18 @@ impl Database {
                     category TEXT NOT NULL,
                     priority SMALLINT NOT NULL DEFAULT 1,
                     is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                    is_archived BOOLEAN NOT NULL DEFAULT FALSE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    read_at TIMESTAMPTZ
+                    read_at TIMESTAMPTZ,
+                    archived_at TIMESTAMPTZ,
+                    expires_at TIMESTAMPTZ
                 );
+                ALTER TABLE notifications
+                    ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT FALSE;
+                ALTER TABLE notifications
+                    ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+                ALTER TABLE notifications
+                    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
                 CREATE INDEX IF NOT EXISTS idx_notifications_user_created
                     ON notifications (user_id, created_at DESC);
                 CREATE TABLE IF NOT EXISTS notification_preferences (
@@ -738,6 +747,8 @@ impl Database {
                  FROM notifications
                  WHERE user_id = $1
                    AND ($2::BOOLEAN = FALSE OR is_read = FALSE)
+                   AND is_archived = FALSE
+                   AND (expires_at IS NULL OR expires_at > now())
                  ORDER BY id DESC
                  LIMIT $3",
                 &[&user_id, &unread_only, &safe_limit],
@@ -758,7 +769,9 @@ impl Database {
                 "SELECT COUNT(*)::BIGINT AS unread_count
                  FROM notifications
                  WHERE user_id = $1
-                   AND is_read = FALSE",
+                   AND is_read = FALSE
+                   AND is_archived = FALSE
+                   AND (expires_at IS NULL OR expires_at > now())",
                 &[&user_id],
             )
             .await
@@ -794,6 +807,55 @@ impl Database {
                  WHERE user_id = $1
                    AND is_read = FALSE",
                 &[&user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected as i64)
+    }
+
+    pub async fn archive_notification(&self, user_id: i64, notification_id: i64) -> DbResult<bool> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "UPDATE notifications
+                 SET is_archived = TRUE,
+                     archived_at = COALESCE(archived_at, now())
+                 WHERE id = $1
+                   AND user_id = $2",
+                &[&notification_id, &user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    pub async fn cleanup_expired_notifications(&self) -> DbResult<i64> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "DELETE FROM notifications
+                 WHERE expires_at IS NOT NULL
+                   AND expires_at < now()",
+                &[],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected as i64)
+    }
+
+    pub async fn cleanup_archived_notifications_older_than_days(&self, days: i32) -> DbResult<i64> {
+        self.ensure_notifications_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let keep_days = days.max(1);
+        let affected = client
+            .execute(
+                "DELETE FROM notifications
+                 WHERE is_archived = TRUE
+                   AND archived_at IS NOT NULL
+                   AND archived_at < now() - ($1::TEXT || ' days')::INTERVAL",
+                &[&keep_days],
             )
             .await
             .map_err(|error| error.to_string())?;
