@@ -1,9 +1,7 @@
 use std::env;
 
 use futures_util::StreamExt;
-use lapin::options::{
-    BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions,
-};
+use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions};
 use lapin::types::FieldTable;
 use lapin::{Channel, Connection, ConnectionProperties};
 use platform_db::Database;
@@ -32,9 +30,7 @@ struct AnalyticsMessage {
 
 fn parse_bool(raw: Option<&str>) -> bool {
     matches!(
-        raw.map(str::trim)
-            .map(str::to_ascii_lowercase)
-            .as_deref(),
+        raw.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
         Some("1" | "true" | "yes" | "on")
     )
 }

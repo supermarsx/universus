@@ -1054,10 +1054,7 @@ impl AppState {
         &self,
         filters: MarketplaceListFilters,
     ) -> (Vec<MarketplaceListingSnapshot>, i64) {
-        let marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+        let marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
         let mut listings = marketplace_state
             .listings
             .values()
@@ -1125,10 +1122,7 @@ impl AppState {
         &self,
         input: MarketplaceListingInput,
     ) -> MarketplaceListingSnapshot {
-        let mut marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+        let mut marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
 
         let listing_id = marketplace_state.next_id;
         marketplace_state.next_id += 1;
@@ -1171,10 +1165,7 @@ impl AppState {
         listing_id: i64,
         buyer_planet_id: i64,
     ) -> Result<MarketplaceAcceptSnapshot, &'static str> {
-        let mut marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+        let mut marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
         let Some(listing) = marketplace_state.listings.get_mut(&listing_id) else {
             return Err("Listing not found");
         };
@@ -1207,10 +1198,7 @@ impl AppState {
         user_id: i64,
         listing_id: i64,
     ) -> Result<(), &'static str> {
-        let mut marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+        let mut marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
         let Some(listing) = marketplace_state.listings.get_mut(&listing_id) else {
             return Err("Listing not found");
         };
@@ -1226,14 +1214,8 @@ impl AppState {
         Ok(())
     }
 
-    pub fn list_marketplace_user_listings(
-        &self,
-        user_id: i64,
-    ) -> Vec<MarketplaceListingSnapshot> {
-        let marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+    pub fn list_marketplace_user_listings(&self, user_id: i64) -> Vec<MarketplaceListingSnapshot> {
+        let marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
         let mut listings = marketplace_state
             .listings
             .values()
@@ -1244,14 +1226,8 @@ impl AppState {
         listings
     }
 
-    pub fn list_marketplace_user_history(
-        &self,
-        user_id: i64,
-    ) -> Vec<MarketplaceListingSnapshot> {
-        let marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+    pub fn list_marketplace_user_history(&self, user_id: i64) -> Vec<MarketplaceListingSnapshot> {
+        let marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
         let mut listings = marketplace_state
             .listings
             .values()
@@ -1267,10 +1243,7 @@ impl AppState {
     }
 
     pub fn get_marketplace_listing(&self, listing_id: i64) -> Option<MarketplaceListingSnapshot> {
-        let marketplace_state = self
-            .marketplace_inner
-            .lock()
-            .expect("app state poisoned");
+        let marketplace_state = self.marketplace_inner.lock().expect("app state poisoned");
         marketplace_state
             .listings
             .get(&listing_id)

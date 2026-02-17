@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use axum::Extension;
 use axum::extract::{Path, Query};
 use axum::response::Response;
 use axum::routing::{get, post};
+use axum::Extension;
 use axum::{Json, Router};
 use game_notifications::{NewNotification, Notification, NotificationStore};
 use platform_db::{
@@ -146,7 +146,10 @@ async fn create_notification_handler(
     Extension(db): Extension<Option<Database>>,
     Json(input): Json<CreateNotificationRequest>,
 ) -> Response {
-    if input.title.trim().is_empty() || input.message.trim().is_empty() || input.category.trim().is_empty() {
+    if input.title.trim().is_empty()
+        || input.message.trim().is_empty()
+        || input.category.trim().is_empty()
+    {
         return bad_request("Title, message and category are required");
     }
     let user_id = input.user_id.unwrap_or(1);
@@ -205,7 +208,10 @@ async fn mark_read_handler(
     }
 
     if let Some(database) = db {
-        if let Ok(updated) = database.mark_notification_read(user_id, notification_id).await {
+        if let Ok(updated) = database
+            .mark_notification_read(user_id, notification_id)
+            .await
+        {
             if !updated {
                 return bad_request("Notification not found");
             }

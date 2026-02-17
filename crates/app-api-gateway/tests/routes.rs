@@ -2081,7 +2081,10 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     let calculate_route_body = response_json(calculate_route).await;
     assert_eq!(calculate_route_body["success"], true);
     assert_eq!(calculate_route_body["data"]["playerId"], "42");
-    assert_eq!(calculate_route_body["data"]["preferredRegion"], "eu-central");
+    assert_eq!(
+        calculate_route_body["data"]["preferredRegion"],
+        "eu-central"
+    );
     assert_eq!(calculate_route_body["data"]["serverId"], "eu-central-1");
 
     let broadcast = app
@@ -2155,7 +2158,10 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     assert_eq!(migrate_body["success"], true);
     assert_eq!(migrate_body["data"]["accepted"], true);
     assert_eq!(migrate_body["data"]["movedPlayers"], 3);
-    assert_eq!(migrate_body["data"]["migrationId"], "mig-eu-central-1-us-east-1");
+    assert_eq!(
+        migrate_body["data"]["migrationId"],
+        "mig-eu-central-1-us-east-1"
+    );
 
     let server_stats = app
         .oneshot(
@@ -2277,7 +2283,10 @@ async fn analytics_events_and_usage_routes_work() {
     assert_eq!(usage.status(), StatusCode::OK);
     let usage_body = response_json(usage).await;
     assert_eq!(usage_body["data"]["totalEvents"], 1);
-    assert_eq!(usage_body["data"]["eventsByType"][0]["eventType"], "page_view");
+    assert_eq!(
+        usage_body["data"]["eventsByType"][0]["eventType"],
+        "page_view"
+    );
 }
 
 #[tokio::test]
@@ -2484,7 +2493,10 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
         .unwrap();
     assert_eq!(blocked_response.status(), StatusCode::BAD_REQUEST);
     let blocked_body = response_json(blocked_response).await;
-    assert_eq!(blocked_body["error"], "Notification blocked by user preferences");
+    assert_eq!(
+        blocked_body["error"],
+        "Notification blocked by user preferences"
+    );
 
     let allowed_payload = json!({
         "title": "Critical Warning",

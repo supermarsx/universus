@@ -179,12 +179,23 @@ async fn process_scheduled_tasks(
     })
 }
 
-fn process_task_payload(task_type: &str, payload: &serde_json::Value) -> Result<serde_json::Value, String> {
+fn process_task_payload(
+    task_type: &str,
+    payload: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
     match task_type {
-        "scheduler.game_loop" => Ok(serde_json::json!({"applied": true, "kind": "game_loop", "payload": payload})),
-        "scheduler.fleet" => Ok(serde_json::json!({"applied": true, "kind": "fleet", "payload": payload})),
-        "scheduler.moon_destroy" => Ok(serde_json::json!({"applied": true, "kind": "moon_destroy", "payload": payload})),
-        "scheduler.shard_health" => Ok(serde_json::json!({"applied": true, "kind": "shard_health", "payload": payload})),
+        "scheduler.game_loop" => {
+            Ok(serde_json::json!({"applied": true, "kind": "game_loop", "payload": payload}))
+        }
+        "scheduler.fleet" => {
+            Ok(serde_json::json!({"applied": true, "kind": "fleet", "payload": payload}))
+        }
+        "scheduler.moon_destroy" => {
+            Ok(serde_json::json!({"applied": true, "kind": "moon_destroy", "payload": payload}))
+        }
+        "scheduler.shard_health" => {
+            Ok(serde_json::json!({"applied": true, "kind": "shard_health", "payload": payload}))
+        }
         other => Err(format!("unsupported task type: {other}")),
     }
 }

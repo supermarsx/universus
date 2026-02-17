@@ -121,7 +121,10 @@ pub fn router() -> Router {
             post(accept_listing_handler),
         )
         .route("/api/marketplace/listings/:id", get(get_listing_handler))
-        .route("/api/marketplace/listings/:id", delete(delete_listing_handler))
+        .route(
+            "/api/marketplace/listings/:id",
+            delete(delete_listing_handler),
+        )
         .route("/api/marketplace/my-listings", get(my_listings_handler))
         .route("/api/marketplace/my-history", get(my_history_handler))
 }
@@ -162,13 +165,9 @@ async fn create_listing_handler(
         _ => return bad_request("planet_id is required"),
     };
 
-    let listing_type = input
-        .listing_type
-        .unwrap_or_else(|| "resource".to_string());
+    let listing_type = input.listing_type.unwrap_or_else(|| "resource".to_string());
 
-    let wanted_type = input
-        .wanted_type
-        .unwrap_or_else(|| "metal".to_string());
+    let wanted_type = input.wanted_type.unwrap_or_else(|| "metal".to_string());
     let wanted_amount = input.wanted_amount.unwrap_or(0);
 
     let user_id = user_id_from_token(&token);

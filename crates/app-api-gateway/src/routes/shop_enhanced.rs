@@ -32,10 +32,7 @@ pub fn router() -> Router {
             "/api/shop-enhanced/promotions/validate",
             post(validate_promotion_handler),
         )
-        .route(
-            "/api/shop-enhanced/my-cosmetics",
-            get(my_cosmetics_handler),
-        )
+        .route("/api/shop-enhanced/my-cosmetics", get(my_cosmetics_handler))
         .route(
             "/api/shop-enhanced/matrix/progress",
             get(matrix_progress_handler),

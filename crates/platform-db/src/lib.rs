@@ -596,15 +596,8 @@ impl Database {
         properties: Option<serde_json::Value>,
         user_id: Option<i64>,
     ) -> DbResult<()> {
-        self.track_analytics_event_detailed(
-            event_type,
-            session_id,
-            properties,
-            user_id,
-            None,
-            None,
-        )
-        .await
+        self.track_analytics_event_detailed(event_type, session_id, properties, user_id, None, None)
+            .await
     }
 
     pub async fn track_analytics_event_detailed(
@@ -678,10 +671,7 @@ impl Database {
         })
     }
 
-    pub async fn upsert_shard_server(
-        &self,
-        input: ShardServerUpsert,
-    ) -> DbResult<ShardServerRow> {
+    pub async fn upsert_shard_server(&self, input: ShardServerUpsert) -> DbResult<ShardServerRow> {
         self.ensure_shard_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
         let now = unix_timestamp();
@@ -751,13 +741,13 @@ impl Database {
             )
             .await
             .map_err(|error| error.to_string())?;
-        Ok(rows.into_iter().map(|row| map_shard_server_row(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| map_shard_server_row(&row))
+            .collect())
     }
 
-    pub async fn shard_health(
-        &self,
-        server_id: &str,
-    ) -> DbResult<Option<ShardHealthRow>> {
+    pub async fn shard_health(&self, server_id: &str) -> DbResult<Option<ShardHealthRow>> {
         self.ensure_shard_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
         let row = client
@@ -890,7 +880,10 @@ impl Database {
         let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
         let safe_limit = limit.clamp(1, 500);
         let safe_lease = lease_seconds.max(5);
-        let tx = client.transaction().await.map_err(|error| error.to_string())?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| error.to_string())?;
         let rows = tx
             .query(
                 "WITH candidates AS (
@@ -1138,7 +1131,10 @@ impl Database {
         let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
         let safe_limit = limit.clamp(1, 500);
         let safe_lease = lease_seconds.max(5);
-        let tx = client.transaction().await.map_err(|error| error.to_string())?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|error| error.to_string())?;
         let rows = tx
             .query(
                 "WITH candidates AS (
@@ -1463,7 +1459,11 @@ impl Database {
         Ok(row.get::<_, i64>("unread_count"))
     }
 
-    pub async fn mark_notification_read(&self, user_id: i64, notification_id: i64) -> DbResult<bool> {
+    pub async fn mark_notification_read(
+        &self,
+        user_id: i64,
+        notification_id: i64,
+    ) -> DbResult<bool> {
         self.ensure_notifications_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
         let affected = client
@@ -1673,7 +1673,12 @@ impl Database {
                     registration_open = EXCLUDED.registration_open,
                     updated_at = now()
                  RETURNING id, name, speed, registration_open",
-                &[&input.id, &input.name, &input.speed, &input.registration_open],
+                &[
+                    &input.id,
+                    &input.name,
+                    &input.speed,
+                    &input.registration_open,
+                ],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -1735,7 +1740,10 @@ impl Database {
             )
             .await
             .map_err(|error| error.to_string())?;
-        Ok(rows.into_iter().map(|row| map_acs_group_row(&row)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| map_acs_group_row(&row))
+            .collect())
     }
 
     pub async fn get_acs_group(&self, id: i64) -> DbResult<Option<AcsGroupRow>> {
@@ -2172,9 +2180,7 @@ fn map_scheduled_task_row(row: &tokio_postgres::Row) -> ScheduledTaskRow {
     ScheduledTaskRow {
         id: row.get::<_, i64>("id"),
         task_type: row.get::<_, String>("task_type"),
-        payload: row
-            .get::<_, Json<serde_json::Value>>("payload")
-            .0,
+        payload: row.get::<_, Json<serde_json::Value>>("payload").0,
         status: row.get::<_, String>("status"),
         run_at_unix: row.get::<_, i64>("run_at_unix"),
         attempt_count: row.get::<_, i32>("attempt_count"),
@@ -2189,9 +2195,7 @@ fn map_cross_server_message_row(row: &tokio_postgres::Row) -> CrossServerMessage
         source_server_id: row.get::<_, String>("source_server_id"),
         target_server_id: row.get::<_, String>("target_server_id"),
         message_type: row.get::<_, String>("message_type"),
-        payload: row
-            .get::<_, Json<serde_json::Value>>("payload")
-            .0,
+        payload: row.get::<_, Json<serde_json::Value>>("payload").0,
         status: row.get::<_, String>("status"),
         attempt_count: row.get::<_, i32>("attempt_count"),
         last_error: row.get::<_, Option<String>>("last_error"),

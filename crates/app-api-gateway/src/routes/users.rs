@@ -60,7 +60,10 @@ pub fn router() -> Router {
         .route("/api/users/leaderboard", get(leaderboard_handler))
 }
 
-async fn me_handler(BearerToken(token): BearerToken, Extension(app_state): Extension<AppState>) -> Response {
+async fn me_handler(
+    BearerToken(token): BearerToken,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
     let resources = app_state.account_resources(&token);
     let user = UserIdentity {
         id: 1,

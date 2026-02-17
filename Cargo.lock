@@ -3,6 +3,18 @@
 version = 4
 
 [[package]]
+name = "adapter-db"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
 name = "adapter-http-compat"
 version = "0.1.0"
 
@@ -616,6 +628,10 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
+name = "benchmark-actions"
+version = "0.1.0"
 
 [[package]]
 name = "bitflags"
@@ -2333,6 +2349,15 @@ name = "platform-config"
 version = "0.1.0"
 
 [[package]]
+name = "platform-consensus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "platform-db"
 version = "0.1.0"
 dependencies = [
@@ -2358,6 +2383,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "platform-migrations"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "platform-observability"
 version = "0.1.0"
 dependencies = [
@@ -2368,6 +2402,15 @@ dependencies = [
 [[package]]
 name = "platform-proto"
 version = "0.1.0"
+
+[[package]]
+name = "platform-tenancy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "polling"
@@ -2428,6 +2471,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -3878,6 +3922,12 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 
 [[package]]
 name = "valuable"

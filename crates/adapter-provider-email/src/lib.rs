@@ -29,7 +29,10 @@ pub trait EmailProvider: Send + Sync {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmailProviderError {
-    InvalidJob { field: &'static str, reason: &'static str },
+    InvalidJob {
+        field: &'static str,
+        reason: &'static str,
+    },
     DispatchFailed(String),
 }
 
@@ -138,12 +141,14 @@ pub fn parse_email_job_payload(payload: &str) -> Result<EmailJob, EmailPayloadPa
         return Err(EmailPayloadParseError::EmptyPayload);
     }
 
-    let root: Value =
-        serde_json::from_str(payload).map_err(|err| EmailPayloadParseError::InvalidJson(err.to_string()))?;
-    let object = root.as_object().ok_or(EmailPayloadParseError::InvalidFieldType {
-        field: "root",
-        expected: "a JSON object",
-    })?;
+    let root: Value = serde_json::from_str(payload)
+        .map_err(|err| EmailPayloadParseError::InvalidJson(err.to_string()))?;
+    let object = root
+        .as_object()
+        .ok_or(EmailPayloadParseError::InvalidFieldType {
+            field: "root",
+            expected: "a JSON object",
+        })?;
 
     let job_id = parse_required_string(object, "job_id")?;
     let to = parse_required_string(object, "to")?;

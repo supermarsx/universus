@@ -1,6 +1,6 @@
 mod account;
-mod acs;
 mod achievements;
+mod acs;
 mod alliance;
 mod analytics;
 mod auth;
@@ -9,8 +9,8 @@ mod debris;
 mod fleet;
 mod galaxy;
 mod leaderboard;
-mod messages;
 mod marketplace;
+mod messages;
 mod moons;
 mod notifications;
 mod planets;
@@ -25,10 +25,10 @@ mod themes;
 mod universe;
 mod users;
 
-use axum::routing::get;
-use axum::{middleware, Extension, Json, Router};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
+use axum::routing::get;
+use axum::{middleware, Extension, Json, Router};
 use platform_db::Database;
 use serde::Serialize;
 
@@ -106,7 +106,10 @@ async fn metrics() -> impl IntoResponse {
     let body = "# HELP universus_gateway_up Service availability\n# TYPE universus_gateway_up gauge\nuniversus_gateway_up 1\n";
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain; version=0.0.4"))],
+        [(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("text/plain; version=0.0.4"),
+        )],
         body,
     )
 }

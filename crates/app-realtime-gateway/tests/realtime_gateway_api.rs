@@ -467,7 +467,10 @@ async fn recent_events_endpoint_tracks_published_events() {
     assert!(events_body["events"].is_array());
     assert!(events_body["total"].as_u64().unwrap() >= 1);
     assert_eq!(events_body["events"][0]["channel"], "ops.scheduler");
-    assert!(events_body["events"][0]["event"].as_str().unwrap().contains("scheduler.tick"));
+    assert!(events_body["events"][0]["event"]
+        .as_str()
+        .unwrap()
+        .contains("scheduler.tick"));
 }
 
 #[tokio::test]
@@ -592,7 +595,9 @@ async fn chat_message_moderation_endpoints_update_state() {
                 .uri("/api/realtime/chat/messages/msg-1")
                 .method(Method::DELETE)
                 .header("content-type", "application/json")
-                .body(Body::from(json!({ "userId": 99, "isAdmin": false }).to_string()))
+                .body(Body::from(
+                    json!({ "userId": 99, "isAdmin": false }).to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -605,7 +610,9 @@ async fn chat_message_moderation_endpoints_update_state() {
                 .uri("/api/realtime/chat/messages/msg-1")
                 .method(Method::DELETE)
                 .header("content-type", "application/json")
-                .body(Body::from(json!({ "userId": 99, "isAdmin": true }).to_string()))
+                .body(Body::from(
+                    json!({ "userId": 99, "isAdmin": true }).to_string(),
+                ))
                 .unwrap(),
         )
         .await

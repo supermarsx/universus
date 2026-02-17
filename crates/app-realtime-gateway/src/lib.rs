@@ -503,8 +503,14 @@ pub fn build_router() -> Router {
         .route("/chat/restrictions", post(rest_upsert_chat_restriction))
         .route("/chat/restrictions", delete(rest_delete_chat_restriction))
         .route("/notifications", get(rest_notifications))
-        .route("/notifications/unread/count", get(rest_notifications_unread_count))
-        .route("/notifications/preferences", get(rest_notifications_preferences))
+        .route(
+            "/notifications/unread/count",
+            get(rest_notifications_unread_count),
+        )
+        .route(
+            "/notifications/preferences",
+            get(rest_notifications_preferences),
+        )
         .route(
             "/notifications/preferences/:type_id",
             axum::routing::put(rest_update_notification_preference),
@@ -538,7 +544,10 @@ pub fn build_router() -> Router {
         .route("/trade/offers", get(rest_trade_offers))
         .route("/trade/history", get(rest_trade_history))
         .route("/api/realtime/chat/channels", get(rest_chat_channels))
-        .route("/api/realtime/chat/restrictions", get(rest_chat_restrictions))
+        .route(
+            "/api/realtime/chat/restrictions",
+            get(rest_chat_restrictions),
+        )
         .route(
             "/api/realtime/chat/restrictions",
             post(rest_upsert_chat_restriction),
@@ -547,7 +556,10 @@ pub fn build_router() -> Router {
             "/api/realtime/chat/restrictions",
             delete(rest_delete_chat_restriction),
         )
-        .route("/api/realtime/chat/conversations", get(rest_chat_conversations))
+        .route(
+            "/api/realtime/chat/conversations",
+            get(rest_chat_conversations),
+        )
         .route(
             "/api/realtime/chat/conversations/:conversation_id/messages",
             get(rest_chat_conversation_messages),
@@ -672,7 +684,10 @@ async fn rest_chat_restrictions(
         .await
     {
         Ok(rows) => {
-            let restrictions = rows.into_iter().map(map_chat_restriction).collect::<Vec<_>>();
+            let restrictions = rows
+                .into_iter()
+                .map(map_chat_restriction)
+                .collect::<Vec<_>>();
             (
                 StatusCode::OK,
                 Json(serde_json::json!(ChatRestrictionsResponse {
@@ -815,7 +830,9 @@ async fn rest_notifications(
     })
 }
 
-async fn rest_notifications_unread_count(State(state): State<AppState>) -> Json<UnreadCountResponse> {
+async fn rest_notifications_unread_count(
+    State(state): State<AppState>,
+) -> Json<UnreadCountResponse> {
     let store = state.inner.lock().expect("state lock poisoned");
     let unread_count = store.notifications.iter().filter(|item| !item.read).count() as u64;
     Json(UnreadCountResponse { unread_count })
@@ -900,7 +917,10 @@ async fn rest_edit_chat_message(
     message.message = payload.message;
     message.edited = true;
 
-    (StatusCode::OK, Json(serde_json::json!({ "message": message })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "message": message })),
+    )
 }
 
 async fn rest_delete_chat_message(
@@ -933,11 +953,14 @@ async fn rest_flag_chat_message(
     let mut store = state.inner.lock().expect("state lock poisoned");
     let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
     message.flags = message.flags.saturating_add(1);
-    (StatusCode::OK, Json(serde_json::json!({
-        "success": true,
-        "flags": message.flags,
-        "reason": payload.reason
-    })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "success": true,
+            "flags": message.flags,
+            "reason": payload.reason
+        })),
+    )
 }
 
 async fn rest_pin_chat_message(
@@ -948,9 +971,12 @@ async fn rest_pin_chat_message(
     let mut store = state.inner.lock().expect("state lock poisoned");
     let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
     message.pinned = payload.is_pinned.unwrap_or(true);
-    (StatusCode::OK, Json(serde_json::json!({
-        "message": message
-    })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "message": message
+        })),
+    )
 }
 
 async fn rest_react_chat_message(
@@ -967,12 +993,15 @@ async fn rest_react_chat_message(
     let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
     let counter = message.reactions.entry(reaction.clone()).or_insert(0);
     *counter = counter.saturating_add(1);
-    (StatusCode::OK, Json(serde_json::json!({
-        "messageId": message_id,
-        "reactionType": reaction,
-        "count": *counter,
-        "reactions": message.reactions
-    })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "messageId": message_id,
+            "reactionType": reaction,
+            "count": *counter,
+            "reactions": message.reactions
+        })),
+    )
 }
 
 async fn rest_players_online(

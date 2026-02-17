@@ -27,11 +27,12 @@ pub fn build_publish_payload(channel: &str, event: &EventEnvelope) -> serde_json
     })
 }
 
-pub async fn publish_http(base_url: &str, channel: &str, event: &EventEnvelope) -> Result<u16, String> {
-    let url = format!(
-        "{}/api/realtime/publish",
-        base_url.trim_end_matches('/')
-    );
+pub async fn publish_http(
+    base_url: &str,
+    channel: &str,
+    event: &EventEnvelope,
+) -> Result<u16, String> {
+    let url = format!("{}/api/realtime/publish", base_url.trim_end_matches('/'));
     let body = build_publish_payload(channel, event);
     let response = reqwest::Client::new()
         .post(url)
@@ -63,6 +64,9 @@ mod tests {
         let event = build_event("scheduler.tick", &serde_json::json!({"job":"fleet"}));
         let payload = build_publish_payload("ops.scheduler", &event);
         assert_eq!(payload["channel"], "ops.scheduler");
-        assert!(payload["event"].as_str().unwrap().contains("scheduler.tick"));
+        assert!(payload["event"]
+            .as_str()
+            .unwrap()
+            .contains("scheduler.tick"));
     }
 }

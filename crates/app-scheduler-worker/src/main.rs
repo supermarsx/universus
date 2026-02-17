@@ -154,10 +154,13 @@ async fn enqueue_and_process_tick(
     }
 
     if let Some(url) = realtime_url {
-        let event = platform_events::build_event("scheduler.claim", &serde_json::json!({
-            "workerId": worker_id,
-            "count": claimed.len()
-        }));
+        let event = platform_events::build_event(
+            "scheduler.claim",
+            &serde_json::json!({
+                "workerId": worker_id,
+                "count": claimed.len()
+            }),
+        );
         let _ = platform_events::publish_http(url, "ops.scheduler", &event).await;
     }
 

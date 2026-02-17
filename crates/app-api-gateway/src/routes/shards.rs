@@ -146,10 +146,7 @@ pub fn router() -> Router {
             "/api/shards/routing/calculate",
             post(routing_calculate_handler),
         )
-        .route(
-            "/api/shards/routing/migrate",
-            post(routing_migrate_handler),
-        )
+        .route("/api/shards/routing/migrate", post(routing_migrate_handler))
         .route("/api/shards/routing/stats", get(routing_stats_handler))
         .route("/api/shards/servers/stats", get(servers_stats_handler))
         .route("/api/shards/health/overview", get(health_overview_handler))
@@ -162,7 +159,10 @@ pub fn router() -> Router {
             "/api/shards/messages/broadcast",
             post(messages_broadcast_handler),
         )
-        .route("/api/shards/messages/failed", get(list_failed_messages_handler))
+        .route(
+            "/api/shards/messages/failed",
+            get(list_failed_messages_handler),
+        )
         .route(
             "/api/shards/messages/requeue-failed",
             post(requeue_failed_messages_handler),
@@ -398,9 +398,7 @@ async fn routing_available_servers_handler(
 }
 
 async fn routing_calculate_handler(Json(payload): Json<RoutingCalculateRequest>) -> Response {
-    let player_id = payload
-        .player_id
-        .unwrap_or_else(|| "player-1".to_string());
+    let player_id = payload.player_id.unwrap_or_else(|| "player-1".to_string());
     let preferred_region = payload
         .preferred_region
         .unwrap_or_else(|| "global".to_string());
@@ -652,11 +650,7 @@ async fn list_failed_messages_handler(
 
     let limit = query.limit.unwrap_or(100).clamp(1, 500);
     match database
-        .list_cross_server_messages(
-            query.target_server_id.as_deref(),
-            Some("failed"),
-            limit,
-        )
+        .list_cross_server_messages(query.target_server_id.as_deref(), Some("failed"), limit)
         .await
     {
         Ok(messages) => success(

@@ -109,7 +109,10 @@ async fn system_stats_handler() -> Response {
     }))
 }
 
-async fn claim_debris_handler(Path(id): Path<i64>, Json(payload): Json<ClaimDebrisRequest>) -> Response {
+async fn claim_debris_handler(
+    Path(id): Path<i64>,
+    Json(payload): Json<ClaimDebrisRequest>,
+) -> Response {
     success(json!({
         "claimId": id.saturating_mul(10).saturating_add(1),
         "debrisId": id,

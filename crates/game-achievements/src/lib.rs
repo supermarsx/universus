@@ -118,7 +118,11 @@ pub struct AchievementStore {
 }
 
 impl AchievementStore {
-    pub fn list_user_achievements(&self, catalog: &Catalog, user_id: i64) -> Vec<UserAchievementView> {
+    pub fn list_user_achievements(
+        &self,
+        catalog: &Catalog,
+        user_id: i64,
+    ) -> Vec<UserAchievementView> {
         let unlocked = self.user_achievements.get(&user_id);
         catalog
             .achievements
@@ -176,8 +180,16 @@ impl AchievementStore {
             .collect()
     }
 
-    pub fn award_achievement(&mut self, catalog: &Catalog, user_id: i64, achievement_id: i64) -> bool {
-        if !contains_id(catalog.achievements.iter().map(|item| item.id), achievement_id) {
+    pub fn award_achievement(
+        &mut self,
+        catalog: &Catalog,
+        user_id: i64,
+        achievement_id: i64,
+    ) -> bool {
+        if !contains_id(
+            catalog.achievements.iter().map(|item| item.id),
+            achievement_id,
+        ) {
             return false;
         }
         self.user_achievements

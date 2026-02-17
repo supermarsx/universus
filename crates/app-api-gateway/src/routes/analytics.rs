@@ -1,4 +1,4 @@
-use axum::extract::{Query, rejection::JsonRejection};
+use axum::extract::{rejection::JsonRejection, Query};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};

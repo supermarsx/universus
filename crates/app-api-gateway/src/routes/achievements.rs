@@ -40,7 +40,10 @@ pub fn protected_router() -> Router {
             "/api/achievements/user/:user_id/achievements",
             get(list_user_achievements_handler),
         )
-        .route("/api/achievements/user/:user_id/badges", get(list_user_badges_handler))
+        .route(
+            "/api/achievements/user/:user_id/badges",
+            get(list_user_badges_handler),
+        )
         .route(
             "/api/achievements/user/:user_id/rewards",
             get(list_user_rewards_handler),
@@ -93,7 +96,10 @@ async fn list_user_achievements_handler(
     success(state.list_user_achievements(catalog(), user_id))
 }
 
-async fn list_user_badges_handler(BearerToken(_token): BearerToken, Path(user_id): Path<i64>) -> Response {
+async fn list_user_badges_handler(
+    BearerToken(_token): BearerToken,
+    Path(user_id): Path<i64>,
+) -> Response {
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
