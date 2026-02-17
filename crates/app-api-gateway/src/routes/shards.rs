@@ -60,6 +60,30 @@ struct FailedMessagesQuery {
     limit: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoutingCalculateRequest {
+    player_id: Option<String>,
+    preferred_region: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BroadcastMessageRequest {
+    source_server_id: Option<String>,
+    message_type: Option<String>,
+    payload: Option<serde_json::Value>,
+    target_server_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoutingMigrateRequest {
+    from_server_id: Option<String>,
+    to_server_id: Option<String>,
+    player_ids: Option<Vec<String>>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ServerPayload {
@@ -118,9 +142,26 @@ pub fn router() -> Router {
             "/api/shards/routing/servers/available",
             get(routing_available_servers_handler),
         )
+        .route(
+            "/api/shards/routing/calculate",
+            post(routing_calculate_handler),
+        )
+        .route(
+            "/api/shards/routing/migrate",
+            post(routing_migrate_handler),
+        )
         .route("/api/shards/routing/stats", get(routing_stats_handler))
+        .route("/api/shards/servers/stats", get(servers_stats_handler))
         .route("/api/shards/health/overview", get(health_overview_handler))
+        .route(
+            "/api/shards/leaderboards/:category",
+            get(leaderboard_by_category_handler),
+        )
         .route("/api/shards/messages/status", get(messages_status_handler))
+        .route(
+            "/api/shards/messages/broadcast",
+            post(messages_broadcast_handler),
+        )
         .route("/api/shards/messages/failed", get(list_failed_messages_handler))
         .route(
             "/api/shards/messages/requeue-failed",
@@ -356,6 +397,56 @@ async fn routing_available_servers_handler(
     success(available)
 }
 
+async fn routing_calculate_handler(Json(payload): Json<RoutingCalculateRequest>) -> Response {
+    let player_id = payload
+        .player_id
+        .unwrap_or_else(|| "player-1".to_string());
+    let preferred_region = payload
+        .preferred_region
+        .unwrap_or_else(|| "global".to_string());
+    let shards = [
+        ("eu-central-1", "eu-central", "http://eu-central-1.internal"),
+        ("us-east-1", "us-east", "http://us-east-1.internal"),
+        ("ap-south-1", "ap-south", "http://ap-south-1.internal"),
+    ];
+    let selected_index = stable_bucket(&player_id, shards.len());
+    let selected = shards[selected_index];
+    success(serde_json::json!({
+        "playerId": player_id,
+        "preferredRegion": preferred_region,
+        "serverId": selected.0,
+        "region": selected.1,
+        "endpoint": selected.2
+    }))
+}
+
+async fn routing_migrate_handler(Json(payload): Json<RoutingMigrateRequest>) -> Response {
+    let from_server_id = payload
+        .from_server_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let to_server_id = payload
+        .to_server_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    let (Some(from_server_id), Some(to_server_id)) = (from_server_id, to_server_id) else {
+        return bad_request("fromServerId and toServerId are required");
+    };
+    let moved_players = payload.player_ids.unwrap_or_default().len() as i64;
+    success(serde_json::json!({
+        "accepted": true,
+        "migrationId": format!("mig-{from_server_id}-{to_server_id}"),
+        "fromServerId": from_server_id,
+        "toServerId": to_server_id,
+        "movedPlayers": moved_players
+    }))
+}
+
 async fn health_overview_handler(
     Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
@@ -382,6 +473,61 @@ async fn health_overview_handler(
         "totalServers": stats.total_servers,
         "healthyServers": stats.healthy_servers,
         "averageLoadPercent": stats.average_load_percent
+    }))
+}
+
+async fn servers_stats_handler(
+    Extension(db): Extension<Option<Database>>,
+    Extension(app_state): Extension<AppState>,
+) -> Response {
+    let stats = if let Some(database) = db {
+        database
+            .shard_routing_stats()
+            .await
+            .map(|row| RoutingStatsSnapshot {
+                total_servers: row.total_servers,
+                healthy_servers: row.healthy_servers,
+                overloaded_servers: row.overloaded_servers,
+                total_capacity: row.total_capacity,
+                total_load: row.total_load,
+                average_load_percent: row.average_load_percent,
+                migration_count: row.migration_count,
+            })
+            .unwrap_or_else(|_| app_state.shard_routing_stats())
+    } else {
+        app_state.shard_routing_stats()
+    };
+    success(serde_json::json!({
+        "totalServers": stats.total_servers,
+        "healthyServers": stats.healthy_servers,
+        "overloadedServers": stats.overloaded_servers,
+        "totalCapacity": stats.total_capacity,
+        "totalLoad": stats.total_load,
+        "averageLoadPercent": stats.average_load_percent
+    }))
+}
+
+async fn leaderboard_by_category_handler(Path(category): Path<String>) -> Response {
+    success(serde_json::json!({
+        "category": category,
+        "updatedAtUnix": 1_700_000_123i64,
+        "entries": [
+            {
+                "rank": 1,
+                "serverId": "eu-central-1",
+                "score": 12_500
+            },
+            {
+                "rank": 2,
+                "serverId": "us-east-1",
+                "score": 11_750
+            },
+            {
+                "rank": 3,
+                "serverId": "ap-south-1",
+                "score": 10_900
+            }
+        ]
     }))
 }
 
@@ -441,6 +587,31 @@ async fn messages_status_handler(
             "failed": 0,
             "processed": 0
         }
+    }))
+}
+
+async fn messages_broadcast_handler(Json(payload): Json<BroadcastMessageRequest>) -> Response {
+    let source_server_id = payload
+        .source_server_id
+        .unwrap_or_else(|| "rust-shard-1".to_string());
+    if source_server_id.trim().is_empty() {
+        return bad_request("sourceServerId is required");
+    }
+    let message_type = payload
+        .message_type
+        .unwrap_or_else(|| "broadcast".to_string());
+    if message_type.trim().is_empty() {
+        return bad_request("messageType is required");
+    }
+    let target_count = payload.target_server_ids.map(|ids| ids.len()).unwrap_or(0);
+    success(serde_json::json!({
+        "accepted": true,
+        "broadcastId": "bcast-1001",
+        "sourceServerId": source_server_id,
+        "messageType": message_type,
+        "targetCount": target_count,
+        "payload": payload.payload.unwrap_or_else(|| serde_json::json!({})),
+        "status": "queued"
     }))
 }
 

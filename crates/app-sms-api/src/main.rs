@@ -392,6 +392,13 @@ async fn health() -> Json<ServiceStatus> {
     })
 }
 
+async fn ready() -> Json<ServiceStatus> {
+    Json(ServiceStatus {
+        status: "ok",
+        service: SERVICE_NAME,
+    })
+}
+
 fn db_error_response(error: String) -> axum::response::Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -764,6 +771,8 @@ fn build_router(state: Arc<Mutex<SmsApiState>>) -> Router {
         .route("/metrics", get(metrics))
         .route("/history", get(history))
         .route("/health", get(health))
+        .route("/ready", get(ready))
+        .route("/api/ready", get(ready))
         .with_state(state)
 }
 
@@ -1026,6 +1035,24 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(payload["status"], "ok");
         assert_eq!(payload["service"], "sms");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn ready_routes_report_legacy_service_name() {
+        reset_test_env();
+        let db = unique_db_path();
+        let app = test_app(&db);
+
+        let (ready_status, ready_payload) = get(&app, "/ready").await;
+        assert_eq!(ready_status, StatusCode::OK);
+        assert_eq!(ready_payload["status"], "ok");
+        assert_eq!(ready_payload["service"], "sms");
+
+        let (api_ready_status, api_ready_payload) = get(&app, "/api/ready").await;
+        assert_eq!(api_ready_status, StatusCode::OK);
+        assert_eq!(api_ready_payload["status"], "ok");
+        assert_eq!(api_ready_payload["service"], "sms");
     }
 
     #[tokio::test]

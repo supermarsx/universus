@@ -1,13 +1,13 @@
 # Universus Full Rust Backend Reframe Specification
 
 ## Status
-Updated on February 16, 2026.
+Updated on February 17, 2026.
 - Migration mode: rust-only runtime by default in `docker-compose.yml`.
 - Legacy Node services (`backend`, `bot-service`, `admin-service`, `backend-core`) have been removed from compose runtime manifest.
 - Legacy Node frontend compose service has been removed; UI entrypoint is `rust-web-frontend` on host port `8080`.
 - Rust service binaries currently moved and wired:
   - `app-api-gateway` (`rust-api-gateway`)
-  - `app-web-frontend` (`rust-web-frontend`, rust-only profile)
+  - `app-web-frontend` (`rust-web-frontend`)
   - `app-admin-api` (`rust-admin-api`)
   - `app-bot-api` (`rust-bot-api`)
   - `app-sms-api` (`rust-sms-api`)
@@ -16,7 +16,7 @@ Updated on February 16, 2026.
   - `app-email-worker` (`rust-email-worker`)
   - `app-analytics-worker` (`rust-analytics-worker`)
 - Remaining migration gaps before full Node retirement:
-  - route-by-route DB behavior parity validation and production cutover sign-off for Rust gateways/services.
+  - route-by-route DB behavior parity validation and production/staging cutover sign-off for Rust gateways/services.
   - `app-email-worker` and `app-analytics-worker` provider and ingestion parity validation.
   - websocket/event contract parity validation for realtime replacement.
   - operational rollout evidence under production-like traffic and failure scenarios.
@@ -26,11 +26,11 @@ See `specification/spec-rust-route-ownership.md` for the crate-partitioned route
 ## Current Rust Coverage
 | Service family | Implemented crate(s) | Runtime service | Endpoint families now in Rust |
 | --- | --- | --- | --- |
-| api-gateway | `app-api-gateway` | `rust-api-gateway` | Health/readiness plus `/api/auth/*`, `/api/planets*`, `/api/fleet*`, `/api/combat/simulate`, `/api/alliance*`, `/api/messages*`, `/api/leaderboard*`, `/api/galaxy*`, `/api/shop*`, `/api/research*`, `/api/shipyard*`. |
+| api-gateway | `app-api-gateway` | `rust-api-gateway` | Health/readiness plus `/api/auth/*`, `/api/planets*`, `/api/fleet*`, `/api/combat/simulate`, `/api/alliance*`, `/api/messages*`, `/api/leaderboard*`, `/api/galaxy*`, `/api/shop*`, `/api/research*`, `/api/shipyard*`, `/api/debris*` parity endpoints, `/api/shards*` extended routing/ops endpoints, and moon destroy aliases (`/api/moons/:moon_id/destroy`, `/moons/:moon_id/destroy`). |
 | web-frontend | `app-web-frontend` | `rust-web-frontend` (rust-only default UI entrypoint on `:8080`) | Server-rendered page routes replacing Node template router during rust-only cutover path (parity checklist tracked in `rust-final-cutover-checklist.md`). |
 | admin | `app-admin-api` | `rust-admin-api` | Health/readiness/status plus `/api/admin/dashboard`, `/users`, `/monitoring`, `/settings`, `/analytics`, `/audit`, `/status`, `/events`, `/status/incidents*`. |
 | bot | `app-bot-api` | `rust-bot-api` | Health/readiness plus `/api/admin/bots*` families: CRUD, filters, think/process triggers, leaderboard, personalities. |
-| sms | `app-sms-api` | `rust-sms-api` | `/api/send`, `/metrics`, `/history`, `/health`, `/ready`. |
+| sms | `app-sms-api` | `rust-sms-api` | `/api/send`, `/metrics`, `/history`, `/health`, `/ready`, `/api/ready`. |
 | realtime | `app-realtime-gateway` | `rust-realtime-gateway` | `/health`, `/ready`, `/ws-info` (WebSocket metadata endpoint). |
 | core-engine | `backend-core` (binary) | `rust-core-engine` | gRPC `GameLoop`: `StartBattle`, `StepBattle`, `StreamBattle`, `SimulateBattle`, `CalculateFleetMovement`. |
 | core | `backend-core` (HTTP helper), `game-combat`, `game-fleet` | Consumed by `rust-api-gateway` and `rust-core-engine` | Fleet/combat helper routes: `/api/fleet/helpers/*`, plus deterministic combat/movement handlers. |
@@ -53,7 +53,7 @@ Reframe the entire backend as a Rust-first platform with explicit crate boundari
   - `backend-core` (gRPC + optional HTTP helpers + worker IPC)
   - `app-core-engine` (HTTP task processing API and core endpoints)
 - Existing top-level Cargo workspace:
-  - `Cargo.toml` is a crates-based workspace (members under `crates/*`) with `crates/backend-core-napi` explicitly excluded from the default workspace build graph during decommission prep.
+  - `Cargo.toml` is a crates-based workspace (members under `crates/*`).
 
 ## Target Backend Shape
 - All server-side business logic and service processes are Rust.
@@ -156,7 +156,7 @@ universus-rs/
 
 ## Service-to-Crate Mapping (From Current Code)
 - `backend` -> `app-api-gateway`, `app-realtime-gateway`, domain crates (`game-*`) and platform crates.
-- `frontend` + Node template routing path -> `app-web-frontend` (rust-only cutover path and default rust-only UI entrypoint), with `app-api-gateway` and `app-realtime-gateway` as backend dependencies. Legacy Node `frontend` runtime remains available only through the explicit `legacy-frontend` compose profile.
+- `frontend` + Node template routing path -> `app-web-frontend` (default UI entrypoint), with `app-api-gateway` and `app-realtime-gateway` as backend dependencies.
 - `backend-admin-service` -> `app-admin-api` + `platform-auth`, `platform-db`, `platform-observability`.
 - `backend-bot-service` -> `app-bot-api`, `app-bot-worker`, `game-antiabuse`, `game-fleet`, `game-economy`.
 - `backend-sms-service` -> `app-sms-api`, `adapter-provider-sms`, `platform-events`.

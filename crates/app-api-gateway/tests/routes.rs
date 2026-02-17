@@ -872,6 +872,7 @@ async fn planet_build_requires_building_type() {
 async fn debris_routes_require_authentication() {
     let app = build_router(TEST_SERVICE_NAME);
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/debris")
@@ -883,6 +884,18 @@ async fn debris_routes_require_authentication() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let claims_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/claims/my")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(claims_response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -906,6 +919,117 @@ async fn debris_location_with_auth_returns_scoped_field() {
     assert_eq!(body["data"][0]["galaxy"], 2);
     assert_eq!(body["data"][0]["system"], 222);
     assert_eq!(body["data"][0]["position"], 9);
+}
+
+#[tokio::test]
+async fn debris_extended_parity_endpoints_return_expected_contracts() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let by_id = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/42")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(by_id.status(), StatusCode::OK);
+    let by_id_body = response_json(by_id).await;
+    assert_eq!(by_id_body["success"], true);
+    assert_eq!(by_id_body["data"]["id"], 42);
+    assert_eq!(by_id_body["data"]["galaxy"], 7);
+    assert_eq!(by_id_body["data"]["system"], 142);
+    assert_eq!(by_id_body["data"]["position"], 13);
+
+    let generate = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/generate")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "galaxy": 3,
+                        "system": 233,
+                        "position": 12,
+                        "seed": 4242
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(generate.status(), StatusCode::OK);
+    let generate_body = response_json(generate).await;
+    assert_eq!(generate_body["success"], true);
+    assert_eq!(generate_body["data"]["generated"], true);
+    assert_eq!(generate_body["data"]["seed"], 4242);
+    assert_eq!(generate_body["data"]["field"]["id"], 4242);
+    assert_eq!(generate_body["data"]["field"]["galaxy"], 3);
+    assert_eq!(generate_body["data"]["field"]["system"], 233);
+    assert_eq!(generate_body["data"]["field"]["position"], 12);
+
+    let stats = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/system/stats")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stats.status(), StatusCode::OK);
+    let stats_body = response_json(stats).await;
+    assert_eq!(stats_body["success"], true);
+    assert_eq!(stats_body["data"]["trackedFields"], 2);
+    assert_eq!(stats_body["data"]["claimableFields"], 2);
+
+    let claim = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/42/claim")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "collectorId": 7 }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(claim.status(), StatusCode::OK);
+    let claim_body = response_json(claim).await;
+    assert_eq!(claim_body["success"], true);
+    assert_eq!(claim_body["data"]["claimId"], 421);
+    assert_eq!(claim_body["data"]["collectorId"], 7);
+    assert_eq!(claim_body["data"]["claimed"], true);
+
+    let my_claims = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/debris/claims/my")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(my_claims.status(), StatusCode::OK);
+    let my_claims_body = response_json(my_claims).await;
+    assert_eq!(my_claims_body["success"], true);
+    assert_eq!(my_claims_body["data"][0]["claimId"], 101);
+    assert_eq!(my_claims_body["data"][0]["debrisId"], 11);
 }
 
 #[tokio::test]
@@ -933,6 +1057,71 @@ async fn moon_jump_gate_rejects_invalid_payload() {
     let body = response_json(response).await;
     assert_eq!(body["success"], false);
     assert_eq!(body["error"], "Invalid request");
+}
+
+#[tokio::test]
+async fn moon_destroy_aliases_require_authentication() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "targetMoonId": 202,
+        "numDeathstars": 5,
+        "speedPercent": 90
+    });
+
+    for uri in ["/api/moons/101/destroy", "/moons/101/destroy"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .method("POST")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["success"], false);
+        assert_eq!(body["error"], "Unauthorized");
+    }
+}
+
+#[tokio::test]
+async fn moon_destroy_aliases_delegate_to_destroy_behavior() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let payload = json!({
+        "targetMoonId": 202,
+        "numDeathstars": 5,
+        "speedPercent": 90
+    });
+
+    for uri in ["/api/moons/101/destroy", "/moons/101/destroy"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .method("POST")
+                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response_json(response).await;
+        assert_eq!(body["success"], true);
+        assert_eq!(body["data"]["accepted"], true);
+        assert_eq!(body["data"]["sourceMoonId"], 101);
+        assert_eq!(body["data"]["targetMoonId"], 202);
+        assert_eq!(body["data"]["numDeathstars"], 5);
+        assert_eq!(body["data"]["speedPercent"], 90.0);
+    }
 }
 
 #[tokio::test]
@@ -1297,6 +1486,7 @@ async fn themes_public_and_user_preference_routes_work() {
 async fn shards_routes_require_authentication() {
     let app = build_router(TEST_SERVICE_NAME);
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/shards/servers")
@@ -1311,6 +1501,18 @@ async fn shards_routes_require_authentication() {
     let body = response_json(response).await;
     assert_eq!(body["success"], false);
     assert_eq!(body["error"], "Unauthorized");
+
+    let stats_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/stats")
+                .method("GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stats_response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -1833,6 +2035,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     assert_eq!(enqueue_body["data"]["accepted"], true);
 
     let requeue_failed = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/shards/messages/requeue-failed")
@@ -1854,6 +2057,122 @@ async fn shards_extended_endpoints_return_expected_contracts() {
     let requeue_body = response_json(requeue_failed).await;
     assert_eq!(requeue_body["success"], true);
     assert_eq!(requeue_body["data"]["accepted"], true);
+
+    let calculate_route = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/routing/calculate")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "playerId": "42",
+                        "preferredRegion": "eu-central"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(calculate_route.status(), StatusCode::OK);
+    let calculate_route_body = response_json(calculate_route).await;
+    assert_eq!(calculate_route_body["success"], true);
+    assert_eq!(calculate_route_body["data"]["playerId"], "42");
+    assert_eq!(calculate_route_body["data"]["preferredRegion"], "eu-central");
+    assert_eq!(calculate_route_body["data"]["serverId"], "eu-central-1");
+
+    let broadcast = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/messages/broadcast")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "sourceServerId": "eu-central-1",
+                        "messageType": "broadcast",
+                        "targetServerIds": ["us-east-1", "ap-south-1"],
+                        "payload": { "event": "sync-all" }
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(broadcast.status(), StatusCode::OK);
+    let broadcast_body = response_json(broadcast).await;
+    assert_eq!(broadcast_body["success"], true);
+    assert_eq!(broadcast_body["data"]["accepted"], true);
+    assert_eq!(broadcast_body["data"]["targetCount"], 2);
+    assert_eq!(broadcast_body["data"]["broadcastId"], "bcast-1001");
+
+    let leaderboard = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/leaderboards/fleet_power")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(leaderboard.status(), StatusCode::OK);
+    let leaderboard_body = response_json(leaderboard).await;
+    assert_eq!(leaderboard_body["success"], true);
+    assert_eq!(leaderboard_body["data"]["category"], "fleet_power");
+    assert_eq!(leaderboard_body["data"]["entries"][0]["rank"], 1);
+
+    let migrate = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/routing/migrate")
+                .method("POST")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "fromServerId": "eu-central-1",
+                        "toServerId": "us-east-1",
+                        "playerIds": ["p1", "p2", "p3"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(migrate.status(), StatusCode::OK);
+    let migrate_body = response_json(migrate).await;
+    assert_eq!(migrate_body["success"], true);
+    assert_eq!(migrate_body["data"]["accepted"], true);
+    assert_eq!(migrate_body["data"]["movedPlayers"], 3);
+    assert_eq!(migrate_body["data"]["migrationId"], "mig-eu-central-1-us-east-1");
+
+    let server_stats = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/servers/stats")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(server_stats.status(), StatusCode::OK);
+    let server_stats_body = response_json(server_stats).await;
+    assert_eq!(server_stats_body["success"], true);
+    assert_eq!(server_stats_body["data"]["totalServers"], 1);
+    assert_eq!(server_stats_body["data"]["healthyServers"], 1);
 }
 
 #[tokio::test]
