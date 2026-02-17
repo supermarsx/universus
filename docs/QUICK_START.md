@@ -33,7 +33,7 @@ After the automated script passes, test the UI:
 
 ### 1. Leaderboard
 ```
-http://localhost:3000/leaderboard.html
+http://localhost:8080/leaderboard.html
 ```
 - [ ] Player rankings display
 - [ ] Alliance rankings display
@@ -41,7 +41,7 @@ http://localhost:3000/leaderboard.html
 
 ### 2. Messages/Inbox
 ```
-http://localhost:3000/messages.html
+http://localhost:8080/messages.html
 ```
 - [ ] Inbox displays messages
 - [ ] Compose and send message
@@ -50,7 +50,7 @@ http://localhost:3000/messages.html
 
 ### 3. Admin Panel
 ```
-http://localhost:3000/admin.html
+http://localhost:8080/admin.html
 ```
 *Requires admin login*
 - [ ] Dashboard shows statistics
@@ -60,7 +60,7 @@ http://localhost:3000/admin.html
 
 ### 4. Planet Generator
 ```
-http://localhost:3000/galaxy.html
+http://localhost:8080/galaxy.html
 ```
 - [ ] Unique planet images generate
 - [ ] 7 different planet types visible
@@ -96,14 +96,7 @@ lsof -i :3000
 
 ### Issue: Tests fail
 ```bash
-cd backend
-
-# Clear cache and reinstall
-rm -rf node_modules coverage
-pnpm install
-
-# Run tests with verbose output
-pnpm run test -- --verbose
+./scripts/rust/run-cutover-validation.ps1
 ```
 
 ---
@@ -169,14 +162,19 @@ You'll know verification is complete when:
 
 ### Check Logs
 ```bash
-# Backend application logs
-docker-compose logs backend
+```bash
+# Rust API gateway logs
+docker compose logs -f rust-api-gateway
 
 # PostgreSQL logs
-docker-compose logs postgres
+docker compose logs -f postgres
 
 # Redis logs
-docker-compose logs redis
+docker compose logs -f redis
+
+# Follow all logs
+docker compose logs -f
+```
 
 # All logs (follow mode)
 docker-compose logs -f

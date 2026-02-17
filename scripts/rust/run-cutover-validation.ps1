@@ -2,10 +2,6 @@
 .SYNOPSIS
 Runs Rust cutover validation suites and writes a timestamped report.
 #>
-param(
-  [switch]$RunBenchmark
-)
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -50,29 +46,6 @@ foreach ($step in $steps) {
   }
   if (!$ok) {
     break
-  }
-}
-
-if ($RunBenchmark -and @($results | Where-Object { -not $_.Ok }).Count -eq 0) {
-  $benchCmd = "pnpm --dir backend run bench:core:pure"
-  Write-Host "[run] benchmark: $benchCmd"
-  $start = Get-Date
-  $ok = $true
-  $output = ""
-  try {
-    $output = (& pwsh -NoProfile -Command $benchCmd 2>&1 | Out-String)
-  } catch {
-    $ok = $false
-    $output = $_ | Out-String
-  }
-  $end = Get-Date
-  $duration = [math]::Round(($end - $start).TotalSeconds, 2)
-  $results += [pscustomobject]@{
-    Name = "core-pure-benchmark-1m"
-    Command = $benchCmd
-    Ok = $ok
-    DurationSeconds = $duration
-    Output = $output.Trim()
   }
 }
 

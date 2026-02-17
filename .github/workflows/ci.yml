@@ -6,99 +6,64 @@ on:
   pull_request:
     branches: [main, master]
 
+env:
+  RUSTUP_TOOLCHAIN: stable
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [20.x]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Setup Rust
+        uses: actions/setup-rust@v1
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'pnpm'
+          node-version: 20.x
+          cache: pnpm
 
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Install root dependencies
-        run: pnpm install
-
-      - name: Install backend dependencies
-        run: pnpm --dir backend install
-
-      - name: Install backend-admin-service dependencies
-        run: pnpm --dir backend-admin-service install
-
-      - name: Install backend-bot-service dependencies
-        run: pnpm --dir backend-bot-service install
-
       - name: Install frontend dependencies
         run: pnpm --dir frontend install
 
-      - name: Install email-delivery-service dependencies
-        run: pnpm --dir email-delivery-service install
+      - name: Cargo check workspace
+        run: cargo check --workspace
 
-      - name: Lint backend
-        run: pnpm --dir backend run lint
+      - name: Run workspace tests
+        run: cargo test --workspace
 
-      - name: Build backend
-        run: pnpm --dir backend run build
-
-      - name: Test backend
-        run: pnpm --dir backend run test
-
-      - name: Lint backend-admin-service
-        run: pnpm --dir backend-admin-service run lint
-
-      - name: Build backend-admin-service
-        run: pnpm --dir backend-admin-service run build
-
-      - name: Test backend-admin-service
-        run: pnpm --dir backend-admin-service run test
-
-      - name: Lint backend-bot-service
-        run: pnpm --dir backend-bot-service run lint
-
-      - name: Build backend-bot-service
-        run: pnpm --dir backend-bot-service run build
-
-      - name: Test backend-bot-service
-        run: pnpm --dir backend-bot-service run test
-
-      - name: Lint frontend
-        run: pnpm --dir frontend run lint
-
-      - name: Build frontend
-        run: pnpm --dir frontend run build
-
-      - name: Test frontend
+      - name: Run frontend tests
         run: pnpm --dir frontend run test
 
-      - name: Lint email-delivery-service
-        run: pnpm --dir email-delivery-service run lint
-
-      - name: Build email-delivery-service
-        run: pnpm --dir email-delivery-service run build
-
-      - name: Test email-delivery-service
-        run: pnpm --dir email-delivery-service run test
-
-      # Optionally, build Docker images for each service
-      - name: Build Docker images
+      - name: Run targeted parity tests
         run: |
-          docker build -t universus-backend ./backend
-          docker build -t universus-backend-admin ./backend-admin-service
-          docker build -t universus-backend-bot ./backend-bot-service
-          docker build -t universus-frontend ./frontend
-          docker build -t universus-email ./email-delivery-service
-        if: always()
+          cargo test -p app-web-frontend all_template_routes_have_expected_auth_gating_and_render -- --nocapture
+          cargo test -p app-api-gateway --test routes debris_extended_parity_endpoints_return_expected_contracts -- --nocapture
+          cargo test -p app-api-gateway --test routes shards_extended_endpoints_return_expected_contracts -- --nocapture
 
-  integration-tests:
+      - name: Cutover validation
+        run: pwsh -NoProfile -File scripts/rust/run-cutover-validation.ps1
+
+  rust-integration-tests:
     runs-on: ubuntu-latest
     needs: build-and-test
     services:
@@ -119,22 +84,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v6
+      - name: Setup Rust
+        uses: actions/setup-rust@v1
         with:
-          node-version: 20.x
-          cache: 'pnpm'
+          toolchain: stable
 
-      - name: Install pnpm
-        run: npm install -g pnpm
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Install backend dependencies
-        run: pnpm --dir backend install
-
-      - name: Apply database schema and run sanity checks
+      - name: Apply database migrations
         env:
           PGHOST: localhost
           PGPORT: 5432
@@ -145,8 +106,7 @@ jobs:
           chmod +x database/scripts/migrate-test-db.sh
           database/scripts/migrate-test-db.sh
 
-      - name: Run backend integration tests
+      - name: Run Rust integration tests
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
-        run: |
-          RUN_INTEGRATION=true pnpm --dir backend run test:integration
+        run: cargo test -p app-api-gateway notifications_high_volume_create_flow_stays_consistent sharding_registration_churn_keeps_routing_stats_coherent -- --nocapture

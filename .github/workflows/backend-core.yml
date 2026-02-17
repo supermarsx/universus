@@ -3,37 +3,41 @@ name: backend-core CI
 on:
   push:
     paths:
-      - 'backend-core/**'
-      - 'backend/**'
+      - 'crates/backend-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
   pull_request:
     paths:
-      - 'backend-core/**'
-      - 'backend/**'
+      - 'crates/backend-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 jobs:
   rust-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v5
+      - name: Setup Rust
+        uses: actions/setup-rust@v1
         with:
           toolchain: stable
-          profile: minimal
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/registry
           key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache cargo index
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
-      - name: Build
-        run: cargo build --manifest-path backend-core/Cargo.toml --release
-      - name: Run Rust tests
-        run: cargo test --manifest-path backend-core/Cargo.toml
+      - name: Cargo fmt
+        run: cargo fmt --manifest-path crates/backend-core/Cargo.toml -- --check
+      - name: Build backend-core
+        run: cargo build --manifest-path crates/backend-core/Cargo.toml --release
+      - name: Run backend-core tests
+        run: cargo test --manifest-path crates/backend-core/Cargo.toml
+
 
   node-tests:
     runs-on: ubuntu-latest

@@ -17,8 +17,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Test configuration
-API_BASE_URL="${API_BASE_URL:-http://localhost:3000/api}"
-WEB_BASE_URL="${WEB_BASE_URL:-http://localhost:3000}"
+API_BASE_URL="${API_BASE_URL:-http://localhost:3300/api}"
+WEB_BASE_URL="${WEB_BASE_URL:-http://localhost:8080}"
 TEST_EMAIL="test.account.$(date +%s)@example.com"
 TEST_PASSWORD="TestPassword123!"
 AUTH_TOKEN=""
@@ -65,12 +65,12 @@ print_info() {
 
 # Check if server is running
 check_server() {
-    print_info "Checking if server is running at $WEB_BASE_URL..."
-    if curl -s -f "$WEB_BASE_URL/api/health" > /dev/null 2>&1; then
-        print_pass "Server is running"
+    print_info "Checking if Rust API gateway is healthy at $API_BASE_URL/health..."
+    if curl -s -f "$API_BASE_URL/health" > /dev/null 2>&1; then
+        print_pass "Rust API gateway is running"
         return 0
     else
-        print_fail "Server is not running at $WEB_BASE_URL"
+        print_fail "Rust API gateway is not running"
         return 1
     fi
 }
@@ -488,9 +488,9 @@ main() {
     # Check if server is running
     if ! check_server; then
         echo ""
-        echo -e "${RED}Cannot run tests: Server is not running${NC}"
-        echo "Please start the server and try again:"
-        echo "  cd backend && npm start"
+        echo -e "${RED}Cannot run tests: Rust API gateway is not running${NC}"
+        echo "Please ensure the Rust services are up:"
+        echo "  docker compose up -d rust-api-gateway rust-realtime-gateway"
         exit 1
     fi
     

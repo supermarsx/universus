@@ -11,31 +11,28 @@
 2. **Start the application**:
    ```bash
    cd /workspace/universus-rpg
-   docker-compose up --build -d
+   docker compose up --build -d
    ```
 
 3. **Access the game**:
-   Open your browser and navigate to `http://localhost:3000`
+   The Rust web frontend is available at `http://localhost:8080` (the Rust API gateway sits behind it on `http://localhost:3300`).
 
 4. **Stop the application**:
    ```bash
-   docker-compose down
+   docker compose down
    ```
 
 ### Manual Setup (Development)
 
 1. **Prerequisites**:
-   - Node.js 18+
+   - Rust toolchain (stable)
    - PostgreSQL 15+
    - Redis 7+
-   - pnpm
+   - Docker Compose 2.x
 
 2. **Database Setup**:
    ```bash
-   # Create PostgreSQL database
    createdb universus_rpg
-   
-   # Initialize schema
    psql -U postgres -d universus_rpg -f database/sql/schema.sql
    ```
 
@@ -46,59 +43,38 @@
 
 4. **Configure Environment**:
    ```bash
-   cd backend
    cp .env.example .env
-   # Edit .env with your settings
+   # Edit DATABASE_URL, REDIS_URL, RUST_LOG, and other settings as needed
    ```
 
-5. **Install Dependencies & Build**:
+5. **Build and run Rust services**:
    ```bash
-   cd backend
-   pnpm install
-   pnpm run build
+   cargo build --workspace
+   docker compose up -d rust-api-gateway rust-realtime-gateway rust-web-frontend rust-admin-api rust-bot-api rust-sms-api
    ```
 
-6. **Start the Server**:
-   ```bash
-   # Development mode (with auto-reload)
-   pnpm run dev
-   
-   # Production mode
-   pnpm start
-   ```
-
-7. **Access the game**:
-   Open `http://localhost:3000`
+6. **Access the game**:
+   Visit `http://localhost:8080` for the Rust web frontend and `http://localhost:3300` for the Rust API gateway.
 
 ## Configuration
 
 ### Environment Variables
 
-Edit `backend/.env`:
+Edit the top-level `.env` (or the service-specific `.env` files `crates/app-api-gateway/.env`, etc.):
 
 ```env
-# Server
-NODE_ENV=production
-PORT=3000
-
 # Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=universus_rpg
-DB_USER=postgres
-DB_PASSWORD=your_secure_password
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/universus_rpg
 
 # Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
+REDIS_URL=redis://localhost:6379
 
-# Security
-JWT_SECRET=change_this_to_a_secure_random_string
-JWT_EXPIRES_IN=7d
+# Observability
+RUST_LOG=info
 
-# Game Settings
-GAME_SPEED=1                      # 1-10x speed multiplier
-RESOURCE_PRODUCTION_MULTIPLIER=1  # Production rate multiplier
+# Web/API ports
+API_PORT=3300
+WEB_PORT=8080
 ```
 
 ## Production Deployment
@@ -162,12 +138,15 @@ docker exec -i universus_postgres psql -U postgres universus_rpg < backup.sql
 
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
-# Specific service
-docker-compose logs -f backend
-docker-compose logs -f postgres
-docker-compose logs -f redis
+# Rust services
+docker compose logs -f rust-api-gateway
+docker compose logs -f rust-web-frontend
+docker compose logs -f rust-bot-api
+docker compose logs -f rust-realtime-gateway
+docker compose logs -f postgres
+docker compose logs -f redis
 ```
 
 ### Check Service Status
@@ -206,25 +185,25 @@ docker-compose ps
 
 ### Application Errors
 
-1. Check backend logs:
+1. Check Rust gateway logs:
    ```bash
-   docker-compose logs backend
+   docker compose logs -f rust-api-gateway
    ```
 
 2. Restart services:
    ```bash
-   docker-compose restart backend
+   docker compose restart rust-api-gateway rust-realtime-gateway
    ```
 
 ## Scaling
 
 ### Horizontal Scaling
 
-To run multiple backend instances:
+To scale the Rust API gateway:
 
 1. Update `docker-compose.yml`:
    ```yaml
-   backend:
+   rust-api-gateway:
      deploy:
        replicas: 3
    ```

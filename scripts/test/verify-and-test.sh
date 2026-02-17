@@ -118,47 +118,42 @@ fi
 # PHASE 2: Backend Verification
 ###############################################################################
 
-print_header "PHASE 2: Backend Verification"
+print_header "PHASE 2: Rust API Gateway Verification"
 
-log_info "Verifying TypeScript compilation..."
-cd backend
-if pnpm run build > /tmp/build.log 2>&1; then
-    log_success "TypeScript compiled successfully"
+log_info "Running cargo check across workspace..."
+if cargo check --workspace >/tmp/cargo-check.log 2>&1; then
+    log_success "Cargo check completed"
 else
-    log_error "TypeScript compilation failed (see /tmp/build.log)"
-    cat /tmp/build.log
+    log_error "Cargo check failed (see /tmp/cargo-check.log)"
+    cat /tmp/cargo-check.log
 fi
 
-log_info "Running test suite..."
-if pnpm run test > /tmp/test.log 2>&1; then
-    log_success "All tests passed"
-    # Extract coverage percentage
-    COVERAGE=$(grep -oP "All files\s+\|\s+\K[0-9.]+" /tmp/test.log | head -1 || echo "N/A")
-    log_info "Test coverage: ${COVERAGE}%"
+log_info "Running targeted Rust parity tests..."
+if cargo test -p app-api-gateway notifications_high_volume_create_flow_stays_consistent sharding_registration_churn_keeps_routing_stats_coherent -- --nocapture >/tmp/cargo-parity.log 2>&1; then
+    log_success "Parity tests succeeded"
 else
-    log_error "Some tests failed (see /tmp/test.log)"
+    log_error "Parity tests failed (see /tmp/cargo-parity.log)"
+    cat /tmp/cargo-parity.log
 fi
 
-cd ..
-
-# Test health endpoint
-log_info "Testing health endpoint..."
-HEALTH_RESPONSE=$(curl -s http://localhost:3000/api/health)
-if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
-    log_success "Health endpoint responding"
+log_info "Testing Rust API gateway health endpoint..."
+HEALTH_RESPONSE=$(curl -s http://localhost:3300/api/health)
+if echo "$HEALTH_RESPONSE" | grep -q "\"status\":\"ok\""; then
+    log_success "Rust API gateway is healthy"
 else
-    log_error "Health endpoint not responding"
+    log_error "Rust API gateway is not responding"
 fi
 
-# Test admin endpoints (requires login)
-log_info "Testing admin API endpoints..."
-# Note: This requires a valid user account. Skip if no users exist.
-USER_COUNT=$(docker-compose exec -T database psql -U postgres -d universus_rpg -t -c "SELECT COUNT(*) FROM users;" | xargs)
-if [ "$USER_COUNT" -gt 0 ]; then
-    log_info "Found $USER_COUNT users in database"
-    log_warning "Admin API endpoint testing requires manual verification (login needed)"
+log_info "Checking admin and bot API health"
+if curl -s http://localhost:4302/api/admin/dashboard | grep -q '"success"'; then
+    log_success "Admin API responsive"
 else
-    log_warning "No users in database. Skipping admin API tests."
+    log_warning "Admin API may require auth to respond"
+fi
+if curl -s http://localhost:4301/api/admin/bots | grep -q '"success"'; then
+    log_success "Bot API responsive"
+else
+    log_warning "Bot API may require auth to respond"
 fi
 
 ###############################################################################
@@ -240,25 +235,25 @@ fi
 
 print_header "PHASE 5: Integration Checks"
 
-log_info "Checking backend process..."
-if docker-compose ps backend | grep -q "Up"; then
-    log_success "Backend service is running"
+log_info "Checking Rust API gateway service status..."
+if docker compose ps rust-api-gateway | grep -q "Up"; then
+    log_success "rust-api-gateway container is running"
 else
-    log_error "Backend service is not running"
+    log_error "rust-api-gateway container is not running"
 fi
 
 log_info "Checking Redis connection..."
-if docker-compose exec -T redis redis-cli ping 2>&1 | grep -q "PONG"; then
+if docker compose exec -T redis redis-cli ping 2>&1 | grep -q "PONG"; then
     log_success "Redis is responding"
 else
     log_error "Redis is not responding"
 fi
 
-log_info "Checking Socket.io integration..."
-if curl -s http://localhost:3000/socket.io/ | grep -q "Socket.IO"; then
-    log_success "Socket.io endpoint is accessible"
+log_info "Verifying realtime REST endpoints"
+if curl -s http://localhost:3300/api/realtime/chat/channels | grep -q "\"channels\""; then
+    log_success "Realtime chat channels endpoint returns data"
 else
-    log_warning "Socket.io endpoint check failed (this may be normal)"
+    log_warning "Realtime endpoints may require auth"
 fi
 
 ###############################################################################
@@ -280,14 +275,10 @@ if [ "$FAILED" -eq 0 ]; then
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     echo "Next steps:"
-    echo "  1. Open http://localhost:3000 in your browser"
-    echo "  2. Test the following pages manually:"
-    echo "     - http://localhost:3000/leaderboard.html"
-    echo "     - http://localhost:3000/messages.html"
-    echo "     - http://localhost:3000/admin.html (requires admin login)"
-    echo "  3. Verify planet images in galaxy view"
-    echo "  4. Test real-time features (Socket.io)"
-    echo "  5. Review the full guide: VERIFICATION_AND_TESTING_GUIDE.md"
+    echo "  1. Open http://localhost:8080 in your browser"
+    echo "  2. Browse the Rust API gateway at http://localhost:3300/api"
+    echo "  3. Tail the gateway logs: docker compose logs -f rust-api-gateway"
+    echo "  4. Review the validation harness: scripts/rust/run-cutover-validation.ps1"
     echo ""
     exit 0
 else
@@ -296,10 +287,10 @@ else
     echo -e "${RED}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
     echo "Please review the errors above and check the following logs:"
-    echo "  - Backend logs: docker-compose logs backend"
-    echo "  - PostgreSQL logs: docker-compose logs postgres"
-    echo "  - Build log: /tmp/build.log"
-    echo "  - Test log: /tmp/test.log"
+        echo "  - Rust API gateway logs: docker compose logs rust-api-gateway"
+        echo "  - PostgreSQL logs: docker compose logs postgres"
+        echo "  - Cargo check log: /tmp/cargo-check.log"
+        echo "  - Parity test log: /tmp/cargo-parity.log"
     echo ""
     echo "For detailed troubleshooting, see: VERIFICATION_AND_TESTING_GUIDE.md"
     echo ""

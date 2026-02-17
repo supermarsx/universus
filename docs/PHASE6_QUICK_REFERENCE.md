@@ -13,15 +13,17 @@
 psql -U postgres -d universus_db -f database/sql/phase6_realtime_schema.sql
 ```
 
-### 2. Compile TypeScript
+### 2. Build Rust services
 ```bash
-cd backend && npx tsc
+cargo build --workspace
 ```
 
-### 3. Start Server
+### 3. Start the Rust stack
 ```bash
-npm start
+docker compose up -d rust-api-gateway rust-realtime-gateway rust-web-frontend
 ```
+
+Access the UI at `http://localhost:8080` and the API gateway at `http://localhost:3300`.
 
 ---
 

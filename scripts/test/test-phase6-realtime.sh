@@ -12,8 +12,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# API endpoint
-API_URL="${API_URL:-http://localhost:3000}"
+# API endpoint (Rust API gateway)
+API_URL="${API_URL:-http://localhost:3300}"
 REALTIME_API="$API_URL/api/realtime"
 
 # Test credentials
@@ -125,22 +125,21 @@ test_server_connection() {
     print_header "TEST 2: Server and Socket.io Connection"
     ((TESTS_RUN++))
     
-    print_step "Testing backend health endpoint..."
+    print_step "Testing Rust API gateway health endpoint..."
     
     RESPONSE=$(curl -s "$API_URL/api/health" 2>/dev/null)
     
     if echo "$RESPONSE" | grep -q "\"status\":\"ok\""; then
         print_success "Backend server is running"
     else
-        print_failure "Backend server health check failed"
+        print_failure "Rust API gateway health check failed"
         echo "Response: $RESPONSE"
         return 1
     fi
     
-    print_step "Testing Socket.io endpoint availability..."
+    print_step "Testing realtime REST endpoint availability..."
     
-    # Check if socket.io endpoint responds
-    SOCKET_RESPONSE=$(curl -s "$API_URL/socket.io/?EIO=4&transport=polling" 2>/dev/null)
+    SOCKET_RESPONSE=$(curl -s "$REALTIME_API/chat/channels" 2>/dev/null)
     
     if [ -n "$SOCKET_RESPONSE" ]; then
         print_success "Socket.io endpoint is accessible"

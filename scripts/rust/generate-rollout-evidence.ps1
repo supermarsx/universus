@@ -18,7 +18,7 @@ if (!(Test-Path $reportDir)) {
 Push-Location $root
 try {
   $composeServices = (& docker compose config --services 2>&1 | Out-String).Trim()
-  $legacyServiceHits = (& rg -n "^\s*(backend|bot-service|admin-service|backend-core|frontend):" docker-compose.yml -S 2>&1 | Out-String).Trim()
+  $legacyServiceHits = (& rg -n "^\s*(backend|bot-service|admin-service|frontend):" docker-compose.yml -S 2>&1 | Out-String).Trim()
   $legacyProfileHits = (& rg -n "legacy-node|legacy-frontend" docker-compose.yml specification -S 2>&1 | Out-String).Trim()
   $napiHits = (& rg -n "backend-core-napi" Cargo.toml crates specification -S 2>&1 | Out-String).Trim()
 

@@ -4,7 +4,7 @@
 
 This guide provides step-by-step instructions for deploying SpaceEmpire RPG to a production environment. The application is a full-stack MMO browser game with:
 
-- **Backend**: Node.js + TypeScript + Express.js
+- **Backend**: Rust-based services (`app-api-gateway`, `app-realtime-gateway`, `app-web-frontend`, etc.)
 - **Database**: PostgreSQL 14+ + Redis 7+
 - **Frontend**: HTML5 + Vanilla JavaScript + Canvas
 - **Real-time**: Socket.io
@@ -47,9 +47,9 @@ cd universus-rpg
 Create `.env` file in the project root:
 
 ```bash
-# Backend Configuration
-NODE_ENV=production
-PORT=3000
+## Rust Service Configuration
+API_PORT=3300
+WEB_PORT=8080
 
 # Database Configuration
 DATABASE_URL=postgresql://postgres:your_strong_password@postgres:5432/universus_rpg
@@ -108,7 +108,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:14-alpine
+    image: postgres:15-alpine
     environment:
       POSTGRES_DB: universus_rpg
       POSTGRES_USER: postgres
@@ -139,27 +139,24 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  rust-api-gateway:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-api-gateway
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     environment:
-      - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - JWT_SECRET=${JWT_SECRET}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - RUST_LOG=${RUST_LOG:-info}
     ports:
-      - "3000:3000"
+      - "3300:3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3300/health"]
       interval: 30s
       timeout: 10s
       retries: 3

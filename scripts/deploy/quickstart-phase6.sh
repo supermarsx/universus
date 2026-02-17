@@ -156,37 +156,22 @@ fi
 
 echo
 
-# Step 4: Check if backend is running
-echo "Step 4: Checking Backend Server"
+# Step 4: Check if the Rust gateway is running
+echo "Step 4: Checking Rust API gateway"
 echo "--------------------------------"
 
-if curl -s http://localhost:3000/api/health >/dev/null 2>&1; then
-    echo -e "${GREEN}✓ Backend server is already running${NC}"
+if curl -s http://localhost:3300/api/health >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Rust API gateway is already running${NC}"
     BACKEND_RUNNING=1
 else
-    echo -e "${YELLOW}⚠ Backend server not running${NC}"
-    echo "Starting backend server..."
-    
-    cd backend
-    
-    # Check if node_modules exists
-    if [ ! -d "node_modules" ]; then
-        echo "Installing dependencies..."
-        npm install
-    fi
-    
-    # Start backend in background
-    echo "Starting server..."
-    npm start > /tmp/backend.log 2>&1 &
-    BACKEND_PID=$!
-    
-    echo "Backend started (PID: $BACKEND_PID)"
-    echo "Waiting for server to be ready..."
-    
-    # Wait for server to start (max 30 seconds)
+    echo -e "${YELLOW}⚠ Rust gateway not running${NC}"
+    echo "Starting gateway stack via docker compose..."
+
+    docker compose up -d rust-api-gateway rust-realtime-gateway >/dev/null
+    echo "Waiting for gateway to initialize..."
     for i in {1..30}; do
-        if curl -s http://localhost:3000/api/health >/dev/null 2>&1; then
-            echo -e "${GREEN}✓ Backend server is running${NC}"
+        if curl -s http://localhost:3300/api/health >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Rust API gateway is running${NC}"
             BACKEND_RUNNING=1
             break
         fi
@@ -194,34 +179,32 @@ else
         echo -n "."
     done
     echo
-    
+
     if [ $BACKEND_RUNNING -ne 1 ]; then
-        echo -e "${RED}✗ Backend server failed to start${NC}"
-        echo "Check logs: tail -f /tmp/backend.log"
+        echo -e "${RED}✗ Rust API gateway failed to start${NC}"
+        echo "Inspect logs: docker compose logs rust-api-gateway"
         exit 1
     fi
-    
-    cd ..
 fi
 
 echo
 
 # Step 5: Run tests
-echo "Step 5: Running Comprehensive Tests"
-echo "------------------------------------"
+echo "Step 5: Running comprehensive Rust-specific tests"
+echo "------------------------------------------------"
 
 if [ -f "$TEST_DIR/test-phase6-realtime.sh" ]; then
-    echo "Running test suite..."
+    echo "Running legacy test harness..."
     "$TEST_DIR/test-phase6-realtime.sh"
     TEST_STATUS=$?
-    
+
     if [ $TEST_STATUS -eq 0 ]; then
-        echo -e "${GREEN}✓ All tests passed${NC}"
+        echo -e "${GREEN}✓ Legacy tests passed${NC}"
     else
-        echo -e "${YELLOW}⚠ Some tests failed (see above)${NC}"
+        echo -e "${YELLOW}⚠ Legacy tests reported issues${NC}"
     fi
 else
-    echo -e "${YELLOW}⚠ Test script not found, skipping tests${NC}"
+    echo -e "${YELLOW}⚠ Legacy test harness missing; consider running scripts/rust/run-cutover-validation.ps1${NC}"
 fi
 
 echo
@@ -234,16 +217,16 @@ echo
 echo "Services:"
 echo -e "  PostgreSQL: ${GREEN}Running${NC}"
 echo -e "  Redis: ${GREEN}Running${NC}"
-echo -e "  Backend: ${GREEN}Running on http://localhost:3000${NC}"
+echo -e "  Rust API gateway: ${GREEN}Running on http://localhost:3300${NC}"
 echo
 echo "Next steps:"
-echo "  1. Access chat interface: http://localhost:3000/chat"
-echo "  2. Test real-time features"
-echo "  3. Review logs: tail -f /tmp/backend.log"
+echo "  1. Access chat UI: http://localhost:8080"
+echo "  2. Explore re-implemented APIs at http://localhost:3300/api"
+echo "  3. Review gateway logs: docker compose logs rust-api-gateway"
 echo
 echo "Documentation:"
 echo "  - PHASE6_DEPLOYMENT_STATUS_REPORT.md - Complete status report"
 echo "  - PHASE6_DEPLOYMENT_TESTING_GUIDE.md - Detailed guide"
 echo "  - PHASE6_REALTIME_IMPLEMENTATION_COMPLETE.md - Technical docs"
 echo
-echo -e "${GREEN}✓ Phase 6 Real-time Communication Systems ready!${NC}"
+echo -e "${GREEN}✓ Phase 6 Real-time Communication Systems ready via Rust stack${NC}"
