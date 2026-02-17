@@ -84,14 +84,13 @@ pub fn build_router() -> Router {
         let route = get(move |uri: OriginalUri| template_page(title, uri));
         if path.starts_with("/admin") {
             admin_routes = admin_routes.route(path, route);
-        } else if path.starts_with("/account")
-            || path.starts_with("/alliance")
-            || path.starts_with("/chat")
-        {
-            authenticated_routes = authenticated_routes.route(path, route);
-        } else {
-            public_routes = public_routes.route(path, route);
+            continue;
         }
+        if path == "/" || path == "/index.html" {
+            public_routes = public_routes.route(path, route);
+            continue;
+        }
+        authenticated_routes = authenticated_routes.route(path, route);
     }
 
     public_routes

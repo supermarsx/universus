@@ -49,93 +49,6 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    profiles: ["legacy-node"]
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: universus_backend
-    depends_on:
-      database:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      DB_HOST: database
-      DB_PORT: 5432
-      DB_NAME: universus_rpg
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: universus
-      RABBITMQ_PASSWORD: universus
-      RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
-      JWT_SECRET: change_this_to_a_secure_random_string_in_production
-      JWT_EXPIRES_IN: 7d
-      GAME_SPEED: 1
-      RESOURCE_PRODUCTION_MULTIPLIER: 1
-      BOT_SERVICE_URL: http://bot-service:4001
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-
-  bot-service:
-    profiles: ["legacy-node"]
-    build:
-      context: ./backend-bot-service
-      dockerfile: Dockerfile
-    container_name: universus_bot_service
-    depends_on:
-      database:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      BOT_SERVICE_PORT: 4001
-      DB_HOST: database
-      DB_PORT: 5432
-      DB_NAME: universus_rpg
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USER: universus
-      RABBITMQ_PASSWORD: universus
-      RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
-      BOT_WORKER_INTERVAL_MS: 60000
-      BOT_WORKER_MAX_BOTS: 25
-      JWT_SECRET: change_this_to_a_secure_random_string_in_production
-    ports:
-      - "4001:4001"
-    restart: unless-stopped
-
-  backend-core:
-    profiles: ["legacy-node"]
-    build:
-      context: ./crates/backend-core
-      dockerfile: Dockerfile
-    container_name: universus_backend_core
-    depends_on:
-      - redis
-      - database
-    environment:
-      CORE_BIND_ADDR: 0.0.0.0:50051
-      RUST_LOG: info
-    ports:
-      - "50051:50051"
-    restart: unless-stopped
 
   rust-api-gateway:
     build:
@@ -445,43 +358,6 @@ services:
       SHARD_MESSAGE_MAX_ATTEMPTS: 3
     restart: unless-stopped
 
-  admin-service:
-    profiles: ["legacy-node"]
-    build:
-      context: ./backend-admin-service
-      dockerfile: Dockerfile
-    container_name: universus_admin_service
-    depends_on:
-      database:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      ADMIN_PORT: 4002
-      DB_HOST: database
-      DB_PORT: 5432
-      DB_NAME: universus_rpg
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      JWT_SECRET: change_this_to_a_secure_random_string_in_production
-    ports:
-      - "4002:4002"
-    restart: unless-stopped
-
-  frontend:
-    profiles: ["legacy-frontend"]
-    build:
-      context: ./frontend
-    container_name: universus_frontend
-    depends_on:
-      backend:
-        condition: service_started
-        required: false
-      rust-api-gateway:
-        condition: service_started
-        required: false
-    ports:
-      - "8081:80"
-    restart: unless-stopped
 
   prometheus:
     build:

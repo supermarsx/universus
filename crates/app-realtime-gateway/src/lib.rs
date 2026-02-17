@@ -33,6 +33,7 @@ struct RealtimeState {
     trade_offers: Vec<TradeOfferItem>,
     trade_history: Vec<TradeHistoryItem>,
     chat_conversations: Vec<ChatConversationItem>,
+    chat_messages: HashMap<String, ChatRealtimeMessage>,
     recent_events: Vec<RecentEventItem>,
 }
 
@@ -121,6 +122,38 @@ impl Default for RealtimeState {
                     unread_count: 0,
                 },
             ],
+            chat_messages: HashMap::from([
+                (
+                    "msg-1".to_string(),
+                    ChatRealtimeMessage {
+                        id: "msg-1".to_string(),
+                        channel_id: 1,
+                        user_id: 11,
+                        message: "Ping from frontier".to_string(),
+                        edited: false,
+                        deleted: false,
+                        pinned: false,
+                        announcement: false,
+                        flags: 0,
+                        reactions: HashMap::new(),
+                    },
+                ),
+                (
+                    "msg-2".to_string(),
+                    ChatRealtimeMessage {
+                        id: "msg-2".to_string(),
+                        channel_id: 1,
+                        user_id: 7,
+                        message: "Acknowledged".to_string(),
+                        edited: false,
+                        deleted: false,
+                        pinned: false,
+                        announcement: false,
+                        flags: 0,
+                        reactions: HashMap::new(),
+                    },
+                ),
+            ]),
             recent_events: Vec::new(),
         }
     }
@@ -278,6 +311,56 @@ struct ChatMessageItem {
     sent_at: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatRealtimeMessage {
+    id: String,
+    channel_id: i64,
+    user_id: u64,
+    message: String,
+    edited: bool,
+    deleted: bool,
+    pinned: bool,
+    announcement: bool,
+    flags: u64,
+    reactions: HashMap<String, u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EditChatMessageRequest {
+    user_id: Option<u64>,
+    message: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteChatMessageRequest {
+    user_id: Option<u64>,
+    is_admin: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FlagChatMessageRequest {
+    user_id: Option<u64>,
+    reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PinChatMessageRequest {
+    user_id: Option<u64>,
+    is_pinned: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReactionChatMessageRequest {
+    user_id: Option<u64>,
+    reaction_type: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ConversationMessagesResponse {
     conversation_id: String,
@@ -431,6 +514,26 @@ pub fn build_router() -> Router {
             "/chat/conversations/:conversation_id/messages",
             get(rest_chat_conversation_messages),
         )
+        .route(
+            "/chat/messages/:message_id",
+            axum::routing::put(rest_edit_chat_message),
+        )
+        .route(
+            "/chat/messages/:message_id",
+            axum::routing::delete(rest_delete_chat_message),
+        )
+        .route(
+            "/chat/messages/:message_id/flag",
+            post(rest_flag_chat_message),
+        )
+        .route(
+            "/chat/messages/:message_id/pin",
+            post(rest_pin_chat_message),
+        )
+        .route(
+            "/chat/messages/:message_id/reactions",
+            post(rest_react_chat_message),
+        )
         .route("/players/online", get(rest_players_online))
         .route("/trade/offers", get(rest_trade_offers))
         .route("/trade/history", get(rest_trade_history))
@@ -448,6 +551,26 @@ pub fn build_router() -> Router {
         .route(
             "/api/realtime/chat/conversations/:conversation_id/messages",
             get(rest_chat_conversation_messages),
+        )
+        .route(
+            "/api/realtime/chat/messages/:message_id",
+            axum::routing::put(rest_edit_chat_message),
+        )
+        .route(
+            "/api/realtime/chat/messages/:message_id",
+            axum::routing::delete(rest_delete_chat_message),
+        )
+        .route(
+            "/api/realtime/chat/messages/:message_id/flag",
+            post(rest_flag_chat_message),
+        )
+        .route(
+            "/api/realtime/chat/messages/:message_id/pin",
+            post(rest_pin_chat_message),
+        )
+        .route(
+            "/api/realtime/chat/messages/:message_id/reactions",
+            post(rest_react_chat_message),
         )
         .route("/api/realtime/notifications", get(rest_notifications))
         .route(
@@ -757,6 +880,101 @@ async fn rest_chat_conversation_messages(
     })
 }
 
+async fn rest_edit_chat_message(
+    State(state): State<AppState>,
+    axum::extract::Path(message_id): axum::extract::Path<String>,
+    Json(payload): Json<EditChatMessageRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    if payload.message.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: "message is required".to_string(),
+            })),
+        );
+    }
+
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
+    message.message = payload.message;
+    message.edited = true;
+
+    (StatusCode::OK, Json(serde_json::json!({ "message": message })))
+}
+
+async fn rest_delete_chat_message(
+    State(state): State<AppState>,
+    axum::extract::Path(message_id): axum::extract::Path<String>,
+    Json(payload): Json<DeleteChatMessageRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let user_id = payload.user_id.unwrap_or(0);
+    let is_admin = payload.is_admin.unwrap_or(false);
+    let message = upsert_realtime_message(&mut store, &message_id, user_id);
+    if !is_admin && user_id > 0 && message.user_id != user_id {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!(ErrorEnvelope {
+                status: "error",
+                error: "forbidden".to_string(),
+            })),
+        );
+    }
+    message.deleted = true;
+    (StatusCode::OK, Json(serde_json::json!({ "success": true })))
+}
+
+async fn rest_flag_chat_message(
+    State(state): State<AppState>,
+    axum::extract::Path(message_id): axum::extract::Path<String>,
+    Json(payload): Json<FlagChatMessageRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
+    message.flags = message.flags.saturating_add(1);
+    (StatusCode::OK, Json(serde_json::json!({
+        "success": true,
+        "flags": message.flags,
+        "reason": payload.reason
+    })))
+}
+
+async fn rest_pin_chat_message(
+    State(state): State<AppState>,
+    axum::extract::Path(message_id): axum::extract::Path<String>,
+    Json(payload): Json<PinChatMessageRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
+    message.pinned = payload.is_pinned.unwrap_or(true);
+    (StatusCode::OK, Json(serde_json::json!({
+        "message": message
+    })))
+}
+
+async fn rest_react_chat_message(
+    State(state): State<AppState>,
+    axum::extract::Path(message_id): axum::extract::Path<String>,
+    Json(payload): Json<ReactionChatMessageRequest>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let reaction = payload
+        .reaction_type
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "thumbs_up".to_string());
+    let mut store = state.inner.lock().expect("state lock poisoned");
+    let message = upsert_realtime_message(&mut store, &message_id, payload.user_id.unwrap_or(0));
+    let counter = message.reactions.entry(reaction.clone()).or_insert(0);
+    *counter = counter.saturating_add(1);
+    (StatusCode::OK, Json(serde_json::json!({
+        "messageId": message_id,
+        "reactionType": reaction,
+        "count": *counter,
+        "reactions": message.reactions
+    })))
+}
+
 async fn rest_players_online(
     State(state): State<AppState>,
     Query(query): Query<OnlinePlayersQuery>,
@@ -935,6 +1153,28 @@ async fn recent_events(
         .cloned()
         .collect::<Vec<_>>();
     Json(RecentEventsResponse { events, total })
+}
+
+fn upsert_realtime_message<'a>(
+    store: &'a mut RealtimeState,
+    message_id: &str,
+    user_id: u64,
+) -> &'a mut ChatRealtimeMessage {
+    store
+        .chat_messages
+        .entry(message_id.to_string())
+        .or_insert_with(|| ChatRealtimeMessage {
+            id: message_id.to_string(),
+            channel_id: 1,
+            user_id,
+            message: "".to_string(),
+            edited: false,
+            deleted: false,
+            pinned: false,
+            announcement: false,
+            flags: 0,
+            reactions: HashMap::new(),
+        })
 }
 
 fn map_chat_restriction(row: platform_db::ChatRestrictionRow) -> ChatRestrictionItem {

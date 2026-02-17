@@ -518,3 +518,99 @@ async fn chat_restriction_upsert_requires_database_url() {
     assert_eq!(body["status"], "error");
     assert_eq!(body["error"], "DATABASE_URL not configured");
 }
+
+#[tokio::test]
+async fn chat_message_moderation_endpoints_update_state() {
+    let app = build_router();
+
+    let edit = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/messages/msg-1")
+                .method(Method::PUT)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "userId": 11,
+                        "message": "Updated message"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(edit.status(), StatusCode::OK);
+    let edit_body = json_body(edit).await;
+    assert_eq!(edit_body["message"]["edited"], true);
+    assert_eq!(edit_body["message"]["message"], "Updated message");
+
+    let pin = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/chat/messages/msg-1/pin")
+                .method(Method::POST)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "isPinned": true }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(pin.status(), StatusCode::OK);
+    let pin_body = json_body(pin).await;
+    assert_eq!(pin_body["message"]["pinned"], true);
+
+    let reaction = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/messages/msg-1/reactions")
+                .method(Method::POST)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "reactionType": "clap",
+                        "userId": 11
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reaction.status(), StatusCode::OK);
+    let reaction_body = json_body(reaction).await;
+    assert_eq!(reaction_body["reactionType"], "clap");
+    assert_eq!(reaction_body["count"], 1);
+
+    let delete_forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/messages/msg-1")
+                .method(Method::DELETE)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "userId": 99, "isAdmin": false }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_forbidden.status(), StatusCode::FORBIDDEN);
+
+    let delete_admin = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/chat/messages/msg-1")
+                .method(Method::DELETE)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "userId": 99, "isAdmin": true }).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_admin.status(), StatusCode::OK);
+    let delete_body = json_body(delete_admin).await;
+    assert_eq!(delete_body["success"], true);
+}

@@ -54,7 +54,7 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
 | notification orchestration (`notificationService`) | `crates/game-notifications`, `crates/app-api-gateway` | Base API parity landed (list/create/read-state endpoints); DB + realtime fanout parity pending |
 | analytics queue worker (`backend/src/workers`) | `crates/app-analytics-worker` | Runtime wired in compose; RabbitMQ consumer + DB persistence implemented; aggregation parity pending |
 | `backend-core` | `crates/app-core-engine` + domain crates | Partial; legacy gRPC path still active |
-| `backend-core-napi` bridge | none (retire) | Runtime service paths migrated to gRPC/local fallback and Node unit-test cleanup completed; source retention/deletion steps pending |
+| `backend-core-napi` bridge | none (retire) | Runtime service paths migrated; source files retired and compatibility notes archived |
 
 ## Execution Gate (for Node retirement)
 - 100% route-family ownership mapped to a Rust crate.
@@ -92,6 +92,7 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
   - `rust-sharding-worker`
   - `rust-bot-worker`
   - Rust service env wiring now includes `DATABASE_URL`/`REALTIME_GATEWAY_URL`/`REDIS_URL`/`RABBITMQ_URL` where required.
+- Legacy Node backend services and legacy frontend service have been removed from `docker-compose.yml`; runtime compose path is now Rust-only.
 - Chat moderation/restriction parity advanced:
   - Chat restriction source of truth moved to `platform-db` (`chat_restrictions` + cleanup API methods).
   - `app-chat-worker` now performs DB-backed expired restriction cleanup and emits `ops.chat` cleanup events.
@@ -99,3 +100,15 @@ No remaining unmounted route files requiring new Rust ownership mapping from thi
     - `GET /api/realtime/chat/restrictions`
     - `POST /api/realtime/chat/restrictions`
     - `DELETE /api/realtime/chat/restrictions`
+  - `app-realtime-gateway` now includes additional message moderation aliases for edit/delete/flag/pin/reactions:
+    - `PUT /api/realtime/chat/messages/:message_id`
+    - `DELETE /api/realtime/chat/messages/:message_id`
+    - `POST /api/realtime/chat/messages/:message_id/flag`
+    - `POST /api/realtime/chat/messages/:message_id/pin`
+    - `POST /api/realtime/chat/messages/:message_id/reactions`
+- Frontend template auth gating parity advanced:
+  - `app-web-frontend` now mirrors legacy route-family gating (`public` landing/index, authenticated game/account/alliance/chat pages, admin-only `/admin/*` routes).
+  - Exhaustive route/gate validation test added: `all_template_routes_have_expected_auth_gating_and_render`.
+- Cutover validation harness added:
+  - `scripts/rust/run-cutover-validation.ps1`
+  - Timestamped output reports in `specification/validation-reports/`.

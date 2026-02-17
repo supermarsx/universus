@@ -1,10 +1,10 @@
 # Universus Full Rust Backend Reframe Specification
 
 ## Status
-Updated on February 13, 2026.
-- Migration mode: hard-cut capable in runtime wiring via `docker compose --profile rust-only`.
-- Legacy Node services (`backend`, `bot-service`, `admin-service`, `backend-core`) are now gated behind compose profile `legacy-node` and no longer part of default/rust-only startup paths.
-- UI entrypoint switch: rust-only now defaults to `rust-web-frontend` on host port `8080`; legacy Node `frontend` is opt-in via `--profile legacy-frontend` on host port `8081`.
+Updated on February 16, 2026.
+- Migration mode: rust-only runtime by default in `docker-compose.yml`.
+- Legacy Node services (`backend`, `bot-service`, `admin-service`, `backend-core`) have been removed from compose runtime manifest.
+- Legacy Node frontend compose service has been removed; UI entrypoint is `rust-web-frontend` on host port `8080`.
 - Rust service binaries currently moved and wired:
   - `app-api-gateway` (`rust-api-gateway`)
   - `app-web-frontend` (`rust-web-frontend`, rust-only profile)
@@ -19,7 +19,7 @@ Updated on February 13, 2026.
   - route-by-route DB behavior parity validation and production cutover sign-off for Rust gateways/services.
   - `app-email-worker` and `app-analytics-worker` provider and ingestion parity validation.
   - websocket/event contract parity validation for realtime replacement.
-  - source-level decommission of `backend-core-napi` bridge after parity/SLO acceptance (decommission in progress: removed from default workspace build graph).
+  - operational rollout evidence under production-like traffic and failure scenarios.
 
 See `specification/spec-rust-route-ownership.md` for the crate-partitioned route ownership matrix and cutover checklist.
 
@@ -36,9 +36,8 @@ See `specification/spec-rust-route-ownership.md` for the crate-partitioned route
 | core | `backend-core` (HTTP helper), `game-combat`, `game-fleet` | Consumed by `rust-api-gateway` and `rust-core-engine` | Fleet/combat helper routes: `/api/fleet/helpers/*`, plus deterministic combat/movement handlers. |
 
 ## Remaining Legacy Hotspots
-- Node `backend` still owns major DB write paths and business parity for many production gameplay routes; hard-cut requires route-level SQL and behavior parity sign-off.
-- Node-side bridge/runtime paths remain in circulation (`backend-core-napi`, plus mixed helper fallbacks), so full Rust ownership is not yet complete.
-- Frontend cutover now has a dedicated rust-only runtime service (`rust-web-frontend`) as the default rust-only UI entrypoint; legacy Node `frontend` remains available only via explicit `legacy-frontend` profile. Page/auth/session/realtime contract parity still requires final sign-off.
+- Route-level behavior depth and production-grade parity validation are still pending for some Rust-owned families.
+- Realtime/client contract validation under sustained traffic still requires final sign-off.
 
 ## Objective
 Reframe the entire backend as a Rust-first platform with explicit crate boundaries, preserving gameplay behavior while removing Node.js service ownership over time.
@@ -52,7 +51,7 @@ Reframe the entire backend as a Rust-first platform with explicit crate boundari
   - `email-delivery-service`
 - Existing Rust services:
   - `backend-core` (gRPC + optional HTTP helpers + worker IPC)
-  - `backend-core-napi` (Node addon bridge)
+  - `app-core-engine` (HTTP task processing API and core endpoints)
 - Existing top-level Cargo workspace:
   - `Cargo.toml` is a crates-based workspace (members under `crates/*`) with `crates/backend-core-napi` explicitly excluded from the default workspace build graph during decommission prep.
 
@@ -60,7 +59,7 @@ Reframe the entire backend as a Rust-first platform with explicit crate boundari
 - All server-side business logic and service processes are Rust.
 - Frontend-facing API remains HTTP/JSON + WebSocket semantics compatible with current clients.
 - Canonical inter-service contracts are Protobuf/gRPC.
-- N-API is transitional only and eventually retired.
+- N-API bridge has been retired from source and runtime paths.
 
 ## Bounded Contexts to Preserve
 - Auth and account security.
@@ -163,7 +162,7 @@ universus-rs/
 - `backend-sms-service` -> `app-sms-api`, `adapter-provider-sms`, `platform-events`.
 - `email-delivery-service` -> `app-email-worker`, `adapter-provider-email`, `platform-cache`.
 - `backend-core` -> `app-core-engine`, `game-combat`, `game-fleet`, `platform-proto`.
-- `backend-core-napi` -> temporary bridge only; no long-term ownership.
+- `backend-core-napi` -> retired.
 
 ## Transport and Compatibility Rules
 - External client interface:
@@ -217,7 +216,7 @@ universus-rs/
 - [~] Phase 2: HTTP gateway replacement (Rust gateway wired; parity validation pending).
 - [~] Phase 3: Service replacement (admin/bot/sms moved; email/analytics pending).
 - [~] Phase 4: Realtime replacement (service wired; contract validation pending).
-- [ ] Phase 5: Node retirement and N-API removal.
+- [~] Phase 5: Node runtime retirement complete in compose; production parity/rollout evidence still pending.
 
 ## Acceptance Criteria (Per Phase)
 - No gameplay regression in deterministic simulation test corpus.

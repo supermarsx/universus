@@ -119,8 +119,7 @@ async fn enqueue_and_process_tick(
     };
 
     let run_at_unix = unix_timestamp();
-    let cadence_bucket = run_at_unix / cadence_secs.max(1) as i64;
-    let task_key = format!("{task_type}:{cadence_bucket}");
+    let task_key = scheduler_task_key(task_type, run_at_unix, cadence_secs);
     let enqueue_result = database
         .enqueue_scheduled_task(platform_db::ScheduledTaskCreateInput {
             task_type: task_type.to_string(),
@@ -128,7 +127,7 @@ async fn enqueue_and_process_tick(
                 "taskType": task_type,
                 "scheduledAtUnix": run_at_unix,
                 "cadenceSecs": cadence_secs,
-                "cadenceBucket": cadence_bucket
+                "cadenceBucket": run_at_unix / cadence_secs.max(1) as i64
             }),
             run_at_unix,
             task_key: Some(task_key),
@@ -273,4 +272,28 @@ fn unix_timestamp() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+fn scheduler_task_key(task_type: &str, run_at_unix: i64, cadence_secs: u64) -> String {
+    let cadence_bucket = run_at_unix / cadence_secs.max(1) as i64;
+    format!("{task_type}:{cadence_bucket}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scheduler_task_key;
+
+    #[test]
+    fn scheduler_task_key_is_stable_for_same_bucket() {
+        let first = scheduler_task_key("scheduler.game_loop", 1700000010, 5);
+        let second = scheduler_task_key("scheduler.game_loop", 1700000014, 5);
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn scheduler_task_key_changes_for_next_bucket() {
+        let first = scheduler_task_key("scheduler.game_loop", 1700000014, 5);
+        let second = scheduler_task_key("scheduler.game_loop", 1700000015, 5);
+        assert_ne!(first, second);
+    }
 }

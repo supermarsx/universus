@@ -16,15 +16,23 @@ $services = @(
   "redis",
   "rabbitmq",
   "rust-core-engine",
+  "rust-app-core-engine",
   "rust-api-gateway",
+  "rust-web-frontend",
   "rust-admin-api",
   "rust-bot-api",
+  "rust-bot-worker",
   "rust-sms-api",
+  "rust-email-worker",
+  "rust-analytics-worker",
   "rust-realtime-gateway",
-  "frontend"
+  "rust-notifications-worker",
+  "rust-chat-worker",
+  "rust-scheduler-worker",
+  "rust-sharding-worker"
 )
 
-$composeArgs = @("compose", "--profile", "rust-only", "up")
+$composeArgs = @("compose", "up")
 if (-not $Foreground) {
   $composeArgs += "-d"
 }

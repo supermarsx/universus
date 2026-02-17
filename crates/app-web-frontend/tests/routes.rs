@@ -56,7 +56,7 @@ async fn ready_returns_ok_with_service_name() {
 
 #[tokio::test]
 async fn overview_route_serves_placeholder_html_with_metadata() {
-    let response = get_response("/overview").await;
+    let response = get_response_with_token("/overview", Some(DEV_TOKEN)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -97,7 +97,7 @@ async fn index_html_alias_maps_to_home() {
 
 #[tokio::test]
 async fn overview_html_alias_maps_to_overview() {
-    let response = get_response("/overview.html").await;
+    let response = get_response_with_token("/overview.html", Some(DEV_TOKEN)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -139,6 +139,12 @@ async fn protected_route_without_token_returns_401() {
 }
 
 #[tokio::test]
+async fn overview_without_token_returns_401() {
+    let response = get_response("/overview").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn admin_route_with_dev_token_returns_403() {
     let response = get_response_with_token("/admin/users", Some(DEV_TOKEN)).await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -154,4 +160,97 @@ async fn protected_route_with_dev_token_returns_200() {
 async fn admin_route_with_admin_token_returns_200() {
     let response = get_response_with_token("/admin/users", Some(ADMIN_TOKEN)).await;
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn all_template_routes_have_expected_auth_gating_and_render() {
+    let public_routes = ["/", "/index.html"];
+    let authenticated_routes = [
+        "/overview",
+        "/overview.html",
+        "/buildings",
+        "/buildings.html",
+        "/research",
+        "/research.html",
+        "/shipyard",
+        "/shipyard.html",
+        "/fleet",
+        "/fleet.html",
+        "/galaxy",
+        "/galaxy.html",
+        "/leaderboard",
+        "/leaderboard.html",
+        "/messages",
+        "/messages.html",
+        "/shop",
+        "/shop.html",
+        "/notifications",
+        "/notifications.html",
+        "/matrix-shop",
+        "/matrix-shop.html",
+        "/chat",
+        "/chat.html",
+        "/account/settings",
+        "/account/security",
+        "/account/2fa",
+        "/account/email",
+        "/account/password",
+        "/account/privacy",
+        "/account/transfer",
+        "/alliance",
+        "/alliance/dashboard",
+        "/alliance/wars",
+        "/alliance/diplomacy",
+        "/alliance/manage",
+    ];
+    let admin_routes = [
+        "/admin",
+        "/admin.html",
+        "/admin/dashboard",
+        "/admin/users",
+        "/admin/monitoring",
+        "/admin/settings",
+        "/admin/events",
+        "/admin/analytics",
+        "/admin/audit",
+        "/admin/sms-service",
+        "/admin/bots",
+        "/admin/bots.html",
+    ];
+
+    for route in public_routes {
+        let response = get_response(route).await;
+        assert_eq!(response.status(), StatusCode::OK, "public route {}", route);
+    }
+
+    for route in authenticated_routes {
+        let unauth = get_response(route).await;
+        assert_eq!(
+            unauth.status(),
+            StatusCode::UNAUTHORIZED,
+            "auth route unauth {}",
+            route
+        );
+        let auth = get_response_with_token(route, Some(DEV_TOKEN)).await;
+        assert_eq!(auth.status(), StatusCode::OK, "auth route {}", route);
+    }
+
+    for route in admin_routes {
+        let unauth = get_response(route).await;
+        assert_eq!(
+            unauth.status(),
+            StatusCode::UNAUTHORIZED,
+            "admin route unauth {}",
+            route
+        );
+        let non_admin = get_response_with_token(route, Some(DEV_TOKEN)).await;
+        assert_eq!(
+            non_admin.status(),
+            StatusCode::FORBIDDEN,
+            "admin route non-admin {}",
+            route
+        );
+        let admin = get_response_with_token(route, Some(ADMIN_TOKEN)).await;
+        assert_eq!(admin.status(), StatusCode::OK, "admin route {}", route);
+    }
 }

@@ -2204,3 +2204,111 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
     assert_eq!(list_prefs_body["success"], true);
     assert!(list_prefs_body["data"].is_array());
 }
+
+#[tokio::test]
+async fn notifications_high_volume_create_flow_stays_consistent() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    let before = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications/unread-count")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(before.status(), StatusCode::OK);
+    let before_body = response_json(before).await;
+    let before_count = before_body["data"]["unreadCount"].as_u64().unwrap_or(0);
+
+    for i in 0..100u64 {
+        let payload = json!({
+            "title": format!("Load Test Notification {i}"),
+            "message": "High volume parity validation",
+            "category": "system",
+            "priority": 3
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/notifications")
+                    .method("POST")
+                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let after = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/notifications/unread-count")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(after.status(), StatusCode::OK);
+    let after_body = response_json(after).await;
+    let after_count = after_body["data"]["unreadCount"].as_u64().unwrap_or(0);
+    assert!(after_count >= before_count + 100);
+}
+
+#[tokio::test]
+async fn sharding_registration_churn_keeps_routing_stats_coherent() {
+    let app = build_router(TEST_SERVICE_NAME);
+
+    for i in 0..60 {
+        let payload = json!({
+            "serverId": format!("churn-node-{i}"),
+            "serverType": "game",
+            "region": if i % 2 == 0 { "eu" } else { "us" },
+            "endpoint": format!("http://node-{i}.internal"),
+            "status": if i % 10 == 0 { "offline" } else { "online" },
+            "currentLoad": i * 10,
+            "maxCapacity": 1000,
+            "healthScore": if i % 10 == 0 { 0.4 } else { 0.9 }
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/shards/servers/register")
+                    .method("POST")
+                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let stats = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/shards/routing/stats")
+                .method("GET")
+                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stats.status(), StatusCode::OK);
+    let stats_body = response_json(stats).await;
+    assert!(stats_body["data"]["totalServers"].as_u64().unwrap_or(0) >= 60);
+    assert!(stats_body["data"]["healthyServers"].as_u64().unwrap_or(0) > 0);
+}
