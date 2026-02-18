@@ -160,9 +160,7 @@ impl TenantRouter {
     /// Releases a lease that was previously returned during routing.
     pub async fn release_lease(&self, token: LeaseToken) {
         if let Some(coordinator) = &self.lease_coordinator {
-            coordinator
-                .release(&token.resource, &token.owner)
-                .await;
+            coordinator.release(&token.resource, &token.owner).await;
         }
     }
 }
@@ -174,7 +172,7 @@ struct TenantQuotaPermit {
 
 /// Per-tenant quota state (concurrency + rate).
 struct TenantQuotaState {
-    semaphore: Semaphore,
+    semaphore: Arc<Semaphore>,
     max_per_second: usize,
     window: tokio::sync::Mutex<RateWindow>,
 }
@@ -183,7 +181,7 @@ impl TenantQuotaState {
     fn new(concurrency: usize, max_per_second: usize) -> Self {
         let concurrency = concurrency.max(1);
         Self {
-            semaphore: Semaphore::new(concurrency),
+            semaphore: Arc::new(Semaphore::new(concurrency)),
             max_per_second,
             window: tokio::sync::Mutex::new(RateWindow::new()),
         }
@@ -280,11 +278,8 @@ mod tests {
     #[tokio::test]
     async fn unknown_tenant_errors() {
         let router = TenantRouter::new();
-        let err = router
-            .route_request(default_context("ghost"))
-            .await
-            .unwrap_err();
-        matches!(err, RoutingError::UnknownTenant(_));
+        let err = router.route_request(default_context("ghost")).await;
+        assert!(matches!(err, Err(RoutingError::UnknownTenant(_))));
     }
 
     #[tokio::test]
@@ -303,8 +298,11 @@ mod tests {
             })
             .await;
 
-        let _ = router.route_request(default_context("burst")).await.unwrap();
-        let err = router.route_request(default_context("burst")).await.unwrap_err();
-        matches!(err, RoutingError::QuotaExceeded { .. });
+        let _ = router
+            .route_request(default_context("burst"))
+            .await
+            .unwrap();
+        let err = router.route_request(default_context("burst")).await;
+        assert!(matches!(err, Err(RoutingError::QuotaExceeded { .. })));
     }
 }

@@ -1,0 +1,12 @@
+[package]
+name = "platform-worker-runtime"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tracing = "0.1"
+anyhow = "1"
+platform-tenancy = { path = "../platform-tenancy" }
+platform-consensus = { path = "../platform-consensus" }
+thiserror = "1"

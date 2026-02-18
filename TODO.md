@@ -14,9 +14,10 @@ Status legend: [done], [partial], [missing]
 - [missing] Build `platform-adapter` to wrap `adapter-db`, inject tenant context, and expose per-adapter readiness/health for `platform-observability`.
 
 ## Runtime & sharding platform
-- [missing] Create `platform-sharding` to describe shard ownership, lease-backed leaders, and tenant placement rules.
-- [missing] Create `platform-scheduler` to orchestrate cron jobs, retries, and tenant-aware dispatching across shards.
-- [missing] Create `platform-worker-runtime` to standardize thread pools, leak detection, and graceful shutdown for all workers.
+- [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; it still needs integration with the scheduler/runtime hop.
+- [partial] `platform-scheduler` now registers and triggers tenant jobs via `platform-tenant-routing`/`platform-sharding`; still needs integration with `platform-worker-runtime`.
+- [partial] `platform-worker-runtime` now provides the shared runtime instrumentation for tenants; ensure workers routinely call it plus monitor instrumentation funnels.
+- [partial] `platform-adapter` wraps `adapter-db`, loads JSON adapter configs, and gates each tenant within consensus leases; verify health hooks in dashboards/tests.
 
 ## Migrations & admin surface
 - [partial] `platform-migrations` exists but needs a documented JSON config + CLI endpoints.

@@ -2333,6 +2333,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "platform-adapter"
+version = "0.1.0"
+dependencies = [
+ "adapter-db",
+ "anyhow",
+ "platform-consensus",
+ "platform-tenancy",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+]
+
+[[package]]
 name = "platform-auth"
 version = "0.1.0"
 
@@ -2404,12 +2420,61 @@ name = "platform-proto"
 version = "0.1.0"
 
 [[package]]
+name = "platform-scheduler"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "platform-sharding",
+ "platform-tenancy",
+ "platform-tenant-routing",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "platform-sharding"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "platform-consensus",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "platform-tenancy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
  "tokio",
+]
+
+[[package]]
+name = "platform-tenant-routing"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "platform-consensus",
+ "platform-tenancy",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "platform-worker-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "platform-consensus",
+ "platform-tenancy",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -2,13 +2,12 @@
 //! Services can use `LeaseCoordinator` to obtain short-lived leadership for shared resources.
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct LeaseToken {
     pub resource: String,
     pub owner: String,

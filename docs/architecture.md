@@ -6,6 +6,9 @@ This is the single-page overview of the Rust backend infrastructure, its current
 ## Crate Landscape
 - `platform-tenancy`: propagates `TenantContext`, enforces `TenantAccessLevel`, and wraps Axum/Tower middleware plus queue handlers so every request or job knows which tenant it serves.
 - `platform-consensus`: provides lease/leader election semantics for multi-tenant resources, ensuring sharding, scheduling, and migrations never run in parallel for the same tenant/region.
+- `platform-worker-runtime`: supplies the shared executor/leak instrumentation for chat/notifications/email/analytics workers, capturing tenant context, queue depth, and graceful shutdown gating.
+- `platform-adapter`: wraps `adapter-db` with JSON configuration + per-tenant consensus lease guards, producing health metadata so each adapter is ready for instrumentation dashboards.
+- `platform-sharding`: maintains shard metadata, leader assignments, and tenant placement data so workers and schedulers know which tenants/shards they serve; it relies on `platform-consensus` leases for guarded leadership.
 - `adapter-db`: runtime-configurable adapter registry; currently supports Postgres + JSON file drivers and is being extended with MySQL/JSON schema-backed options.
 - `platform-migrations`: tenant-aware migration runner that will be exposed via the admin surface and CLI; it relies on `platform-consensus` to prevent concurrent schema changes.
 - `platform-config`, `platform-observability`, `platform-db`, `platform-cache`, `platform-events`, `platform-auth`, `platform-errors`, `platform-proto`, `platform-common`: shared infra helpers for configuration, logging, telemetry, persistence, caches, pub/sub, authentication, and protobuf contracts.
@@ -14,7 +17,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
 ## Multi-Tenancy, Consensus, and Sharding
 1. **Tenant routing**: Every HTTP/gRPC request and queue message derives its tenant from `platform-tenancy`. The planned `platform-tenant-routing` crate will map tenanted traffic to shard/worker pools, enforce quotas/backpressure, and surface tenant lifecycle hooks.
 2. **Lease-backed resource guards**: `platform-consensus` acts as the gatekeeper for shared resources (schedulers, shard leaders, migration runners). Leases are time-bound, auto-renew, expose health metrics, and unblock failover when a lease expires.
-3. **Sharding & scheduling**: The new `platform-sharding` crate (backed by `platform-consensus`) will track shard ownership, leader assignment, and thread-level placement so workers (chat, notifications, analytics, etc.) know which shard/tenant they can process. The `platform-scheduler` crate will orchestrate cron jobs/tasks using that placement data.
+3. **Sharding & scheduling**: The `platform-sharding` crate (backed by `platform-consensus`) now tracks shard ownership, leader assignment, and thread-level placement so workers (chat, notifications, analytics, etc.) know which shard/tenant they are allowed to process. The `platform-scheduler` crate now orchestrates cron jobs/tasks that follow those assignments while emitting tenant-aware leases and telemetry.
 4. **Thread/runtime stability**: `platform-worker-runtime` will give each worker binary consistent graceful shutdown, leak detection, observability wiring, and memory/CPU caps to avoid stray nodes taking down the cluster under tenant stress.
 
 ## Adapter Configuration and Multi-Database Support
@@ -47,7 +50,9 @@ This is the single-page overview of the Rust backend infrastructure, its current
 1. Document the JSON schema and runtime discovery for `AdapterRegistry`, including how `platform-adapter` selects drivers per tenant and environment.
 2. Integrate `MigrationRunner` into `app-admin-api` (REST + CLI) so admins can view tenant migration status, trigger runs/rollbacks, and read detailed telemetry on failures.
 3. Update `scripts/rust/live-rust-cutover-check.ps1` to invoke migration health checks (per tenant) before other smoke tests.
-4. Implement the planned crates (`platform-tenant-routing`, `platform-sharding`, `platform-scheduler`, `platform-worker-runtime`, `platform-adapter`) to standardize tenancy, threading, consensus, and adapter lifecycle.
-5. Expand docs/tests for multi-tenancy, consensus, migrations, adapters, and the 1M action benchmark (see `crates/benchmark-actions`).
+4. Implement the remaining runtime crates (`platform-scheduler`, `platform-worker-runtime`, `platform-adapter`) to standardize tenancy, threading, consensus, and adapter lifecycle; `platform-tenant-routing` and `platform-sharding` are already in place.
+5. Document the `platform-tenant-routing` interface (route summaries, quota/per-tenant rate limits, optional lease acquisition) plus the test harness that validates tenant isolation, queue pacing/backpressure, consensus lease failures, and route decision recomputation.
+6. Capture the tenant-routing-focused test cases described in `docs/rust-backend-plan.md` inside `specification/validation-reports/` once implemented.
+7. Expand docs/tests for multi-tenancy, consensus, migrations, adapters, and the 1M action benchmark (see `crates/benchmark-actions`).
 
 This page links back to `docs/rust-backend-plan.md`, which contains the cross-cutting plan for tests, docs, and benchmarks.
