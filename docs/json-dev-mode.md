@@ -43,6 +43,7 @@ Ports and service-specific envs (like `PORT` for the frontend) follow the defaul
 
 - See `specification/test-scenarios.md` for the catalog of integration tests (including the simulated player flow) that you can run while local services are up.  
 - The simulated flow (`crates/app-api-gateway/tests/simulated_flow.rs`) exercises helper, fleet, and protected routes to prove the JSON-only mode behaves like a real deployment.
+- `adapter-db/tests` now houses parallel suites for the JSON, SQLite, Postgres, and MySQL adapters; they demonstrate how the same configs run under Docker (when available) and how the migration-transfer CLI uses their exported logs. Run these tests with `cargo test -p adapter-db -- --test-threads 1` if you need deterministic ordering or when you want to ensure the log files land in predictable directories.
 
 ## When to Fall Back to Real Databases
 

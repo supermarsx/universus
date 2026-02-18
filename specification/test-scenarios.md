@@ -13,6 +13,14 @@ Use `docs/spec-gap-analysis.md` to see the current spec gaps (adapter parity, co
 | Template guards & token flows | `crates/app-web-frontend/tests/integration.rs` | Ensures the web frontend renders public routes and protects `/buildings` & `/admin` behind the expected bearer tokens. |
 | Simulated player journey | `crates/app-api-gateway/tests/simulated_flow.rs` | Executes a real-ish usage path: health, planet & fleet listings, tokenized constructions, fleet movement helpers, and a fleet send request including helper/movement calculations. |
 
+### Adapter-Parity Coverage
+
+| Scenario | Source | Coverage |
+| --- | --- | --- |
+| JSON file adapters | `crates/adapter-db/tests/json_adapter.rs` | Confirms JSON drivers execute scripts, log mutations, and expose `TenantContext` metadata via `AdapterRegistry`. |
+| SQLite adapter + migration transfer | `crates/adapter-db/tests/sqlite_adapter.rs` | Validates SQLite runs scripts, mirrors JSON exports/imports, and sports the same logging/migration helpers so local JSON/SQL experiments stay parity-aligned. |
+| Postgres & MySQL parity | `crates/adapter-db/tests/sql_adapters.rs` | Spins up Postgres/MySQL containers through `testcontainers`, performs real `execute_script` runs, writes per-tenant log files, and demonstrates how the migration-transfer CLI can promote tenants between adapters when the services are healthy. Tests skip gracefully when Docker access is unavailable.
+
 ## Simulated Flow Breakdown
 
 1. **Health + catalog checks**: `GET /health` and `GET /api/planets` confirm the router wiring and `AppState` defaults.  
@@ -25,7 +33,7 @@ This scenario is the easiest way to prove the API, helpers, and `AppState` inter
 
 ## Local JSON / No-DB Mode
 
-See `docs/json-dev-mode.md` for two operating tips:
+See `docs/json-dev-mode.md` and `docs/tenant-routing.md` for two operating tips:
 
 1. Start any `app-*` crate via `cargo run -p <crate-name>` without setting `DATABASE_URL` — the routers fall back to the in-memory `AppState` and report healthy while ignoring `platform-db`.  
 2. Use `database/runtime-adapters.json` to describe JSON adapters (`driver: "jsonfile"`) or the SQLite adapter (`driver: "sqlite"`) for tenants that need migrations or bookkeeping; `platform-adapter`/`platform-migrations` will honor that JSON registry and allow fully local multi-tenant simulations without Postgres/MySQL.
@@ -50,7 +58,7 @@ Append `-- --nocapture` when you need to inspect the emitted helper logs or `App
 
 ## Outstanding Coverage
 
-- Add consensus lease contention/resilience tests (see `TODO.md` and `platform-consensus` tests).  
-- Compare Postgres/MySQL/JSON parity under `adapter-db` once the drivers are wired to real backends and collection scripts.  
-- Expand platform-worker-runtime leak/performance tests and ensure `platform-tenant-routing` rerouting scenarios are codified (see `specification/spec-rust-crate-partition.md`).  
+- Add consensus lease contention/resilience tests (see `docs/consensus-tests.md`, `TODO.md`, and `platform-consensus` tests).  
+- Monitor the Postgres/MySQL/JSON parity suites under `crates/adapter-db/tests` and expand the live operational validation paths for MySQL/PG adapters so they mirror the JSON/SQLite confidence level.  
+- Expand platform-worker-runtime leak/performance tests (see `docs/worker-runtime-tests.md`) and ensure `platform-tenant-routing` rerouting scenarios are codified (see `specification/spec-rust-crate-partition.md`).  
 - Continue updating this document as the 1M-action benchmark, `docs/json-dev-mode`, and the migration/admin guides change.

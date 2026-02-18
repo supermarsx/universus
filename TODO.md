@@ -41,3 +41,4 @@ Status legend: [done], [partial], [missing]
 - [done] Legacy Node-era docs are cataloged in `docs/LEGACY_NODE_ARCHIVE.md`, so updates should target the Rust documentation instead.
 - [done] The 1M-action benchmark (see `specification/validation-reports/1m-action-benchmark.md`) now documents the latest run and stability notes.
 - [missing] Keep the Rust documentation/README references in sync with the new `specification/test-scenarios.md` so operators know where to find fresh integration/benchmark coverage; deprecate Node-era HOWTOs once the Rust docs are stable.
+- [done] Documented the `platform-tenant-routing` interface and validation harness in `docs/tenant-routing.md`.

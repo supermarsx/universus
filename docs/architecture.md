@@ -16,7 +16,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
 - `app-*`, `game-*`, `adapter-provider-*`: the feature crates that depend on the platform layer to expose APIs, workers, and domain logic in Rust-only binaries.
 
 ## Multi-Tenancy, Consensus, and Sharding
-1. **Tenant routing**: Every HTTP/gRPC request and queue message derives its tenant from `platform-tenancy`. The planned `platform-tenant-routing` crate will map tenanted traffic to shard/worker pools, enforce quotas/backpressure, and surface tenant lifecycle hooks.
+1. **Tenant routing**: Every HTTP/gRPC request and queue message derives its tenant from `platform-tenancy`. The `platform-tenant-routing` crate maps tenanted traffic to shard/worker pools, enforces quotas/backpressure, surfaces tenant lifecycle hooks, and is now documented in `docs/tenant-routing.md`.
 2. **Lease-backed resource guards**: `platform-consensus` acts as the gatekeeper for shared resources (schedulers, shard leaders, migration runners). Leases are time-bound, auto-renew, expose health metrics, and unblock failover when a lease expires.
 3. **Sharding & scheduling**: The `platform-sharding` crate (backed by `platform-consensus`) now tracks shard ownership, leader assignment, and thread-level placement so workers (chat, notifications, analytics, etc.) know which shard/tenant they are allowed to process. The `platform-scheduler` crate now orchestrates cron jobs/tasks that follow those assignments while emitting tenant-aware leases and telemetry.
 4. **Thread/runtime stability**: `platform-worker-runtime` will give each worker binary consistent graceful shutdown, leak detection, observability wiring, and memory/CPU caps to avoid stray nodes taking down the cluster under tenant stress.
@@ -52,8 +52,8 @@ This is the single-page overview of the Rust backend infrastructure, its current
 
 ## Observability and Fail-Safe Processing
 - Logging must automatically include tenant IDs, lease details, shard assignments, and worker runtime identifiers. `platform-observability` wires tracing/metrics across all platform and app crates, and these tags must propagate through `app-*` and worker crates.
-- Lease transitions (acquire, renew, release, fail) should emit metrics that `platform-observability` collects, allowing auto-failover dashboards to trigger actions or alerts before a tenant loses access.
-- Worker runtime instrumentation (thread counts, queue depth, blocking durations) plugs into `platform-worker-runtime` for consistent fail-safe wiring.
+- Lease transitions (acquire, renew, release, fail) should emit metrics that `platform-observability` collects, allowing auto-failover dashboards to trigger actions or alerts before a tenant loses access; the required validation scenarios are captured in `docs/consensus-tests.md`.
+- Worker runtime instrumentation (thread counts, queue depth, blocking durations) plugs into `platform-worker-runtime` for consistent fail-safe wiring and is documented under `docs/worker-runtime-tests.md` so operators can reproduce the leak/performance suites.
 - Adapters must report health/readiness for each tenant driver so `platform-observability` can detect partial adapter outages (Postgres vs MySQL, etc.).
 
 **Legacy documents:** Node-era guides live in `docs/LEGACY_NODE_ARCHIVE.md`; do not edit those files, and rely on the Rust docs listed above for current operations.
