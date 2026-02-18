@@ -69,6 +69,7 @@ This document captures the current state of the Rust-native backend and the outs
 
 ## Documentation & Migration Plan
 - Consolidate the architecture notes, crate spec, and quick-start instructions into a single reference (this doc plus `docs/architecture.md` and updated TODO). Mark legacy Node docs as archived.
+  - Legacy Node docs are now archived under `docs/LEGACY_NODE_ARCHIVE.md`—update the Rust docs instead of touching `PHASE*` or `DEPLOYMENT_*` guides.
 - Add `docs/rust-backend-plan.md` to cross-reference:
   - Crate matrix
   - Multi-tenancy & consensus requirements

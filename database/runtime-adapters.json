@@ -1,0 +1,8 @@
+[
+  {
+    "name": "tenant-default-json",
+    "driver": "jsonfile",
+    "tenant": "tenant-default",
+    "path": "database/tenants/tenant-default.json"
+  }
+]

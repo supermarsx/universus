@@ -2,8 +2,7 @@
 name = "platform-consensus"
 version = "0.1.0"
 edition = "2021"
-
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "test-util"] }
 serde = { version = "1", features = ["derive"] }
 anyhow = "1"

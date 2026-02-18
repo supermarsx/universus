@@ -67,3 +67,4 @@ Updated: 2026-02-17
 2. Rewrite/retire legacy Node documentation (`spec.md`, `spec-main.pdf`, etc.) in favor of the Rust-first docs (`docs/rust-backend-plan.md`, `docs/architecture.md`).
 3. Document tests, adapters, and migrations within `TODO.md` and `docs/rust-backend-plan.md` so every remaining action item is explicit.
 4. Keep `specification/validation-reports/` up to date with benchmarks/validation (1M actions, migration runs, consensus failovers).
+5. Archive the departing Node documentation by referring operators to `docs/LEGACY_NODE_ARCHIVE.md` and keeping the Rust docs as the primary reference.

@@ -9,9 +9,9 @@ Status legend: [done], [partial], [missing]
 - [partial] `app-sharding-worker` and `app-scheduler-worker` should acquire the required leases from `platform-consensus`.
 
 ## Adapter & multi-database strategy
-- [partial] `adapter-db` bootsstraps Postgres + JSON file adapters; the JSON schema and documentation still need clarity.
-- [missing] Add MySQL adapter implementation to `adapter-db` plus advisory guidance on connection pooling/backpressure.
-- [missing] Build `platform-adapter` to wrap `adapter-db`, inject tenant context, and expose per-adapter readiness/health for `platform-observability`.
+- [done] `adapter-db` now wires Postgres, MySQL, and JSON file adapters and exposes `execute_script` for migration runners.
+- [done] `platform-adapter` wraps `adapter-db`, honors the JSON registry (`database/runtime-adapters.json`), and reports adapter readiness/health through its definitions snapshot.
+- [missing] Detail how `platform-adapter` consumes the JSON registry (driver metadata, optional `lease_resource_hint`, diagnostics tags) and how it maps those hints into `platform-consensus` leases so per-tenant adapters cannot be double-assigned.
 
 ## Runtime & sharding platform
 - [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; it still needs integration with the scheduler/runtime hop.
@@ -20,20 +20,20 @@ Status legend: [done], [partial], [missing]
 - [partial] `platform-adapter` wraps `adapter-db`, loads JSON adapter configs, and gates each tenant within consensus leases; verify health hooks in dashboards/tests.
 
 ## Migrations & admin surface
-- [partial] `platform-migrations` exists but needs a documented JSON config + CLI endpoints.
-- [missing] Add REST/CLI endpoints in `app-admin-api` to list tenant migration status, run new migrations, roll back, and inspect history.
+- [done] `platform-migrations` now tracks per-tenant migration state, acquires consensus leases, and exposes `MigrationStatus` w/ lease metadata.
+- [done] `app-admin-api` surfaces `/api/admin/tenants/{tenant_id}/migrations`, `/run`, and `/rollback` so operators can launch tenancy-safe migration runs.
 - [missing] Update `scripts/rust/live-rust-cutover-check.ps1` to call migration endpoints and verify tenant health before smoke tests.
 
 ## Tests & benchmarks
-- [missing] Add tenant isolation integration tests covering HTTP, queue workers, and multi-tenant guard failure paths.
+- [partial] Tenant isolation and migration guard tests now cover the admin API flows and migration runner, but broader queue/HTTP isolation suites remain outstanding.
 - [missing] Add lease contention/resilience tests targeting `platform-consensus`.
-- [missing] Add migration rollback/race tests to `platform-migrations`.
-- [missing] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests.
+- [done] `platform-migrations` regression suite now covers rollback paths through `MigrationRunner`.
+- [missing] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers still need real backends).
 - [missing] Add runtime leak/performance tests for `platform-worker-runtime`.
-- [partial] The new 1M-action benchmark resides in `crates/benchmark-actions`; capture and share results under `specification/validation-reports/1m-action-benchmark.md`.
+- [done] The 1M-action benchmark has a fresh run recorded under `specification/validation-reports/1m-action-benchmark.md`.
 
 ## Documentation & migration tracking
-- [partial] `docs/architecture.md` now points to the new platform plan, but the legacy `spec.md`/`spec-main.pdf` still need archiving or rewriting.
-- [partial] `specification/spec-rust-backend.md` and `spec-rust-crate-partition.md` describe the plan; keep them aligned with `docs/rust-backend-plan.md`.
-- [missing] Consolidate all Node-era docs (deployment guides, phase playbooks, quick references) into the Rust-focused doc set and mark the old documents as archived.
-- [missing] Document the 1M-action benchmark process plus consensus/migration validation reports under `specification/validation-reports/`.
+- [partial] `docs/architecture.md` now highlights the Rust platform plan and the new adapter/migration endpoints; the legacy Node docs still await archival.
+- [partial] `specification/spec-rust-backend.md` and `spec-rust-crate-partition.md` continue to capture the crate layout; keep them synchronized with `docs/rust-backend-plan.md`.
+- [done] Legacy Node-era docs are cataloged in `docs/LEGACY_NODE_ARCHIVE.md`, so updates should target the Rust documentation instead.
+- [done] The 1M-action benchmark (see `specification/validation-reports/1m-action-benchmark.md`) now documents the latest run and stability notes.

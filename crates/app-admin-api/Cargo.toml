@@ -5,11 +5,16 @@ edition = "2021"
 
 [dependencies]
 axum = { workspace = true }
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+platform-adapter = { path = "../platform-adapter" }
+platform-consensus = { path = "../platform-consensus" }
+platform-migrations = { path = "../platform-migrations" }
+platform-tenancy = { path = "../platform-tenancy" }
 serde = { workspace = true }
-tokio = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 
 [dev-dependencies]
 hyper = "0.14"

@@ -9,7 +9,8 @@ This is the single-page overview of the Rust backend infrastructure, its current
 - `platform-worker-runtime`: supplies the shared executor/leak instrumentation for chat/notifications/email/analytics workers, capturing tenant context, queue depth, and graceful shutdown gating.
 - `platform-adapter`: wraps `adapter-db` with JSON configuration + per-tenant consensus lease guards, producing health metadata so each adapter is ready for instrumentation dashboards.
 - `platform-sharding`: maintains shard metadata, leader assignments, and tenant placement data so workers and schedulers know which tenants/shards they serve; it relies on `platform-consensus` leases for guarded leadership.
-- `adapter-db`: runtime-configurable adapter registry; currently supports Postgres + JSON file drivers and is being extended with MySQL/JSON schema-backed options.
+  - `adapter-db`: runtime-configurable adapter registry; the Postgres adapter has basic wiring and the JSON file backend can load tenant dumps, but the MySQL branch currently still instantiates a `tokio_postgres` client and lacks a real `mysql_async`/pool-backed implementation.
+    Documenting the adapter registry JSON schema (per-driver `driver`, `tenant`, `url`/`path`, plus optional `lease_resource_hint` or driver metadata that ties back to consensus guards) will make it possible to expose diagnostics and gate leases more reliably.
 - `platform-migrations`: tenant-aware migration runner that will be exposed via the admin surface and CLI; it relies on `platform-consensus` to prevent concurrent schema changes.
 - `platform-config`, `platform-observability`, `platform-db`, `platform-cache`, `platform-events`, `platform-auth`, `platform-errors`, `platform-proto`, `platform-common`: shared infra helpers for configuration, logging, telemetry, persistence, caches, pub/sub, authentication, and protobuf contracts.
 - `app-*`, `game-*`, `adapter-provider-*`: the feature crates that depend on the platform layer to expose APIs, workers, and domain logic in Rust-only binaries.
@@ -21,12 +22,15 @@ This is the single-page overview of the Rust backend infrastructure, its current
 4. **Thread/runtime stability**: `platform-worker-runtime` will give each worker binary consistent graceful shutdown, leak detection, observability wiring, and memory/CPU caps to avoid stray nodes taking down the cluster under tenant stress.
 
 ## Adapter Configuration and Multi-Database Support
-- `adapter-db` is configured via JSON files, e.g.:
+- `adapter-db` is configured via `database/runtime-adapters.json`. For local dev we currently point the JSON adapter to `database/tenants/tenant-default.json`:
   ```json
   [
-    { "name": "tenant-default", "driver": "postgres", "url": "postgres://...", "tenant": "default" },
-    { "name": "tenant-staging", "driver": "mysql", "url": "mysql://...", "tenant": "staging" },
-    { "name": "tenant-dev", "driver": "jsonfile", "path": "./tenant-dev.json", "tenant": "dev" }
+    {
+      "name": "tenant-default-json",
+      "driver": "jsonfile",
+      "tenant": "tenant-default",
+      "path": "database/tenants/tenant-default.json"
+    }
   ]
   ```
 - The `platform-adapter` crate (planned) will centralize adapter lifecycle, inject tenant context, enforce consensus guards, and expose health/readiness for each adapter.
@@ -38,6 +42,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
   1. Acquire a `platform-consensus` lease per tenant so migrations never collide.
   2. Expose status and control (run, rollback, skip) via new endpoints in `app-admin-api`.
   3. Hook into the live-cutover validation script (`scripts/rust/live-rust-cutover-check.ps1`) and CLI helpers so operators can assert that each tenant’s migrations succeeded before retiring Node services.
+- `app-admin-api` now exposes `/api/admin/tenants/{tenant_id}/migrations`, `/run`, and `/rollback` so operators can highlight tenant statuses and trigger `platform-migrations` actions from the dashboard or automation scripts.
 - Migration runs should be observable (logs + metrics) and annotated with the tenant/lease/shard metadata for easier post-mortem.
 
 ## Observability and Fail-Safe Processing
@@ -45,6 +50,8 @@ This is the single-page overview of the Rust backend infrastructure, its current
 - Lease transitions (acquire, renew, release, fail) should emit metrics that `platform-observability` collects, allowing auto-failover dashboards to trigger actions or alerts before a tenant loses access.
 - Worker runtime instrumentation (thread counts, queue depth, blocking durations) plugs into `platform-worker-runtime` for consistent fail-safe wiring.
 - Adapters must report health/readiness for each tenant driver so `platform-observability` can detect partial adapter outages (Postgres vs MySQL, etc.).
+
+**Legacy documents:** Node-era guides live in `docs/LEGACY_NODE_ARCHIVE.md`; do not edit those files, and rely on the Rust docs listed above for current operations.
 
 ## TODO
 1. Document the JSON schema and runtime discovery for `AdapterRegistry`, including how `platform-adapter` selects drivers per tenant and environment.

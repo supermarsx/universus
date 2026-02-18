@@ -3,10 +3,17 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use anyhow::{Context, Result};
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
+use platform_adapter::{PlatformAdapterDefinition, PlatformAdapterRegistry};
+use platform_consensus::LeaseCoordinator;
+use platform_migrations::{MigrationRunner, MigrationStatus};
+use platform_tenancy::{TenantAccessLevel, TenantContext};
 use serde::{Deserialize, Serialize};
+use tokio::time::Duration;
 
 const SERVICE_NAME: &str = "app-admin-api";
 const DEFAULT_PORT: u16 = 3001;
@@ -16,10 +23,15 @@ struct AppState {
     settings: Arc<Mutex<SettingsPayload>>,
     incidents: Arc<Mutex<Vec<IncidentPayload>>>,
     admin_ops: Arc<Mutex<AdminOpsState>>,
+    adapter_registry: Arc<PlatformAdapterRegistry>,
+    migration_runner: Arc<MigrationRunner>,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+impl AppState {
+    fn new_with_services(
+        adapter_registry: Arc<PlatformAdapterRegistry>,
+        migration_runner: Arc<MigrationRunner>,
+    ) -> Self {
         Self {
             settings: Arc::new(Mutex::new(SettingsPayload::default())),
             incidents: Arc::new(Mutex::new(vec![IncidentPayload {
@@ -30,7 +42,21 @@ impl Default for AppState {
                 created_at: "2026-02-13T00:00:00Z".to_string(),
             }])),
             admin_ops: Arc::new(Mutex::new(AdminOpsState::default())),
+            adapter_registry,
+            migration_runner,
         }
+    }
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        let lease_coordinator = Arc::new(LeaseCoordinator::new());
+        let adapter_registry = Arc::new(PlatformAdapterRegistry::empty(
+            lease_coordinator,
+            Duration::from_secs(15),
+        ));
+        let migration_runner = Arc::new(MigrationRunner::default());
+        Self::new_with_services(adapter_registry, migration_runner)
     }
 }
 
@@ -129,6 +155,8 @@ struct AdminStatusPayload {
     incidents_open: usize,
     incidents: Vec<IncidentPayload>,
     admin_state: AdminOpsSnapshot,
+    adapter_health: Vec<PlatformAdapterDefinition>,
+    migrations: Vec<MigrationStatus>,
 }
 
 #[derive(Serialize)]
@@ -153,6 +181,16 @@ struct CreateIncidentRequest {
 #[derive(Deserialize)]
 struct UpdateIncidentRequest {
     state: String,
+}
+
+#[derive(Deserialize)]
+struct MigrationControlRequest {
+    migration_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MigrationRollbackRequest {
+    migration_id: String,
 }
 
 #[derive(Clone)]
@@ -207,8 +245,10 @@ struct AdminOpsSnapshot {
 }
 
 fn app_router() -> Router {
-    let state = AppState::default();
+    app_with_state(AppState::default())
+}
 
+fn app_with_state(state: AppState) -> Router {
     let admin_router = Router::new()
         .route("/dashboard", get(admin_dashboard))
         .route("/users", get(admin_users))
@@ -228,7 +268,19 @@ fn app_router() -> Router {
         .route("/maintenance", get(get_maintenance))
         .route("/events", get(admin_events))
         .route("/status/incidents", post(create_incident))
-        .route("/status/incidents/:id", patch(update_incident));
+        .route("/status/incidents/:id", patch(update_incident))
+        .route(
+            "/tenants/:tenant_id/migrations",
+            get(list_tenant_migrations),
+        )
+        .route(
+            "/tenants/:tenant_id/migrations/run",
+            post(run_tenant_migration),
+        )
+        .route(
+            "/tenants/:tenant_id/migrations/rollback",
+            post(rollback_tenant_migration),
+        );
 
     Router::new()
         .route("/health", get(health))
@@ -391,6 +443,9 @@ async fn admin_status(State(state): State<AppState>) -> Json<Envelope<AdminStatu
         .filter(|incident| incident.state == "open")
         .count();
 
+    let adapter_health = state.adapter_registry.health_snapshot();
+    let migrations = state.migration_runner.list_all().await;
+
     Json(Envelope {
         status: "ok",
         data: AdminStatusPayload {
@@ -398,6 +453,8 @@ async fn admin_status(State(state): State<AppState>) -> Json<Envelope<AdminStatu
             incidents_open,
             incidents,
             admin_state,
+            adapter_health,
+            migrations,
         },
     })
 }
@@ -422,6 +479,69 @@ async fn admin_events() -> Json<Envelope<EventsPayload>> {
             ],
         },
     })
+}
+
+async fn list_tenant_migrations(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+) -> Json<Envelope<Vec<MigrationStatus>>> {
+    let statuses = state.migration_runner.list_for_tenant(&tenant_id).await;
+    Json(Envelope {
+        status: "ok",
+        data: statuses,
+    })
+}
+
+async fn run_tenant_migration(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    Json(payload): Json<MigrationControlRequest>,
+) -> Result<Json<Envelope<MigrationStatus>>, (StatusCode, String)> {
+    let context = TenantContext {
+        tenant_id: tenant_id.clone(),
+        tenant_name: Some(format!("tenant-{}", tenant_id)),
+        access_level: TenantAccessLevel::Admin,
+    };
+    let lease = state
+        .adapter_registry
+        .acquire_adapter_for_tenant(&context, Some("migration"))
+        .await
+        .map_err(|err: platform_adapter::PlatformAdapterError| {
+            (StatusCode::BAD_REQUEST, err.to_string())
+        })?;
+    let run_result: Result<MigrationStatus> = state
+        .migration_runner
+        .run_for_tenant(
+            &context,
+            lease.adapter.clone(),
+            payload.migration_id.as_deref(),
+        )
+        .await;
+    if let Some(token) = lease.lease {
+        state.adapter_registry.release_lease(token).await;
+    }
+    let migration =
+        run_result.map_err(|err: anyhow::Error| (StatusCode::CONFLICT, err.to_string()))?;
+    Ok(Json(Envelope {
+        status: "ok",
+        data: migration,
+    }))
+}
+
+async fn rollback_tenant_migration(
+    State(state): State<AppState>,
+    Path(tenant_id): Path<String>,
+    Json(payload): Json<MigrationRollbackRequest>,
+) -> Result<Json<Envelope<MigrationStatus>>, (StatusCode, String)> {
+    let status = state
+        .migration_runner
+        .rollback(&tenant_id, &payload.migration_id)
+        .await
+        .map_err(|err: anyhow::Error| (StatusCode::BAD_REQUEST, err.to_string()))?;
+    Ok(Json(Envelope {
+        status: "ok",
+        data: status,
+    }))
 }
 
 async fn create_incident(
@@ -593,10 +713,27 @@ fn listen_port(default_port: u16) -> u16 {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
-    let app = app_router();
+    let adapter_config_path = std::env::var("ADAPTER_REGISTRY_PATH")
+        .unwrap_or_else(|_| "database/runtime-adapters.json".into());
+    let adapter_lease_coordinator = Arc::new(LeaseCoordinator::new());
+    let adapter_registry = PlatformAdapterRegistry::from_json_file(
+        adapter_config_path,
+        adapter_lease_coordinator,
+        Duration::from_secs(30),
+    )
+    .await
+    .context("loading adapter registry")?;
+
+    let migration_runner = Arc::new(MigrationRunner::new(
+        Arc::new(LeaseCoordinator::new()),
+        Duration::from_secs(60),
+    ));
+
+    let state = AppState::new_with_services(Arc::new(adapter_registry), migration_runner);
+    let app = app_with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], listen_port(DEFAULT_PORT)));
     tracing::info!(service = SERVICE_NAME, %addr, "startup");
@@ -604,22 +741,74 @@ async fn main() {
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
-        .expect("server failed");
+        .context("server failed")?;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
     use axum::http::{Method, Request, StatusCode};
+    use axum::Router;
     use hyper::body::to_bytes;
     use serde_json::{json, Value};
     use tower::ServiceExt;
 
-    use super::app_router;
+    use std::env::temp_dir;
+    use std::sync::Arc;
+    use tokio::fs::{create_dir_all, File};
+    use tokio::io::AsyncWriteExt;
+    use tokio::time::Duration;
+
+    use platform_adapter::PlatformAdapterRegistry;
+    use platform_consensus::LeaseCoordinator;
+    use platform_migrations::{MigrationRunner, MigrationSpec};
+
+    use super::{app_router, app_with_state, AppState};
 
     async fn json_body(response: axum::response::Response) -> Value {
         let bytes = to_bytes(response.into_body()).await.expect("read body");
         serde_json::from_slice(&bytes).expect("parse json")
+    }
+
+    async fn migration_test_router(migration_id: &str) -> Router {
+        let dir = temp_dir().join("admin-migrations-test");
+        create_dir_all(&dir).await.expect("make dir");
+        let data_path = dir.join(format!("tenant-{}.json", migration_id));
+        let mut file = File::create(&data_path).await.expect("create data");
+        file.write_all(br#"{}"#).await.expect("write seed");
+        file.flush().await.expect("flush");
+
+        let config = serde_json::json!([{
+            "name": format!("tenant-{}", migration_id),
+            "driver": "jsonfile",
+            "tenant": "tenant-test",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let lease_coordinator = Arc::new(LeaseCoordinator::new());
+        let registry = PlatformAdapterRegistry::from_json(
+            &config,
+            lease_coordinator.clone(),
+            Duration::from_secs(1),
+        )
+        .await
+        .expect("adapter registry");
+
+        let runner = Arc::new(MigrationRunner::default());
+        runner
+            .register(MigrationSpec {
+                id: migration_id.into(),
+                tenant_id: "tenant-test".into(),
+                description: "integration".into(),
+                script: "SELECT 1".into(),
+            })
+            .await;
+
+        let state = AppState::new_with_services(Arc::new(registry), runner);
+        app_with_state(state)
     }
 
     #[tokio::test]
@@ -1082,5 +1271,71 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn tenant_migration_list_endpoint_returns_entries() {
+        let app = migration_test_router("lst-001").await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/tenants/tenant-test/migrations")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        let entries = body["data"].as_array().expect("array");
+        assert_eq!(entries[0]["migration_id"], "lst-001");
+    }
+
+    #[tokio::test]
+    async fn tenant_migration_run_endpoint_applies_migration() {
+        let app = migration_test_router("run-002").await;
+
+        let payload = json!({});
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/tenants/tenant-test/migrations/run")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["state"], "Applied");
+    }
+
+    #[tokio::test]
+    async fn tenant_migration_rollback_endpoint_marks_rolled_back() {
+        let app = migration_test_router("rb-003").await;
+
+        let payload = json!({ "migration_id": "rb-003" });
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/admin/tenants/tenant-test/migrations/rollback")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        assert_eq!(body["data"]["state"], "RolledBack");
     }
 }

@@ -10,3 +10,5 @@ anyhow = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 tokio-postgres = { version = "0.7", features = ["with-uuid-0_8"] }
 log = "0.4"
+async-trait = "0.1"
+mysql_async = "0.33"

@@ -4,7 +4,7 @@ use adapter_db::{bootstrap_from_json, AdapterEntry, AdapterRegistry};
 use anyhow::{Context, Result};
 use platform_consensus::{LeaseCoordinator, LeaseToken};
 use platform_tenancy::TenantContext;
-use serde_json;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::time::Duration;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PlatformAdapterDefinition {
     pub name: String,
     pub tenant: String,
@@ -74,6 +74,15 @@ impl PlatformAdapterDefinition {
 }
 
 impl PlatformAdapterRegistry {
+    pub fn empty(lease_coordinator: Arc<LeaseCoordinator>, lease_ttl: Duration) -> Self {
+        Self {
+            registry: Arc::new(AdapterRegistry::new()),
+            definitions: HashMap::new(),
+            lease_coordinator,
+            lease_ttl,
+        }
+    }
+
     pub async fn from_json_file<P: AsRef<Path>>(
         path: P,
         lease_coordinator: Arc<LeaseCoordinator>,
@@ -207,6 +216,42 @@ mod tests {
             .await
             .expect("adapter ready");
         assert_eq!(lease.definition.tenant, "tenant-a");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn health_snapshot_reports_definitions() -> Result<()> {
+        let dir = temp_dir().join("platform-adapter-test-health");
+        let path = dir.join("adapter.json");
+        tokio::fs::create_dir_all(&dir).await?;
+        let mut file = File::create(&path).await?;
+        let data_path = dir.join("tenant-data.json");
+        let mut data_file = File::create(&data_path).await?;
+        data_file.write_all(br#"{}"#).await?;
+        data_file.flush().await?;
+
+        let config = serde_json::json!([
+            {
+                "name": "health-json",
+                "driver": "jsonfile",
+                "tenant": "tenant-health",
+                "path": data_path.to_string_lossy()
+            }
+        ]);
+        file.write_all(config.to_string().as_bytes()).await?;
+        file.flush().await?;
+
+        let lease_coordinator = Arc::new(LeaseCoordinator::new());
+        let registry = PlatformAdapterRegistry::from_json_file(
+            &path,
+            lease_coordinator,
+            Duration::from_secs(1),
+        )
+        .await?;
+
+        let snapshot = registry.health_snapshot();
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].tenant, "tenant-health");
         Ok(())
     }
 }

@@ -75,4 +75,27 @@ mod tests {
             .expect("acquire again");
         assert_eq!(lease2.owner, "worker2");
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn lease_expires_after_ttl() {
+        let coordinator = LeaseCoordinator::new();
+        let ttl = Duration::from_secs(5);
+        let resource = "resource";
+        let first = coordinator
+            .acquire(resource, "owner-a", ttl)
+            .await
+            .expect("initial acquire");
+
+        tokio::time::advance(Duration::from_secs(2)).await;
+        let conflict = coordinator.acquire(resource, "owner-b", ttl).await;
+        assert!(conflict.is_err(), "lease still valid before ttl");
+
+        tokio::time::advance(Duration::from_secs(5)).await;
+        let second = coordinator
+            .acquire(resource, "owner-b", ttl)
+            .await
+            .expect("lease expired");
+        assert_eq!(second.owner, "owner-b");
+        assert_eq!(second.resource, first.resource);
+    }
 }
