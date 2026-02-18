@@ -54,6 +54,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
 - Logging must automatically include tenant IDs, lease details, shard assignments, and worker runtime identifiers. `platform-observability` wires tracing/metrics across all platform and app crates, and these tags must propagate through `app-*` and worker crates.
 - Lease transitions (acquire, renew, release, fail) should emit metrics that `platform-observability` collects, allowing auto-failover dashboards to trigger actions or alerts before a tenant loses access; the required validation scenarios are captured in `docs/consensus-tests.md`.
 - Worker runtime instrumentation (thread counts, queue depth, blocking durations) plugs into `platform-worker-runtime` for consistent fail-safe wiring and is documented under `docs/worker-runtime-tests.md` so operators can reproduce the leak/performance suites.
+- Use `scripts/rust/run-consensus-worker-validation.ps1` to execute the consensus and worker runtime automation along with the optional adapter parity suite; pass `-NoDocker` when running on machines without Docker.
 - Adapters must report health/readiness for each tenant driver so `platform-observability` can detect partial adapter outages (Postgres vs MySQL, etc.).
 
 **Legacy documents:** Node-era guides live in `docs/LEGACY_NODE_ARCHIVE.md`; do not edit those files, and rely on the Rust docs listed above for current operations.

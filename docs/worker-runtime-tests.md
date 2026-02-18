@@ -19,6 +19,7 @@
 ## Execution guidance
 
 - Implement these tests as integration suites under `crates/platform-worker-runtime/tests` or as dedicated scripts referencing `platform-worker-runtime::tests`.  
+- The `scripts/rust/run-consensus-worker-validation.ps1` harness runs the worker runtime suites in combination with the consensus and adapter parity commands (it accepts `-NoDocker` to skip SQL tests).  
 - Use `tokio::runtime::Builder` to configure the worker runtime with deterministic metrics/queue thresholds for tests.  
 - Leverage existing benchmarking infrastructure (`crates/benchmark-actions`) to run heavy workloads while capturing the leak/performance metrics.  
 - Collect logs via `-- --nocapture` and parse the JSON metrics if necessary to assert the desired thresholds.

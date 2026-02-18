@@ -25,6 +25,7 @@
 2. **Telemetry validation**: Use the `logs` or `metrics` output from `platform-observability` to assert that each scenario emits the expected `lease`/`routing` events. The tests may run with `-- --nocapture` and parse JSON logs if necessary.
 3. **Failure injection**: Introduce simulated worker crashes by sending `SIGTERM` (or aborting the async task) to `platform-worker-runtime`; ensure `platform-consensus` rebalances leases immediately and `platform-tenant-routing` routes new requests to the new owner.
 4. **Benchmark (1M action)**: Extend the existing `crates/benchmark-actions` scenario to capture lease renewals and backpressure metrics when tenants issue millions of actions. Compare the `lease_owner` tags before/after the run to spot contention or duplicates.
+5. **Runbook**: Use `scripts/rust/run-consensus-worker-validation.ps1` as the CLI harness that executes the consensus lease tests, worker runtime threshold suites, and optional adapter-db SQL parity flows (when Docker is available). Pass `-NoDocker` to skip the SQL parity portion on machines that cannot reach Docker.
 
 ## Observability & docs
 

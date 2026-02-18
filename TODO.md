@@ -32,6 +32,7 @@ Status legend: [done], [partial], [missing]
 - [missing] Add runtime leak/performance tests for `platform-worker-runtime`.
 - [done] The 1M-action benchmark has a fresh run recorded under `specification/validation-reports/1m-action-benchmark.md`.
 - [partial] Ship the `platform-migrations` transfer CLI plus docs to show how to export/import tenants across adapters (JSON/SQLite and the upcoming SQL drivers); capture the new flow in testing docs and scripts.
+- [done] Provide a consensus + worker runtime validation harness under `scripts/rust/run-consensus-worker-validation.ps1` and document its usage.
 - [missing] Draft `specification/test-scenarios.md` so every integration/benchmark scenario (tenants, adapter parity, consensus, simulated game flows, JSON-only developer mode) is tracked and runnable.
 - [missing] Surface automation/scripts for firing up a Rust instance with only the JSON adapter (`database/runtime-adapters.json`) so smoke/integration suites run without external Postgres/MySQL dependencies.
 

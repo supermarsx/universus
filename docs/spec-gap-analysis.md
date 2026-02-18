@@ -16,7 +16,7 @@
 | **Documentation consolidation** | Partial | Multiple docs exist (`docs/architecture.md`, `docs/json-dev-mode.md`, `specification/test-scenarios.md`), but a single canonical handbook referencing the adapter parity matrix, migration-transfer CLI, and outstanding regression tests still needs publication; this file should become that reference when the remaining gaps close. |
 
 ## Next actions
-1. Keep `docs/json-dev-mode.md`, `docs/architecture.md`, `docs/tenant-routing.md`, `docs/consensus-tests.md`, `docs/worker-runtime-tests.md`, and `specification/test-scenarios.md` synchronized with the parity suites, migration-transfer CLI, tenant-routing validation, lease contention/resilience guides, and worker runtime leak/performance coverage so operators can reproduce the documented flows without Docker gaps.  
+1. Keep `docs/json-dev-mode.md`, `docs/architecture.md`, `docs/tenant-routing.md`, `docs/consensus-tests.md`, `docs/worker-runtime-tests.md`, and `specification/test-scenarios.md` synchronized with the parity suites, migration-transfer CLI, tenant-routing validation, lease contention/resilience guides, worker runtime leak/performance coverage, and the `scripts/rust/run-consensus-worker-validation.ps1` harness so operators can reproduce the documented flows without Docker gaps.  
 2. Record the remaining contractor work (consensus lease contention suites, `platform-worker-runtime` leak/performance coverage, scheduler/router validation, adapter diagnostics) inside this analysis and `TODO.md` so nothing slips through the cracks.  
 3. Determine when to promote this file into the canonical “Rust backend status” page, retire duplicate Node-era guides, and point readers at the consolidated docs once the runtime crates/tests finish landing.  
 
