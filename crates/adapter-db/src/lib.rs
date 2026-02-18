@@ -11,11 +11,17 @@ use std::{
     any::Any,
     collections::HashMap,
     fs,
+    io::ErrorKind,
     path::{Path, PathBuf},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, sync::Mutex, task};
+use tokio::{
+    fs::{create_dir_all, OpenOptions},
+    io::AsyncWriteExt,
+    sync::Mutex,
+    task,
+};
 use tokio_postgres::{Config as PgConfig, NoTls};
 
 #[async_trait]
@@ -35,10 +41,14 @@ pub enum AdapterDriver {
     Postgres {
         url: String,
         tenant: String,
+        #[serde(default)]
+        log_path: Option<String>,
     },
     Mysql {
         url: String,
         tenant: String,
+        #[serde(default)]
+        log_path: Option<String>,
     },
     JsonFile {
         path: String,
@@ -99,7 +109,11 @@ pub async fn bootstrap_from_json(config_json: &str) -> Result<AdapterRegistry> {
     let registry = AdapterRegistry::new();
     for entry in entries {
         let adapter: Arc<dyn DatabaseAdapter> = match entry.driver {
-            AdapterDriver::Postgres { url, tenant } => {
+            AdapterDriver::Postgres {
+                url,
+                tenant,
+                log_path,
+            } => {
                 let mut cfg = PgConfig::new();
                 cfg.host(&url);
                 let (client, connection) = cfg.connect(NoTls).await?;
@@ -108,21 +122,33 @@ pub async fn bootstrap_from_json(config_json: &str) -> Result<AdapterRegistry> {
                         error!("postgres connection error: {err}");
                     }
                 });
+                let log_pathbuf = log_path
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| default_log_path("postgres", &tenant));
                 Arc::new(PostgresAdapter {
                     name: entry.name.clone(),
                     tenant,
                     info: url.clone(),
                     client: Arc::new(client),
+                    log_path: log_pathbuf,
                 })
             }
-            AdapterDriver::Mysql { url, tenant } => {
+            AdapterDriver::Mysql {
+                url,
+                tenant,
+                log_path,
+            } => {
                 let opts = Opts::from_url(&url)?;
                 let pool = Pool::new(opts);
+                let log_pathbuf = log_path
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| default_log_path("mysql", &tenant));
                 Arc::new(MysqlAdapter {
                     name: entry.name.clone(),
                     tenant,
                     info: url.clone(),
                     pool,
+                    log_path: log_pathbuf,
                 })
             }
             AdapterDriver::JsonFile {
@@ -173,6 +199,13 @@ pub struct PostgresAdapter {
     tenant: String,
     info: String,
     client: Arc<tokio_postgres::Client>,
+    log_path: PathBuf,
+}
+
+impl PostgresAdapter {
+    fn log_path(&self) -> &Path {
+        &self.log_path
+    }
 }
 
 #[allow(dead_code)]
@@ -181,6 +214,13 @@ pub struct MysqlAdapter {
     tenant: String,
     info: String,
     pool: Pool,
+    log_path: PathBuf,
+}
+
+impl MysqlAdapter {
+    fn log_path(&self) -> &Path {
+        &self.log_path
+    }
 }
 
 #[allow(dead_code)]
@@ -241,7 +281,12 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn execute_script(&self, script: &str) -> Result<String> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let header = format!("-- migration {} @ {} --\n", self.name, timestamp.as_secs());
         self.client.batch_execute(script).await?;
+        append_log(&self.log_path, &header, script).await?;
         Ok(format!("postgres:{}:{}", self.tenant, script.len()))
     }
 }
@@ -273,8 +318,13 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn execute_script(&self, script: &str) -> Result<String> {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let header = format!("-- migration {} @ {} --\n", self.name, timestamp.as_secs());
         let mut conn = self.pool.get_conn().await?;
         conn.query_drop(script).await?;
+        append_log(&self.log_path, &header, script).await?;
         Ok(format!("mysql:{}:{}", self.tenant, script.len()))
     }
 }
@@ -328,15 +378,7 @@ impl DatabaseAdapter for JsonFileAdapter {
         file.write_all(b"\n").await?;
         file.flush().await?;
 
-        let mut log_file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(self.log_path())
-            .await?;
-        log_file.write_all(header.as_bytes()).await?;
-        log_file.write_all(script.as_bytes()).await?;
-        log_file.write_all(b"\n").await?;
-        log_file.flush().await?;
+        append_log(self.log_path(), &header, script).await?;
 
         Ok(format!("json:{}:{}", self.tenant, script.len()))
     }
@@ -396,6 +438,7 @@ impl DatabaseAdapter for SqliteAdapter {
         file.write_all(script_owned.as_bytes()).await?;
         file.write_all(b"\n").await?;
         file.flush().await?;
+        append_log(&log_path, &header, script_owned.as_str()).await?;
 
         Ok(format!("sqlite:{}:{}", tenant, script_owned.len()))
     }
@@ -404,6 +447,36 @@ impl DatabaseAdapter for SqliteAdapter {
 pub async fn load_json_config<P: AsRef<Path>>(path: P) -> Result<String> {
     let contents = fs::read_to_string(path)?;
     Ok(contents)
+}
+
+fn default_log_path(driver: &str, tenant: &str) -> PathBuf {
+    PathBuf::from("database")
+        .join("logs")
+        .join(format!("{tenant}-{driver}.sql"))
+}
+
+async fn append_log(path: &Path, header: &str, script: &str) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent).await?;
+    }
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .await?;
+    file.write_all(header.as_bytes()).await?;
+    file.write_all(script.as_bytes()).await?;
+    file.write_all(b"\n").await?;
+    file.flush().await?;
+    Ok(())
+}
+
+async fn read_log(path: &Path) -> Result<String> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(contents) => Ok(contents),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(String::new()),
+        Err(err) => Err(err.into()),
+    }
 }
 
 pub struct MigrationSnapshot {
@@ -422,13 +495,13 @@ pub async fn export_migration_snapshot(
 
     let script_log = if let Some(json_adapter) = adapter.as_any().downcast_ref::<JsonFileAdapter>()
     {
-        tokio::fs::read_to_string(json_adapter.log_path())
-            .await
-            .unwrap_or_default()
+        read_log(json_adapter.log_path()).await?
     } else if let Some(sqlite_adapter) = adapter.as_any().downcast_ref::<SqliteAdapter>() {
-        tokio::fs::read_to_string(sqlite_adapter.log_path())
-            .await
-            .unwrap_or_default()
+        read_log(sqlite_adapter.log_path()).await?
+    } else if let Some(pg_adapter) = adapter.as_any().downcast_ref::<PostgresAdapter>() {
+        read_log(pg_adapter.log_path()).await?
+    } else if let Some(mysql_adapter) = adapter.as_any().downcast_ref::<MysqlAdapter>() {
+        read_log(mysql_adapter.log_path()).await?
     } else {
         return Err(anyhow!("export unsupported for driver {driver}"));
     };
@@ -454,6 +527,9 @@ mod tests {
     use rusqlite::Connection;
     use std::env::temp_dir;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use testcontainers::core::WaitFor;
+    use testcontainers::runners::AsyncRunner;
+    use testcontainers::GenericImage;
     use tokio::io::AsyncWriteExt;
 
     #[tokio::test]
@@ -626,6 +702,117 @@ mod tests {
         let value: i64 =
             conn.query_row("SELECT id FROM mig_test LIMIT 1;", [], |row| row.get(0))?;
         assert_eq!(value, 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn postgres_adapter_executes_script_and_logs() -> Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = temp_dir().join(format!("adapter-db-postgres-{unique}"));
+        let log_path = dir.join("tenant-pg.log.sql");
+        tokio::fs::create_dir_all(&dir).await?;
+
+        let container = match GenericImage::new("postgres", "15")
+            .with_env_var("POSTGRES_PASSWORD", "docker")
+            .with_wait_for(WaitFor::message_on_stdout(
+                "database system is ready to accept connections",
+            ))
+            .with_exposed_port(5432)
+            .start()
+            .await
+        {
+            Ok(container) => container,
+            Err(err) => {
+                eprintln!("Skipping Postgres integration test: {err}");
+                return Ok(());
+            }
+        };
+        let port = container.get_host_port_ipv4(5432).await?;
+        let url = format!("postgres://postgres:docker@127.0.0.1:{port}/postgres");
+
+        let config = serde_json::json!([
+            {
+                "name": "pg-adapter",
+                "driver": "postgres",
+                "tenant": "tenant-pg",
+                "url": url,
+                "logPath": log_path.to_string_lossy()
+            }
+        ])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await?;
+        let adapter = registry
+            .get("pg-adapter")
+            .await
+            .expect("adapter registered");
+
+        adapter
+            .execute_script(
+                "CREATE TABLE mig_pg (id SERIAL PRIMARY KEY);\nINSERT INTO mig_pg (id) VALUES (1);",
+            )
+            .await?;
+
+        let contents = tokio::fs::read_to_string(&log_path).await?;
+        assert!(contents.contains("CREATE TABLE"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn mysql_adapter_executes_script_and_logs() -> Result<()> {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = temp_dir().join(format!("adapter-db-mysql-{unique}"));
+        let log_path = dir.join("tenant-mysql.log.sql");
+        tokio::fs::create_dir_all(&dir).await?;
+
+        let container = match GenericImage::new("mysql", "8")
+            .with_env_var("MYSQL_ROOT_PASSWORD", "root")
+            .with_env_var("MYSQL_DATABASE", "mysql")
+            .with_wait_for(WaitFor::message_on_stdout("ready for connections"))
+            .with_exposed_port(3306)
+            .start()
+            .await
+        {
+            Ok(container) => container,
+            Err(err) => {
+                eprintln!("Skipping MySQL integration test: {err}");
+                return Ok(());
+            }
+        };
+        let port = container.get_host_port_ipv4(3306).await?;
+        let url = format!("mysql://root:root@127.0.0.1:{port}/mysql");
+
+        let config = serde_json::json!([
+            {
+                "name": "mysql-adapter",
+                "driver": "mysql",
+                "tenant": "tenant-mysql",
+                "url": url,
+                "logPath": log_path.to_string_lossy()
+            }
+        ])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await?;
+        let adapter = registry
+            .get("mysql-adapter")
+            .await
+            .expect("adapter registered");
+
+        adapter
+            .execute_script("CREATE TABLE mig_mysql (id INT PRIMARY KEY AUTO_INCREMENT);\nINSERT INTO mig_mysql (id) VALUES (1);")
+            .await?;
+
+        let contents = tokio::fs::read_to_string(&log_path).await?;
+        assert!(contents.contains("CREATE TABLE"));
 
         Ok(())
     }

@@ -13,3 +13,5 @@ log = "0.4"
 async-trait = "0.1"
 mysql_async = "0.33"
 rusqlite = { version = "0.31", features = ["bundled"] }
+[dev-dependencies]
+testcontainers = "0.17"

@@ -28,7 +28,7 @@ Status legend: [done], [partial], [missing]
 - [partial] Tenant isolation and migration guard tests now cover the admin API flows and migration runner, but broader queue/HTTP isolation suites remain outstanding.
 - [missing] Add lease contention/resilience tests targeting `platform-consensus`.
 - [done] `platform-migrations` regression suite now covers rollback paths through `MigrationRunner`.
-- [missing] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers still need real backends).
+- [partial] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers now have test-container coverage but production adapters still need operational validation).
 - [missing] Add runtime leak/performance tests for `platform-worker-runtime`.
 - [done] The 1M-action benchmark has a fresh run recorded under `specification/validation-reports/1m-action-benchmark.md`.
 - [partial] Ship the `platform-migrations` transfer CLI plus docs to show how to export/import tenants across adapters (JSON/SQLite and the upcoming SQL drivers); capture the new flow in testing docs and scripts.

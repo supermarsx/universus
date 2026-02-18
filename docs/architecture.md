@@ -63,6 +63,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
 4. Implement the remaining runtime crates (`platform-scheduler`, `platform-worker-runtime`, `platform-adapter`) to standardize tenancy, threading, consensus, and adapter lifecycle; `platform-tenant-routing` and `platform-sharding` are already in place.
 5. Document the `platform-tenant-routing` interface (route summaries, quota/per-tenant rate limits, optional lease acquisition) plus the test harness that validates tenant isolation, queue pacing/backpressure, consensus lease failures, and route decision recomputation.
 6. Capture the tenant-routing-focused test cases described in `docs/rust-backend-plan.md` inside `specification/validation-reports/` once implemented.
+7. Use `docs/spec-gap-analysis.md` as the current canonical state tracker so readers can see which adapter/migration/routing gaps remain before retiring the legacy Node surface.
 7. Expand docs/tests for multi-tenancy, consensus, migrations, adapters, and the 1M action benchmark (see `crates/benchmark-actions`).
 
 This page links back to `docs/rust-backend-plan.md`, which contains the cross-cutting plan for tests, docs, and benchmarks.

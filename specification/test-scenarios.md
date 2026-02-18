@@ -3,6 +3,8 @@
 ## Purpose
 Track the high-level coverage for the Rust-only backend so every integration, benchmark, and simulated journey is cataloged in one place. This document mirrors `docs/rust-backend-plan.md`, extends the `TODO.md` targets, and points operators toward the local JSON-backed startup flow described in `docs/json-dev-mode.md`.
 
+Use `docs/spec-gap-analysis.md` to see the current spec gaps (adapter parity, consensus leases, scheduler coverage) and plot follow-up work.
+
 ## Integration Suites
 
 | Scenario | Source | Coverage |
