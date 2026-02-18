@@ -34,16 +34,19 @@ This is the single-page overview of the Rust backend infrastructure, its current
   ]
   ```
 - The `platform-adapter` crate (planned) will centralize adapter lifecycle, inject tenant context, enforce consensus guards, and expose health/readiness for each adapter.
-- `adapter-db` must support Postgres, MySQL, and JSON file drivers; it should expose diagnostics (`trace_id`, `tenant`, `driver`) so dashboards can correlate to tenant/lease metrics.
-- App-level crates should rely on `platform-adapter` rather than instantiating their own `tokio_postgres` clients. Each adapter registers itself with `platform-db`/`platform-config` via the shared registry.
+ - `adapter-db` supports Postgres, MySQL, JSON file, and a new SQLite driver; it exposes diagnostics (`trace_id`, `tenant`, `driver`, `path`) so dashboards can correlate to tenant/lease metrics and storage choices.
+ - App-level crates should rely on `platform-adapter` rather than instantiating their own `tokio_postgres` clients. Each adapter registers itself with `platform-db`/`platform-config` via the shared registry.
+- The integration coverage described in `specification/test-scenarios.md` and the JSON-only workflow captured in `docs/json-dev-mode.md` explain how to verify the adapter shards without an external database.
 
 ## Migration Runner & Admin Integration
 - `platform-migrations` is the tenant-aware migration runner. It must:
   1. Acquire a `platform-consensus` lease per tenant so migrations never collide.
   2. Expose status and control (run, rollback, skip) via new endpoints in `app-admin-api`.
   3. Hook into the live-cutover validation script (`scripts/rust/live-rust-cutover-check.ps1`) and CLI helpers so operators can assert that each tenant’s migrations succeeded before retiring Node services.
+- `scripts/rust/live-rust-cutover-check.ps1` now reads `database/runtime-adapters.json`, waits for the admin API, and queries `/api/admin/tenants/{tenant_id}/migrations` for each tenant to ensure there are no failed migrations before the cutover is declared healthy.
 - `app-admin-api` now exposes `/api/admin/tenants/{tenant_id}/migrations`, `/run`, and `/rollback` so operators can highlight tenant statuses and trigger `platform-migrations` actions from the dashboard or automation scripts.
 - Migration runs should be observable (logs + metrics) and annotated with the tenant/lease/shard metadata for easier post-mortem.
+- The new `cargo run -p platform-migrations --bin migration-transfer -- ...` binary exports a tenant’s script log and replays it on another adapter, giving ops a documented CLI for migrating between JSON/SQLite/Postgres backends before switching `database/runtime-adapters.json`.
 
 ## Observability and Fail-Safe Processing
 - Logging must automatically include tenant IDs, lease details, shard assignments, and worker runtime identifiers. `platform-observability` wires tracing/metrics across all platform and app crates, and these tags must propagate through `app-*` and worker crates.

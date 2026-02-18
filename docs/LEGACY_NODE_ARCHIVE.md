@@ -1,3 +1,23 @@
+### Removed Node-Era References
+The files listed below were referenced historically but have been deleted from this workspace because the Rust backend is the only supported stack from now on:
+
+- `ADMIN_SYSTEM_QUICK_START.md`
+- `ASSET_INVENTORY.md`
+- `BOT_SYSTEM_QUICK_REFERENCE.md`
+- `COMPLETE_TESTING_DEPLOYMENT_GUIDE.md`
+- `DEBRIS_SYSTEM_QUICK_REFERENCE.md`
+- `DEPLOYMENT_AND_TESTING_GUIDE.md`
+- `FINAL_DEPLOYMENT_GUIDE.md`
+- `i18n_a11y_audit.md`
+- `INTEGRATION_BACKEND_CORE.md`
+- `load-testing.md`
+- `OBSERVABILITY_API.md`
+- `PHASE5`–`PHASE9` guides (deployment, sharding, quick references) and all related seasonal/implementation notes
+- `PRODUCTION_DEPLOYMENT_GUIDE.md`
+- `QUICKSTART_NEW_FEATURES.md`
+- `STRIPE_INTEGRATION_GUIDE.md`
+- `VERIFICATION_AND_TESTING_GUIDE.md`
+
 # Legacy Node-Era Documentation (Do Not Edit)
 
 These guides reference the original Node/Express backend, deployment playbooks, and late-stage phase documents. They remain in the tree purely for historical context; all operational guidance for the Rust backend is now under `docs/rust-backend-plan.md`, `docs/architecture.md`, and the platform-specific specs.

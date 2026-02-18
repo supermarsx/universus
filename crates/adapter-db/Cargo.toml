@@ -12,3 +12,4 @@ tokio-postgres = { version = "0.7", features = ["with-uuid-0_8"] }
 log = "0.4"
 async-trait = "0.1"
 mysql_async = "0.33"
+rusqlite = { version = "0.31", features = ["bundled"] }

@@ -1,6 +1,6 @@
 //! Tenant-safe migration runner that acquires consensus leases and emits status for admin tooling.
 
-use adapter_db::DatabaseAdapter;
+use adapter_db::{export_migration_snapshot, import_migration_snapshot, DatabaseAdapter};
 use anyhow::{anyhow, Result};
 use platform_consensus::LeaseCoordinator;
 use platform_tenancy::TenantContext;
@@ -218,6 +218,44 @@ impl MigrationRunner {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MigrationTransferStatus {
+    pub tenant_id: String,
+    pub source_adapter: String,
+    pub source_driver: String,
+    pub target_adapter: String,
+    pub target_driver: String,
+    pub script_size: usize,
+    pub message: String,
+}
+
+pub struct MigrationTransfer;
+
+impl MigrationTransfer {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub async fn transfer(
+        &self,
+        source_adapter: Arc<dyn DatabaseAdapter>,
+        target_adapter: Arc<dyn DatabaseAdapter>,
+    ) -> Result<MigrationTransferStatus> {
+        let snapshot = export_migration_snapshot(source_adapter.clone()).await?;
+        let import_message = import_migration_snapshot(target_adapter.clone(), &snapshot).await?;
+
+        Ok(MigrationTransferStatus {
+            tenant_id: snapshot.tenant,
+            source_adapter: snapshot.name,
+            source_driver: snapshot.driver,
+            target_adapter: target_adapter.name().to_string(),
+            target_driver: target_adapter.driver_name().to_string(),
+            script_size: snapshot.script_log.len(),
+            message: import_message,
+        })
+    }
+}
+
 fn now_epoch_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -229,6 +267,7 @@ fn now_epoch_seconds() -> u64 {
 mod tests {
     use super::*;
     use adapter_db::bootstrap_from_json;
+    use rusqlite::Connection;
     use serde_json::json;
     use std::env::temp_dir;
     use tokio::fs::{create_dir_all, File};
@@ -301,6 +340,76 @@ mod tests {
             .await
             .expect("rollback succeed");
         assert_eq!(status.state, MigrationState::RolledBack);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn migration_transfer_copies_json_to_sqlite() -> Result<()> {
+        let dir = temp_dir().join("migration-transfer");
+        let json_path = dir.join("tenant-data.json");
+        let sqlite_path = dir.join("tenant-db.sqlite3");
+        let sqlite_log = dir.join("tenant-db.log.sql");
+        tokio::fs::create_dir_all(&dir).await?;
+
+        let mut file = File::create(&json_path).await?;
+        file.write_all(br#"{}"#).await?;
+        file.flush().await?;
+
+        let json_config = json!([
+            {
+                "name": "tenant-json",
+                "driver": "jsonfile",
+                "tenant": "tenant-migrate",
+                "path": json_path.to_string_lossy()
+            }
+        ])
+        .to_string();
+
+        let json_registry = bootstrap_from_json(&json_config).await?;
+        let json_adapter = json_registry
+            .get_for_tenant("tenant-migrate")
+            .await
+            .expect("json adapter");
+
+        json_adapter
+            .execute_script(
+                "CREATE TABLE mig_transfer (id INTEGER PRIMARY KEY);\nINSERT INTO mig_transfer (id) VALUES (42);",
+            )
+            .await?;
+
+        let sqlite_config = json!([
+            {
+                "name": "tenant-sqlite",
+                "driver": "sqlite",
+                "tenant": "tenant-migrate",
+                "path": sqlite_path.to_string_lossy(),
+                "logPath": sqlite_log.to_string_lossy()
+            }
+        ])
+        .to_string();
+
+        let sqlite_registry = bootstrap_from_json(&sqlite_config).await?;
+        let sqlite_adapter = sqlite_registry
+            .get_for_tenant("tenant-migrate")
+            .await
+            .expect("sqlite adapter");
+
+        let transfer = MigrationTransfer::new();
+        let status = transfer
+            .transfer(json_adapter, sqlite_adapter.clone())
+            .await?;
+
+        assert_eq!(status.tenant_id, "tenant-migrate");
+        assert_eq!(status.source_driver, "jsonfile");
+        assert_eq!(status.target_driver, "sqlite");
+        assert!(status.script_size > 0);
+
+        let conn = Connection::open(&sqlite_path)?;
+        let value: i64 = conn.query_row("SELECT id FROM mig_transfer LIMIT 1;", [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+        assert_eq!(value, 42);
+
         Ok(())
     }
 }

@@ -3,13 +3,88 @@
 Brings up Rust services via Docker Compose, waits for readiness, runs smoke and cutover validation.
 #>
 param(
-  [switch]$NoBuild
+  [switch]$NoBuild,
+  [string]$AdapterConfigPath = "database/runtime-adapters.json",
+  [int]$AdminPort = 3001
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+$adapterConfigPath = Join-Path $root $AdapterConfigPath
+$adminBaseUrl = "http://localhost:$AdminPort"
+
+function Get-ConfiguredTenants {
+  param([string]$ConfigPath)
+  if (-not (Test-Path $ConfigPath)) {
+    throw "Adapter registry $ConfigPath not found"
+  }
+  $raw = Get-Content -Path $ConfigPath -Raw
+  if (-not $raw) {
+    return @()
+  }
+  $entries = try {
+    ConvertFrom-Json $raw
+  } catch {
+    throw "Failed to parse adapter registry: $($_.Exception.Message)"
+  }
+  if (-not $entries) {
+    return @()
+  }
+  @($entries) | ForEach-Object {
+    $_.tenant
+  } | Where-Object { $_ } | Sort-Object -Unique
+}
+
+function Validate-TenantMigrations {
+  param(
+    [string]$BaseUrl,
+    [string[]]$Tenants
+  )
+  if (-not $Tenants -or $Tenants.Count -eq 0) {
+    Write-Host "No tenants configured in adapter registry; skipping migration validation."
+    return
+  }
+
+  foreach ($tenant in $Tenants) {
+    $uri = "$BaseUrl/api/admin/tenants/$tenant/migrations"
+    $attempt = 0
+    $success = $false
+    while (-not $success -and $attempt -lt 3) {
+      try {
+        $attempt++
+        $response = Invoke-WebRequest -Uri $uri -Method GET -TimeoutSec 5
+        $success = $true
+      } catch {
+        Write-Host "Retrying migrations status for tenant '$tenant' (attempt $attempt of 3)..."
+        Start-Sleep -Seconds 2
+      }
+    }
+    if (-not $success) {
+      throw "Unable to reach migration status for tenant '$tenant'"
+    }
+
+    $payload = $response | ConvertFrom-Json
+    $items = $payload.data
+    if (-not $items) {
+      Write-Host "[migrations] tenant '$tenant' has no recorded migrations."
+      continue
+    }
+
+    $failed = $items | Where-Object { $_.state -eq "Failed" }
+    if ($failed) {
+      throw "Tenant '$tenant' has failed migrations: $($failed | ForEach-Object { $_.migration_id } -join ', ')"
+    }
+
+    $pending = $items | Where-Object { $_.state -eq "Pending" }
+    if ($pending) {
+      Write-Host "[migrations] tenant '$tenant' has pending migrations: $($pending | ForEach-Object { $_.migration_id } -join ', ')"
+    } else {
+      Write-Host "[migrations] tenant '$tenant' migrations appear healthy."
+    }
+  }
+}
 
 Push-Location $root
 try {
@@ -28,6 +103,7 @@ try {
     @{ Name = "realtime-gateway"; Url = "http://localhost:4304/health" },
     @{ Name = "app-core-engine"; Url = "http://localhost:4307/health" }
   )
+  $readyChecks += @{ Name = "app-admin-api"; Url = "$adminBaseUrl/health" }
 
   foreach ($check in $readyChecks) {
     $ok = $false
@@ -57,6 +133,9 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "cutover validation failed"
   }
+
+  $tenants = Get-ConfiguredTenants -ConfigPath $adapterConfigPath
+  Validate-TenantMigrations -BaseUrl $adminBaseUrl -Tenants $tenants
 
   Write-Host "Live Rust cutover check completed successfully."
 }

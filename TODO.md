@@ -31,9 +31,13 @@ Status legend: [done], [partial], [missing]
 - [missing] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers still need real backends).
 - [missing] Add runtime leak/performance tests for `platform-worker-runtime`.
 - [done] The 1M-action benchmark has a fresh run recorded under `specification/validation-reports/1m-action-benchmark.md`.
+- [partial] Ship the `platform-migrations` transfer CLI plus docs to show how to export/import tenants across adapters (JSON/SQLite and the upcoming SQL drivers); capture the new flow in testing docs and scripts.
+- [missing] Draft `specification/test-scenarios.md` so every integration/benchmark scenario (tenants, adapter parity, consensus, simulated game flows, JSON-only developer mode) is tracked and runnable.
+- [missing] Surface automation/scripts for firing up a Rust instance with only the JSON adapter (`database/runtime-adapters.json`) so smoke/integration suites run without external Postgres/MySQL dependencies.
 
 ## Documentation & migration tracking
 - [partial] `docs/architecture.md` now highlights the Rust platform plan and the new adapter/migration endpoints; the legacy Node docs still await archival.
 - [partial] `specification/spec-rust-backend.md` and `spec-rust-crate-partition.md` continue to capture the crate layout; keep them synchronized with `docs/rust-backend-plan.md`.
 - [done] Legacy Node-era docs are cataloged in `docs/LEGACY_NODE_ARCHIVE.md`, so updates should target the Rust documentation instead.
 - [done] The 1M-action benchmark (see `specification/validation-reports/1m-action-benchmark.md`) now documents the latest run and stability notes.
+- [missing] Keep the Rust documentation/README references in sync with the new `specification/test-scenarios.md` so operators know where to find fresh integration/benchmark coverage; deprecate Node-era HOWTOs once the Rust docs are stable.
