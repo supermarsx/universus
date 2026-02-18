@@ -124,6 +124,9 @@ try {
     Write-Host "[ready] $($check.Name)"
   }
 
+  $tenants = Get-ConfiguredTenants -ConfigPath $adapterConfigPath
+  Validate-TenantMigrations -BaseUrl $adminBaseUrl -Tenants $tenants
+
   & pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\rust\smoke-rust-endpoints.ps1
   if ($LASTEXITCODE -ne 0) {
     throw "smoke checks failed"
@@ -133,9 +136,6 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "cutover validation failed"
   }
-
-  $tenants = Get-ConfiguredTenants -ConfigPath $adapterConfigPath
-  Validate-TenantMigrations -BaseUrl $adminBaseUrl -Tenants $tenants
 
   Write-Host "Live Rust cutover check completed successfully."
 }

@@ -22,6 +22,8 @@ This is the single-page overview of the Rust backend infrastructure, its current
 4. **Thread/runtime stability**: `platform-worker-runtime` will give each worker binary consistent graceful shutdown, leak detection, observability wiring, and memory/CPU caps to avoid stray nodes taking down the cluster under tenant stress.
 
 ## Adapter Configuration and Multi-Database Support
+- The adapter registry schema in `database/runtime-adapters.json` exposes per-driver metadata (`driver`, `tenant`, `url`/`path`, optional `logPath`, `lease_resource_hint`, and diagnostics tags). Operators can reference `adapter-db/src/lib.rs` alongside `docs/json-dev-mode.md` to see how `platform-adapter` and `platform-consensus` use those hints to offer per-tenant leases, health checks, and diagnostic breadcrumbs without double-assigning tenants.
+- `adapter-db/tests` now holds dedicated integrations that spin up JSON, SQLite, Postgres, and MySQL adapters via `testcontainers` (when Docker is available) so we clearly signal how parity coverage is captured inside the Rust workspace.
 - `adapter-db` is configured via `database/runtime-adapters.json`. For local dev we currently point the JSON adapter to `database/tenants/tenant-default.json`:
   ```json
   [
@@ -33,17 +35,17 @@ This is the single-page overview of the Rust backend infrastructure, its current
     }
   ]
   ```
-- The `platform-adapter` crate (planned) will centralize adapter lifecycle, inject tenant context, enforce consensus guards, and expose health/readiness for each adapter.
- - `adapter-db` supports Postgres, MySQL, JSON file, and a new SQLite driver; it exposes diagnostics (`trace_id`, `tenant`, `driver`, `path`) so dashboards can correlate to tenant/lease metrics and storage choices.
- - App-level crates should rely on `platform-adapter` rather than instantiating their own `tokio_postgres` clients. Each adapter registers itself with `platform-db`/`platform-config` via the shared registry.
-- The integration coverage described in `specification/test-scenarios.md` and the JSON-only workflow captured in `docs/json-dev-mode.md` explain how to verify the adapter shards without an external database.
+- The `platform-adapter` crate already wraps `adapter-db`, centralizing adapter lifecycle, injecting tenant context, enforcing consensus guards, and exposing health/readiness metadata for each adapter via the shared registry.
+- `adapter-db` exposes Postgres, MySQL, JSON file, and SQLite drivers plus diagnostics (`trace_id`, `tenant`, `driver`, `path`, `logPath`) so dashboards can correlate tenant/lease metrics across storage backends.
+- App-level crates should rely on `platform-adapter` rather than instantiating their own `tokio_postgres` clients; the registry ensures every adapter is linked to `platform-consensus` leases and the same configuration metadata.
+- The integration coverage in `specification/test-scenarios.md` and the JSON/SQLite-local workflow in `docs/json-dev-mode.md` explain how to verify adapter shards without hitting Postgres/MySQL and how to leverage the new CLI for exports/imports between adapters.
 
 ## Migration Runner & Admin Integration
 - `platform-migrations` is the tenant-aware migration runner. It must:
   1. Acquire a `platform-consensus` lease per tenant so migrations never collide.
   2. Expose status and control (run, rollback, skip) via new endpoints in `app-admin-api`.
   3. Hook into the live-cutover validation script (`scripts/rust/live-rust-cutover-check.ps1`) and CLI helpers so operators can assert that each tenant’s migrations succeeded before retiring Node services.
-- `scripts/rust/live-rust-cutover-check.ps1` now reads `database/runtime-adapters.json`, waits for the admin API, and queries `/api/admin/tenants/{tenant_id}/migrations` for each tenant to ensure there are no failed migrations before the cutover is declared healthy.
+- `scripts/rust/live-rust-cutover-check.ps1` now reads `database/runtime-adapters.json`, waits for the admin API, queries `/api/admin/tenants/{tenant_id}/migrations` before the smoke/cutover checks, and refuses to proceed if any tenant reports failed migrations.
 - `app-admin-api` now exposes `/api/admin/tenants/{tenant_id}/migrations`, `/run`, and `/rollback` so operators can highlight tenant statuses and trigger `platform-migrations` actions from the dashboard or automation scripts.
 - Migration runs should be observable (logs + metrics) and annotated with the tenant/lease/shard metadata for easier post-mortem.
 - The new `cargo run -p platform-migrations --bin migration-transfer -- ...` binary exports a tenant’s script log and replays it on another adapter, giving ops a documented CLI for migrating between JSON/SQLite/Postgres backends before switching `database/runtime-adapters.json`.
@@ -59,11 +61,11 @@ This is the single-page overview of the Rust backend infrastructure, its current
 ## TODO
 1. Document the JSON schema and runtime discovery for `AdapterRegistry`, including how `platform-adapter` selects drivers per tenant and environment.
 2. Integrate `MigrationRunner` into `app-admin-api` (REST + CLI) so admins can view tenant migration status, trigger runs/rollbacks, and read detailed telemetry on failures.
-3. Update `scripts/rust/live-rust-cutover-check.ps1` to invoke migration health checks (per tenant) before other smoke tests.
+3. Capture the new migration-health gate in `scripts/rust/live-rust-cutover-check.ps1` so operators know the cutover script refuses to run smoke checks when any tenant reports failed migrations.
 4. Implement the remaining runtime crates (`platform-scheduler`, `platform-worker-runtime`, `platform-adapter`) to standardize tenancy, threading, consensus, and adapter lifecycle; `platform-tenant-routing` and `platform-sharding` are already in place.
 5. Document the `platform-tenant-routing` interface (route summaries, quota/per-tenant rate limits, optional lease acquisition) plus the test harness that validates tenant isolation, queue pacing/backpressure, consensus lease failures, and route decision recomputation.
 6. Capture the tenant-routing-focused test cases described in `docs/rust-backend-plan.md` inside `specification/validation-reports/` once implemented.
 7. Use `docs/spec-gap-analysis.md` as the current canonical state tracker so readers can see which adapter/migration/routing gaps remain before retiring the legacy Node surface.
-7. Expand docs/tests for multi-tenancy, consensus, migrations, adapters, and the 1M action benchmark (see `crates/benchmark-actions`).
+8. Expand docs/tests for multi-tenancy, consensus, migrations, adapters, and the 1M action benchmark (see `crates/benchmark-actions`).
 
 This page links back to `docs/rust-backend-plan.md`, which contains the cross-cutting plan for tests, docs, and benchmarks.
