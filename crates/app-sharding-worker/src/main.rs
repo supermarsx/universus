@@ -1,8 +1,11 @@
 use platform_consensus::LeaseCoordinator;
 use platform_db::{Database, ShardServerUpsert};
 use platform_sharding::{ShardConfig, ShardingCatalog};
+use platform_tenancy::{TenantAccessLevel, TenantContext};
+use platform_worker_runtime::WorkerRuntime;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
 
 const SERVICE_NAME: &str = "app-sharding-worker";
@@ -25,6 +28,10 @@ async fn main() {
         .unwrap_or_else(|| format!("app-sharding-worker:{server_id}"));
     let message_lease_secs = i64_env("SHARD_MESSAGE_LEASE_SECS", 30);
     let cycle_lease_secs = i64_env("SHARD_CYCLE_LEASE_SECS", 30);
+    let runtime_max_inflight = std::env::var("SHARD_RUNTIME_MAX_INFLIGHT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(32);
     let message_retry_delay_secs = i64_env("SHARD_MESSAGE_RETRY_DELAY_SECS", 15);
     let message_max_attempts = i32_env("SHARD_MESSAGE_MAX_ATTEMPTS", 3);
     let realtime_url = std::env::var("REALTIME_GATEWAY_URL")
@@ -41,6 +48,7 @@ async fn main() {
         worker_id,
         message_lease_secs,
         cycle_lease_secs,
+        runtime_max_inflight,
         message_retry_delay_secs,
         message_max_attempts,
         has_realtime_url = realtime_url.is_some(),
@@ -56,6 +64,12 @@ async fn main() {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "global".to_string());
     let sharding_catalog = Arc::new(ShardingCatalog::with_consensus(Arc::clone(&lease_coordinator)));
+    let runtime = Arc::new(WorkerRuntime::current(runtime_max_inflight));
+    let tenant_context = TenantContext {
+        tenant_id: shard_tenant.clone(),
+        tenant_name: Some("Sharding Worker".to_string()),
+        access_level: TenantAccessLevel::Worker,
+    };
     sharding_catalog
         .register_shard(ShardConfig {
             shard_id: server_id.clone(),
@@ -79,15 +93,27 @@ async fn main() {
                 )
                 .await
                 {
-                    sync_platform_shard_catalog(
-                        sharding_catalog.as_ref(),
-                        &server_id,
-                        &worker_id,
-                        cycle_lease_secs,
-                        realtime_url.as_deref(),
+                    let sync_catalog = Arc::clone(&sharding_catalog);
+                    let server_id_for_task = server_id.clone();
+                    let worker_id_for_task = worker_id.clone();
+                    let realtime_for_task = realtime_url.clone();
+                    run_cycle_in_runtime(
+                        Arc::clone(&runtime),
+                        tenant_context.clone(),
+                        "sharding.heartbeat",
+                        async move {
+                            sync_platform_shard_catalog(
+                                sync_catalog.as_ref(),
+                                &server_id_for_task,
+                                &worker_id_for_task,
+                                cycle_lease_secs,
+                                realtime_for_task.as_deref(),
+                            )
+                            .await;
+                            heartbeat_cycle(realtime_for_task.as_deref()).await;
+                        },
                     )
                     .await;
-                    heartbeat_cycle(realtime_url.as_deref()).await;
                     lease_coordinator
                         .release(&heartbeat_lease.resource, &heartbeat_lease.owner)
                         .await;
@@ -107,13 +133,24 @@ async fn main() {
                 )
                 .await
                 {
-                    process_inbound_messages(
-                        &server_id,
-                        &worker_id,
-                        message_lease_secs,
-                        message_retry_delay_secs,
-                        message_max_attempts,
-                        realtime_url.as_deref(),
+                    let server_id_for_task = server_id.clone();
+                    let worker_id_for_task = worker_id.clone();
+                    let realtime_for_task = realtime_url.clone();
+                    run_cycle_in_runtime(
+                        Arc::clone(&runtime),
+                        tenant_context.clone(),
+                        "sharding.messages",
+                        async move {
+                            process_inbound_messages(
+                                &server_id_for_task,
+                                &worker_id_for_task,
+                                message_lease_secs,
+                                message_retry_delay_secs,
+                                message_max_attempts,
+                                realtime_for_task.as_deref(),
+                            )
+                            .await;
+                        },
                     )
                     .await;
                     lease_coordinator
@@ -136,7 +173,16 @@ async fn main() {
                 )
                 .await
                 {
-                    stale_check_cycle(stale_after_secs, realtime_url.as_deref()).await;
+                    let realtime_for_task = realtime_url.clone();
+                    run_cycle_in_runtime(
+                        Arc::clone(&runtime),
+                        tenant_context.clone(),
+                        "sharding.stale_check",
+                        async move {
+                            stale_check_cycle(stale_after_secs, realtime_for_task.as_deref()).await;
+                        },
+                    )
+                    .await;
                     lease_coordinator
                         .release(&stale_lease.resource, &stale_lease.owner)
                         .await;
@@ -155,7 +201,51 @@ async fn main() {
         }
     }
 
+    runtime.shutdown(Duration::from_secs(5)).await;
     sleep(Duration::from_millis(25)).await;
+}
+
+async fn run_cycle_in_runtime<F>(
+    runtime: Arc<WorkerRuntime>,
+    context: TenantContext,
+    cycle_name: &str,
+    cycle: F,
+) where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let (done_tx, done_rx) = oneshot::channel::<()>();
+    let schedule = runtime.spawn_tenant_task(context, async move {
+        cycle.await;
+        let _ = done_tx.send(());
+        Ok(())
+    });
+    match schedule {
+        Ok(()) => {
+            if done_rx.await.is_err() {
+                tracing::warn!(
+                    service = SERVICE_NAME,
+                    cycle = cycle_name,
+                    "runtime cycle completed without completion signal"
+                );
+            }
+            let stats = runtime.stats().await;
+            tracing::debug!(
+                service = SERVICE_NAME,
+                cycle = cycle_name,
+                total_inflight = stats.total_inflight,
+                tenant_count = stats.per_tenant.len(),
+                "sharding worker runtime stats"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                service = SERVICE_NAME,
+                cycle = cycle_name,
+                %error,
+                "failed to schedule sharding runtime cycle"
+            );
+        }
+    }
 }
 
 async fn heartbeat_cycle(realtime_url: Option<&str>) {
