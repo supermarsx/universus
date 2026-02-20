@@ -4,8 +4,8 @@ Status legend: [done], [partial], [missing]
 
 ## Multi-tenancy & consensus
 - [partial] Ensure `platform-tenancy` injects tenant IDs/logging metadata into Axum/Tower/middleware and queue handlers; audit all HTTP routes to verify they read `TenantContext`.
-- [missing] Implement `platform-tenant-routing` so tenant requests map to worker pools with quotas/backpressure and futures.
-- [missing] Expand `platform-consensus` observability (lease acquire/renew/release, failover alerts) and document the lease lifecycle for operators.
+- [partial] `platform-tenant-routing` maps tenant requests to worker pools with quotas/backpressure and optional leases; remaining work is end-to-end worker adoption and failover test automation.
+- [partial] `platform-consensus` now emits lease lifecycle events/metrics and supports acquire/renew/release/status paths; remaining work is wiring these signals into shared observability dashboards/alerts.
 - [partial] `app-sharding-worker` and `app-scheduler-worker` should acquire the required leases from `platform-consensus`.
 
 ## Adapter & multi-database strategy
@@ -26,14 +26,14 @@ Status legend: [done], [partial], [missing]
 
 ## Tests & benchmarks
 - [partial] Tenant isolation and migration guard tests now cover the admin API flows and migration runner, but broader queue/HTTP isolation suites remain outstanding.
-- [missing] Add lease contention/resilience tests targeting `platform-consensus`.
+- [partial] Lease contention/resilience tests now exist at the `platform-consensus` crate level; expand coverage into cross-crate integration scenarios with tenant routing/workers.
 - [done] `platform-migrations` regression suite now covers rollback paths through `MigrationRunner`.
 - [partial] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers now have test-container coverage but production adapters still need operational validation).
 - [missing] Add runtime leak/performance tests for `platform-worker-runtime`.
 - [done] The 1M-action benchmark has a fresh run recorded under `specification/validation-reports/1m-action-benchmark.md`.
 - [partial] Ship the `platform-migrations` transfer CLI plus docs to show how to export/import tenants across adapters (JSON/SQLite and the upcoming SQL drivers); capture the new flow in testing docs and scripts.
 - [done] Provide a consensus + worker runtime validation harness under `scripts/rust/run-consensus-worker-validation.ps1` and document its usage.
-- [missing] Draft `specification/test-scenarios.md` so every integration/benchmark scenario (tenants, adapter parity, consensus, simulated game flows, JSON-only developer mode) is tracked and runnable.
+- [partial] `specification/test-scenarios.md` exists and tracks major suites; continue syncing it with new consensus/worker-runtime automation as tests land.
 - [missing] Surface automation/scripts for firing up a Rust instance with only the JSON adapter (`database/runtime-adapters.json`) so smoke/integration suites run without external Postgres/MySQL dependencies.
 
 ## Documentation & migration tracking

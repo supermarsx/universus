@@ -1,23 +1,41 @@
-# Spec Gap Analysis
+# Spec Gap Analysis (2026-02-20)
 
-## Completed highlights
-- Rust backend now lives inside dedicated crates (`platform-tenancy`, `platform-consensus`, `platform-adapter`, `platform-migrations`, etc.) and is orchestrated via the workspace `Cargo.toml`.  
-- Adapter registry exposes JSON, SQLite, Postgres, and MySQL drivers with migration logs, the new export/import helpers, and the migration-transfer CLI (`cargo run -p platform-migrations --bin migration-transfer`).  
-- Integration tests cover API/route smoke flows, simulated player journeys, adapter-db parity suites (JSON/SQLite/Postgres/MySQL), and the 1M-action benchmark; the JSON/SQLite dev flow, adapter testing guidance, and test harness are documented in `docs/json-dev-mode.md`, `docs/architecture.md`, and `specification/test-scenarios.md`.
+## Scope
+This analysis is based on the current repository state across:
+- `crates/platform-*` and `crates/app-*` implementations
+- active test suites under `crates/*/tests` and crate-level unit tests
+- live operational docs in `docs/` and `specification/`
 
-## Gaps by concern
+## What is clearly implemented
+- Core platform crates for tenancy/routing/sharding/scheduler/runtime/adapter/migrations exist and compile in the workspace.
+- `platform-tenant-routing` enforces per-tenant quota/rate semantics and optional consensus lease acquisition in `crates/platform-tenant-routing/src/lib.rs`.
+- `platform-scheduler` and `platform-sharding` are implemented as reusable crates with tests in `crates/platform-scheduler/src/lib.rs` and `crates/platform-sharding/src/lib.rs`.
+- `platform-adapter` and `adapter-db` support JSON/SQLite/Postgres/MySQL registry flows; parity tests exist under `crates/adapter-db/tests`.
+- Migration APIs and transfer tooling exist (`app-admin-api` migration endpoints + `platform-migrations` transfer CLI).
+- As of this update, `platform-consensus` now includes lease lifecycle metrics/events plus contention/renewal/release tests in `crates/platform-consensus/src/lib.rs`.
 
-| Concern | Status | Remaining work |
+## High-confidence gaps
+
+| Area | Current state | Gap |
 | --- | --- | --- |
-| **Adapter parity** | Partial | Postgres/MySQL adapters now log migrations, parity suites can start Postgres/MySQL containers, and the migration-transfer CLI captures per-tenant logs; we still need full production validation of those adapters, cross-SQL migration runbooks, and consensus lease telemetry when SQL tenants dominate. |
-| **Migration tooling** | Partial | `MigrationTransfer` covers JSON/SQLite exports; the spec still needs more depth on live SQL transfers and how admin/UI/CLI instruments consensus leases during cross-adapter migrations (`specification/test-scenarios.md` and `docs/json-dev-mode.md` outline the CLI). |
-| **Consensus & tenant routing** | Partial | `platform-tenancy`, `platform-consensus`, `platform-sharding`, and `platform-tenant-routing` are wired, but we still need lease contention/resilience tests, scheduler-worker runtime integration, and the tenant routing test matrix described in `docs/rust-backend-plan.md`. |
-| **Tests & observability** | Partial | Additional consensus lease coverage, runtime leak/performance tests for `platform-worker-runtime`, and sharding/scheduler validations still await implementation; documentation should explicitly call out how to run those suites once available. |
-| **Documentation consolidation** | Partial | Multiple docs exist (`docs/architecture.md`, `docs/json-dev-mode.md`, `specification/test-scenarios.md`), but a single canonical handbook referencing the adapter parity matrix, migration-transfer CLI, and outstanding regression tests still needs publication; this file should become that reference when the remaining gaps close. |
+| Worker adoption of platform runtime stack | Worker binaries (`app-scheduler-worker`, `app-sharding-worker`, `app-chat-worker`, `app-notifications-worker`, `app-email-worker`, `app-analytics-worker`) mostly run direct loops against DB/queues. | They do not consistently use `platform-worker-runtime`, `platform-scheduler`, `platform-sharding`, or `platform-tenant-routing` as the execution path. |
+| Scheduler/sharding consensus integration | `platform-scheduler`/`platform-sharding` crates are ready, but workers are still app-local loops. | `app-scheduler-worker` and `app-sharding-worker` need to be wired to lease-aware platform crates in runtime paths, not just DB claim logic. |
+| Consensus observability rollout | `platform-consensus` now exposes lifecycle metrics/events and renew/status methods. | Events/metrics are not yet exported into shared dashboards/telemetry pipelines (`platform-observability` integration still missing). |
+| Worker runtime regression coverage | `platform-worker-runtime` has basic unit tests only. | Leak/backpressure/perf-style integration tests are still missing. |
+| Tenant isolation validation depth | Route-level pieces exist across crates. | End-to-end HTTP + queue isolation and reroute/failover automation remains incomplete. |
+| Adapter operational readiness | SQL parity tests exist in `adapter-db`. | Production-grade runbooks and continuous operational checks for Postgres/MySQL behavior are still thin. |
 
-## Next actions
-1. Keep `docs/json-dev-mode.md`, `docs/architecture.md`, `docs/tenant-routing.md`, `docs/consensus-tests.md`, `docs/worker-runtime-tests.md`, and `specification/test-scenarios.md` synchronized with the parity suites, migration-transfer CLI, tenant-routing validation, lease contention/resilience guides, worker runtime leak/performance coverage, and the `scripts/rust/run-consensus-worker-validation.ps1` harness so operators can reproduce the documented flows without Docker gaps.  
-2. Record the remaining contractor work (consensus lease contention suites, `platform-worker-runtime` leak/performance coverage, scheduler/router validation, adapter diagnostics) inside this analysis and `TODO.md` so nothing slips through the cracks.  
-3. Determine when to promote this file into the canonical “Rust backend status” page, retire duplicate Node-era guides, and point readers at the consolidated docs once the runtime crates/tests finish landing.  
+## Documentation gaps
+- `TODO.md` status markers are stale in several places (some items marked `[missing]` are already implemented).
+- `docs/architecture.md` TODO section still describes crates as pending even when they now exist.
+- `specification/test-scenarios.md` exists, but command coverage for newer consensus/runtime suites should be kept in sync with actual executable tests.
 
-For reference, the current partition plan and obligations are laid out in `specification/spec-rust-crate-partition.md` and `docs/rust-backend-plan.md`.
+## Priority order for implementation
+1. Wire worker binaries to platform runtime primitives (`platform-worker-runtime` + tenant routing + scheduler/sharding).
+2. Add worker runtime leak/backpressure/performance test suites.
+3. Extend consensus/tenant-routing tests from crate-level unit coverage into integration scenarios.
+4. Align docs and TODO status with current code ownership and executable test commands.
+
+## Immediate follow-up in progress
+- Implemented in this pass: `platform-consensus` lifecycle observability primitives and contention/resilience tests.
+- Next implementation target: `platform-worker-runtime` regression coverage expansion.
