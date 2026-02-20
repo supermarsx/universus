@@ -91,6 +91,12 @@ async fn main() {
                     lease_coordinator
                         .release(&heartbeat_lease.resource, &heartbeat_lease.owner)
                         .await;
+                    platform_observability::emit_consensus_snapshot(
+                        SERVICE_NAME,
+                        lease_coordinator.as_ref(),
+                        4,
+                    )
+                    .await;
                 }
 
                 if let Some(message_lease) = acquire_cycle_lease(
@@ -113,6 +119,12 @@ async fn main() {
                     lease_coordinator
                         .release(&message_lease.resource, &message_lease.owner)
                         .await;
+                    platform_observability::emit_consensus_snapshot(
+                        SERVICE_NAME,
+                        lease_coordinator.as_ref(),
+                        4,
+                    )
+                    .await;
                 }
             }
             _ = stale_tick.tick() => {
@@ -128,6 +140,12 @@ async fn main() {
                     lease_coordinator
                         .release(&stale_lease.resource, &stale_lease.owner)
                         .await;
+                    platform_observability::emit_consensus_snapshot(
+                        SERVICE_NAME,
+                        lease_coordinator.as_ref(),
+                        4,
+                    )
+                    .await;
                 }
             }
         }

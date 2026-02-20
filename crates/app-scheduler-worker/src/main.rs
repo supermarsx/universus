@@ -97,15 +97,39 @@ async fn main() {
         tokio::select! {
             _ = game_tick.tick() => {
                 trigger_platform_job(&scheduler, "scheduler.game_loop").await;
+                platform_observability::emit_consensus_snapshot(
+                    SERVICE_NAME,
+                    lease_coordinator.as_ref(),
+                    4,
+                )
+                .await;
             }
             _ = fleet_tick.tick() => {
                 trigger_platform_job(&scheduler, "scheduler.fleet").await;
+                platform_observability::emit_consensus_snapshot(
+                    SERVICE_NAME,
+                    lease_coordinator.as_ref(),
+                    4,
+                )
+                .await;
             }
             _ = moon_tick.tick() => {
                 trigger_platform_job(&scheduler, "scheduler.moon_destroy").await;
+                platform_observability::emit_consensus_snapshot(
+                    SERVICE_NAME,
+                    lease_coordinator.as_ref(),
+                    4,
+                )
+                .await;
             }
             _ = shard_tick.tick() => {
                 trigger_platform_job(&scheduler, "scheduler.shard_health").await;
+                platform_observability::emit_consensus_snapshot(
+                    SERVICE_NAME,
+                    lease_coordinator.as_ref(),
+                    4,
+                )
+                .await;
             }
         }
 
