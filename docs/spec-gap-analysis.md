@@ -22,7 +22,7 @@ This analysis is based on the current repository state across:
 | Scheduler/sharding consensus integration | `platform-scheduler`/`platform-sharding` crates are ready, and both `app-scheduler-worker` + `app-sharding-worker` now take `platform-consensus` leases for their execution cycles. | Remaining worker fleet still needs consistent lease/runtime adoption through platform crates. |
 | Consensus observability rollout | `platform-consensus` now exposes lifecycle metrics/events and renew/status methods. | Events/metrics are not yet exported into shared dashboards/telemetry pipelines (`platform-observability` integration still missing). |
 | Worker runtime regression coverage | `platform-worker-runtime` now has unit tests plus regression tests for leak counter reset, max in-flight backpressure, and shutdown gating. | Extend into CPU/heap cap + lease-aware integration suites that include cross-worker failover behavior. |
-| Tenant isolation validation depth | Route-level pieces exist across crates. | End-to-end HTTP + queue isolation and reroute/failover automation remains incomplete. |
+| Tenant isolation validation depth | Route-level pieces exist across crates, and scheduler/tenant-routing lease failover is now covered in `platform-scheduler` tests. | End-to-end HTTP + queue isolation and reroute/failover automation across live workers remains incomplete. |
 | Adapter operational readiness | SQL parity tests exist in `adapter-db`. | Production-grade runbooks and continuous operational checks for Postgres/MySQL behavior are still thin. |
 
 ## Documentation gaps

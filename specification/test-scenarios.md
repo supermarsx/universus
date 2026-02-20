@@ -52,6 +52,7 @@ The new `platform-migrations` transfer binary (see `docs/json-dev-mode.md`) supp
 cargo test --test integration
 cargo test --test simulated_flow
 cargo test --test integration_simulated_flow --test-threads 1 # if you need deterministic log order
+cargo test -p platform-scheduler -- --test-threads 1
 ```
 
 Append `-- --nocapture` when you need to inspect the emitted helper logs or `AppState` diagnostics.
@@ -59,6 +60,7 @@ Append `-- --nocapture` when you need to inspect the emitted helper logs or `App
 ## Outstanding Coverage
 
 - Add consensus lease contention/resilience tests (see `docs/consensus-tests.md`, `TODO.md`, and `platform-consensus` tests).  
+- Promote scheduler/tenant-routing lease failover coverage into broader worker-level integration suites (current crate-level coverage lives in `platform-scheduler` tests).  
 - Monitor the Postgres/MySQL/JSON parity suites under `crates/adapter-db/tests` and expand the live operational validation paths for MySQL/PG adapters so they mirror the JSON/SQLite confidence level.  
 - Expand platform-worker-runtime leak/performance tests (see `docs/worker-runtime-tests.md`) and ensure `platform-tenant-routing` rerouting scenarios are codified (see `specification/spec-rust-crate-partition.md`).  
 - Continue updating this document as the 1M-action benchmark, `docs/json-dev-mode`, and the migration/admin guides change.

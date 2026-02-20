@@ -11,3 +11,6 @@ tracing = "0.1"
 platform-tenant-routing = { path = "../platform-tenant-routing" }
 platform-sharding = { path = "../platform-sharding" }
 platform-tenancy = { path = "../platform-tenancy" }
+
+[dev-dependencies]
+platform-consensus = { path = "../platform-consensus" }

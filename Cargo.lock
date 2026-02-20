@@ -3270,6 +3270,7 @@ name = "platform-scheduler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "platform-consensus",
  "platform-sharding",
  "platform-tenancy",
  "platform-tenant-routing",

@@ -26,7 +26,7 @@ Status legend: [done], [partial], [missing]
 
 ## Tests & benchmarks
 - [partial] Tenant isolation and migration guard tests now cover the admin API flows and migration runner, but broader queue/HTTP isolation suites remain outstanding.
-- [partial] Lease contention/resilience tests now exist at the `platform-consensus` crate level; expand coverage into cross-crate integration scenarios with tenant routing/workers.
+- [partial] Lease contention/resilience tests now exist at the `platform-consensus` crate level, plus scheduler/tenant-routing failover coverage in `platform-scheduler`; expand further into end-to-end worker integration scenarios.
 - [done] `platform-migrations` regression suite now covers rollback paths through `MigrationRunner`.
 - [partial] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers now have test-container coverage but production adapters still need operational validation).
 - [partial] Added `platform-worker-runtime` regression tests for leak-counter reset, backpressure (`MaxInflight`), and shutdown gating; extend with CPU/heap/lease-aware integration suites.
