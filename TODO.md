@@ -6,7 +6,7 @@ Status legend: [done], [partial], [missing]
 - [partial] Ensure `platform-tenancy` injects tenant IDs/logging metadata into Axum/Tower/middleware and queue handlers; audit all HTTP routes to verify they read `TenantContext`.
 - [partial] `platform-tenant-routing` maps tenant requests to worker pools with quotas/backpressure and optional leases; remaining work is end-to-end worker adoption and failover test automation.
 - [partial] `platform-consensus` now emits lease lifecycle events/metrics and supports acquire/renew/release/status paths; remaining work is wiring these signals into shared observability dashboards/alerts.
-- [partial] `app-scheduler-worker` now acquires per-task leases via `platform-consensus`; `app-sharding-worker` and broader worker/runtime lease adoption remain.
+- [partial] `app-scheduler-worker` and `app-sharding-worker` now acquire cycle/task leases via `platform-consensus`; broader worker/runtime lease adoption remains.
 
 ## Adapter & multi-database strategy
 - [done] `adapter-db` now wires Postgres, MySQL, and JSON file adapters and exposes `execute_script` for migration runners.

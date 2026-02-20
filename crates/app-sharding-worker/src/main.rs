@@ -1,4 +1,6 @@
+use platform_consensus::LeaseCoordinator;
 use platform_db::{Database, ShardServerUpsert};
+use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 const SERVICE_NAME: &str = "app-sharding-worker";
@@ -20,6 +22,7 @@ async fn main() {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| format!("app-sharding-worker:{server_id}"));
     let message_lease_secs = i64_env("SHARD_MESSAGE_LEASE_SECS", 30);
+    let cycle_lease_secs = i64_env("SHARD_CYCLE_LEASE_SECS", 30);
     let message_retry_delay_secs = i64_env("SHARD_MESSAGE_RETRY_DELAY_SECS", 15);
     let message_max_attempts = i32_env("SHARD_MESSAGE_MAX_ATTEMPTS", 3);
     let realtime_url = std::env::var("REALTIME_GATEWAY_URL")
@@ -35,11 +38,13 @@ async fn main() {
         server_id,
         worker_id,
         message_lease_secs,
+        cycle_lease_secs,
         message_retry_delay_secs,
         message_max_attempts,
         has_realtime_url = realtime_url.is_some(),
         "sharding worker started"
     );
+    let lease_coordinator = Arc::new(LeaseCoordinator::new());
 
     let mut heartbeat_tick = tokio::time::interval(Duration::from_secs(heartbeat_secs));
     let mut stale_tick = tokio::time::interval(Duration::from_secs(stale_check_secs));
@@ -47,19 +52,56 @@ async fn main() {
     loop {
         tokio::select! {
             _ = heartbeat_tick.tick() => {
-                heartbeat_cycle(realtime_url.as_deref()).await;
-                process_inbound_messages(
-                    &server_id,
+                if let Some(heartbeat_lease) = acquire_cycle_lease(
+                    lease_coordinator.as_ref(),
+                    &format!("sharding:{server_id}:heartbeat"),
                     &worker_id,
-                    message_lease_secs,
-                    message_retry_delay_secs,
-                    message_max_attempts,
-                    realtime_url.as_deref(),
+                    cycle_lease_secs,
                 )
-                .await;
+                .await
+                {
+                    heartbeat_cycle(realtime_url.as_deref()).await;
+                    lease_coordinator
+                        .release(&heartbeat_lease.resource, &heartbeat_lease.owner)
+                        .await;
+                }
+
+                if let Some(message_lease) = acquire_cycle_lease(
+                    lease_coordinator.as_ref(),
+                    &format!("sharding:{server_id}:messages"),
+                    &worker_id,
+                    cycle_lease_secs,
+                )
+                .await
+                {
+                    process_inbound_messages(
+                        &server_id,
+                        &worker_id,
+                        message_lease_secs,
+                        message_retry_delay_secs,
+                        message_max_attempts,
+                        realtime_url.as_deref(),
+                    )
+                    .await;
+                    lease_coordinator
+                        .release(&message_lease.resource, &message_lease.owner)
+                        .await;
+                }
             }
             _ = stale_tick.tick() => {
-                stale_check_cycle(stale_after_secs, realtime_url.as_deref()).await;
+                if let Some(stale_lease) = acquire_cycle_lease(
+                    lease_coordinator.as_ref(),
+                    &format!("sharding:{server_id}:stale-check"),
+                    &worker_id,
+                    cycle_lease_secs,
+                )
+                .await
+                {
+                    stale_check_cycle(stale_after_secs, realtime_url.as_deref()).await;
+                    lease_coordinator
+                        .release(&stale_lease.resource, &stale_lease.owner)
+                        .await;
+                }
             }
         }
 
@@ -300,6 +342,28 @@ async fn process_inbound_messages(
                     .await;
                 }
             }
+        }
+    }
+}
+
+async fn acquire_cycle_lease(
+    lease_coordinator: &LeaseCoordinator,
+    resource: &str,
+    owner: &str,
+    lease_secs: i64,
+) -> Option<platform_consensus::LeaseToken> {
+    let ttl = Duration::from_secs(lease_secs.max(1) as u64);
+    match lease_coordinator.acquire(resource, owner, ttl).await {
+        Ok(lease) => Some(lease),
+        Err(error) => {
+            tracing::warn!(
+                service = SERVICE_NAME,
+                %resource,
+                %owner,
+                %error,
+                "skipping sharding cycle; lease already held"
+            );
+            None
         }
     }
 }

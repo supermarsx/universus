@@ -331,6 +331,7 @@ dependencies = [
 name = "app-sharding-worker"
 version = "0.1.0"
 dependencies = [
+ "platform-consensus",
  "platform-db",
  "platform-events",
  "platform-observability",
