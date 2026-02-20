@@ -15,7 +15,7 @@ Status legend: [done], [partial], [missing]
 
 ## Runtime & sharding platform
 - [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; it still needs integration with the scheduler/runtime hop.
-- [partial] `platform-scheduler` now registers and triggers tenant jobs via `platform-tenant-routing`/`platform-sharding`; still needs integration with `platform-worker-runtime`.
+- [partial] `platform-scheduler` now registers and triggers tenant jobs via `platform-tenant-routing`/`platform-sharding`, and `app-scheduler-worker` is wired into those APIs; next step is integrating worker-runtime execution around scheduler handlers.
 - [partial] `platform-worker-runtime` now provides the shared runtime instrumentation for tenants; `app-notifications-worker`, `app-chat-worker`, `app-email-worker`, `app-analytics-worker`, and `app-bot-worker` are wired through it, with remaining workers still to migrate.
 - [partial] `platform-adapter` wraps `adapter-db`, loads JSON adapter configs, and gates each tenant within consensus leases; verify health hooks in dashboards/tests.
 

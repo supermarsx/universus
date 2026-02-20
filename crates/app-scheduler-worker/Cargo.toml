@@ -9,5 +9,8 @@ tracing = { workspace = true }
 platform-events = { path = "../platform-events" }
 platform-db = { path = "../platform-db" }
 platform-consensus = { path = "../platform-consensus" }
+platform-scheduler = { path = "../platform-scheduler" }
+platform-sharding = { path = "../platform-sharding" }
+platform-tenant-routing = { path = "../platform-tenant-routing" }
 platform-observability = { path = "../platform-observability" }
 serde_json = "1.0"

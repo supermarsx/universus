@@ -1,4 +1,8 @@
 use platform_consensus::LeaseCoordinator;
+use platform_scheduler::{JobConfig, JobHandler, Scheduler};
+use platform_sharding::{ShardConfig, ShardingCatalog};
+use platform_tenant_routing::{TenantRouteConfig, TenantRouter, TenantRoutingDecision};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -23,6 +27,22 @@ async fn main() {
     let lease_secs = i64_env("SCHED_TASK_LEASE_SECS", 30);
     let retry_delay_secs = i64_env("SCHED_TASK_RETRY_DELAY_SECS", 15);
     let max_attempts = i32_env("SCHED_TASK_MAX_ATTEMPTS", 3);
+    let tenant_id = std::env::var("SCHED_TENANT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "tenant-default".to_string());
+    let shard_id = std::env::var("SCHED_SHARD_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "shard-default".to_string());
+    let queue_name = std::env::var("SCHED_QUEUE_NAME")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "scheduler.default".to_string());
+    let region = std::env::var("SCHED_REGION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "global".to_string());
 
     tracing::info!(
         service = SERVICE_NAME,
@@ -36,9 +56,37 @@ async fn main() {
         lease_secs,
         retry_delay_secs,
         max_attempts,
+        tenant_id,
+        shard_id,
+        queue_name,
+        region,
         "scheduler worker started"
     );
     let lease_coordinator = Arc::new(LeaseCoordinator::new());
+    let scheduler = match bootstrap_platform_scheduler(
+        Arc::clone(&lease_coordinator),
+        tenant_id.clone(),
+        shard_id.clone(),
+        queue_name.clone(),
+        region.clone(),
+        worker_id.clone(),
+        lease_secs,
+        retry_delay_secs,
+        max_attempts,
+        realtime_url.clone(),
+        game_loop_secs,
+        fleet_secs,
+        moon_secs,
+        shard_health_secs,
+    )
+    .await
+    {
+        Ok(scheduler) => scheduler,
+        Err(error) => {
+            tracing::error!(service = SERVICE_NAME, %error, "failed to initialize platform scheduler");
+            return;
+        }
+    };
 
     let mut game_tick = tokio::time::interval(Duration::from_secs(game_loop_secs));
     let mut fleet_tick = tokio::time::interval(Duration::from_secs(fleet_secs));
@@ -48,52 +96,16 @@ async fn main() {
     loop {
         tokio::select! {
             _ = game_tick.tick() => {
-                enqueue_and_process_tick(
-                    "scheduler.game_loop",
-                    game_loop_secs,
-                    realtime_url.as_deref(),
-                    &worker_id,
-                    lease_secs,
-                    retry_delay_secs,
-                    max_attempts,
-                    Arc::clone(&lease_coordinator),
-                ).await;
+                trigger_platform_job(&scheduler, "scheduler.game_loop").await;
             }
             _ = fleet_tick.tick() => {
-                enqueue_and_process_tick(
-                    "scheduler.fleet",
-                    fleet_secs,
-                    realtime_url.as_deref(),
-                    &worker_id,
-                    lease_secs,
-                    retry_delay_secs,
-                    max_attempts,
-                    Arc::clone(&lease_coordinator),
-                ).await;
+                trigger_platform_job(&scheduler, "scheduler.fleet").await;
             }
             _ = moon_tick.tick() => {
-                enqueue_and_process_tick(
-                    "scheduler.moon_destroy",
-                    moon_secs,
-                    realtime_url.as_deref(),
-                    &worker_id,
-                    lease_secs,
-                    retry_delay_secs,
-                    max_attempts,
-                    Arc::clone(&lease_coordinator),
-                ).await;
+                trigger_platform_job(&scheduler, "scheduler.moon_destroy").await;
             }
             _ = shard_tick.tick() => {
-                enqueue_and_process_tick(
-                    "scheduler.shard_health",
-                    shard_health_secs,
-                    realtime_url.as_deref(),
-                    &worker_id,
-                    lease_secs,
-                    retry_delay_secs,
-                    max_attempts,
-                    Arc::clone(&lease_coordinator),
-                ).await;
+                trigger_platform_job(&scheduler, "scheduler.shard_health").await;
             }
         }
 
@@ -106,6 +118,159 @@ async fn main() {
     sleep(Duration::from_millis(25)).await;
 }
 
+async fn trigger_platform_job(scheduler: &Scheduler, job_id: &str) {
+    if let Err(error) = scheduler.trigger_job(job_id).await {
+        tracing::warn!(
+            service = SERVICE_NAME,
+            job_id,
+            %error,
+            "platform scheduler trigger failed"
+        );
+    }
+}
+
+async fn bootstrap_platform_scheduler(
+    lease_coordinator: Arc<LeaseCoordinator>,
+    tenant_id: String,
+    shard_id: String,
+    queue_name: String,
+    region: String,
+    worker_id: String,
+    lease_secs: i64,
+    retry_delay_secs: i64,
+    max_attempts: i32,
+    realtime_url: Option<String>,
+    game_loop_secs: u64,
+    fleet_secs: u64,
+    moon_secs: u64,
+    shard_health_secs: u64,
+) -> Result<Arc<Scheduler>, String> {
+    let tenant_router = Arc::new(TenantRouter::with_leases(Arc::clone(&lease_coordinator)));
+    let catalog = Arc::new(ShardingCatalog::new());
+    catalog
+        .register_shard(ShardConfig {
+            shard_id: shard_id.clone(),
+            region: region.clone(),
+            allowed_tenants: HashSet::from_iter(vec![tenant_id.clone()]),
+            consensus_resource: Some(format!("scheduler-shard:{shard_id}")),
+        })
+        .await;
+    tenant_router
+        .register(TenantRouteConfig {
+            tenant_id: tenant_id.clone(),
+            shard_id: shard_id.clone(),
+            queue_name,
+            region,
+            max_inflight: 8,
+            max_per_second: 0,
+            consensus_resource: Some(format!("scheduler-tenant:{tenant_id}")),
+            lease_ttl: Duration::from_secs(lease_secs.max(1) as u64),
+        })
+        .await;
+
+    let scheduler = Arc::new(Scheduler::new(tenant_router, catalog));
+    register_scheduler_job(
+        Arc::clone(&scheduler),
+        "scheduler.game_loop",
+        &tenant_id,
+        &shard_id,
+        game_loop_secs,
+        worker_id.clone(),
+        realtime_url.clone(),
+        lease_secs,
+        retry_delay_secs,
+        max_attempts,
+    )
+    .await?;
+    register_scheduler_job(
+        Arc::clone(&scheduler),
+        "scheduler.fleet",
+        &tenant_id,
+        &shard_id,
+        fleet_secs,
+        worker_id.clone(),
+        realtime_url.clone(),
+        lease_secs,
+        retry_delay_secs,
+        max_attempts,
+    )
+    .await?;
+    register_scheduler_job(
+        Arc::clone(&scheduler),
+        "scheduler.moon_destroy",
+        &tenant_id,
+        &shard_id,
+        moon_secs,
+        worker_id.clone(),
+        realtime_url.clone(),
+        lease_secs,
+        retry_delay_secs,
+        max_attempts,
+    )
+    .await?;
+    register_scheduler_job(
+        Arc::clone(&scheduler),
+        "scheduler.shard_health",
+        &tenant_id,
+        &shard_id,
+        shard_health_secs,
+        worker_id,
+        realtime_url,
+        lease_secs,
+        retry_delay_secs,
+        max_attempts,
+    )
+    .await?;
+
+    Ok(scheduler)
+}
+
+async fn register_scheduler_job(
+    scheduler: Arc<Scheduler>,
+    task_type: &str,
+    tenant_id: &str,
+    shard_id: &str,
+    cadence_secs: u64,
+    worker_id: String,
+    realtime_url: Option<String>,
+    lease_secs: i64,
+    retry_delay_secs: i64,
+    max_attempts: i32,
+    ) -> Result<(), String> {
+    let task_type_owned = task_type.to_string();
+    let task_type_for_handler = task_type_owned.clone();
+    let handler: JobHandler = Arc::new(move |decision: TenantRoutingDecision| {
+        let task_type = task_type_for_handler.clone();
+        let worker_id = worker_id.clone();
+        let realtime_url = realtime_url.clone();
+        Box::pin(async move {
+            enqueue_and_process_tick(
+                &task_type,
+                cadence_secs,
+                realtime_url.as_deref(),
+                &worker_id,
+                lease_secs,
+                retry_delay_secs,
+                max_attempts,
+                decision,
+            )
+            .await;
+            Ok(())
+        })
+    });
+    let config = JobConfig {
+        job_id: task_type_owned.clone(),
+        tenant_id: tenant_id.to_string(),
+        description: format!("{task_type_owned} scheduler job"),
+        shard_id: shard_id.to_string(),
+        interval: Duration::from_secs(cadence_secs.max(1)),
+    };
+    scheduler
+        .register_job(config, handler)
+        .await
+        .map_err(|error| format!("register {task_type_owned}: {error}"))
+}
+
 async fn enqueue_and_process_tick(
     task_type: &str,
     cadence_secs: u64,
@@ -114,28 +279,17 @@ async fn enqueue_and_process_tick(
     lease_secs: i64,
     retry_delay_secs: i64,
     max_attempts: i32,
-    lease_coordinator: Arc<LeaseCoordinator>,
+    decision: TenantRoutingDecision,
 ) {
     tracing::info!(service = SERVICE_NAME, task_type, "tick start");
-    let lease_ttl = Duration::from_secs(lease_secs.max(1) as u64);
-    let lease_resource = format!("scheduler:{task_type}");
-    let lease = match lease_coordinator
-        .acquire(&lease_resource, worker_id, lease_ttl)
-        .await
-    {
-        Ok(lease) => lease,
-        Err(error) => {
-            tracing::warn!(
-                service = SERVICE_NAME,
-                task_type,
-                resource = %lease_resource,
-                worker_id,
-                %error,
-                "skipping tick because scheduler lease is held elsewhere"
-            );
-            return;
-        }
-    };
+    tracing::debug!(
+        service = SERVICE_NAME,
+        task_type,
+        tenant_id = decision.tenant_id(),
+        shard_id = %decision.route.shard_id,
+        queue_name = %decision.route.queue_name,
+        "platform scheduler decision acquired"
+    );
 
     let Some(database) = platform_db::Database::from_env() else {
         tracing::warn!(
@@ -143,9 +297,6 @@ async fn enqueue_and_process_tick(
             task_type,
             "DATABASE_URL not configured; skipping enqueue/process cycle"
         );
-        lease_coordinator
-            .release(&lease.resource, &lease.owner)
-            .await;
         return;
     };
 
@@ -166,9 +317,6 @@ async fn enqueue_and_process_tick(
         .await;
     if let Err(error) = enqueue_result {
         tracing::error!(service = SERVICE_NAME, task_type, %error, "failed enqueue scheduled task");
-        lease_coordinator
-            .release(&lease.resource, &lease.owner)
-            .await;
         return;
     }
 
@@ -179,17 +327,11 @@ async fn enqueue_and_process_tick(
         Ok(tasks) => tasks,
         Err(error) => {
             tracing::error!(service = SERVICE_NAME, task_type, %error, "failed claim due tasks");
-            lease_coordinator
-                .release(&lease.resource, &lease.owner)
-                .await;
             return;
         }
     };
 
     if claimed.is_empty() {
-        lease_coordinator
-            .release(&lease.resource, &lease.owner)
-            .await;
         return;
     }
 
@@ -252,10 +394,6 @@ async fn enqueue_and_process_tick(
             }
         }
     }
-
-    lease_coordinator
-        .release(&lease.resource, &lease.owner)
-        .await;
 }
 
 async fn process_task(
