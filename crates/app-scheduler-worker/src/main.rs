@@ -1,3 +1,5 @@
+use platform_consensus::LeaseCoordinator;
+use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
 const SERVICE_NAME: &str = "app-scheduler-worker";
@@ -36,6 +38,7 @@ async fn main() {
         max_attempts,
         "scheduler worker started"
     );
+    let lease_coordinator = Arc::new(LeaseCoordinator::new());
 
     let mut game_tick = tokio::time::interval(Duration::from_secs(game_loop_secs));
     let mut fleet_tick = tokio::time::interval(Duration::from_secs(fleet_secs));
@@ -53,6 +56,7 @@ async fn main() {
                     lease_secs,
                     retry_delay_secs,
                     max_attempts,
+                    Arc::clone(&lease_coordinator),
                 ).await;
             }
             _ = fleet_tick.tick() => {
@@ -64,6 +68,7 @@ async fn main() {
                     lease_secs,
                     retry_delay_secs,
                     max_attempts,
+                    Arc::clone(&lease_coordinator),
                 ).await;
             }
             _ = moon_tick.tick() => {
@@ -75,6 +80,7 @@ async fn main() {
                     lease_secs,
                     retry_delay_secs,
                     max_attempts,
+                    Arc::clone(&lease_coordinator),
                 ).await;
             }
             _ = shard_tick.tick() => {
@@ -86,6 +92,7 @@ async fn main() {
                     lease_secs,
                     retry_delay_secs,
                     max_attempts,
+                    Arc::clone(&lease_coordinator),
                 ).await;
             }
         }
@@ -107,14 +114,38 @@ async fn enqueue_and_process_tick(
     lease_secs: i64,
     retry_delay_secs: i64,
     max_attempts: i32,
+    lease_coordinator: Arc<LeaseCoordinator>,
 ) {
     tracing::info!(service = SERVICE_NAME, task_type, "tick start");
+    let lease_ttl = Duration::from_secs(lease_secs.max(1) as u64);
+    let lease_resource = format!("scheduler:{task_type}");
+    let lease = match lease_coordinator
+        .acquire(&lease_resource, worker_id, lease_ttl)
+        .await
+    {
+        Ok(lease) => lease,
+        Err(error) => {
+            tracing::warn!(
+                service = SERVICE_NAME,
+                task_type,
+                resource = %lease_resource,
+                worker_id,
+                %error,
+                "skipping tick because scheduler lease is held elsewhere"
+            );
+            return;
+        }
+    };
+
     let Some(database) = platform_db::Database::from_env() else {
         tracing::warn!(
             service = SERVICE_NAME,
             task_type,
             "DATABASE_URL not configured; skipping enqueue/process cycle"
         );
+        lease_coordinator
+            .release(&lease.resource, &lease.owner)
+            .await;
         return;
     };
 
@@ -135,6 +166,9 @@ async fn enqueue_and_process_tick(
         .await;
     if let Err(error) = enqueue_result {
         tracing::error!(service = SERVICE_NAME, task_type, %error, "failed enqueue scheduled task");
+        lease_coordinator
+            .release(&lease.resource, &lease.owner)
+            .await;
         return;
     }
 
@@ -145,11 +179,17 @@ async fn enqueue_and_process_tick(
         Ok(tasks) => tasks,
         Err(error) => {
             tracing::error!(service = SERVICE_NAME, task_type, %error, "failed claim due tasks");
+            lease_coordinator
+                .release(&lease.resource, &lease.owner)
+                .await;
             return;
         }
     };
 
     if claimed.is_empty() {
+        lease_coordinator
+            .release(&lease.resource, &lease.owner)
+            .await;
         return;
     }
 
@@ -212,6 +252,10 @@ async fn enqueue_and_process_tick(
             }
         }
     }
+
+    lease_coordinator
+        .release(&lease.resource, &lease.owner)
+        .await;
 }
 
 async fn process_task(

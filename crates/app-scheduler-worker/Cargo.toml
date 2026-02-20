@@ -8,5 +8,6 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 tracing = { workspace = true }
 platform-events = { path = "../platform-events" }
 platform-db = { path = "../platform-db" }
+platform-consensus = { path = "../platform-consensus" }
 platform-observability = { path = "../platform-observability" }
 serde_json = "1.0"
