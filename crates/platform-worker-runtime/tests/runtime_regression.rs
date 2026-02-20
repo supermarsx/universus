@@ -1,4 +1,5 @@
 use anyhow::Result;
+use platform_consensus::LeaseCoordinator;
 use platform_tenancy::{TenantAccessLevel, TenantContext};
 use platform_worker_runtime::{RuntimeError, WorkerRuntime};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -78,5 +79,41 @@ async fn shutdown_rejects_future_tasks() -> Result<()> {
 
     let err = runtime.spawn_tenant_task(tenant_context("tenant-b"), async move { Ok(()) });
     assert!(matches!(err, Err(RuntimeError::ShuttingDown)));
+    Ok(())
+}
+
+#[tokio::test]
+async fn leased_task_holds_and_releases_consensus_lease() -> Result<()> {
+    let runtime = WorkerRuntime::current(2);
+    let coordinator = Arc::new(LeaseCoordinator::new());
+    let (tx, rx) = oneshot::channel::<()>();
+    let resource = "runtime:tenant-c:job".to_string();
+
+    runtime
+        .spawn_leased_tenant_task(
+            tenant_context("tenant-c"),
+            Arc::clone(&coordinator),
+            resource.clone(),
+            Duration::from_secs(10),
+            async move {
+                let _ = rx.await;
+                Ok(())
+            },
+        )
+        .await
+        .expect("leased task should schedule");
+
+    let lease_conflict = coordinator
+        .acquire(&resource, "tenant-d", Duration::from_secs(10))
+        .await;
+    assert!(lease_conflict.is_err(), "lease must be held while task runs");
+
+    let _ = tx.send(());
+    runtime.shutdown(Duration::from_secs(1)).await;
+
+    let lease_after = coordinator
+        .acquire(&resource, "tenant-d", Duration::from_secs(10))
+        .await;
+    assert!(lease_after.is_ok(), "lease should be released after task completes");
     Ok(())
 }

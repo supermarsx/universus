@@ -1,6 +1,7 @@
 //! Shared runtime helper for workers that need tenant-safe threading, instrumentation, and graceful shutdown.
 
 use anyhow::Result;
+use platform_consensus::LeaseCoordinator;
 use platform_tenancy::TenantContext;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -19,6 +20,9 @@ pub enum RuntimeError {
 
     #[error("maximum in-flight tasks exceeded")]
     MaxInflight,
+
+    #[error("failed to acquire lease: {0}")]
+    LeaseAcquire(String),
 }
 
 /// Describes basic runtime snapshot data.
@@ -108,6 +112,68 @@ impl WorkerRuntime {
         self.handle.spawn(async move {
             if let Err(err) = work.await {
                 tracing::error!(error = %err, "worker task reported error");
+            }
+        });
+        Ok(())
+    }
+
+    /// Spawn a tenant-aware task that first acquires a consensus lease and releases it on completion.
+    pub async fn spawn_leased_tenant_task<F>(
+        &self,
+        context: TenantContext,
+        coordinator: Arc<LeaseCoordinator>,
+        resource: String,
+        ttl: Duration,
+        work: F,
+    ) -> Result<(), RuntimeError>
+    where
+        F: std::future::Future<Output = Result<()>> + Send + 'static,
+    {
+        self.can_schedule()?;
+        let lease = coordinator
+            .acquire(&resource, &context.tenant_id, ttl)
+            .await
+            .map_err(|error| RuntimeError::LeaseAcquire(error.to_string()))?;
+
+        let inflight = self.inflight.clone();
+        let counts = Arc::clone(&self.tenant_counts);
+        let notify = Arc::clone(&self.notify);
+        let tenant_id = context.tenant_id.clone();
+        let span = span!(
+            Level::INFO,
+            "worker_task_leased",
+            tenant = %tenant_id,
+            resource = %lease.resource
+        );
+        let work = async move {
+            {
+                let mut map = counts.lock().await;
+                let counter = map.entry(tenant_id.clone()).or_insert(0);
+                *counter += 1;
+            }
+            info!(
+                tenant = %tenant_id,
+                resource = %lease.resource,
+                "scheduling tenant task with consensus lease"
+            );
+            let res = work.await;
+            coordinator.release(&lease.resource, &lease.owner).await;
+            {
+                let mut map = counts.lock().await;
+                if let Some(value) = map.get_mut(&tenant_id) {
+                    *value = value.saturating_sub(1);
+                }
+            }
+            if inflight.fetch_sub(1, Ordering::SeqCst) == 1 {
+                notify.notify_waiters();
+            }
+            res
+        }
+        .instrument(span);
+
+        self.handle.spawn(async move {
+            if let Err(err) = work.await {
+                tracing::error!(error = %err, "leased worker task reported error");
             }
         });
         Ok(())

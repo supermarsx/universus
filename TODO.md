@@ -29,7 +29,7 @@ Status legend: [done], [partial], [missing]
 - [partial] Lease contention/resilience tests now exist at the `platform-consensus` crate level, plus scheduler/tenant-routing failover coverage in `platform-scheduler`; expand further into end-to-end worker integration scenarios.
 - [done] `platform-migrations` regression suite now covers rollback paths through `MigrationRunner`.
 - [partial] Compare Postgres/MySQL/JSON behavior in `adapter-db` via parity tests (Postgres/MySQL drivers now have test-container coverage but production adapters still need operational validation).
-- [partial] Added `platform-worker-runtime` regression tests for leak-counter reset, backpressure (`MaxInflight`), and shutdown gating; extend with CPU/heap/lease-aware integration suites.
+- [partial] Added `platform-worker-runtime` regression tests for leak-counter reset, backpressure (`MaxInflight`), shutdown gating, and leased-task release semantics; extend with CPU/heap integration suites.
 - [done] The 1M-action benchmark has a fresh run recorded under `specification/validation-reports/1m-action-benchmark.md`.
 - [partial] Ship the `platform-migrations` transfer CLI plus docs to show how to export/import tenants across adapters (JSON/SQLite and the upcoming SQL drivers); capture the new flow in testing docs and scripts.
 - [done] Provide a consensus + worker runtime validation harness under `scripts/rust/run-consensus-worker-validation.ps1` and document its usage.
