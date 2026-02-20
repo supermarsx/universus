@@ -20,6 +20,7 @@ try {
   }
 
   Invoke-CommandStep -Cmd 'cargo test -p platform-consensus -- --test-threads 1' -Label 'platform-consensus leases'
+  Invoke-CommandStep -Cmd 'cargo test -p platform-scheduler -- --test-threads 1' -Label 'platform-scheduler routing failover'
   Invoke-CommandStep -Cmd 'cargo test -p platform-worker-runtime -- --test-threads 1' -Label 'worker-runtime caps'
 
   if (-not $NoDocker) {
