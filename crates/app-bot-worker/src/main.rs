@@ -1,9 +1,12 @@
 use std::env;
 use std::time::Duration;
 
+use platform_tenancy::{TenantAccessLevel, TenantContext};
+use platform_worker_runtime::WorkerRuntime;
 use reqwest::{Client, Url};
 use serde_json::Value;
 use tokio::signal;
+use tokio::sync::oneshot;
 use tokio::time;
 use tracing_subscriber::EnvFilter;
 
@@ -114,6 +117,22 @@ async fn call_process_all_bots(
     })
 }
 
+fn tenant_context_from_env() -> TenantContext {
+    let tenant_id = env::var("BOT_WORKER_TENANT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "tenant-default".to_string());
+    let tenant_name = env::var("BOT_WORKER_TENANT_NAME")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
+    TenantContext {
+        tenant_id,
+        tenant_name,
+        access_level: TenantAccessLevel::Worker,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -121,8 +140,14 @@ async fn main() {
         .init();
 
     let interval_ms = parse_interval_ms(env::var("BOT_WORKER_INTERVAL_MS").ok().as_deref());
+    let max_inflight = env::var("BOT_WORKER_MAX_INFLIGHT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(8);
     let bot_api_url = parse_bot_api_url(env::var("BOT_API_URL").ok().as_deref());
     let api_key = parse_optional_api_key(env::var("BOT_SERVICE_API_KEY").ok().as_deref());
+    let tenant_context = tenant_context_from_env();
+    let runtime = WorkerRuntime::current(max_inflight);
     let endpoint = match build_process_all_url(&bot_api_url) {
         Ok(endpoint) => endpoint,
         Err(error) => {
@@ -146,6 +171,8 @@ async fn main() {
     tracing::info!(
         service = "app-bot-worker",
         interval_ms,
+        max_inflight,
+        tenant_id = %tenant_context.tenant_id,
         endpoint = %endpoint,
         api_key_configured = api_key.is_some(),
         "worker startup"
@@ -155,8 +182,25 @@ async fn main() {
         tokio::select! {
             _ = interval.tick() => {
                 tracing::info!(service = "app-bot-worker", endpoint = %endpoint, "processing cycle started");
+                let client_ref = client.clone();
+                let endpoint_ref = endpoint.clone();
+                let api_key_ref = api_key.clone();
+                let context = tenant_context.clone();
+                let (done_tx, done_rx) = oneshot::channel::<Result<ProcessCallOutcome, String>>();
+                let spawned = runtime.spawn_tenant_task(context, async move {
+                    let result = call_process_all_bots(&client_ref, &endpoint_ref, api_key_ref.as_deref()).await;
+                    let _ = done_tx.send(result);
+                    Ok(())
+                });
+                let cycle_result = match spawned {
+                    Ok(()) => match done_rx.await {
+                        Ok(result) => result,
+                        Err(_) => Err("bot runtime task ended before reporting result".to_string()),
+                    },
+                    Err(error) => Err(format!("failed to schedule bot cycle: {error}")),
+                };
 
-                match call_process_all_bots(&client, &endpoint, api_key.as_deref()).await {
+                match cycle_result {
                     Ok(outcome) => {
                         match outcome.processed_count {
                             Some(processed_count) => {
@@ -175,6 +219,13 @@ async fn main() {
                                 );
                             }
                         }
+                        let stats = runtime.stats().await;
+                        tracing::debug!(
+                            service = "app-bot-worker",
+                            total_inflight = stats.total_inflight,
+                            tenant_count = stats.per_tenant.len(),
+                            "bot worker runtime stats"
+                        );
                     }
                     Err(error) => {
                         tracing::error!(
@@ -193,6 +244,7 @@ async fn main() {
         }
     }
 
+    runtime.shutdown(Duration::from_secs(5)).await;
     tracing::info!(service = "app-bot-worker", "worker shutdown complete");
 }
 

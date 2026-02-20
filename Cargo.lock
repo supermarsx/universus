@@ -241,6 +241,8 @@ dependencies = [
 name = "app-bot-worker"
 version = "0.1.0"
 dependencies = [
+ "platform-tenancy",
+ "platform-worker-runtime",
  "reqwest",
  "serde_json",
  "tokio",
