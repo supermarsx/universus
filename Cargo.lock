@@ -253,6 +253,8 @@ dependencies = [
  "platform-db",
  "platform-events",
  "platform-observability",
+ "platform-tenancy",
+ "platform-worker-runtime",
  "serde_json",
  "tokio",
  "tracing",

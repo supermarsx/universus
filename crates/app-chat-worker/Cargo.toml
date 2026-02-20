@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["time", "rt-multi-thread", "macros", "sync"] }
 tracing = { workspace = true }
 platform-observability = { path = "../platform-observability" }
 platform-db = { path = "../platform-db" }
 platform-events = { path = "../platform-events" }
+platform-worker-runtime = { path = "../platform-worker-runtime" }
+platform-tenancy = { path = "../platform-tenancy" }
 serde_json = "1.0"

@@ -19,7 +19,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
 1. **Tenant routing**: Every HTTP/gRPC request and queue message derives its tenant from `platform-tenancy`. The `platform-tenant-routing` crate maps tenanted traffic to shard/worker pools, enforces quotas/backpressure, surfaces tenant lifecycle hooks, and is now documented in `docs/tenant-routing.md`.
 2. **Lease-backed resource guards**: `platform-consensus` acts as the gatekeeper for shared resources (schedulers, shard leaders, migration runners). Leases are time-bound, auto-renew, expose health metrics, and unblock failover when a lease expires.
 3. **Sharding & scheduling**: The `platform-sharding` crate (backed by `platform-consensus`) now tracks shard ownership, leader assignment, and thread-level placement so workers (chat, notifications, analytics, etc.) know which shard/tenant they are allowed to process. The `platform-scheduler` crate now orchestrates cron jobs/tasks that follow those assignments while emitting tenant-aware leases and telemetry.
-4. **Thread/runtime stability**: `platform-worker-runtime` will give each worker binary consistent graceful shutdown, leak detection, observability wiring, and memory/CPU caps to avoid stray nodes taking down the cluster under tenant stress.
+4. **Thread/runtime stability**: `platform-worker-runtime` provides shared graceful shutdown, leak counters, and instrumentation primitives; `app-notifications-worker` and `app-chat-worker` are wired, while the rest of the worker fleet still needs migration.
 
 ## Adapter Configuration and Multi-Database Support
 - The adapter registry schema in `database/runtime-adapters.json` exposes per-driver metadata (`driver`, `tenant`, `url`/`path`, optional `logPath`, `lease_resource_hint`, and diagnostics tags). Operators can reference `adapter-db/src/lib.rs` alongside `docs/json-dev-mode.md` to see how `platform-adapter` and `platform-consensus` use those hints to offer per-tenant leases, health checks, and diagnostic breadcrumbs without double-assigning tenants.
@@ -60,13 +60,11 @@ This is the single-page overview of the Rust backend infrastructure, its current
 **Legacy documents:** Node-era guides live in `docs/LEGACY_NODE_ARCHIVE.md`; do not edit those files, and rely on the Rust docs listed above for current operations.
 
 ## TODO
-1. Document the JSON schema and runtime discovery for `AdapterRegistry`, including how `platform-adapter` selects drivers per tenant and environment.
-2. Integrate `MigrationRunner` into `app-admin-api` (REST + CLI) so admins can view tenant migration status, trigger runs/rollbacks, and read detailed telemetry on failures.
-3. Capture the new migration-health gate in `scripts/rust/live-rust-cutover-check.ps1` so operators know the cutover script refuses to run smoke checks when any tenant reports failed migrations.
-4. Implement the remaining runtime crates (`platform-scheduler`, `platform-worker-runtime`, `platform-adapter`) to standardize tenancy, threading, consensus, and adapter lifecycle; `platform-tenant-routing` and `platform-sharding` are already in place.
-5. Document the `platform-tenant-routing` interface (route summaries, quota/per-tenant rate limits, optional lease acquisition) plus the test harness that validates tenant isolation, queue pacing/backpressure, consensus lease failures, and route decision recomputation.
-6. Capture the tenant-routing-focused test cases described in `docs/rust-backend-plan.md` inside `specification/validation-reports/` once implemented.
-7. Use `docs/spec-gap-analysis.md` as the current canonical state tracker so readers can see which adapter/migration/routing gaps remain before retiring the legacy Node surface.
-8. Expand docs/tests for multi-tenancy, consensus, migrations, adapters, and the 1M action benchmark (see `crates/benchmark-actions`).
+1. Migrate remaining workers (`app-email-worker`, `app-analytics-worker`, `app-bot-worker`, and others) onto `platform-worker-runtime`.
+2. Wire `app-scheduler-worker`/`app-sharding-worker` into `platform-scheduler` and `platform-sharding` decision APIs rather than mostly app-local loops.
+3. Export `platform-consensus` lifecycle metrics/events through shared `platform-observability` dashboards/alerts.
+4. Expand `platform-worker-runtime` coverage with CPU/heap cap and lease-aware integration tests.
+5. Add end-to-end tenant-routing/consensus scenarios (HTTP isolation, queue failover, migration lock handshake) beyond crate-level tests.
+6. Keep `TODO.md`, `docs/spec-gap-analysis.md`, and `specification/test-scenarios.md` synchronized as those suites land.
 
 This page links back to `docs/rust-backend-plan.md`, which contains the cross-cutting plan for tests, docs, and benchmarks.

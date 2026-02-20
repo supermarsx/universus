@@ -11,12 +11,12 @@ Status legend: [done], [partial], [missing]
 ## Adapter & multi-database strategy
 - [done] `adapter-db` now wires Postgres, MySQL, and JSON file adapters and exposes `execute_script` for migration runners.
 - [done] `platform-adapter` wraps `adapter-db`, honors the JSON registry (`database/runtime-adapters.json`), and reports adapter readiness/health through its definitions snapshot.
-- [missing] Detail how `platform-adapter` consumes the JSON registry (driver metadata, optional `lease_resource_hint`, diagnostics tags) and how it maps those hints into `platform-consensus` leases so per-tenant adapters cannot be double-assigned.
+- [done] Documented how `platform-adapter` consumes JSON registry metadata (`driver`, `tenant`, `url/path`, `lease_resource_hint`, diagnostics tags) and maps lease hints into `platform-consensus` guards.
 
 ## Runtime & sharding platform
 - [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; it still needs integration with the scheduler/runtime hop.
 - [partial] `platform-scheduler` now registers and triggers tenant jobs via `platform-tenant-routing`/`platform-sharding`; still needs integration with `platform-worker-runtime`.
-- [partial] `platform-worker-runtime` now provides the shared runtime instrumentation for tenants; `app-notifications-worker` is wired through it, with remaining workers still to migrate.
+- [partial] `platform-worker-runtime` now provides the shared runtime instrumentation for tenants; `app-notifications-worker` and `app-chat-worker` are wired through it, with remaining workers still to migrate.
 - [partial] `platform-adapter` wraps `adapter-db`, loads JSON adapter configs, and gates each tenant within consensus leases; verify health hooks in dashboards/tests.
 
 ## Migrations & admin surface
@@ -34,7 +34,7 @@ Status legend: [done], [partial], [missing]
 - [partial] Ship the `platform-migrations` transfer CLI plus docs to show how to export/import tenants across adapters (JSON/SQLite and the upcoming SQL drivers); capture the new flow in testing docs and scripts.
 - [done] Provide a consensus + worker runtime validation harness under `scripts/rust/run-consensus-worker-validation.ps1` and document its usage.
 - [partial] `specification/test-scenarios.md` exists and tracks major suites; continue syncing it with new consensus/worker-runtime automation as tests land.
-- [missing] Surface automation/scripts for firing up a Rust instance with only the JSON adapter (`database/runtime-adapters.json`) so smoke/integration suites run without external Postgres/MySQL dependencies.
+- [partial] Rust startup automation exists (`scripts/rust/start-rust-only.ps1`) and JSON-only local crate flows are documented; still missing a dedicated one-command JSON-only smoke harness that avoids Postgres/Redis/RabbitMQ bring-up.
 
 ## Documentation & migration tracking
 - [partial] `docs/architecture.md` now highlights the Rust platform plan and the new adapter/migration endpoints; the legacy Node docs still await archival.
