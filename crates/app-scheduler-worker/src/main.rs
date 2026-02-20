@@ -2,8 +2,10 @@ use platform_consensus::LeaseCoordinator;
 use platform_scheduler::{JobConfig, JobHandler, Scheduler};
 use platform_sharding::{ShardConfig, ShardingCatalog};
 use platform_tenant_routing::{TenantRouteConfig, TenantRouter, TenantRoutingDecision};
+use platform_worker_runtime::WorkerRuntime;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::oneshot;
 use tokio::time::{sleep, Duration};
 
 const SERVICE_NAME: &str = "app-scheduler-worker";
@@ -27,6 +29,10 @@ async fn main() {
     let lease_secs = i64_env("SCHED_TASK_LEASE_SECS", 30);
     let retry_delay_secs = i64_env("SCHED_TASK_RETRY_DELAY_SECS", 15);
     let max_attempts = i32_env("SCHED_TASK_MAX_ATTEMPTS", 3);
+    let runtime_max_inflight = std::env::var("SCHED_RUNTIME_MAX_INFLIGHT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(32);
     let tenant_id = std::env::var("SCHED_TENANT_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -56,6 +62,7 @@ async fn main() {
         lease_secs,
         retry_delay_secs,
         max_attempts,
+        runtime_max_inflight,
         tenant_id,
         shard_id,
         queue_name,
@@ -63,8 +70,10 @@ async fn main() {
         "scheduler worker started"
     );
     let lease_coordinator = Arc::new(LeaseCoordinator::new());
+    let runtime = Arc::new(WorkerRuntime::current(runtime_max_inflight));
     let scheduler = match bootstrap_platform_scheduler(
         Arc::clone(&lease_coordinator),
+        Arc::clone(&runtime),
         tenant_id.clone(),
         shard_id.clone(),
         queue_name.clone(),
@@ -139,6 +148,7 @@ async fn main() {
     }
 
     // flush logs in short-lived run_once mode
+    runtime.shutdown(Duration::from_secs(5)).await;
     sleep(Duration::from_millis(25)).await;
 }
 
@@ -155,6 +165,7 @@ async fn trigger_platform_job(scheduler: &Scheduler, job_id: &str) {
 
 async fn bootstrap_platform_scheduler(
     lease_coordinator: Arc<LeaseCoordinator>,
+    runtime: Arc<WorkerRuntime>,
     tenant_id: String,
     shard_id: String,
     queue_name: String,
@@ -195,6 +206,7 @@ async fn bootstrap_platform_scheduler(
     let scheduler = Arc::new(Scheduler::new(tenant_router, catalog));
     register_scheduler_job(
         Arc::clone(&scheduler),
+        Arc::clone(&runtime),
         "scheduler.game_loop",
         &tenant_id,
         &shard_id,
@@ -208,6 +220,7 @@ async fn bootstrap_platform_scheduler(
     .await?;
     register_scheduler_job(
         Arc::clone(&scheduler),
+        Arc::clone(&runtime),
         "scheduler.fleet",
         &tenant_id,
         &shard_id,
@@ -221,6 +234,7 @@ async fn bootstrap_platform_scheduler(
     .await?;
     register_scheduler_job(
         Arc::clone(&scheduler),
+        Arc::clone(&runtime),
         "scheduler.moon_destroy",
         &tenant_id,
         &shard_id,
@@ -234,6 +248,7 @@ async fn bootstrap_platform_scheduler(
     .await?;
     register_scheduler_job(
         Arc::clone(&scheduler),
+        Arc::clone(&runtime),
         "scheduler.shard_health",
         &tenant_id,
         &shard_id,
@@ -251,6 +266,7 @@ async fn bootstrap_platform_scheduler(
 
 async fn register_scheduler_job(
     scheduler: Arc<Scheduler>,
+    runtime: Arc<WorkerRuntime>,
     task_type: &str,
     tenant_id: &str,
     shard_id: &str,
@@ -267,18 +283,31 @@ async fn register_scheduler_job(
         let task_type = task_type_for_handler.clone();
         let worker_id = worker_id.clone();
         let realtime_url = realtime_url.clone();
+        let runtime = Arc::clone(&runtime);
         Box::pin(async move {
-            enqueue_and_process_tick(
-                &task_type,
-                cadence_secs,
-                realtime_url.as_deref(),
-                &worker_id,
-                lease_secs,
-                retry_delay_secs,
-                max_attempts,
-                decision,
-            )
-            .await;
+            let tenant_id = decision.tenant_id().to_string();
+            let shard_id = decision.route.shard_id.clone();
+            let queue_name = decision.route.queue_name.clone();
+            let context = decision.guard.context().clone();
+            let (done_tx, done_rx) = oneshot::channel::<()>();
+            runtime.spawn_tenant_task(context, async move {
+                enqueue_and_process_tick(
+                    &task_type,
+                    cadence_secs,
+                    realtime_url.as_deref(),
+                    &worker_id,
+                    lease_secs,
+                    retry_delay_secs,
+                    max_attempts,
+                    &tenant_id,
+                    &shard_id,
+                    &queue_name,
+                )
+                .await;
+                let _ = done_tx.send(());
+                Ok(())
+            }).map_err(|error| anyhow::anyhow!("runtime schedule failure: {error}"))?;
+            let _ = done_rx.await;
             Ok(())
         })
     });
@@ -303,15 +332,17 @@ async fn enqueue_and_process_tick(
     lease_secs: i64,
     retry_delay_secs: i64,
     max_attempts: i32,
-    decision: TenantRoutingDecision,
+    tenant_id: &str,
+    shard_id: &str,
+    queue_name: &str,
 ) {
     tracing::info!(service = SERVICE_NAME, task_type, "tick start");
     tracing::debug!(
         service = SERVICE_NAME,
         task_type,
-        tenant_id = decision.tenant_id(),
-        shard_id = %decision.route.shard_id,
-        queue_name = %decision.route.queue_name,
+        tenant_id,
+        shard_id,
+        queue_name,
         "platform scheduler decision acquired"
     );
 
