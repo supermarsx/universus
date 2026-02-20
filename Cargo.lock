@@ -283,6 +283,8 @@ name = "app-email-worker"
 version = "0.1.0"
 dependencies = [
  "adapter-provider-email",
+ "platform-tenancy",
+ "platform-worker-runtime",
  "redis",
  "tokio",
  "tracing",

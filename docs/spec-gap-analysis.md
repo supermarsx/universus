@@ -18,7 +18,7 @@ This analysis is based on the current repository state across:
 
 | Area | Current state | Gap |
 | --- | --- | --- |
-| Worker adoption of platform runtime stack | `app-scheduler-worker` and `app-sharding-worker` now lease-guard cycles; `app-notifications-worker` and `app-chat-worker` run cleanup cycles via `platform-worker-runtime`. | The rest of the worker fleet still needs consistent `platform-worker-runtime` and platform routing/scheduler/sharding adoption. |
+| Worker adoption of platform runtime stack | `app-scheduler-worker` and `app-sharding-worker` now lease-guard cycles; `app-notifications-worker`, `app-chat-worker`, and `app-email-worker` run cycles/jobs via `platform-worker-runtime`. | The rest of the worker fleet still needs consistent `platform-worker-runtime` and platform routing/scheduler/sharding adoption. |
 | Scheduler/sharding consensus integration | `platform-scheduler`/`platform-sharding` crates are ready, and both `app-scheduler-worker` + `app-sharding-worker` now take `platform-consensus` leases for their execution cycles. | Remaining worker fleet still needs consistent lease/runtime adoption through platform crates. |
 | Consensus observability rollout | `platform-consensus` now exposes lifecycle metrics/events and renew/status methods. | Events/metrics are not yet exported into shared dashboards/telemetry pipelines (`platform-observability` integration still missing). |
 | Worker runtime regression coverage | `platform-worker-runtime` now has unit tests plus regression tests for leak counter reset, max in-flight backpressure, and shutdown gating. | Extend into CPU/heap cap + lease-aware integration suites that include cross-worker failover behavior. |

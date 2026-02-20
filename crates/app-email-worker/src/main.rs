@@ -1,9 +1,13 @@
 use std::env;
+use std::sync::Arc;
 
 use adapter_provider_email::{parse_email_job_payload_bytes, EmailProvider, LoggingEmailProvider};
+use platform_tenancy::{TenantAccessLevel, TenantContext};
+use platform_worker_runtime::WorkerRuntime;
 use redis::aio::MultiplexedConnection;
 use redis::{cmd, Client};
 use tokio::signal;
+use tokio::sync::oneshot;
 use tracing_subscriber::EnvFilter;
 
 const DEFAULT_POLL_TIMEOUT_SECS: u64 = 5;
@@ -86,6 +90,10 @@ async fn main() {
 
     let poll_timeout_seconds =
         parse_poll_timeout_seconds(env::var("WORKER_POLL_TIMEOUT_SECONDS").ok().as_deref());
+    let max_inflight = env::var("EMAIL_WORKER_MAX_INFLIGHT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(16);
     let email_queue_key = read_redis_key(
         "EMAIL_QUEUE_KEY",
         "EMAIL_QUEUE_NAME",
@@ -124,12 +132,15 @@ async fn main() {
     tracing::info!(
         service = "app-email-worker",
         poll_timeout_seconds,
+        max_inflight,
         email_queue_key = %email_queue_key,
         email_dlq_key = %email_dlq_key,
         "worker startup"
     );
 
-    let dispatcher = EmailDispatcher::new(LoggingEmailProvider::default());
+    let dispatcher = Arc::new(EmailDispatcher::new(LoggingEmailProvider::default()));
+    let tenant_context = tenant_context_from_env();
+    let runtime = WorkerRuntime::current(max_inflight);
 
     loop {
         tokio::select! {
@@ -140,13 +151,37 @@ async fn main() {
             pop_result = pop_job(&mut conn, &email_queue_key, poll_timeout_seconds) => {
                 match pop_result {
                     Ok(Some(payload)) => {
-                        match process_job(&dispatcher, &payload) {
+                        let dispatcher_ref = Arc::clone(&dispatcher);
+                        let context = tenant_context.clone();
+                        let payload_for_task = payload.clone();
+                        let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
+                        let spawn_result = runtime.spawn_tenant_task(context, async move {
+                            let result = process_job(dispatcher_ref.as_ref(), &payload_for_task);
+                            let _ = done_tx.send(result);
+                            Ok(())
+                        });
+                        let process_result = match spawn_result {
+                            Ok(()) => match done_rx.await {
+                                Ok(result) => result,
+                                Err(_) => Err("email runtime task ended before reporting result".to_string()),
+                            },
+                            Err(error) => Err(format!("failed to schedule email job: {error}")),
+                        };
+
+                        match process_result {
                             Ok(()) => {
                                 tracing::info!(
                                     service = "app-email-worker",
                                     email_queue_key = %email_queue_key,
                                     payload_size = payload.len(),
                                     "processed email job"
+                                );
+                                let stats = runtime.stats().await;
+                                tracing::debug!(
+                                    service = "app-email-worker",
+                                    total_inflight = stats.total_inflight,
+                                    tenant_count = stats.per_tenant.len(),
+                                    "email worker runtime stats"
                                 );
                             }
                             Err(error) => {
@@ -205,5 +240,22 @@ async fn main() {
         }
     }
 
+    runtime.shutdown(std::time::Duration::from_secs(5)).await;
     tracing::info!(service = "app-email-worker", "worker shutdown complete");
+}
+
+fn tenant_context_from_env() -> TenantContext {
+    let tenant_id = env::var("EMAIL_WORKER_TENANT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "tenant-default".to_string());
+    let tenant_name = env::var("EMAIL_WORKER_TENANT_NAME")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
+    TenantContext {
+        tenant_id,
+        tenant_name,
+        access_level: TenantAccessLevel::Worker,
+    }
 }
