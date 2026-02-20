@@ -14,7 +14,7 @@ Status legend: [done], [partial], [missing]
 - [done] Documented how `platform-adapter` consumes JSON registry metadata (`driver`, `tenant`, `url/path`, `lease_resource_hint`, diagnostics tags) and maps lease hints into `platform-consensus` guards.
 
 ## Runtime & sharding platform
-- [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; it still needs integration with the scheduler/runtime hop.
+- [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; `app-sharding-worker` now syncs shard leader/catalog state, with deeper scheduler/runtime interoperability still pending.
 - [partial] `platform-scheduler` now registers and triggers tenant jobs via `platform-tenant-routing`/`platform-sharding`, and `app-scheduler-worker` is wired into those APIs; next step is integrating worker-runtime execution around scheduler handlers.
 - [partial] `platform-worker-runtime` now provides the shared runtime instrumentation for tenants; `app-notifications-worker`, `app-chat-worker`, `app-email-worker`, `app-analytics-worker`, and `app-bot-worker` are wired through it, with remaining workers still to migrate.
 - [partial] `platform-adapter` wraps `adapter-db`, loads JSON adapter configs, and gates each tenant within consensus leases; verify health hooks in dashboards/tests.

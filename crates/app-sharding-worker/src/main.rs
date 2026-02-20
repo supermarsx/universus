@@ -1,5 +1,7 @@
 use platform_consensus::LeaseCoordinator;
 use platform_db::{Database, ShardServerUpsert};
+use platform_sharding::{ShardConfig, ShardingCatalog};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -45,6 +47,23 @@ async fn main() {
         "sharding worker started"
     );
     let lease_coordinator = Arc::new(LeaseCoordinator::new());
+    let shard_tenant = std::env::var("SHARD_TENANT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "tenant-default".to_string());
+    let shard_region = std::env::var("SERVER_REGION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "global".to_string());
+    let sharding_catalog = Arc::new(ShardingCatalog::with_consensus(Arc::clone(&lease_coordinator)));
+    sharding_catalog
+        .register_shard(ShardConfig {
+            shard_id: server_id.clone(),
+            region: shard_region.clone(),
+            allowed_tenants: HashSet::from_iter(vec![shard_tenant.clone()]),
+            consensus_resource: Some(format!("shard:{server_id}:leader")),
+        })
+        .await;
 
     let mut heartbeat_tick = tokio::time::interval(Duration::from_secs(heartbeat_secs));
     let mut stale_tick = tokio::time::interval(Duration::from_secs(stale_check_secs));
@@ -60,6 +79,14 @@ async fn main() {
                 )
                 .await
                 {
+                    sync_platform_shard_catalog(
+                        sharding_catalog.as_ref(),
+                        &server_id,
+                        &worker_id,
+                        cycle_lease_secs,
+                        realtime_url.as_deref(),
+                    )
+                    .await;
                     heartbeat_cycle(realtime_url.as_deref()).await;
                     lease_coordinator
                         .release(&heartbeat_lease.resource, &heartbeat_lease.owner)
@@ -364,6 +391,55 @@ async fn acquire_cycle_lease(
                 "skipping sharding cycle; lease already held"
             );
             None
+        }
+    }
+}
+
+async fn sync_platform_shard_catalog(
+    catalog: &ShardingCatalog,
+    shard_id: &str,
+    worker_id: &str,
+    lease_secs: i64,
+    realtime_url: Option<&str>,
+) {
+    let ttl = Duration::from_secs(lease_secs.max(1) as u64);
+    match catalog.assign_leader(shard_id, worker_id, ttl).await {
+        Ok(leader) => {
+            let summaries = catalog.summarize_shards().await;
+            if let Some(summary) = summaries.iter().find(|summary| summary.shard_id == shard_id) {
+                tracing::info!(
+                    service = SERVICE_NAME,
+                    shard_id = %summary.shard_id,
+                    region = %summary.region,
+                    assigned_node = ?summary.assigned_node,
+                    tenant_count = summary.tenant_count,
+                    leader_owner = %leader.lease.owner,
+                    "platform sharding catalog synchronized"
+                );
+                if let Some(url) = realtime_url {
+                    publish_ops_event(
+                        url,
+                        "shard.catalog_sync",
+                        &serde_json::json!({
+                            "shardId": summary.shard_id,
+                            "region": summary.region,
+                            "assignedNode": summary.assigned_node,
+                            "tenantCount": summary.tenant_count,
+                            "leaderOwner": leader.lease.owner
+                        }),
+                    )
+                    .await;
+                }
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                service = SERVICE_NAME,
+                shard_id,
+                worker_id,
+                %error,
+                "failed to synchronize platform sharding catalog"
+            );
         }
     }
 }

@@ -20,6 +20,7 @@ This is the single-page overview of the Rust backend infrastructure, its current
 2. **Lease-backed resource guards**: `platform-consensus` acts as the gatekeeper for shared resources (schedulers, shard leaders, migration runners). Leases are time-bound, auto-renew, expose health metrics, and unblock failover when a lease expires.
 3. **Sharding & scheduling**: The `platform-sharding` crate (backed by `platform-consensus`) now tracks shard ownership, leader assignment, and thread-level placement so workers (chat, notifications, analytics, etc.) know which shard/tenant they are allowed to process. The `platform-scheduler` crate now orchestrates cron jobs/tasks that follow those assignments while emitting tenant-aware leases and telemetry.
    - `app-scheduler-worker` now registers/executes its task families through `platform-scheduler` + `platform-tenant-routing` + `platform-sharding` bootstrap wiring.
+   - `app-sharding-worker` now synchronizes shard leader ownership and shard summary state through `platform-sharding` APIs during heartbeat cycles.
 4. **Thread/runtime stability**: `platform-worker-runtime` provides shared graceful shutdown, leak counters, and instrumentation primitives; `app-notifications-worker`, `app-chat-worker`, `app-email-worker`, `app-analytics-worker`, and `app-bot-worker` are wired, while the rest of the worker fleet still needs migration.
 
 ## Adapter Configuration and Multi-Database Support
