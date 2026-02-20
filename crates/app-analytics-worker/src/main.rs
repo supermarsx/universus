@@ -4,10 +4,13 @@ use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicConsumeOptions, BasicNackOptions, QueueDeclareOptions};
 use lapin::types::FieldTable;
 use lapin::{Channel, Connection, ConnectionProperties};
+use platform_tenancy::{TenantAccessLevel, TenantContext};
+use platform_worker_runtime::WorkerRuntime;
 use platform_db::Database;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::signal;
+use tokio::sync::oneshot;
 use tracing_subscriber::EnvFilter;
 
 const DEFAULT_ANALYTICS_QUEUE_NAME: &str = "analytics_events";
@@ -62,6 +65,50 @@ async fn nack_without_requeue(channel: &Channel, delivery_tag: u64) {
     }
 }
 
+async fn process_analytics_message(
+    database: Option<Database>,
+    payload: Vec<u8>,
+) -> Result<(), String> {
+    let message = serde_json::from_slice::<AnalyticsMessage>(&payload)
+        .map_err(|error| format!("invalid analytics payload: {error}"))?;
+
+    let event_type = message.event_type.trim();
+    if event_type.is_empty() {
+        return Err("analytics payload missing event type".to_string());
+    }
+
+    let database = database
+        .ok_or_else(|| "database is not configured; cannot persist analytics event".to_string())?;
+    database
+        .track_analytics_event_detailed(
+            event_type,
+            message.session_id.as_deref(),
+            message.properties,
+            message.user_id,
+            message.user_agent.as_deref(),
+            message.ip_address.as_deref(),
+        )
+        .await
+        .map_err(|error| format!("failed to persist analytics event: {error}"))?;
+    Ok(())
+}
+
+fn tenant_context_from_env() -> TenantContext {
+    let tenant_id = env::var("ANALYTICS_WORKER_TENANT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "tenant-default".to_string());
+    let tenant_name = env::var("ANALYTICS_WORKER_TENANT_NAME")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+
+    TenantContext {
+        tenant_id,
+        tenant_name,
+        access_level: TenantAccessLevel::Worker,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -73,6 +120,12 @@ async fn main() {
         env::var("ANALYTICS_QUEUE_NAME").ok().as_deref(),
         DEFAULT_ANALYTICS_QUEUE_NAME,
     );
+    let max_inflight = env::var("ANALYTICS_WORKER_MAX_INFLIGHT")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(16);
+    let tenant_context = tenant_context_from_env();
+    let runtime = WorkerRuntime::current(max_inflight);
     let rabbitmq_url = env::var("RABBITMQ_URL")
         .ok()
         .map(|value| value.trim().to_string())
@@ -171,6 +224,8 @@ async fn main() {
     tracing::info!(
         service = "app-analytics-worker",
         queue_name = %queue_name,
+        max_inflight,
+        tenant_id = %tenant_context.tenant_id,
         "worker startup"
     );
 
@@ -201,53 +256,24 @@ async fn main() {
                     }
                 };
 
-                let parsed = serde_json::from_slice::<AnalyticsMessage>(&delivery.data);
-                let message = match parsed {
-                    Ok(message) => message,
-                    Err(error) => {
-                        tracing::error!(
-                            service = "app-analytics-worker",
-                            delivery_tag = delivery.delivery_tag,
-                            error = %error,
-                            "invalid analytics payload"
-                        );
-                        nack_without_requeue(&channel, delivery.delivery_tag).await;
-                        continue;
-                    }
+                let payload = delivery.data.clone();
+                let database_ref = database.clone();
+                let context = tenant_context.clone();
+                let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
+                let spawned = runtime.spawn_tenant_task(context, async move {
+                    let result = process_analytics_message(database_ref, payload).await;
+                    let _ = done_tx.send(result);
+                    Ok(())
+                });
+                let process_result = match spawned {
+                    Ok(()) => match done_rx.await {
+                        Ok(result) => result,
+                        Err(_) => Err("analytics runtime task ended before reporting result".to_string()),
+                    },
+                    Err(error) => Err(format!("failed to schedule analytics message: {error}")),
                 };
 
-                let event_type = message.event_type.trim();
-                if event_type.is_empty() {
-                    tracing::error!(
-                        service = "app-analytics-worker",
-                        delivery_tag = delivery.delivery_tag,
-                        "analytics payload missing event type"
-                    );
-                    nack_without_requeue(&channel, delivery.delivery_tag).await;
-                    continue;
-                }
-
-                let Some(database) = database.as_ref() else {
-                    tracing::error!(
-                        service = "app-analytics-worker",
-                        delivery_tag = delivery.delivery_tag,
-                        "database is not configured; cannot persist analytics event"
-                    );
-                    nack_without_requeue(&channel, delivery.delivery_tag).await;
-                    continue;
-                };
-
-                match database
-                    .track_analytics_event_detailed(
-                        event_type,
-                        message.session_id.as_deref(),
-                        message.properties,
-                        message.user_id,
-                        message.user_agent.as_deref(),
-                        message.ip_address.as_deref(),
-                    )
-                    .await
-                {
+                match process_result {
                     Ok(_) => {
                         if let Err(error) = channel
                             .basic_ack(delivery.delivery_tag, BasicAckOptions::default())
@@ -260,13 +286,20 @@ async fn main() {
                                 "failed to ack analytics event"
                             );
                         }
+                        let stats = runtime.stats().await;
+                        tracing::debug!(
+                            service = "app-analytics-worker",
+                            total_inflight = stats.total_inflight,
+                            tenant_count = stats.per_tenant.len(),
+                            "analytics worker runtime stats"
+                        );
                     }
                     Err(error) => {
                         tracing::error!(
                             service = "app-analytics-worker",
                             delivery_tag = delivery.delivery_tag,
                             error = %error,
-                            "failed to persist analytics event"
+                            "analytics message processing failed"
                         );
                         nack_without_requeue(&channel, delivery.delivery_tag).await;
                     }
@@ -275,5 +308,6 @@ async fn main() {
         }
     }
 
+    runtime.shutdown(std::time::Duration::from_secs(5)).await;
     tracing::info!(service = "app-analytics-worker", "worker shutdown complete");
 }

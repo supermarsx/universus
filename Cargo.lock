@@ -192,6 +192,8 @@ dependencies = [
  "futures-util",
  "lapin",
  "platform-db",
+ "platform-tenancy",
+ "platform-worker-runtime",
  "serde",
  "serde_json",
  "tokio",

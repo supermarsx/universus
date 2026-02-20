@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { workspace = true, features = ["signal"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 platform-db = { path = "../platform-db" }
+platform-worker-runtime = { path = "../platform-worker-runtime" }
+platform-tenancy = { path = "../platform-tenancy" }
 lapin = "2"
 futures-util = "0.3"
 serde = { workspace = true, features = ["derive"] }
