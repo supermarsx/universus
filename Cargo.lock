@@ -3216,6 +3216,9 @@ version = "0.1.0"
 [[package]]
 name = "platform-common"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "platform-config"
