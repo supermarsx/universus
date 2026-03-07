@@ -50,13 +50,7 @@ pub fn format_timestamp(secs: i64) -> String {
 
 /// Clamps `value` so that it is at least `min` and at most `max`.
 pub fn clamp<T: Ord>(value: T, min: T, max: T) -> T {
-    if value < min {
-        min
-    } else if value > max {
-        max
-    } else {
-        value
-    }
+    value.clamp(min, max)
 }
 
 /// Safely truncates a string to at most `max_len` bytes on a valid UTF-8
@@ -83,7 +77,7 @@ pub struct Pagination {
 impl Pagination {
     /// Returns the zero-based offset for database queries.
     pub fn offset(&self) -> usize {
-        self.page.saturating_sub(1) * self.per_page
+        self.page.saturating_sub(1).saturating_mul(self.per_page)
     }
 
     /// Returns the limit (number of items per page).
