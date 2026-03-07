@@ -21,10 +21,17 @@ dependencies = [
 [[package]]
 name = "adapter-http-compat"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "adapter-provider-bot"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "adapter-provider-email"
@@ -37,6 +44,9 @@ dependencies = [
 [[package]]
 name = "adapter-provider-payments"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "adapter-provider-sms"
@@ -1831,6 +1841,9 @@ dependencies = [
 [[package]]
 name = "game-universe"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "generic-array"
