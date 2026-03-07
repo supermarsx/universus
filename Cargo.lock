@@ -1750,6 +1750,9 @@ dependencies = [
 [[package]]
 name = "game-antiabuse"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-chat"
