@@ -54,14 +54,17 @@ pub struct PlatformAdapterRegistry {
 impl PlatformAdapterDefinition {
     fn from_entry(entry: &AdapterEntry) -> Self {
         let (driver, info, tenant) = match &entry.driver {
-            adapter_db::AdapterDriver::Postgres { url, tenant } => {
+            adapter_db::AdapterDriver::Postgres { url, tenant, .. } => {
                 ("postgres", url.clone(), tenant.clone())
             }
-            adapter_db::AdapterDriver::Mysql { url, tenant } => {
+            adapter_db::AdapterDriver::Mysql { url, tenant, .. } => {
                 ("mysql", url.clone(), tenant.clone())
             }
-            adapter_db::AdapterDriver::JsonFile { path, tenant } => {
+            adapter_db::AdapterDriver::JsonFile { path, tenant, .. } => {
                 ("jsonfile", path.clone(), tenant.clone())
+            }
+            adapter_db::AdapterDriver::Sqlite { path, tenant, .. } => {
+                ("sqlite", path.clone(), tenant.clone())
             }
         };
         Self {

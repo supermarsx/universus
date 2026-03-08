@@ -9,9 +9,12 @@ Status legend: [done], [partial], [missing]
 - [partial] `app-scheduler-worker` and `app-sharding-worker` now acquire cycle/task leases via `platform-consensus`; broader worker/runtime lease adoption remains.
 
 ## Adapter & multi-database strategy
-- [done] `adapter-db` now wires Postgres, MySQL, and JSON file adapters and exposes `execute_script` for migration runners.
-- [done] `platform-adapter` wraps `adapter-db`, honors the JSON registry (`database/runtime-adapters.json`), and reports adapter readiness/health through its definitions snapshot.
+- [done] `adapter-db` now wires Postgres, MySQL, JSON file, and SQLite adapters and exposes `execute_script` for migration runners.
+- [done] `platform-adapter` wraps `adapter-db`, honors the JSON registry (`database/runtime-adapters.json`), and reports adapter readiness/health through its definitions snapshot. Now handles all adapter drivers including SQLite.
 - [done] Documented how `platform-adapter` consumes JSON registry metadata (`driver`, `tenant`, `url/path`, `lease_resource_hint`, diagnostics tags) and maps lease hints into `platform-consensus` guards.
+- [done] `adapter-http-compat` now provides `HttpCompatAdapter` trait with `SnakeToCamelAdapter`, `CamelToSnakeAdapter`, and `PassthroughAdapter` implementations for JSON key format conversion.
+- [done] `adapter-provider-bot` now provides `BotProviderAdapter` with bot registration, webhook management, and event logging.
+- [done] `adapter-provider-payments` now provides `PaymentsProviderAdapter` with full transaction lifecycle (create, complete, fail, refund) and revenue tracking.
 
 ## Runtime & sharding platform
 - [partial] `platform-sharding` now captures shard ownership, lease-backed leaders, and tenant placement; `app-sharding-worker` now syncs shard leader/catalog state, with deeper scheduler/runtime interoperability still pending.

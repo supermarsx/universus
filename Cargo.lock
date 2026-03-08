@@ -21,10 +21,17 @@ dependencies = [
 [[package]]
 name = "adapter-http-compat"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "adapter-provider-bot"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "adapter-provider-email"
@@ -37,6 +44,9 @@ dependencies = [
 [[package]]
 name = "adapter-provider-payments"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "adapter-provider-sms"
@@ -1743,10 +1753,16 @@ dependencies = [
 [[package]]
 name = "game-alliance"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-antiabuse"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-chat"
@@ -1767,10 +1783,17 @@ dependencies = [
 [[package]]
 name = "game-domain"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "game-economy"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-fleet"
@@ -1783,18 +1806,30 @@ dependencies = [
 [[package]]
 name = "game-galaxy"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-leaderboard"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-messaging"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-moon"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "game-notifications"
@@ -1806,6 +1841,9 @@ dependencies = [
 [[package]]
 name = "game-universe"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "generic-array"
@@ -3208,6 +3246,10 @@ dependencies = [
 [[package]]
 name = "platform-auth"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "platform-cache"
@@ -3216,6 +3258,9 @@ version = "0.1.0"
 [[package]]
 name = "platform-common"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "platform-config"
@@ -3281,6 +3326,10 @@ dependencies = [
 [[package]]
 name = "platform-proto"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "platform-scheduler"
