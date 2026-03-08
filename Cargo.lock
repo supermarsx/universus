@@ -31,6 +31,7 @@ name = "adapter-provider-bot"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -46,6 +47,7 @@ name = "adapter-provider-payments"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -53,6 +55,7 @@ name = "adapter-provider-sms"
 version = "0.1.0"
 dependencies = [
  "rusqlite",
+ "serde",
  "serde_json",
  "tempfile",
 ]
@@ -202,6 +205,8 @@ dependencies = [
  "futures-util",
  "lapin",
  "platform-db",
+ "platform-events",
+ "platform-observability",
  "platform-tenancy",
  "platform-worker-runtime",
  "serde",
@@ -217,10 +222,16 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "game-achievements",
+ "game-acs",
  "game-combat",
+ "game-economy",
  "game-fleet",
+ "game-galaxy",
+ "game-marketplace",
  "game-notifications",
+ "game-universe",
  "hyper 0.14.32",
+ "platform-auth",
  "platform-config",
  "platform-db",
  "platform-errors",
@@ -251,6 +262,8 @@ dependencies = [
 name = "app-bot-worker"
 version = "0.1.0"
 dependencies = [
+ "platform-events",
+ "platform-observability",
  "platform-tenancy",
  "platform-worker-runtime",
  "reqwest",
@@ -297,9 +310,12 @@ name = "app-email-worker"
 version = "0.1.0"
 dependencies = [
  "adapter-provider-email",
+ "platform-events",
+ "platform-observability",
  "platform-tenancy",
  "platform-worker-runtime",
  "redis",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -392,6 +408,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "hyper 0.14.32",
+ "platform-auth",
  "serde",
  "serde_json",
  "tokio",
@@ -700,6 +717,15 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 [[package]]
 name = "benchmark-actions"
 version = "0.1.0"
+dependencies = [
+ "game-combat",
+ "game-domain",
+ "game-economy",
+ "game-fleet",
+ "game-queue",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "bigdecimal"
@@ -1751,10 +1777,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "game-acs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "game-alliance"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1762,6 +1797,7 @@ name = "game-antiabuse"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1769,6 +1805,7 @@ name = "game-chat"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1793,6 +1830,15 @@ name = "game-economy"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "game-espionage"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1808,6 +1854,7 @@ name = "game-galaxy"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1815,6 +1862,15 @@ name = "game-leaderboard"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "game-marketplace"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1822,6 +1878,7 @@ name = "game-messaging"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1829,6 +1886,7 @@ name = "game-moon"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1836,6 +1894,23 @@ name = "game-notifications"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "game-premium"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "game-queue"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1843,6 +1918,7 @@ name = "game-universe"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3254,17 +3330,26 @@ dependencies = [
 [[package]]
 name = "platform-cache"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "platform-common"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "platform-config"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "platform-consensus"
@@ -3289,6 +3374,8 @@ name = "platform-errors"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3319,6 +3406,8 @@ name = "platform-observability"
 version = "0.1.0"
 dependencies = [
  "platform-consensus",
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3340,6 +3429,8 @@ dependencies = [
  "platform-sharding",
  "platform-tenancy",
  "platform-tenant-routing",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -3351,6 +3442,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "platform-consensus",
+ "serde",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -3362,6 +3454,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -3373,6 +3466,7 @@ dependencies = [
  "platform-consensus",
  "platform-tenancy",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -3385,6 +3479,8 @@ dependencies = [
  "anyhow",
  "platform-consensus",
  "platform-tenancy",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

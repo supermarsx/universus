@@ -2,6 +2,34 @@
 
 Status legend: [done], [partial], [missing]
 
+## Domain & game logic crates (stub → full implementation)
+- [done] `game-domain` — core types: Resources, Coordinates, Player, Planet, Building/Ship/Defense/Research enums (56 variants), FleetMission, queue items, FleetMovement, DebrisField, BattleReport, Message, UniverseSettings. (56 tests)
+- [done] `game-economy` — OGame production formulas, building/research/ship/defense costs, construction times, storage capacity, lazy resource evaluation, trade ratios. (41 tests)
+- [done] `game-galaxy` — GalaxyConfig, GalaxyStore (HashMap-backed), coordinate validation, planet placement, debris fields, free position finding, NPC generation. (18 tests)
+- [done] `game-universe` — UniverseSettings, UniverseStatus state machine, UniverseManager, merge support, presets. (26 tests)
+- [done] `game-alliance` — Alliance CRUD, role hierarchy, membership, applications, diplomacy pacts. (24 tests)
+- [done] `game-moon` — Moon creation from debris (OGame formula), RIP destruction, sensor phalanx, jump gate cooldown. (32 tests)
+- [done] `game-messaging` — 8 MessageTypes, MessageStore, combat/espionage reports, spam guard, bulk operations. (27 tests)
+- [done] `game-leaderboard` — 8 ScoreCategories, ranking stores, recalculation, search, history snapshots. (20 tests)
+- [done] `game-antiabuse` — Noob protection, pushing detection, rate limiting, IP/account monitoring, violation tracking, bot detection. (26 tests)
+
+## Platform crates (stub → full implementation)
+- [done] `platform-auth` — SHA-256/HMAC-SHA256 JWT, password hashing, SessionStore, role hierarchy, auth middleware helpers. (25 tests)
+- [done] `platform-cache` — Cache trait, InMemoryCache (LRU/FIFO/TTL), TypedCache, TwoLevelCache, glob patterns, stats. (27 tests)
+- [done] `platform-common` — ID generation, time utilities, validation, pagination, string/math utils, env helpers. (42+ tests)
+- [done] `platform-proto` — ApiRequest/Response, 18-variant GameEvent enum, WorkerTask/Result, RealtimeMessage, ServiceHealth, pagination. (18 tests)
+
+## Adapter crates (stub → full implementation)
+- [done] `adapter-provider-payments` — PaymentProvider trait, LoggingPaymentProvider, product catalog, webhook parsing/verification. (32 tests)
+- [done] `adapter-provider-bot` — 6 BotPersonality types, BotDecisionEngine AI, BotScheduler, activity simulation. (25 tests)
+- [done] `adapter-http-compat` — HttpCompatAdapter trait, LegacyCompatAdapter, PathMapper, camelCase/snake_case conversion. (26 tests)
+
+## CI & cleanup
+- [done] Fixed pre-existing build error in `platform-adapter` (pattern matching for `log_path` field and `Sqlite` variant).
+- [done] Fixed `.github/workflows/ci.yml` — removed broken Node/pnpm/frontend steps, switched to `dtolnay/rust-toolchain`, consolidated cache steps.
+- [done] Removed residual root `package.json` (Node.js artifact from pre-migration era).
+- [done] Created `.env.example` (was referenced by README but missing).
+
 ## Multi-tenancy & consensus
 - [partial] Ensure `platform-tenancy` injects tenant IDs/logging metadata into Axum/Tower/middleware and queue handlers; audit all HTTP routes to verify they read `TenantContext`.
 - [partial] `platform-tenant-routing` maps tenant requests to worker pools with quotas/backpressure and optional leases; remaining work is end-to-end worker adoption and failover test automation.

@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 thiserror = "1"
 tracing = "0.1"
@@ -14,3 +15,4 @@ platform-tenancy = { path = "../platform-tenancy" }
 
 [dev-dependencies]
 platform-consensus = { path = "../platform-consensus" }
+serde_json = "1"

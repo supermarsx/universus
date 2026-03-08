@@ -1,4 +1,21 @@
+//! Bot processing worker.
+//!
+//! Periodically calls the bot API's `process-all` endpoint to trigger
+//! AI bot decision-making cycles across all active bot accounts.
+//!
+//! Configuration via environment variables:
+//! - `BOT_WORKER_INTERVAL_MS` — interval between processing cycles in ms (default: 60000)
+//! - `BOT_WORKER_MAX_INFLIGHT` — max concurrent tasks (default: 8)
+//! - `BOT_API_URL` — base URL for the bot API (default: "http://localhost:4001")
+//! - `BOT_SERVICE_API_KEY` — optional API key for authentication
+//! - `BOT_WORKER_TENANT_ID` — tenant ID for worker context
+//! - `BOT_WORKER_TENANT_NAME` — tenant display name
+//! - `BOT_HTTP_TIMEOUT_SECS` — HTTP request timeout in seconds (default: 30)
+//! - `REALTIME_GATEWAY_URL` — URL for publishing operational events
+
 use std::env;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use platform_tenancy::{TenantAccessLevel, TenantContext};
@@ -8,11 +25,58 @@ use serde_json::Value;
 use tokio::signal;
 use tokio::sync::oneshot;
 use tokio::time;
-use tracing_subscriber::EnvFilter;
 
+const SERVICE_NAME: &str = "app-bot-worker";
 const DEFAULT_INTERVAL_MS: u64 = 60_000;
 const DEFAULT_BOT_API_URL: &str = "http://localhost:4001";
 const PROCESS_ALL_PATH: &str = "/api/admin/bots/process-all";
+
+/// Cumulative counters for monitoring.
+struct WorkerMetrics {
+    cycles_total: AtomicU64,
+    cycles_success: AtomicU64,
+    cycles_failed: AtomicU64,
+    total_bots_processed: AtomicU64,
+}
+
+impl WorkerMetrics {
+    fn new() -> Self {
+        Self {
+            cycles_total: AtomicU64::new(0),
+            cycles_success: AtomicU64::new(0),
+            cycles_failed: AtomicU64::new(0),
+            total_bots_processed: AtomicU64::new(0),
+        }
+    }
+
+    fn record_success(&self, bots_processed: u64) {
+        self.cycles_total.fetch_add(1, Ordering::Relaxed);
+        self.cycles_success.fetch_add(1, Ordering::Relaxed);
+        self.total_bots_processed
+            .fetch_add(bots_processed, Ordering::Relaxed);
+    }
+
+    fn record_failure(&self) {
+        self.cycles_total.fetch_add(1, Ordering::Relaxed);
+        self.cycles_failed.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> MetricsSnapshot {
+        MetricsSnapshot {
+            cycles_total: self.cycles_total.load(Ordering::Relaxed),
+            cycles_success: self.cycles_success.load(Ordering::Relaxed),
+            cycles_failed: self.cycles_failed.load(Ordering::Relaxed),
+            total_bots_processed: self.total_bots_processed.load(Ordering::Relaxed),
+        }
+    }
+}
+
+struct MetricsSnapshot {
+    cycles_total: u64,
+    cycles_success: u64,
+    cycles_failed: u64,
+    total_bots_processed: u64,
+}
 
 fn parse_interval_ms(raw: Option<&str>) -> u64 {
     raw.and_then(|value| value.parse::<u64>().ok())
@@ -31,6 +95,13 @@ fn parse_optional_api_key(raw: Option<&str>) -> Option<String> {
     raw.map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn parse_env<T: std::str::FromStr>(key: &str, default: T) -> T {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<T>().ok())
+        .unwrap_or(default)
 }
 
 fn build_process_all_url(base_url: &str) -> Result<Url, String> {
@@ -133,33 +204,49 @@ fn tenant_context_from_env() -> TenantContext {
     }
 }
 
+async fn publish_ops_event(base_url: &str, event_type: &str, payload: &serde_json::Value) {
+    let event = platform_events::build_event(event_type, payload);
+    if let Err(error) = platform_events::publish_http(base_url, "ops.bot", &event).await {
+        tracing::warn!(
+            service = SERVICE_NAME,
+            event_type,
+            %error,
+            "failed to publish ops event"
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    platform_observability::init(SERVICE_NAME);
 
     let interval_ms = parse_interval_ms(env::var("BOT_WORKER_INTERVAL_MS").ok().as_deref());
-    let max_inflight = env::var("BOT_WORKER_MAX_INFLIGHT")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(8);
+    let max_inflight: usize = parse_env("BOT_WORKER_MAX_INFLIGHT", 8);
+    let http_timeout_secs: u64 = parse_env("BOT_HTTP_TIMEOUT_SECS", 30);
     let bot_api_url = parse_bot_api_url(env::var("BOT_API_URL").ok().as_deref());
     let api_key = parse_optional_api_key(env::var("BOT_SERVICE_API_KEY").ok().as_deref());
+    let realtime_url: Option<String> = env::var("REALTIME_GATEWAY_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
     let tenant_context = tenant_context_from_env();
     let runtime = WorkerRuntime::current(max_inflight);
+    let metrics = Arc::new(WorkerMetrics::new());
+
     let endpoint = match build_process_all_url(&bot_api_url) {
         Ok(endpoint) => endpoint,
         Err(error) => {
-            tracing::error!(service = "app-bot-worker", error = %error, "worker startup failed");
+            tracing::error!(service = SERVICE_NAME, error = %error, "worker startup failed");
             return;
         }
     };
-    let client = match Client::builder().timeout(Duration::from_secs(30)).build() {
+    let client = match Client::builder()
+        .timeout(Duration::from_secs(http_timeout_secs))
+        .build()
+    {
         Ok(client) => client,
         Err(error) => {
             tracing::error!(
-                service = "app-bot-worker",
+                service = SERVICE_NAME,
                 error = %error,
                 "failed to initialize HTTP client"
             );
@@ -169,19 +256,28 @@ async fn main() {
     let mut interval = time::interval(Duration::from_millis(interval_ms));
 
     tracing::info!(
-        service = "app-bot-worker",
+        service = SERVICE_NAME,
         interval_ms,
         max_inflight,
+        http_timeout_secs,
         tenant_id = %tenant_context.tenant_id,
         endpoint = %endpoint,
         api_key_configured = api_key.is_some(),
+        has_realtime_url = realtime_url.is_some(),
         "worker startup"
     );
 
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                tracing::info!(service = "app-bot-worker", endpoint = %endpoint, "processing cycle started");
+                let cycle = metrics.snapshot().cycles_total + 1;
+                tracing::info!(
+                    service = SERVICE_NAME,
+                    cycle,
+                    endpoint = %endpoint,
+                    "processing cycle started"
+                );
+
                 let client_ref = client.clone();
                 let endpoint_ref = endpoint.clone();
                 let api_key_ref = api_key.clone();
@@ -193,7 +289,7 @@ async fn main() {
                     Ok(())
                 });
                 let cycle_result = match spawned {
-                    Ok(()) => match done_rx.await {
+                    Ok(_job_id) => match done_rx.await {
                         Ok(result) => result,
                         Err(_) => Err("bot runtime task ended before reporting result".to_string()),
                     },
@@ -202,50 +298,89 @@ async fn main() {
 
                 match cycle_result {
                     Ok(outcome) => {
-                        match outcome.processed_count {
-                            Some(processed_count) => {
-                                tracing::info!(
-                                    service = "app-bot-worker",
-                                    processed_bots = processed_count,
-                                    message = ?outcome.message,
-                                    "processing cycle completed"
-                                );
-                            }
-                            None => {
-                                tracing::info!(
-                                    service = "app-bot-worker",
-                                    message = ?outcome.message,
-                                    "processing cycle completed"
-                                );
-                            }
-                        }
-                        let stats = runtime.stats().await;
-                        tracing::debug!(
-                            service = "app-bot-worker",
-                            total_inflight = stats.total_inflight,
-                            tenant_count = stats.per_tenant.len(),
-                            "bot worker runtime stats"
+                        let bots = outcome.processed_count.unwrap_or(0);
+                        metrics.record_success(bots);
+
+                        tracing::info!(
+                            service = SERVICE_NAME,
+                            cycle,
+                            processed_bots = bots,
+                            message = ?outcome.message,
+                            "processing cycle completed"
                         );
+
+                        if let Some(url) = &realtime_url {
+                            publish_ops_event(
+                                url,
+                                "bot.processing.completed",
+                                &serde_json::json!({
+                                    "cycle": cycle,
+                                    "botsProcessed": bots,
+                                    "message": outcome.message
+                                }),
+                            )
+                            .await;
+                        }
                     }
                     Err(error) => {
+                        metrics.record_failure();
+
                         tracing::error!(
-                            service = "app-bot-worker",
+                            service = SERVICE_NAME,
+                            cycle,
                             endpoint = %endpoint,
                             error = %error,
                             "processing cycle failed"
                         );
+
+                        if let Some(url) = &realtime_url {
+                            publish_ops_event(
+                                url,
+                                "bot.processing.failed",
+                                &serde_json::json!({
+                                    "cycle": cycle,
+                                    "error": error,
+                                    "endpoint": endpoint.as_str()
+                                }),
+                            )
+                            .await;
+                        }
                     }
                 }
+
+                // Log runtime stats after each cycle
+                let rt_stats = runtime.stats().await;
+                let snap = metrics.snapshot();
+                tracing::info!(
+                    service = SERVICE_NAME,
+                    cycles_total = snap.cycles_total,
+                    cycles_success = snap.cycles_success,
+                    cycles_failed = snap.cycles_failed,
+                    total_bots_processed = snap.total_bots_processed,
+                    runtime_inflight = rt_stats.total_inflight,
+                    runtime_completed = rt_stats.total_completed,
+                    "bot worker stats"
+                );
             }
             _ = signal::ctrl_c() => {
-                tracing::info!(service = "app-bot-worker", "shutdown signal received");
+                tracing::info!(service = SERVICE_NAME, "shutdown signal received");
                 break;
             }
         }
     }
 
+    let snap = metrics.snapshot();
+    tracing::info!(
+        service = SERVICE_NAME,
+        cycles_total = snap.cycles_total,
+        cycles_success = snap.cycles_success,
+        cycles_failed = snap.cycles_failed,
+        total_bots_processed = snap.total_bots_processed,
+        "final metrics at shutdown"
+    );
+
     runtime.shutdown(Duration::from_secs(5)).await;
-    tracing::info!(service = "app-bot-worker", "worker shutdown complete");
+    tracing::info!(service = SERVICE_NAME, "worker shutdown complete");
 }
 
 #[cfg(test)]
@@ -260,12 +395,35 @@ mod tests {
     }
 
     #[test]
+    fn parse_interval_accepts_valid_values() {
+        assert_eq!(parse_interval_ms(Some("5000")), 5000);
+        assert_eq!(parse_interval_ms(Some("1")), 1);
+        assert_eq!(parse_interval_ms(Some("120000")), 120000);
+    }
+
+    #[test]
     fn build_process_all_url_sets_expected_path() {
         let url = build_process_all_url("http://localhost:4001/base/path").unwrap();
         assert_eq!(
             url.as_str(),
             "http://localhost:4001/api/admin/bots/process-all"
         );
+    }
+
+    #[test]
+    fn build_process_all_url_strips_query_and_fragment() {
+        let url = build_process_all_url("http://example.com?foo=bar#baz").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "http://example.com/api/admin/bots/process-all"
+        );
+    }
+
+    #[test]
+    fn build_process_all_url_rejects_invalid_url() {
+        let result = build_process_all_url("not-a-url");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("invalid BOT_API_URL"));
     }
 
     #[test]
@@ -278,5 +436,64 @@ mod tests {
 
         let missing = serde_json::json!({ "success": true });
         assert_eq!(extract_processed_count(&missing), None);
+    }
+
+    #[test]
+    fn extract_processed_count_all_key_variants() {
+        for key in &[
+            "processed",
+            "processed_count",
+            "processedCount",
+            "count",
+            "total_processed",
+            "totalProcessed",
+        ] {
+            let json = serde_json::json!({ (*key): 42 });
+            assert_eq!(
+                extract_processed_count(&json),
+                Some(42),
+                "failed for key: {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_bot_api_url_defaults() {
+        assert_eq!(parse_bot_api_url(None), DEFAULT_BOT_API_URL);
+        assert_eq!(parse_bot_api_url(Some("")), DEFAULT_BOT_API_URL);
+        assert_eq!(parse_bot_api_url(Some("  ")), DEFAULT_BOT_API_URL);
+    }
+
+    #[test]
+    fn parse_bot_api_url_custom() {
+        assert_eq!(
+            parse_bot_api_url(Some("http://bots.local:9000")),
+            "http://bots.local:9000"
+        );
+    }
+
+    #[test]
+    fn parse_optional_api_key_behavior() {
+        assert_eq!(parse_optional_api_key(None), None);
+        assert_eq!(parse_optional_api_key(Some("")), None);
+        assert_eq!(parse_optional_api_key(Some("  ")), None);
+        assert_eq!(
+            parse_optional_api_key(Some("secret-key-123")),
+            Some("secret-key-123".to_string())
+        );
+    }
+
+    #[test]
+    fn metrics_snapshot_tracking() {
+        let m = WorkerMetrics::new();
+        m.record_success(10);
+        m.record_success(5);
+        m.record_failure();
+
+        let snap = m.snapshot();
+        assert_eq!(snap.cycles_total, 3);
+        assert_eq!(snap.cycles_success, 2);
+        assert_eq!(snap.cycles_failed, 1);
+        assert_eq!(snap.total_bots_processed, 15);
     }
 }

@@ -11,3 +11,5 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 platform-worker-runtime = { path = "../platform-worker-runtime" }
 platform-tenancy = { path = "../platform-tenancy" }
+platform-events = { path = "../platform-events" }
+platform-observability = { path = "../platform-observability" }

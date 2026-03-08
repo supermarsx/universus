@@ -22,6 +22,15 @@ fn json_request_with_body(path: &str, body: Value) -> Request<Body> {
         .expect("build request")
 }
 
+fn dev_token() -> String {
+    let config = platform_auth::AuthConfig {
+        jwt_secret: "default-secret".to_string(),
+        jwt_expiry_seconds: 86_400,
+        ..platform_auth::AuthConfig::default()
+    };
+    platform_auth::generate_token(&config, "u-rust-1", "Commander", "player", Some(1)).unwrap()
+}
+
 #[tokio::test]
 async fn simulated_player_flow_happy_path() {
     let app = build_router("simulation-flow");
@@ -88,7 +97,7 @@ async fn simulated_player_flow_happy_path() {
             Request::builder()
                 .method("POST")
                 .uri("/api/planets/p-001/build")
-                .header(header::AUTHORIZATION, "Bearer dev-token")
+                .header(header::AUTHORIZATION, format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({ "buildingType": "metal_mine" }).to_string(),
@@ -103,20 +112,9 @@ async fn simulated_player_flow_happy_path() {
     assert_eq!(build_body["data"]["planetId"], "p-001");
 
     let movement_payload = json!({
-        "origin_galaxy": 1,
-        "origin_system": 1,
-        "origin_position": 1,
-        "target_galaxy": 1,
-        "target_system": 2,
-        "target_position": 1,
-        "ships": [
-            {
-                "count": 5,
-                "base_speed": 1000.0,
-                "fuel_consumption": 2.0,
-                "cargo": 5.0
-            }
-        ]
+        "origin": { "galaxy": 1, "system": 1, "position": 1 },
+        "target": { "galaxy": 1, "system": 2, "position": 1 },
+        "ships": { "lightFighter": 5 }
     });
 
     let movement_response = app
@@ -137,7 +135,7 @@ async fn simulated_player_flow_happy_path() {
             Request::builder()
                 .method("POST")
                 .uri("/api/fleet/send")
-                .header(header::AUTHORIZATION, "Bearer dev-token")
+                .header(header::AUTHORIZATION, format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({

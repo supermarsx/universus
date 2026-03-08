@@ -11,3 +11,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 tracing = "0.1"
 platform-tenancy = { path = "../platform-tenancy" }
 platform-consensus = { path = "../platform-consensus" }
+
+[dev-dependencies]
+serde_json = "1"

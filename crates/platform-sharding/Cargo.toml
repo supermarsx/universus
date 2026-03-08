@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 anyhow = "1"
 platform-consensus = { path = "../platform-consensus" }
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 thiserror = "1"
 tracing = "0.1"

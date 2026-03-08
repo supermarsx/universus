@@ -1,10 +1,15 @@
 use axum::extract::Path;
 use axum::response::Response;
 use axum::routing::get;
-use axum::Router;
+use axum::{Extension, Router};
 use serde::Serialize;
 
-use crate::response::success;
+use crate::response::{bad_request, success};
+use crate::state::AppState;
+
+// ---------------------------------------------------------------------------
+// API response types (camelCase for JSON consumers)
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,8 +23,16 @@ struct GalaxyOverview {
 #[serde(rename_all = "camelCase")]
 struct SystemSlot {
     position: i32,
-    occupant: &'static str,
-    status: &'static str,
+    occupant: String,
+    status: String,
+    planet_name: Option<String>,
+    moon_id: Option<i64>,
+    debris_metal: i64,
+    debris_crystal: i64,
+    alliance_tag: Option<String>,
+    is_inactive: bool,
+    is_vacation: bool,
+    is_banned: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,6 +42,10 @@ struct SystemView {
     system: i32,
     slots: Vec<SystemSlot>,
 }
+
+// ---------------------------------------------------------------------------
+// Router
+// ---------------------------------------------------------------------------
 
 pub fn router() -> Router {
     Router::new()
@@ -40,54 +57,74 @@ pub fn router() -> Router {
         )
 }
 
-async fn galaxy_overview_handler() -> Response {
-    success(vec![
-        GalaxyOverview {
-            galaxy: 1,
-            systems: 499,
-            active_players: 187,
-        },
-        GalaxyOverview {
-            galaxy: 2,
-            systems: 499,
-            active_players: 142,
-        },
-    ])
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+async fn galaxy_overview_handler(Extension(state): Extension<AppState>) -> Response {
+    let snapshots = state.galaxy_overview();
+    let result: Vec<GalaxyOverview> = snapshots
+        .into_iter()
+        .map(|s| GalaxyOverview {
+            galaxy: s.galaxy,
+            systems: s.systems,
+            active_players: s.active_players,
+        })
+        .collect();
+    success(result)
 }
 
-async fn system_view_handler(Path((galaxy, system)): Path<(i32, i32)>) -> Response {
-    success(SystemView {
-        galaxy,
-        system,
-        slots: vec![
-            SystemSlot {
-                position: 4,
-                occupant: "Helios",
-                status: "active",
-            },
-            SystemSlot {
-                position: 8,
-                occupant: "New Terra",
-                status: "active",
-            },
-        ],
-    })
+async fn system_view_handler(
+    Extension(state): Extension<AppState>,
+    Path((galaxy, system)): Path<(i32, i32)>,
+) -> Response {
+    match state.galaxy_system_view(galaxy, system) {
+        Ok(view) => {
+            let slots = view
+                .slots
+                .into_iter()
+                .map(|s| SystemSlot {
+                    position: s.position,
+                    occupant: s.occupant,
+                    status: s.status,
+                    planet_name: s.planet_name,
+                    moon_id: s.moon_id,
+                    debris_metal: s.debris_metal,
+                    debris_crystal: s.debris_crystal,
+                    alliance_tag: s.alliance_tag,
+                    is_inactive: s.is_inactive,
+                    is_vacation: s.is_vacation,
+                    is_banned: s.is_banned,
+                })
+                .collect();
+            success(SystemView {
+                galaxy: view.galaxy,
+                system: view.system,
+                slots,
+            })
+        }
+        Err(msg) => bad_request(&msg),
+    }
 }
 
 async fn position_view_handler(
+    Extension(state): Extension<AppState>,
     Path((galaxy, system, position)): Path<(i32, i32, i32)>,
 ) -> Response {
-    success(SystemSlot {
-        position,
-        occupant: if galaxy == 1 && system == 120 && position == 8 {
-            "New Terra"
-        } else {
-            "Unoccupied"
-        },
-        status: if galaxy == 1 && system == 120 && position == 8 {
-            "active"
-        } else {
-            "empty"
-        },
-    })
+    match state.galaxy_position(galaxy, system, position) {
+        Ok(s) => success(SystemSlot {
+            position: s.position,
+            occupant: s.occupant,
+            status: s.status,
+            planet_name: s.planet_name,
+            moon_id: s.moon_id,
+            debris_metal: s.debris_metal,
+            debris_crystal: s.debris_crystal,
+            alliance_tag: s.alliance_tag,
+            is_inactive: s.is_inactive,
+            is_vacation: s.is_vacation,
+            is_banned: s.is_banned,
+        }),
+        Err(msg) => bad_request(&msg),
+    }
 }

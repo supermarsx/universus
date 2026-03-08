@@ -45,6 +45,11 @@ fn app_error_response(error: AppError) -> Response {
         AppError::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
         AppError::NotFound(message) => (StatusCode::NOT_FOUND, message),
         AppError::Internal(message) => (StatusCode::INTERNAL_SERVER_ERROR, message),
+        AppError::Conflict(message) => (StatusCode::CONFLICT, message),
+        AppError::RateLimited(message) => (StatusCode::TOO_MANY_REQUESTS, message),
+        AppError::ServiceUnavailable(message) => (StatusCode::SERVICE_UNAVAILABLE, message),
+        AppError::Forbidden(message) => (StatusCode::FORBIDDEN, message),
+        AppError::UnprocessableEntity(message) => (StatusCode::UNPROCESSABLE_ENTITY, message),
     };
 
     (

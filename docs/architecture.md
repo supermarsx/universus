@@ -15,6 +15,31 @@ This is the single-page overview of the Rust backend infrastructure, its current
 - `platform-config`, `platform-observability`, `platform-db`, `platform-cache`, `platform-events`, `platform-auth`, `platform-errors`, `platform-proto`, `platform-common`: shared infra helpers for configuration, logging, telemetry, persistence, caches, pub/sub, authentication, and protobuf contracts.
 - `app-*`, `game-*`, `adapter-provider-*`: the feature crates that depend on the platform layer to expose APIs, workers, and domain logic in Rust-only binaries.
 
+## Game Domain & Logic Crates (fully implemented)
+All 16 previously-stub crates are now fully implemented with real logic and comprehensive test suites (433 total tests):
+
+### Game crates
+- `game-domain`: Core types shared across the game layer — Resources, Coordinates, Player, Planet, 4 type enums (Building/Ship/Defense/Research, 56 variants total), FleetMission, queue items, FleetMovement, DebrisField, BattleReport, Message, UniverseSettings.
+- `game-economy`: OGame-faithful production formulas, building/research/ship/defense costs with exponential scaling, construction times, storage capacity, lazy resource evaluation, and trade ratios.
+- `game-galaxy`: Galaxy configuration, HashMap-backed GalaxyStore, coordinate validation, planet placement, debris field tracking, free position finding, and NPC generation with deterministic PRNG.
+- `game-universe`: UniverseSettings with 15 configurable fields, UniverseStatus state machine (Creating→Online→Maintenance→Closed), UniverseManager with merge support, and 3 speed presets.
+- `game-alliance`: Alliance CRUD, 6-tier AllianceRole with authority hierarchy, membership management, application lifecycle, and diplomacy pact system.
+- `game-moon`: Moon creation from debris fields (OGame probability formula), moon destruction via RIP attacks, sensor phalanx range calculation, jump gate cooldown, and moon building costs.
+- `game-messaging`: 8 MessageTypes, HashMap-backed MessageStore with send/inbox/read/archive/delete, combat/espionage report generation, spam guard with rate limiting, and bulk operations.
+- `game-leaderboard`: 8 ScoreCategories, score calculation functions, PlayerRanking/AllianceRanking types, LeaderboardStore with rank recalculation, search, and history snapshots.
+- `game-antiabuse`: Noob protection by points threshold, pushing detection, per-action rate limiting, IP/account monitoring, violation tracking with auto-ban thresholds, and behavioral analysis for bot detection.
+
+### Platform crates
+- `platform-auth`: Self-contained SHA-256 + HMAC-SHA256 JWT implementation (no external crypto deps), password hashing with salt, SessionStore with max sessions enforcement, role hierarchy (Player→SuperAdmin), and auth middleware helpers.
+- `platform-cache`: Cache trait with InMemoryCache supporting LRU/FIFO/TTL eviction policies, TypedCache<C> serde wrapper, TwoLevelCache (L1/L2 with promotion), glob pattern matching for invalidation, and cache statistics.
+- `platform-common`: ID generation, time utilities (ISO 8601 without chrono), validation (username/email/password/alliance tag), pagination helpers, string utilities (slugify, mask), math utilities, and environment helpers.
+- `platform-proto`: ApiRequest/ApiResponse types, 18-variant GameEvent enum with tagged serde, WorkerTask/WorkerResult, RealtimeMessage for WebSocket, ServiceHealth, PageRequest/PageResponse, and serialization helpers.
+
+### Adapter crates
+- `adapter-provider-payments`: PaymentProvider trait, LoggingPaymentProvider mock, product catalog with 4 DM packages, webhook parsing/verification, and payment validation.
+- `adapter-provider-bot`: 6 BotPersonality types (Rusher/Miner/Turtle/Raider/Researcher/Balanced), BotDecisionEngine AI with per-personality logic, BotScheduler, activity simulation, and fleet/trade decisions.
+- `adapter-http-compat`: HttpCompatAdapter trait, LegacyCompatAdapter for Node.js→Rust translation, PathMapper, recursive camelCase↔snake_case key conversion, PassthroughAdapter, and API version detection.
+
 ## Multi-Tenancy, Consensus, and Sharding
 1. **Tenant routing**: Every HTTP/gRPC request and queue message derives its tenant from `platform-tenancy`. The `platform-tenant-routing` crate maps tenanted traffic to shard/worker pools, enforces quotas/backpressure, surfaces tenant lifecycle hooks, and is now documented in `docs/tenant-routing.md`.
 2. **Lease-backed resource guards**: `platform-consensus` acts as the gatekeeper for shared resources (schedulers, shard leaders, migration runners). Leases are time-bound, auto-renew, expose health metrics, and unblock failover when a lease expires.
@@ -68,6 +93,9 @@ This is the single-page overview of the Rust backend infrastructure, its current
 3. Export `platform-consensus` lifecycle metrics/events through shared `platform-observability` dashboards/alerts.
 4. Expand `platform-worker-runtime` coverage with CPU/heap cap and lease-aware integration tests.
 5. Add end-to-end tenant-routing/consensus scenarios (HTTP isolation, queue failover, migration lock handshake) beyond crate-level tests.
-6. Keep `TODO.md`, `docs/spec-gap-analysis.md`, and `specification/test-scenarios.md` synchronized as those suites land.
+6. Integrate the new game domain/economy/galaxy/universe crates into `app-api-gateway` routes, replacing inline logic in `state.rs`.
+7. Wire `platform-auth` JWT/session management into the API gateway and admin API middleware.
+8. Connect `platform-cache` to hot-path reads (galaxy view, leaderboard, player profiles) in the API gateway.
+9. Keep `TODO.md`, `docs/spec-gap-analysis.md`, and `specification/test-scenarios.md` synchronized as those suites land.
 
 This page links back to `docs/rust-backend-plan.md`, which contains the cross-cutting plan for tests, docs, and benchmarks.

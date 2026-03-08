@@ -10,12 +10,18 @@ serde_json = "1.0"
 tokio = { workspace = true }
 tracing = { workspace = true }
 game-achievements = { path = "../game-achievements" }
+game-acs = { path = "../game-acs" }
 game-combat = { path = "../game-combat" }
+game-economy = { path = "../game-economy" }
 game-fleet = { path = "../game-fleet" }
+game-galaxy = { path = "../game-galaxy" }
+game-marketplace = { path = "../game-marketplace" }
 game-notifications = { path = "../game-notifications" }
+game-universe = { path = "../game-universe" }
 platform-config = { path = "../platform-config" }
 platform-db = { path = "../platform-db" }
 platform-events = { path = "../platform-events" }
+platform-auth = { path = "../platform-auth" }
 platform-errors = { path = "../platform-errors" }
 platform-observability = { path = "../platform-observability" }
 
@@ -23,3 +29,4 @@ platform-observability = { path = "../platform-observability" }
 serde_json = "1.0"
 tower = "0.4"
 hyper = "0.14"
+platform-auth = { path = "../platform-auth" }

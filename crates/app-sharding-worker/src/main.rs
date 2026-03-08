@@ -63,7 +63,9 @@ async fn main() {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "global".to_string());
-    let sharding_catalog = Arc::new(ShardingCatalog::with_consensus(Arc::clone(&lease_coordinator)));
+    let sharding_catalog = Arc::new(ShardingCatalog::with_consensus(Arc::clone(
+        &lease_coordinator,
+    )));
     let runtime = Arc::new(WorkerRuntime::current(runtime_max_inflight));
     let tenant_context = TenantContext {
         tenant_id: shard_tenant.clone(),
@@ -220,7 +222,7 @@ async fn run_cycle_in_runtime<F>(
         Ok(())
     });
     match schedule {
-        Ok(()) => {
+        Ok(_job_id) => {
             if done_rx.await.is_err() {
                 tracing::warn!(
                     service = SERVICE_NAME,
@@ -514,7 +516,10 @@ async fn sync_platform_shard_catalog(
     match catalog.assign_leader(shard_id, worker_id, ttl).await {
         Ok(leader) => {
             let summaries = catalog.summarize_shards().await;
-            if let Some(summary) = summaries.iter().find(|summary| summary.shard_id == shard_id) {
+            if let Some(summary) = summaries
+                .iter()
+                .find(|summary| summary.shard_id == shard_id)
+            {
                 tracing::info!(
                     service = SERVICE_NAME,
                     shard_id = %summary.shard_id,

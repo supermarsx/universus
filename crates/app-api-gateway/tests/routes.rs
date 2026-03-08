@@ -6,7 +6,19 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 
 const TEST_SERVICE_NAME: &str = "app-api-gateway";
-const DEV_TOKEN: &str = "dev-token";
+
+/// Generate a valid JWT that the auth guard will accept.
+///
+/// Uses the default secret (`"default-secret"`) which is what
+/// [`platform_auth::AuthConfig::from_env`] returns when `JWT_SECRET` is unset.
+fn dev_token() -> String {
+    let config = platform_auth::AuthConfig {
+        jwt_secret: "default-secret".to_string(),
+        jwt_expiry_seconds: 86_400,
+        ..platform_auth::AuthConfig::default()
+    };
+    platform_auth::generate_token(&config, "u-rust-1", "Commander", "player", Some(1)).unwrap()
+}
 
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body()).await.unwrap();
@@ -404,7 +416,7 @@ async fn account_profile_with_valid_bearer_token_returns_200() {
             Request::builder()
                 .uri("/api/account/profile")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -466,7 +478,7 @@ async fn users_me_with_auth_returns_parity_friendly_shape() {
             Request::builder()
                 .uri("/api/users/me")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -490,7 +502,7 @@ async fn users_leaderboard_with_auth_returns_sorted_entries() {
             Request::builder()
                 .uri("/api/users/leaderboard")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -552,7 +564,7 @@ async fn fleet_send_with_auth_returns_success_envelope() {
             Request::builder()
                 .uri("/api/fleet/send")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -577,7 +589,7 @@ async fn account_resources_drop_after_research_start() {
             Request::builder()
                 .uri("/api/account/resources")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -596,7 +608,7 @@ async fn account_resources_drop_after_research_start() {
             Request::builder()
                 .uri("/api/research/start")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(start_payload.to_string()))
                 .unwrap(),
@@ -613,7 +625,7 @@ async fn account_resources_drop_after_research_start() {
             Request::builder()
                 .uri("/api/account/resources")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -649,7 +661,7 @@ async fn research_start_rejects_unknown_technology() {
             Request::builder()
                 .uri("/api/research/start")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -680,7 +692,7 @@ async fn fleet_send_records_mission_sequence() {
             Request::builder()
                 .uri("/api/fleet/send")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -696,7 +708,7 @@ async fn fleet_send_records_mission_sequence() {
             Request::builder()
                 .uri("/api/fleet/send")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -718,7 +730,7 @@ async fn shipyard_build_queues_and_decreases_resources() {
             Request::builder()
                 .uri("/api/account/resources")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -738,7 +750,7 @@ async fn shipyard_build_queues_and_decreases_resources() {
             Request::builder()
                 .uri("/api/shipyard/build")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -755,7 +767,7 @@ async fn shipyard_build_queues_and_decreases_resources() {
             Request::builder()
                 .uri("/api/account/resources")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -787,7 +799,7 @@ async fn shipyard_build_rejects_non_positive_quantity() {
             Request::builder()
                 .uri("/api/shipyard/build")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -814,7 +826,7 @@ async fn planet_build_queues_and_increments_level_target() {
             Request::builder()
                 .uri("/api/planets/p-001/build")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -830,7 +842,7 @@ async fn planet_build_queues_and_increments_level_target() {
             Request::builder()
                 .uri("/api/planets/p-001/build")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -854,7 +866,7 @@ async fn planet_build_requires_building_type() {
             Request::builder()
                 .uri("/api/planets/p-001/build")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -906,7 +918,7 @@ async fn debris_location_with_auth_returns_scoped_field() {
             Request::builder()
                 .uri("/api/debris/location/2/222/9")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -931,7 +943,7 @@ async fn debris_extended_parity_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/debris/42")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -951,7 +963,7 @@ async fn debris_extended_parity_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/debris/generate")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -982,7 +994,7 @@ async fn debris_extended_parity_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/debris/system/stats")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1000,7 +1012,7 @@ async fn debris_extended_parity_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/debris/42/claim")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(json!({ "collectorId": 7 }).to_string()))
                 .unwrap(),
@@ -1019,7 +1031,7 @@ async fn debris_extended_parity_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/debris/claims/my")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1045,7 +1057,7 @@ async fn moon_jump_gate_rejects_invalid_payload() {
             Request::builder()
                 .uri("/api/moons/101/jump-gate")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -1105,7 +1117,7 @@ async fn moon_destroy_aliases_delegate_to_destroy_behavior() {
                 Request::builder()
                     .uri(uri)
                     .method("POST")
-                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("authorization", format!("Bearer {}", dev_token()))
                     .header("content-type", "application/json")
                     .body(Body::from(payload.to_string()))
                     .unwrap(),
@@ -1134,7 +1146,7 @@ async fn universe_routes_with_auth_return_expected_contracts() {
             Request::builder()
                 .uri("/api/universe")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1150,7 +1162,7 @@ async fn universe_routes_with_auth_return_expected_contracts() {
             Request::builder()
                 .uri("/api/universe/7/stats")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1175,7 +1187,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
             Request::builder()
                 .uri("/api/universe/create")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(create_payload.to_string()))
                 .unwrap(),
@@ -1195,7 +1207,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
             Request::builder()
                 .uri(format!("/api/universe/{created_universe_id}"))
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1212,7 +1224,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
             Request::builder()
                 .uri("/api/universe")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1235,7 +1247,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
             Request::builder()
                 .uri("/api/universe/9/seed")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(seed_payload.to_string()))
                 .unwrap(),
@@ -1259,7 +1271,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
             Request::builder()
                 .uri("/api/universe/9/place-player")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(place_payload.to_string()))
                 .unwrap(),
@@ -1277,7 +1289,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
             Request::builder()
                 .uri("/api/universe/9/maintenance/population-balance")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::from("{}"))
                 .unwrap(),
         )
@@ -1304,7 +1316,7 @@ async fn universe_parity_mutation_routes_return_success_with_auth() {
                 Request::builder()
                     .uri(uri)
                     .method("PATCH")
-                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("authorization", format!("Bearer {}", dev_token()))
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"isActive":true}"#))
                     .unwrap(),
@@ -1335,7 +1347,7 @@ async fn player_blocks_create_list_delete_flow_is_stateful() {
             Request::builder()
                 .uri("/api/player-blocks")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(create_payload.to_string()))
                 .unwrap(),
@@ -1352,7 +1364,7 @@ async fn player_blocks_create_list_delete_flow_is_stateful() {
             Request::builder()
                 .uri("/api/player-blocks")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1368,7 +1380,7 @@ async fn player_blocks_create_list_delete_flow_is_stateful() {
             Request::builder()
                 .uri("/api/player-blocks/9001")
                 .method("DELETE")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1393,7 +1405,7 @@ async fn config_update_persists_and_adds_history_entry() {
             Request::builder()
                 .uri("/api/config/parameters/economy.resource_multiplier")
                 .method("PUT")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(update_payload.to_string()))
                 .unwrap(),
@@ -1409,7 +1421,7 @@ async fn config_update_persists_and_adds_history_entry() {
             Request::builder()
                 .uri("/api/config/history?limit=1")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1454,7 +1466,7 @@ async fn themes_public_and_user_preference_routes_work() {
             Request::builder()
                 .uri("/api/themes/user/preferences")
                 .method("PUT")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(update_payload.to_string()))
                 .unwrap(),
@@ -1471,7 +1483,7 @@ async fn themes_public_and_user_preference_routes_work() {
             Request::builder()
                 .uri("/api/themes/user/preferences")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1535,7 +1547,7 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
             Request::builder()
                 .uri("/api/shards/servers/register")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(register_1.to_string()))
                 .unwrap(),
@@ -1563,7 +1575,7 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
             Request::builder()
                 .uri("/api/shards/servers/register")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(register_1_update.to_string()))
                 .unwrap(),
@@ -1588,7 +1600,7 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
             Request::builder()
                 .uri("/api/shards/servers/register")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(register_2.to_string()))
                 .unwrap(),
@@ -1603,7 +1615,7 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
             Request::builder()
                 .uri("/api/shards/servers")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1620,7 +1632,7 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
             Request::builder()
                 .uri("/api/shards/servers/eu-west-1/health")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1638,7 +1650,7 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
             Request::builder()
                 .uri("/api/shards/routing/stats")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1686,7 +1698,7 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
             Request::builder()
                 .uri("/api/acs")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1708,7 +1720,7 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
             Request::builder()
                 .uri("/api/acs")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(create_payload.to_string()))
                 .unwrap(),
@@ -1729,7 +1741,7 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
             Request::builder()
                 .uri(format!("/api/acs/{created_group_id}/join"))
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(join_payload.to_string()))
                 .unwrap(),
@@ -1747,7 +1759,7 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
             Request::builder()
                 .uri(format!("/api/acs/{created_group_id}/leave"))
                 .method("DELETE")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1763,7 +1775,7 @@ async fn acs_create_join_and_leave_return_success_envelopes() {
             Request::builder()
                 .uri("/api/acs")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1795,7 +1807,7 @@ async fn rips_destroy_moon_validates_and_returns_success_envelope() {
             Request::builder()
                 .uri("/api/rips/destroyMoon")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(invalid_payload.to_string()))
                 .unwrap(),
@@ -1818,7 +1830,7 @@ async fn rips_destroy_moon_validates_and_returns_success_envelope() {
             Request::builder()
                 .uri("/api/rips/destroyMoon")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(valid_payload.to_string()))
                 .unwrap(),
@@ -1842,7 +1854,7 @@ async fn moons_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/moons/id/101")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1859,7 +1871,7 @@ async fn moons_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/moons/public/101")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1874,7 +1886,7 @@ async fn moons_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/moons/101/phalanx")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -1914,7 +1926,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/servers/register")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(register.to_string()))
                 .unwrap(),
@@ -1929,7 +1941,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/routing/player/42")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1946,7 +1958,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/routing/servers/available")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1962,7 +1974,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/health/overview")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1979,7 +1991,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/messages/status")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1997,7 +2009,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/messages/failed?targetServerId=eu-central-1&limit=25")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2014,7 +2026,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/messages/enqueue")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -2040,7 +2052,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/messages/requeue-failed")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -2064,7 +2076,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/routing/calculate")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -2093,7 +2105,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/messages/broadcast")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -2121,7 +2133,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/leaderboards/fleet_power")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2139,7 +2151,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/routing/migrate")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
@@ -2168,7 +2180,7 @@ async fn shards_extended_endpoints_return_expected_contracts() {
             Request::builder()
                 .uri("/api/shards/servers/stats")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2219,7 +2231,7 @@ async fn shop_enhanced_public_and_auth_routes_work() {
             Request::builder()
                 .uri("/api/shop-enhanced/promotions/validate")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(json!({ "promoCode": "WELCOME10" }).to_string()))
                 .unwrap(),
@@ -2274,7 +2286,7 @@ async fn analytics_events_and_usage_routes_work() {
             Request::builder()
                 .uri("/api/analytics/usage?days=7")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2315,7 +2327,7 @@ async fn achievements_routes_and_awards_work() {
             Request::builder()
                 .uri("/api/achievements/user/17/achievements/1")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2331,7 +2343,7 @@ async fn achievements_routes_and_awards_work() {
             Request::builder()
                 .uri("/api/achievements/user/17/achievements")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2381,7 +2393,7 @@ async fn notifications_create_and_mark_read_flow_works() {
             Request::builder()
                 .uri("/api/notifications")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(create_payload.to_string()))
                 .unwrap(),
@@ -2399,7 +2411,7 @@ async fn notifications_create_and_mark_read_flow_works() {
             Request::builder()
                 .uri("/api/notifications/unread-count")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2415,7 +2427,7 @@ async fn notifications_create_and_mark_read_flow_works() {
             Request::builder()
                 .uri(format!("/api/notifications/{created_id}/read"))
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2430,7 +2442,7 @@ async fn notifications_create_and_mark_read_flow_works() {
             Request::builder()
                 .uri("/api/notifications?unreadOnly=true")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2460,7 +2472,7 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
             Request::builder()
                 .uri("/api/notifications/preferences/combat")
                 .method("PUT")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(update_pref_payload.to_string()))
                 .unwrap(),
@@ -2484,7 +2496,7 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
             Request::builder()
                 .uri("/api/notifications")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(blocked_payload.to_string()))
                 .unwrap(),
@@ -2510,7 +2522,7 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
             Request::builder()
                 .uri("/api/notifications")
                 .method("POST")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(allowed_payload.to_string()))
                 .unwrap(),
@@ -2524,7 +2536,7 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
             Request::builder()
                 .uri("/api/notifications/preferences")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2546,7 +2558,7 @@ async fn notifications_high_volume_create_flow_stays_consistent() {
             Request::builder()
                 .uri("/api/notifications/unread-count")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2569,7 +2581,7 @@ async fn notifications_high_volume_create_flow_stays_consistent() {
                 Request::builder()
                     .uri("/api/notifications")
                     .method("POST")
-                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("authorization", format!("Bearer {}", dev_token()))
                     .header("content-type", "application/json")
                     .body(Body::from(payload.to_string()))
                     .unwrap(),
@@ -2584,7 +2596,7 @@ async fn notifications_high_volume_create_flow_stays_consistent() {
             Request::builder()
                 .uri("/api/notifications/unread-count")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2617,7 +2629,7 @@ async fn sharding_registration_churn_keeps_routing_stats_coherent() {
                 Request::builder()
                     .uri("/api/shards/servers/register")
                     .method("POST")
-                    .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                    .header("authorization", format!("Bearer {}", dev_token()))
                     .header("content-type", "application/json")
                     .body(Body::from(payload.to_string()))
                     .unwrap(),
@@ -2632,7 +2644,7 @@ async fn sharding_registration_churn_keeps_routing_stats_coherent() {
             Request::builder()
                 .uri("/api/shards/routing/stats")
                 .method("GET")
-                .header("authorization", format!("Bearer {DEV_TOKEN}"))
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )

@@ -106,7 +106,10 @@ async fn leased_task_holds_and_releases_consensus_lease() -> Result<()> {
     let lease_conflict = coordinator
         .acquire(&resource, "tenant-d", Duration::from_secs(10))
         .await;
-    assert!(lease_conflict.is_err(), "lease must be held while task runs");
+    assert!(
+        lease_conflict.is_err(),
+        "lease must be held while task runs"
+    );
 
     let _ = tx.send(());
     runtime.shutdown(Duration::from_secs(1)).await;
@@ -114,6 +117,9 @@ async fn leased_task_holds_and_releases_consensus_lease() -> Result<()> {
     let lease_after = coordinator
         .acquire(&resource, "tenant-d", Duration::from_secs(10))
         .await;
-    assert!(lease_after.is_ok(), "lease should be released after task completes");
+    assert!(
+        lease_after.is_ok(),
+        "lease should be released after task completes"
+    );
     Ok(())
 }
