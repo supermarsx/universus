@@ -108,8 +108,7 @@ async fn export_snapshot_and_import_between_json_and_sqlite() -> Result<()> {
     assert!(import_result.starts_with("sqlite:tenant-a:"));
 
     let conn = Connection::open(&sqlite_path)?;
-    let value: i64 =
-        conn.query_row("SELECT id FROM mig_test LIMIT 1;", [], |row| row.get(0))?;
+    let value: i64 = conn.query_row("SELECT id FROM mig_test LIMIT 1;", [], |row| row.get(0))?;
     assert_eq!(value, 1);
 
     Ok(())

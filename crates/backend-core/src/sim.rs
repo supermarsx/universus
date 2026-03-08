@@ -171,10 +171,13 @@ mod tests {
         let result = CombatResult {
             winner: "attacker".to_string(),
             rounds: vec![game_combat::RoundResult {
+                round_number: 1,
                 attacker_shots: 3,
                 defender_shots: 2,
                 attacker_destroyed: 1,
                 defender_destroyed: 4,
+                attacker_remaining: 9,
+                defender_remaining: 6,
             }],
             attacker_losses: HashMap::from([("fighter".to_string(), 1)]),
             defender_losses: HashMap::from([("defender".to_string(), 4)]),

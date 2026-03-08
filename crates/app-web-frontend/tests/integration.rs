@@ -5,6 +5,14 @@ use tower::ServiceExt;
 
 use app_web_frontend::build_router;
 
+fn auth_token(user_id: &str, username: &str, role: &str) -> String {
+    let config = platform_auth::AuthConfig {
+        jwt_secret: "default-secret".to_string(),
+        ..platform_auth::AuthConfig::default()
+    };
+    platform_auth::generate_token(&config, user_id, username, role, None).expect("generate token")
+}
+
 async fn html_body(response: axum::response::Response) -> String {
     let bytes = to_bytes(response.into_body())
         .await
@@ -41,7 +49,10 @@ async fn integration_template_routes_render_and_require_tokens() {
         .oneshot(
             Request::builder()
                 .uri("/buildings")
-                .header(header::AUTHORIZATION, "Bearer dev-token")
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", auth_token("user-1", "player1", "user")),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -68,7 +79,10 @@ async fn integration_template_routes_render_and_require_tokens() {
         .oneshot(
             Request::builder()
                 .uri("/admin")
-                .header(header::AUTHORIZATION, "Bearer admin-token")
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", auth_token("admin-1", "admin", "admin")),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )

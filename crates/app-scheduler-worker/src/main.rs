@@ -1,5 +1,5 @@
 use platform_consensus::LeaseCoordinator;
-use platform_scheduler::{JobConfig, JobHandler, Scheduler};
+use platform_scheduler::{JobConfig, JobHandler, JobKind, Scheduler};
 use platform_sharding::{ShardConfig, ShardingCatalog};
 use platform_tenant_routing::{TenantRouteConfig, TenantRouter, TenantRoutingDecision};
 use platform_worker_runtime::WorkerRuntime;
@@ -276,7 +276,7 @@ async fn register_scheduler_job(
     lease_secs: i64,
     retry_delay_secs: i64,
     max_attempts: i32,
-    ) -> Result<(), String> {
+) -> Result<(), String> {
     let task_type_owned = task_type.to_string();
     let task_type_for_handler = task_type_owned.clone();
     let handler: JobHandler = Arc::new(move |decision: TenantRoutingDecision| {
@@ -290,23 +290,25 @@ async fn register_scheduler_job(
             let queue_name = decision.route.queue_name.clone();
             let context = decision.guard.context().clone();
             let (done_tx, done_rx) = oneshot::channel::<()>();
-            runtime.spawn_tenant_task(context, async move {
-                enqueue_and_process_tick(
-                    &task_type,
-                    cadence_secs,
-                    realtime_url.as_deref(),
-                    &worker_id,
-                    lease_secs,
-                    retry_delay_secs,
-                    max_attempts,
-                    &tenant_id,
-                    &shard_id,
-                    &queue_name,
-                )
-                .await;
-                let _ = done_tx.send(());
-                Ok(())
-            }).map_err(|error| anyhow::anyhow!("runtime schedule failure: {error}"))?;
+            runtime
+                .spawn_tenant_task(context, async move {
+                    enqueue_and_process_tick(
+                        &task_type,
+                        cadence_secs,
+                        realtime_url.as_deref(),
+                        &worker_id,
+                        lease_secs,
+                        retry_delay_secs,
+                        max_attempts,
+                        &tenant_id,
+                        &shard_id,
+                        &queue_name,
+                    )
+                    .await;
+                    let _ = done_tx.send(());
+                    Ok(())
+                })
+                .map_err(|error| anyhow::anyhow!("runtime schedule failure: {error}"))?;
             let _ = done_rx.await;
             Ok(())
         })
@@ -317,6 +319,9 @@ async fn register_scheduler_job(
         description: format!("{task_type_owned} scheduler job"),
         shard_id: shard_id.to_string(),
         interval: Duration::from_secs(cadence_secs.max(1)),
+        kind: JobKind::Recurring,
+        priority: 100,
+        max_failures: 0,
     };
     scheduler
         .register_job(config, handler)

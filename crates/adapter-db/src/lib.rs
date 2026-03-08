@@ -429,15 +429,6 @@ impl DatabaseAdapter for SqliteAdapter {
         .map_err(|err| anyhow!("sqlite task join failed: {err}"))?;
         join_result.map_err(|err| anyhow!(err))?;
 
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&log_path)
-            .await?;
-        file.write_all(header.as_bytes()).await?;
-        file.write_all(script_owned.as_bytes()).await?;
-        file.write_all(b"\n").await?;
-        file.flush().await?;
         append_log(&log_path, &header, script_owned.as_str()).await?;
 
         Ok(format!("sqlite:{}:{}", tenant, script_owned.len()))
@@ -519,4 +510,482 @@ pub async fn import_migration_snapshot(
     snapshot: &MigrationSnapshot,
 ) -> Result<String> {
     adapter.execute_script(&snapshot.script_log).await
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::env::temp_dir;
+    use tokio::fs::{create_dir_all, remove_dir_all, File};
+    use tokio::io::AsyncWriteExt;
+
+    async fn recreate_dir(path: &Path) {
+        let _ = remove_dir_all(path).await;
+        create_dir_all(path).await.unwrap();
+    }
+
+    /// Helper: create a temp dir with an empty JSON data file and return its path.
+    async fn setup_json_data(dir_name: &str) -> (PathBuf, PathBuf) {
+        let dir = temp_dir().join(format!("adapter-db-test-{dir_name}"));
+        let data_path = dir.join("data.json");
+        recreate_dir(&dir).await;
+        let mut f = File::create(&data_path).await.unwrap();
+        f.write_all(br#"{}"#).await.unwrap();
+        f.flush().await.unwrap();
+        (dir, data_path)
+    }
+
+    // --- AdapterRegistry: register and get ---
+
+    #[tokio::test]
+    async fn registry_register_and_get_by_name() {
+        let (dir, data_path) = setup_json_data("reg-name").await;
+        let config = json!([{
+            "name": "a1",
+            "driver": "jsonfile",
+            "tenant": "t1",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("a1").await;
+        assert!(adapter.is_some());
+        assert_eq!(adapter.unwrap().name(), "a1");
+
+        assert!(registry.get("nonexistent").await.is_none());
+        drop(dir);
+    }
+
+    #[tokio::test]
+    async fn registry_get_for_tenant() {
+        let (_dir, data_path) = setup_json_data("reg-tenant").await;
+        let config = json!([{
+            "name": "a1",
+            "driver": "jsonfile",
+            "tenant": "t1",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get_for_tenant("t1").await;
+        assert!(adapter.is_some());
+        assert_eq!(adapter.unwrap().tenant(), "t1");
+
+        assert!(registry.get_for_tenant("no-tenant").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn registry_new_is_empty() {
+        let registry = AdapterRegistry::new();
+        assert!(registry.get("anything").await.is_none());
+        assert!(registry.get_for_tenant("anyone").await.is_none());
+    }
+
+    // --- JsonFileAdapter ---
+
+    #[tokio::test]
+    async fn jsonfile_adapter_describe_and_driver() {
+        let (_dir, data_path) = setup_json_data("jf-describe").await;
+        let config = json!([{
+            "name": "jf1",
+            "driver": "jsonfile",
+            "tenant": "t-jf",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("jf1").await.unwrap();
+
+        assert_eq!(adapter.driver_name(), "jsonfile");
+        assert!(adapter.describe().contains("JSON file"));
+        assert!(adapter.describe().contains("t-jf"));
+        assert_eq!(adapter.tenant(), "t-jf");
+        assert!(!adapter.connection_info().is_empty());
+    }
+
+    #[tokio::test]
+    async fn jsonfile_adapter_execute_script() {
+        let (_dir, data_path) = setup_json_data("jf-exec").await;
+        let config = json!([{
+            "name": "jf-exec",
+            "driver": "jsonfile",
+            "tenant": "t-exec",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("jf-exec").await.unwrap();
+
+        let result = adapter.execute_script("CREATE TABLE test (id INT);").await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.starts_with("json:t-exec:"));
+
+        // Verify the script was appended to the data file
+        let contents = tokio::fs::read_to_string(&data_path).await.unwrap();
+        assert!(contents.contains("CREATE TABLE test (id INT);"));
+    }
+
+    #[tokio::test]
+    async fn jsonfile_adapter_multiple_scripts_append() {
+        let (_dir, data_path) = setup_json_data("jf-multi").await;
+        let config = json!([{
+            "name": "jf-multi",
+            "driver": "jsonfile",
+            "tenant": "t-multi",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("jf-multi").await.unwrap();
+
+        adapter.execute_script("SCRIPT_ONE").await.unwrap();
+        adapter.execute_script("SCRIPT_TWO").await.unwrap();
+
+        let contents = tokio::fs::read_to_string(&data_path).await.unwrap();
+        assert!(contents.contains("SCRIPT_ONE"));
+        assert!(contents.contains("SCRIPT_TWO"));
+    }
+
+    // --- SqliteAdapter ---
+
+    #[tokio::test]
+    async fn sqlite_adapter_describe_and_driver() {
+        let dir = temp_dir().join("adapter-db-test-sq-describe");
+        recreate_dir(&dir).await;
+        let db_path = dir.join("test.db");
+
+        let config = json!([{
+            "name": "sq1",
+            "driver": "sqlite",
+            "tenant": "t-sq",
+            "path": db_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("sq1").await.unwrap();
+
+        assert_eq!(adapter.driver_name(), "sqlite");
+        assert!(adapter.describe().contains("SQLite"));
+        assert!(adapter.describe().contains("t-sq"));
+        assert_eq!(adapter.tenant(), "t-sq");
+    }
+
+    #[tokio::test]
+    async fn sqlite_adapter_execute_and_verify() {
+        let dir = temp_dir().join("adapter-db-test-sq-exec");
+        recreate_dir(&dir).await;
+        let db_path = dir.join("exec.db");
+
+        let config = json!([{
+            "name": "sq-exec",
+            "driver": "sqlite",
+            "tenant": "t-sq-exec",
+            "path": db_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("sq-exec").await.unwrap();
+
+        let result = adapter
+            .execute_script(
+                "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('hello');",
+            )
+            .await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(output.starts_with("sqlite:t-sq-exec:"));
+
+        // Verify data via direct connection
+        let conn = Connection::open(&db_path).unwrap();
+        let name: String = conn
+            .query_row("SELECT name FROM items LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(name, "hello");
+    }
+
+    // --- bootstrap_from_json ---
+
+    #[tokio::test]
+    async fn bootstrap_multiple_adapters() {
+        let (_dir1, data_path1) = setup_json_data("boot-multi-1").await;
+        let dir2 = temp_dir().join("adapter-db-test-boot-multi-2");
+        recreate_dir(&dir2).await;
+        let db_path2 = dir2.join("boot.db");
+
+        let config = json!([
+            {
+                "name": "a-json",
+                "driver": "jsonfile",
+                "tenant": "t-json",
+                "path": data_path1.to_string_lossy()
+            },
+            {
+                "name": "a-sqlite",
+                "driver": "sqlite",
+                "tenant": "t-sqlite",
+                "path": db_path2.to_string_lossy()
+            }
+        ])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        assert!(registry.get("a-json").await.is_some());
+        assert!(registry.get("a-sqlite").await.is_some());
+        assert!(registry.get_for_tenant("t-json").await.is_some());
+        assert!(registry.get_for_tenant("t-sqlite").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn bootstrap_empty_array() {
+        let registry = bootstrap_from_json("[]").await.unwrap();
+        assert!(registry.get("anything").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn bootstrap_invalid_json_errors() {
+        let result = bootstrap_from_json("not json").await;
+        assert!(result.is_err());
+    }
+
+    // --- Config parsing / deserialization ---
+
+    #[test]
+    fn adapter_entry_deserializes_jsonfile() {
+        let json = json!({
+            "name": "a1",
+            "driver": "jsonfile",
+            "tenant": "t1",
+            "path": "/tmp/data.json"
+        });
+        let entry: AdapterEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(entry.name, "a1");
+        assert!(matches!(entry.driver, AdapterDriver::JsonFile { .. }));
+    }
+
+    #[test]
+    fn adapter_entry_deserializes_sqlite() {
+        let json = json!({
+            "name": "a2",
+            "driver": "sqlite",
+            "tenant": "t2",
+            "path": "/tmp/db.sqlite3"
+        });
+        let entry: AdapterEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(entry.name, "a2");
+        assert!(matches!(entry.driver, AdapterDriver::Sqlite { .. }));
+    }
+
+    #[test]
+    fn adapter_entry_deserializes_postgres() {
+        let json = json!({
+            "name": "a3",
+            "driver": "postgres",
+            "tenant": "t3",
+            "url": "localhost:5432"
+        });
+        let entry: AdapterEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(entry.name, "a3");
+        assert!(matches!(entry.driver, AdapterDriver::Postgres { .. }));
+    }
+
+    #[test]
+    fn adapter_entry_deserializes_mysql() {
+        let json = json!({
+            "name": "a4",
+            "driver": "mysql",
+            "tenant": "t4",
+            "url": "mysql://localhost:3306"
+        });
+        let entry: AdapterEntry = serde_json::from_value(json).unwrap();
+        assert_eq!(entry.name, "a4");
+        assert!(matches!(entry.driver, AdapterDriver::Mysql { .. }));
+    }
+
+    #[test]
+    fn adapter_entry_with_log_path() {
+        let json = json!({
+            "name": "a5",
+            "driver": "jsonfile",
+            "tenant": "t5",
+            "path": "/tmp/data.json",
+            "log_path": "/tmp/my-log.sql"
+        });
+        let entry: AdapterEntry = serde_json::from_value(json).unwrap();
+        match entry.driver {
+            AdapterDriver::JsonFile { log_path, .. } => {
+                assert_eq!(log_path, Some("/tmp/my-log.sql".to_string()));
+            }
+            _ => panic!("expected JsonFile"),
+        }
+    }
+
+    #[test]
+    fn adapter_entry_unknown_driver_fails() {
+        let json = json!({
+            "name": "a6",
+            "driver": "oracle",
+            "tenant": "t6",
+            "url": "localhost"
+        });
+        let result: Result<AdapterEntry, _> = serde_json::from_value(json);
+        assert!(result.is_err());
+    }
+
+    // --- default_log_path ---
+
+    #[test]
+    fn default_log_path_format() {
+        let path = default_log_path("postgres", "tenant-a");
+        assert!(path.to_string_lossy().contains("tenant-a-postgres.sql"));
+        assert!(path.to_string_lossy().contains("database"));
+        assert!(path.to_string_lossy().contains("logs"));
+    }
+
+    // --- load_json_config ---
+
+    #[tokio::test]
+    async fn load_json_config_reads_file() {
+        let dir = temp_dir().join("adapter-db-test-load-config");
+        create_dir_all(&dir).await.unwrap();
+        let path = dir.join("config.json");
+        let mut f = File::create(&path).await.unwrap();
+        f.write_all(br#"[{"name":"x"}]"#).await.unwrap();
+        f.flush().await.unwrap();
+
+        let content = load_json_config(&path).await.unwrap();
+        assert!(content.contains("\"name\":\"x\""));
+    }
+
+    #[tokio::test]
+    async fn load_json_config_missing_file_errors() {
+        let result = load_json_config("/tmp/nonexistent-adapter-db-test.json").await;
+        assert!(result.is_err());
+    }
+
+    // --- export / import migration snapshot ---
+
+    #[tokio::test]
+    async fn export_snapshot_from_json_adapter() {
+        let (_dir, data_path) = setup_json_data("export-snap").await;
+        let config = json!([{
+            "name": "snap-json",
+            "driver": "jsonfile",
+            "tenant": "t-snap",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("snap-json").await.unwrap();
+
+        // Write some data
+        adapter.execute_script("SOME SQL").await.unwrap();
+
+        let snapshot = export_migration_snapshot(adapter).await.unwrap();
+        assert_eq!(snapshot.name, "snap-json");
+        assert_eq!(snapshot.tenant, "t-snap");
+        assert_eq!(snapshot.driver, "jsonfile");
+        // The log should contain the script
+        assert!(snapshot.script_log.contains("SOME SQL"));
+    }
+
+    #[tokio::test]
+    async fn import_snapshot_to_json_adapter() {
+        let (_dir, data_path) = setup_json_data("import-snap").await;
+        let config = json!([{
+            "name": "import-json",
+            "driver": "jsonfile",
+            "tenant": "t-import",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("import-json").await.unwrap();
+
+        let snapshot = MigrationSnapshot {
+            name: "src".into(),
+            tenant: "t-import".into(),
+            driver: "jsonfile".into(),
+            script_log: "IMPORTED SCRIPT".into(),
+        };
+
+        let result = import_migration_snapshot(adapter, &snapshot).await;
+        assert!(result.is_ok());
+
+        let contents = tokio::fs::read_to_string(&data_path).await.unwrap();
+        assert!(contents.contains("IMPORTED SCRIPT"));
+    }
+
+    // --- as_any downcast ---
+
+    #[tokio::test]
+    async fn json_adapter_downcast() {
+        let (_dir, data_path) = setup_json_data("downcast-jf").await;
+        let config = json!([{
+            "name": "dc-json",
+            "driver": "jsonfile",
+            "tenant": "t-dc",
+            "path": data_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("dc-json").await.unwrap();
+
+        let any = adapter.as_any();
+        assert!(any.downcast_ref::<JsonFileAdapter>().is_some());
+        assert!(any.downcast_ref::<SqliteAdapter>().is_none());
+    }
+
+    #[tokio::test]
+    async fn sqlite_adapter_downcast() {
+        let dir = temp_dir().join("adapter-db-test-downcast-sq");
+        create_dir_all(&dir).await.unwrap();
+        let db_path = dir.join("dc.db");
+
+        let config = json!([{
+            "name": "dc-sqlite",
+            "driver": "sqlite",
+            "tenant": "t-dc-sq",
+            "path": db_path.to_string_lossy()
+        }])
+        .to_string();
+
+        let registry = bootstrap_from_json(&config).await.unwrap();
+        let adapter = registry.get("dc-sqlite").await.unwrap();
+
+        let any = adapter.as_any();
+        assert!(any.downcast_ref::<SqliteAdapter>().is_some());
+        assert!(any.downcast_ref::<JsonFileAdapter>().is_none());
+    }
+
+    // --- MigrationSnapshot fields ---
+
+    #[test]
+    fn migration_snapshot_fields() {
+        let snap = MigrationSnapshot {
+            name: "n".into(),
+            tenant: "t".into(),
+            driver: "d".into(),
+            script_log: "s".into(),
+        };
+        assert_eq!(snap.name, "n");
+        assert_eq!(snap.tenant, "t");
+        assert_eq!(snap.driver, "d");
+        assert_eq!(snap.script_log, "s");
+    }
 }

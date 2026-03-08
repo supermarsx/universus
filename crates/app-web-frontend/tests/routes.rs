@@ -5,8 +5,21 @@ use hyper::body::to_bytes;
 use serde_json::Value;
 use tower::ServiceExt;
 
-const DEV_TOKEN: &str = "dev-token";
-const ADMIN_TOKEN: &str = "admin-token";
+fn auth_token(user_id: &str, username: &str, role: &str) -> String {
+    let config = platform_auth::AuthConfig {
+        jwt_secret: "default-secret".to_string(),
+        ..platform_auth::AuthConfig::default()
+    };
+    platform_auth::generate_token(&config, user_id, username, role, None).expect("generate token")
+}
+
+fn dev_token() -> String {
+    auth_token("user-1", "player1", "user")
+}
+
+fn admin_token() -> String {
+    auth_token("admin-1", "admin", "admin")
+}
 
 async fn response_body_text(response: axum::response::Response) -> String {
     let body = to_bytes(response.into_body()).await.unwrap();
@@ -56,7 +69,8 @@ async fn ready_returns_ok_with_service_name() {
 
 #[tokio::test]
 async fn overview_route_serves_placeholder_html_with_metadata() {
-    let response = get_response_with_token("/overview", Some(DEV_TOKEN)).await;
+    let token = dev_token();
+    let response = get_response_with_token("/overview", Some(&token)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -67,7 +81,8 @@ async fn overview_route_serves_placeholder_html_with_metadata() {
 
 #[tokio::test]
 async fn admin_users_route_serves_placeholder_html() {
-    let response = get_response_with_token("/admin/users", Some(ADMIN_TOKEN)).await;
+    let token = admin_token();
+    let response = get_response_with_token("/admin/users", Some(&token)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -77,7 +92,8 @@ async fn admin_users_route_serves_placeholder_html() {
 
 #[tokio::test]
 async fn alliance_manage_route_serves_placeholder_html() {
-    let response = get_response_with_token("/alliance/manage", Some(DEV_TOKEN)).await;
+    let token = dev_token();
+    let response = get_response_with_token("/alliance/manage", Some(&token)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -97,7 +113,8 @@ async fn index_html_alias_maps_to_home() {
 
 #[tokio::test]
 async fn overview_html_alias_maps_to_overview() {
-    let response = get_response_with_token("/overview.html", Some(DEV_TOKEN)).await;
+    let token = dev_token();
+    let response = get_response_with_token("/overview.html", Some(&token)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -107,7 +124,8 @@ async fn overview_html_alias_maps_to_overview() {
 
 #[tokio::test]
 async fn admin_bots_html_alias_maps_to_admin_bot_management() {
-    let response = get_response_with_token("/admin/bots.html", Some(ADMIN_TOKEN)).await;
+    let token = admin_token();
+    let response = get_response_with_token("/admin/bots.html", Some(&token)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -117,7 +135,8 @@ async fn admin_bots_html_alias_maps_to_admin_bot_management() {
 
 #[tokio::test]
 async fn chat_html_alias_maps_to_chat() {
-    let response = get_response_with_token("/chat.html", Some(DEV_TOKEN)).await;
+    let token = dev_token();
+    let response = get_response_with_token("/chat.html", Some(&token)).await;
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_body_text(response).await;
@@ -146,19 +165,22 @@ async fn overview_without_token_returns_401() {
 
 #[tokio::test]
 async fn admin_route_with_dev_token_returns_403() {
-    let response = get_response_with_token("/admin/users", Some(DEV_TOKEN)).await;
+    let token = dev_token();
+    let response = get_response_with_token("/admin/users", Some(&token)).await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
 async fn protected_route_with_dev_token_returns_200() {
-    let response = get_response_with_token("/alliance/manage", Some(DEV_TOKEN)).await;
+    let token = dev_token();
+    let response = get_response_with_token("/alliance/manage", Some(&token)).await;
     assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn admin_route_with_admin_token_returns_200() {
-    let response = get_response_with_token("/admin/users", Some(ADMIN_TOKEN)).await;
+    let token = admin_token();
+    let response = get_response_with_token("/admin/users", Some(&token)).await;
     assert_eq!(response.status(), StatusCode::OK);
 }
 
@@ -231,7 +253,8 @@ async fn all_template_routes_have_expected_auth_gating_and_render() {
             "auth route unauth {}",
             route
         );
-        let auth = get_response_with_token(route, Some(DEV_TOKEN)).await;
+        let token = dev_token();
+        let auth = get_response_with_token(route, Some(&token)).await;
         assert_eq!(auth.status(), StatusCode::OK, "auth route {}", route);
     }
 
@@ -243,14 +266,16 @@ async fn all_template_routes_have_expected_auth_gating_and_render() {
             "admin route unauth {}",
             route
         );
-        let non_admin = get_response_with_token(route, Some(DEV_TOKEN)).await;
+        let dev_token = dev_token();
+        let non_admin = get_response_with_token(route, Some(&dev_token)).await;
         assert_eq!(
             non_admin.status(),
             StatusCode::FORBIDDEN,
             "admin route non-admin {}",
             route
         );
-        let admin = get_response_with_token(route, Some(ADMIN_TOKEN)).await;
+        let admin_token = admin_token();
+        let admin = get_response_with_token(route, Some(&admin_token)).await;
         assert_eq!(admin.status(), StatusCode::OK, "admin route {}", route);
     }
 }
