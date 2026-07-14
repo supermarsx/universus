@@ -1,0 +1,15 @@
+{
+  "seed": 104372302774273,
+  "algorithm": "procedural-planet-v2",
+  "planet_class": "ringed temperate ocean super-earth",
+  "radius_km": 11992,
+  "temperature_c": 22,
+  "ocean_fraction": 0.7121420430696364,
+  "ice_fraction": 0.15977860419791964,
+  "cloud_density": 0.4626015663137739,
+  "atmosphere_density": 0.8417300404380061,
+  "volcanic_activity": 0.12285124071956494,
+  "ringed": true,
+  "palette": "deep-ocean-forest-oxide-cloud",
+  "render_model": "layered-fbm-heightmap-relief-atmosphere"
+}

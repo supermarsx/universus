@@ -1,0 +1,14 @@
+{
+  "seed": 104372302774273,
+  "algorithm": "procedural-planet-v0",
+  "planet_class": "ringed temperate ocean world",
+  "radius_km": 11292,
+  "temperature_c": 26,
+  "ocean_fraction": 0.7161893907595152,
+  "ice_fraction": 0.1397048055972262,
+  "cloud_density": 0.5370480816169525,
+  "atmosphere_density": 0.8817300404380061,
+  "volcanic_activity": 0.12897284653664565,
+  "ringed": true,
+  "palette": "deep-ocean-jade-cloud-gold"
+}

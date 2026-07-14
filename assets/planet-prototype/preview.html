@@ -1,0 +1,71 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Universus Planet Visual Prototype</title>
+<style>
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #050711;
+  color: #d8e7ef;
+  font-family: Arial, sans-serif;
+  display: grid;
+  place-items: center;
+}
+.wrap {
+  width: min(1100px, calc(100vw - 32px));
+}
+.banner {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(160, 206, 232, .18);
+  background: #080b16;
+}
+.banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.caption {
+  position: absolute;
+  left: 32px;
+  bottom: 28px;
+  max-width: 520px;
+  text-shadow: 0 2px 16px rgba(0,0,0,.85);
+}
+h1 {
+  margin: 0 0 8px;
+  font-size: 34px;
+  letter-spacing: 0;
+}
+p {
+  margin: 0;
+  color: #b9c9d3;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 18px;
+}
+.icon {
+  width: 156px;
+  height: 156px;
+  background: radial-gradient(circle, rgba(77,145,195,.16), transparent 65%);
+}
+code {
+  color: #9ed1ff;
+}
+</style>
+<main class="wrap">
+  <section class="banner" aria-label="Generated planet overview banner">
+    <img src="new-terra-overview-banner.png" alt="Procedurally generated overview banner for New Terra">
+    <div class="caption">
+      <h1>New Terra</h1>
+      <p>Ringed temperate ocean world · G1:S120:P8 · seed <code>104372302774273</code></p>
+    </div>
+  </section>
+  <div class="row">
+    <img class="icon" src="new-terra-icon.png" alt="Procedurally generated planet icon">
+    <p>Same seed drives the square planet icon and the overview banner.</p>
+  </div>
+</main>

@@ -1,0 +1,95 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Universus Rust Planet Renderer</title>
+<style>
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #050711;
+  color: #dbeaf1;
+  font-family: Arial, sans-serif;
+  display: grid;
+  place-items: center;
+}
+.wrap {
+  width: min(1220px, calc(100vw - 32px));
+  padding: 28px 0;
+}
+.banner {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(159, 205, 232, .20);
+  background: #080b16;
+}
+.banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.banner + .banner {
+  margin-top: 14px;
+}
+.caption {
+  position: absolute;
+  left: 32px;
+  bottom: 28px;
+  max-width: 620px;
+  text-shadow: 0 2px 18px rgba(0,0,0,.90);
+}
+h1 {
+  margin: 0 0 8px;
+  font-size: 35px;
+  letter-spacing: 0;
+}
+p {
+  margin: 0;
+  color: #bfd0d8;
+}
+.row {
+  display: grid;
+  grid-template-columns: 190px 190px 1fr;
+  align-items: center;
+  gap: 20px;
+  margin-top: 18px;
+}
+.icon {
+  width: 190px;
+  height: 190px;
+  background: radial-gradient(circle, rgba(74,145,205,.14), transparent 65%);
+}
+.map {
+  width: 100%;
+  margin-top: 14px;
+  border: 1px solid rgba(159, 205, 232, .16);
+}
+.maps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+code {
+  color: #9fd4ff;
+}
+</style>
+<main class="wrap">
+  <section class="banner" aria-label="Generated planet overview banner">
+    <img src="new-terra-rust-480p-overview-banner.png" alt="Procedurally generated overview banner for New Terra">
+    <div class="caption">
+      <h1>New Terra</h1>
+      <p>hot artificial - medium planet, 13787 km radius - Rust raster renderer - 480p / ultra - time 0 day(s) - seed <code>104372302774273</code></p>
+    </div>
+  </section>
+  <section class="banner" aria-label="Generated night overview banner">
+    <img src="new-terra-rust-480p-night-overview-banner.png" alt="Procedurally generated night overview banner for New Terra">
+  </section>
+  <div class="row">
+    <img class="icon" src="new-terra-rust-480p-icon.png" alt="Procedurally generated planet icon">
+    <img class="icon" src="new-terra-rust-480p-night-icon.png" alt="Procedurally generated night planet icon">
+    <p>Rust renderer: seeded terrain maps, CPU path-traced icon mode, relief normals, cloud shadows, ocean Fresnel/specular, reflection map sampling, atmospheric Rayleigh/Mie approximation, time-evolved currents/clouds/magnetism, city lights, rings, ACES tone mapping, and quality-controlled downscale. Outputs: icon <code>480x480</code>, banner <code>854x480</code>, maps <code>960x480</code>.</p>
+  </div>
+  <div class="maps">
+    <img class="map" src="new-terra-rust-480p-surface-map.png" alt="Generated equirectangular surface texture map">
+    <img class="map" src="new-terra-rust-480p-reflection-map.png" alt="Generated reflection environment map">
+  </div>
+</main>
