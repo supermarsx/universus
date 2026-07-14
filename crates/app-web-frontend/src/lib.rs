@@ -840,6 +840,13 @@ button:hover{background:#2563eb}
 table{width:100%;border-collapse:collapse;margin-top:12px}
 th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #1e293b}
 th{color:#94a3b8;font-weight:normal;text-transform:uppercase;font-size:0.8em}
+.overview-shell,.galaxy-shell{display:grid;gap:16px}
+.terrain-level-banner{min-height:160px;border:1px solid #334155;background:#111827;display:flex;align-items:center;justify-content:center;color:#64748b}
+.overview-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.galaxy-slot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px}
+.galaxy-slot{border:1px solid #1e293b;background:#111827;padding:10px}
+.galaxy-slot-thumbnail{height:72px;border:1px solid #334155;background:#0f172a;display:flex;align-items:center;justify-content:center;color:#64748b;margin-bottom:8px}
+.galaxy-slot-label{display:block;color:#94a3b8;font-size:0.85em}
 "#;
 
 fn render_public_page(title: &str, body_html: &str) -> String {
@@ -957,8 +964,15 @@ fn capitalize(s: &str) -> String {
 /// Generate contextual body HTML for each page type.
 fn page_body_for(title: &str) -> String {
     match title {
-        "Overview" => r#"<div id="resources"><p>Loading resource overview...</p></div>
-<div id="planet-info"><p>Loading planet information...</p></div>"#.to_string(),
+        "Overview" => r#"<div class="overview-shell">
+  <div id="terrain-level-banner" class="terrain-level-banner" aria-label="Planet terrain overview banner">
+    <p>Loading terrain overview...</p>
+  </div>
+  <div class="overview-columns">
+    <div id="resources"><p>Loading resource overview...</p></div>
+    <div id="planet-info"><p>Loading planet information...</p></div>
+  </div>
+</div>"#.to_string(),
         "Buildings" => r#"<div id="building-list"><p>Loading buildings...</p></div>
 <div id="build-queue"><p>Loading build queue...</p></div>"#.to_string(),
         "Research" => r#"<div id="research-tree"><p>Loading research tree...</p></div>"#.to_string(),
@@ -967,11 +981,29 @@ fn page_body_for(title: &str) -> String {
 <div id="shipyard-queue"><p>Loading shipyard queue...</p></div>"#.to_string(),
         "Fleet" => r#"<div id="fleet-movements"><p>Loading fleet movements...</p></div>
 <div id="fleet-dispatch"><p>Loading dispatch form...</p></div>"#.to_string(),
-        "Galaxy" => r#"<div id="galaxy-view"><p>Loading galaxy view...</p></div>
-<div id="galaxy-controls">
-  <label>Galaxy: <input type="number" id="galaxy-num" min="1" max="9" value="1" /></label>
-  <label>System: <input type="number" id="system-num" min="1" max="499" value="1" /></label>
-  <button id="galaxy-go">Go</button>
+        "Galaxy" => r#"<div class="galaxy-shell">
+  <div id="galaxy-view">
+    <p>Loading galaxy view...</p>
+    <div id="galaxy-slot-thumbnails" class="galaxy-slot-grid" aria-label="Galaxy slot thumbnails">
+      <div class="galaxy-slot" data-slot="1">
+        <div class="galaxy-slot-thumbnail" aria-hidden="true">Icon</div>
+        <span class="galaxy-slot-label">Slot 1</span>
+      </div>
+      <div class="galaxy-slot" data-slot="2">
+        <div class="galaxy-slot-thumbnail" aria-hidden="true">Icon</div>
+        <span class="galaxy-slot-label">Slot 2</span>
+      </div>
+      <div class="galaxy-slot" data-slot="3">
+        <div class="galaxy-slot-thumbnail" aria-hidden="true">Icon</div>
+        <span class="galaxy-slot-label">Slot 3</span>
+      </div>
+    </div>
+  </div>
+  <div id="galaxy-controls">
+    <label>Galaxy: <input type="number" id="galaxy-num" min="1" max="9" value="1" /></label>
+    <label>System: <input type="number" id="system-num" min="1" max="499" value="1" /></label>
+    <button id="galaxy-go">Go</button>
+  </div>
 </div>"#.to_string(),
         "Leaderboard" => r#"<div id="leaderboard-tabs">
   <button class="tab active" data-tab="overall">Overall</button>
@@ -1184,6 +1216,7 @@ mod tests {
         assert!(html.contains("Overview"));
         assert!(html.contains("player1"));
         assert!(html.contains("resources"));
+        assert!(html.contains("terrain-level-banner"));
     }
 
     #[tokio::test]
@@ -1224,6 +1257,7 @@ mod tests {
         let html = String::from_utf8_lossy(&body);
         assert!(html.contains("galaxy-view"));
         assert!(html.contains("galaxy-controls"));
+        assert!(html.contains("galaxy-slot-thumbnails"));
     }
 
     #[tokio::test]
@@ -1621,6 +1655,16 @@ mod tests {
         let body = page_body_for("Overview");
         assert!(body.contains("resources"));
         assert!(body.contains("planet-info"));
+        assert!(body.contains("terrain-level-banner"));
+    }
+
+    #[test]
+    fn page_body_for_galaxy() {
+        let body = page_body_for("Galaxy");
+        assert!(body.contains("galaxy-view"));
+        assert!(body.contains("galaxy-controls"));
+        assert!(body.contains("galaxy-slot-thumbnails"));
+        assert!(body.contains("galaxy-slot-thumbnail"));
     }
 
     #[test]

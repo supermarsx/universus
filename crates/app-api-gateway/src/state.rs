@@ -14,6 +14,9 @@ use game_marketplace::{CreateListingInput, ListingFilters, ListingType, Marketpl
 use game_universe::{UniverseManager, UniverseSettings};
 use platform_config::ConfigStore;
 
+const PLANET_VISUAL_VERSION: &str = "game-planet-visuals@0.1.0";
+const NEW_TERRA_VISUAL_SEED: u64 = 0x5EED_1208_0001;
+
 // ---------------------------------------------------------------------------
 // AppState
 // ---------------------------------------------------------------------------
@@ -377,6 +380,9 @@ pub struct GalaxySlotSnapshot {
     pub is_inactive: bool,
     pub is_vacation: bool,
     pub is_banned: bool,
+    pub icon_url: Option<String>,
+    pub visual_seed: Option<u64>,
+    pub visual_version: Option<String>,
 }
 
 // ===========================================================================
@@ -1542,6 +1548,7 @@ fn parse_listing_type(s: &str) -> Option<ListingType> {
 
 /// Convert a `game_galaxy::GalaxyPosition` to our slot snapshot type.
 fn galaxy_position_to_slot(pos: game_galaxy::GalaxyPosition) -> GalaxySlotSnapshot {
+    let visual = galaxy_slot_visual_metadata(&pos);
     let (occupant, status) = match pos.player_name.as_deref() {
         Some(name) if pos.player_id == Some(0) => (format!("NPC: {}", name), "npc".to_string()),
         Some(name) => (name.to_string(), "active".to_string()),
@@ -1569,6 +1576,51 @@ fn galaxy_position_to_slot(pos: game_galaxy::GalaxyPosition) -> GalaxySlotSnapsh
         is_inactive: pos.is_inactive,
         is_vacation: pos.is_vacation,
         is_banned: pos.is_banned,
+        icon_url: visual.as_ref().map(|metadata| metadata.icon_url.clone()),
+        visual_seed: visual.as_ref().map(|metadata| metadata.visual_seed),
+        visual_version: visual.map(|metadata| metadata.visual_version),
+    }
+}
+
+struct SlotVisualMetadata {
+    icon_url: String,
+    visual_seed: u64,
+    visual_version: String,
+}
+
+fn galaxy_slot_visual_metadata(pos: &game_galaxy::GalaxyPosition) -> Option<SlotVisualMetadata> {
+    let planet_id = pos.planet_id?;
+    let seed = fixture_visual_seed(pos.galaxy, pos.system, pos.position, planet_id);
+    Some(SlotVisualMetadata {
+        icon_url: fixture_icon_url(seed),
+        visual_seed: seed,
+        visual_version: PLANET_VISUAL_VERSION.to_string(),
+    })
+}
+
+fn fixture_visual_seed(galaxy: i32, system: i32, position: i32, planet_id: i64) -> u64 {
+    if galaxy == 1 && system == 120 && position == 8 {
+        return NEW_TERRA_VISUAL_SEED;
+    }
+
+    let planet_component = if planet_id < 0 {
+        planet_id.wrapping_neg() as u64
+    } else {
+        planet_id as u64
+    };
+
+    0x5EED_0000_0000
+        | ((galaxy as u64 & 0xff) << 32)
+        | ((system as u64 & 0xffff) << 16)
+        | ((position as u64 & 0xff) << 8)
+        | (planet_component & 0xff)
+}
+
+fn fixture_icon_url(seed: u64) -> String {
+    if seed == NEW_TERRA_VISUAL_SEED {
+        "/assets/planet-rust-prototype/new-terra-rust-480p-icon.png".to_string()
+    } else {
+        format!("/assets/planet-cache/fixtures/{seed}/planet-icon.png")
     }
 }
 

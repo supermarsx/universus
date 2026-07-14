@@ -209,7 +209,21 @@ async fn planets_list_returns_success_envelope() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_json(response).await;
     assert_eq!(body["success"], true);
-    assert!(body["data"].is_array());
+    let planets = body["data"].as_array().expect("planets array");
+    assert_eq!(planets[0]["id"], "p-001");
+    assert_eq!(
+        planets[0]["iconUrl"],
+        "/assets/planet-rust-prototype/new-terra-rust-480p-icon.png"
+    );
+    assert_eq!(
+        planets[0]["bannerUrl"],
+        "/assets/planet-rust-prototype/new-terra-rust-480p-overview-banner.png"
+    );
+    assert_eq!(planets[0]["visualSeed"], json!(0x5EED_1208_0001u64));
+    assert_eq!(
+        planets[0]["visualVersion"],
+        "game-planet-visuals@0.1.0"
+    );
 }
 
 #[tokio::test]
@@ -314,6 +328,29 @@ async fn galaxy_system_returns_requested_coordinates() {
     assert_eq!(body["success"], true);
     assert_eq!(body["data"]["galaxy"], 1);
     assert_eq!(body["data"]["system"], 120);
+    let slots = body["data"]["slots"].as_array().expect("galaxy slots");
+    let new_terra = slots
+        .iter()
+        .find(|slot| slot["position"] == 8)
+        .expect("New Terra slot");
+    assert_eq!(new_terra["planetName"], "New Terra");
+    assert_eq!(
+        new_terra["iconUrl"],
+        "/assets/planet-rust-prototype/new-terra-rust-480p-icon.png"
+    );
+    assert_eq!(new_terra["visualSeed"], json!(0x5EED_1208_0001u64));
+    assert_eq!(
+        new_terra["visualVersion"],
+        "game-planet-visuals@0.1.0"
+    );
+
+    let empty_slot = slots
+        .iter()
+        .find(|slot| slot["position"] == 1)
+        .expect("empty slot");
+    assert!(empty_slot["iconUrl"].is_null());
+    assert!(empty_slot["visualSeed"].is_null());
+    assert!(empty_slot["visualVersion"].is_null());
 }
 
 #[tokio::test]

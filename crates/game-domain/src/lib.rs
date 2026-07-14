@@ -199,6 +199,14 @@ pub struct Player {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanetVisuals {
+    pub visual_seed: Option<i64>,
+    pub visual_version: Option<String>,
+    pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Planet {
     pub id: i32,
     pub owner_id: i32,
@@ -213,6 +221,8 @@ pub struct Planet {
     pub temperature_max: i32,
     pub moon_id: Option<i32>,
     pub is_homeworld: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visuals: Option<PlanetVisuals>,
     pub created_at: String,
 }
 
@@ -1552,6 +1562,12 @@ mod tests {
             temperature_max: 40,
             moon_id: None,
             is_homeworld: true,
+            visuals: Some(PlanetVisuals {
+                visual_seed: Some(7_654_321),
+                visual_version: Some("v1".to_string()),
+                icon_url: Some("/assets/planets/homeworld-icon.webp".to_string()),
+                banner_url: Some("/assets/planets/homeworld-banner.webp".to_string()),
+            }),
             created_at: "2025-01-01T00:00:00Z".to_string(),
         };
 
@@ -1564,6 +1580,36 @@ mod tests {
         assert_eq!(planet.ships, planet2.ships);
         assert_eq!(planet.defenses, planet2.defenses);
         assert_eq!(planet.is_homeworld, planet2.is_homeworld);
+        assert_eq!(planet.visuals, planet2.visuals);
+    }
+
+    #[test]
+    fn planet_serde_accepts_missing_visuals() {
+        let json = r#"{
+            "id": 1,
+            "owner_id": 42,
+            "name": "Homeworld",
+            "coordinates": { "galaxy": 1, "system": 50, "position": 8 },
+            "resources": {
+                "metal": 5000,
+                "crystal": 3000,
+                "deuterium": 1000,
+                "energy": 50,
+                "dark_matter": 0
+            },
+            "buildings": {},
+            "ships": {},
+            "defenses": {},
+            "diameter": 12800,
+            "temperature_min": -20,
+            "temperature_max": 40,
+            "moon_id": null,
+            "is_homeworld": true,
+            "created_at": "2025-01-01T00:00:00Z"
+        }"#;
+
+        let planet: Planet = serde_json::from_str(json).unwrap();
+        assert_eq!(planet.visuals, None);
     }
 
     // -- UniverseSettings ---------------------------------------------------

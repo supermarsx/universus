@@ -8,6 +8,9 @@ use crate::auth_guard::BearerToken;
 use crate::response::{bad_request, success};
 use crate::state::AppState;
 
+const PLANET_VISUAL_VERSION: &str = "game-planet-visuals@0.1.0";
+const NEW_TERRA_VISUAL_SEED: u64 = 0x5EED_1208_0001;
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct PlanetPayload {
@@ -19,6 +22,10 @@ struct PlanetPayload {
     metal: i64,
     crystal: i64,
     deuterium: i64,
+    icon_url: String,
+    banner_url: String,
+    visual_seed: u64,
+    visual_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -185,6 +192,11 @@ fn default_planets() -> Vec<PlanetPayload> {
             metal: 12_000,
             crystal: 8_500,
             deuterium: 2_300,
+            icon_url: "/assets/planet-rust-prototype/new-terra-rust-480p-icon.png".to_string(),
+            banner_url: "/assets/planet-rust-prototype/new-terra-rust-480p-overview-banner.png"
+                .to_string(),
+            visual_seed: NEW_TERRA_VISUAL_SEED,
+            visual_version: PLANET_VISUAL_VERSION.to_string(),
         },
         PlanetPayload {
             id: "p-002".to_string(),
@@ -195,6 +207,18 @@ fn default_planets() -> Vec<PlanetPayload> {
             metal: 9_400,
             crystal: 7_100,
             deuterium: 1_800,
+            icon_url: fixture_icon_url(0x5EED_1214_0002),
+            banner_url: fixture_banner_url(0x5EED_1214_0002),
+            visual_seed: 0x5EED_1214_0002,
+            visual_version: PLANET_VISUAL_VERSION.to_string(),
         },
     ]
+}
+
+fn fixture_icon_url(seed: u64) -> String {
+    format!("/assets/planet-cache/fixtures/{seed}/planet-icon.png")
+}
+
+fn fixture_banner_url(seed: u64) -> String {
+    format!("/assets/planet-cache/fixtures/{seed}/overview-banner.png")
 }

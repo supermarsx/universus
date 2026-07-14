@@ -33,6 +33,9 @@ struct SystemSlot {
     is_inactive: bool,
     is_vacation: bool,
     is_banned: bool,
+    icon_url: Option<String>,
+    visual_seed: Option<u64>,
+    visual_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,19 +86,7 @@ async fn system_view_handler(
             let slots = view
                 .slots
                 .into_iter()
-                .map(|s| SystemSlot {
-                    position: s.position,
-                    occupant: s.occupant,
-                    status: s.status,
-                    planet_name: s.planet_name,
-                    moon_id: s.moon_id,
-                    debris_metal: s.debris_metal,
-                    debris_crystal: s.debris_crystal,
-                    alliance_tag: s.alliance_tag,
-                    is_inactive: s.is_inactive,
-                    is_vacation: s.is_vacation,
-                    is_banned: s.is_banned,
-                })
+                .map(system_slot_from_snapshot)
                 .collect();
             success(SystemView {
                 galaxy: view.galaxy,
@@ -112,19 +103,26 @@ async fn position_view_handler(
     Path((galaxy, system, position)): Path<(i32, i32, i32)>,
 ) -> Response {
     match state.galaxy_position(galaxy, system, position) {
-        Ok(s) => success(SystemSlot {
-            position: s.position,
-            occupant: s.occupant,
-            status: s.status,
-            planet_name: s.planet_name,
-            moon_id: s.moon_id,
-            debris_metal: s.debris_metal,
-            debris_crystal: s.debris_crystal,
-            alliance_tag: s.alliance_tag,
-            is_inactive: s.is_inactive,
-            is_vacation: s.is_vacation,
-            is_banned: s.is_banned,
-        }),
+        Ok(s) => success(system_slot_from_snapshot(s)),
         Err(msg) => bad_request(&msg),
+    }
+}
+
+fn system_slot_from_snapshot(s: crate::state::GalaxySlotSnapshot) -> SystemSlot {
+    SystemSlot {
+        position: s.position,
+        occupant: s.occupant,
+        status: s.status,
+        planet_name: s.planet_name,
+        moon_id: s.moon_id,
+        debris_metal: s.debris_metal,
+        debris_crystal: s.debris_crystal,
+        alliance_tag: s.alliance_tag,
+        is_inactive: s.is_inactive,
+        is_vacation: s.is_vacation,
+        is_banned: s.is_banned,
+        icon_url: s.icon_url,
+        visual_seed: s.visual_seed,
+        visual_version: s.visual_version,
     }
 }
