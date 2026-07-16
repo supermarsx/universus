@@ -397,6 +397,47 @@ services:
       SCHED_TASK_MAX_ATTEMPTS: 3
     restart: unless-stopped
 
+  rust-privacy-worker:
+    build:
+      context: .
+      dockerfile: crates/Dockerfile.service
+      args:
+        BIN_NAME: app-privacy-worker
+    container_name: universus_rust_privacy_worker
+    init: true
+    depends_on:
+      <<: *database-dependencies
+      rust-realtime-gateway:
+        condition: service_started
+    environment:
+      <<: *runtime-environment
+      RUST_LOG: info
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${PRIVACY_WORKER_REALTIME_PUBLISH_TOKEN:?PRIVACY_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
+      PRIVACY_WORKER_ID: ${PRIVACY_WORKER_ID:?PRIVACY_WORKER_ID must be unique per worker replica}
+      PRIVACY_EXPORT_KEY_ID: ${PRIVACY_EXPORT_KEY_ID:?PRIVACY_EXPORT_KEY_ID must be a versioned v1 rotation identifier}
+      PRIVACY_EXPORT_KEY_BASE64: ${PRIVACY_EXPORT_KEY_BASE64:?PRIVACY_EXPORT_KEY_BASE64 must decode to exactly 32 bytes}
+      PRIVACY_WORKER_CLAIM_LIMIT: ${PRIVACY_WORKER_CLAIM_LIMIT:-8}
+      PRIVACY_WORKER_CLAIM_TIMEOUT_SECS: ${PRIVACY_WORKER_CLAIM_TIMEOUT_SECS:-5}
+      PRIVACY_WORKER_LEASE_SECS: ${PRIVACY_WORKER_LEASE_SECS:-60}
+      PRIVACY_WORKER_JOB_TIMEOUT_SECS: ${PRIVACY_WORKER_JOB_TIMEOUT_SECS:-55}
+      PRIVACY_WORKER_RETRY_DELAY_SECS: ${PRIVACY_WORKER_RETRY_DELAY_SECS:-30}
+      PRIVACY_WORKER_POLL_INTERVAL_MS: ${PRIVACY_WORKER_POLL_INTERVAL_MS:-1000}
+      PRIVACY_WORKER_RUN_ONCE: "false"
+      PRIVACY_EXPORT_MAX_PLAINTEXT_BYTES: ${PRIVACY_EXPORT_MAX_PLAINTEXT_BYTES:-16777216}
+      PRIVACY_EXPORT_RETENTION_SECS: ${PRIVACY_EXPORT_RETENTION_SECS:-604800}
+      PRIVACY_WORKER_HEALTH_ADDR: 0.0.0.0:3010
+      PRIVACY_WORKER_READINESS_STALE_SECS: 30
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/app-privacy-worker", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    stop_grace_period: 80s
+    restart: unless-stopped
+
   rust-sharding-worker:
     build:
       context: .

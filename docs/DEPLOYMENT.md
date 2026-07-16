@@ -152,7 +152,7 @@ cargo run -p platform-auth --bin issue-service-token -- app-bot-worker-events ap
 Store each output directly in the corresponding secret named in
 `.env.example`. Generate separate `realtime.publish` credentials for the API
 gateway and the email, analytics, core-engine, notifications, chat, scheduler,
-and sharding workers. A realtime publisher cannot call realtime moderation or
+sharding, and privacy workers. A realtime publisher cannot call realtime moderation or
 read recent events; the bot worker's `bot.process` credential cannot manage
 bot accounts.
 
@@ -167,6 +167,54 @@ For direct local `cargo` development only, explicit HS256 compatibility remains
 available with `UNIVERSUS_ENV=development`, `AUTH_ALLOW_LEGACY_HS256=true`, and
 a local-only `JWT_SECRET`. Never reuse that secret or mode in staging or
 production.
+
+### Privacy export encryption and worker health
+
+`rust-privacy-worker` starts only after PostgreSQL is healthy and
+`database-migrate` has completed successfully. It claims the durable
+`privacy_outbox` with expiring PostgreSQL leases, so another uniquely named
+replica can recover jobs after a crash. Set a distinct `PRIVACY_WORKER_ID` for
+every replica; reusing an ID weakens stale-owner protection.
+
+Subject-access JSON is never stored as plaintext. The worker bounds serialized
+exports, calculates a SHA-256 plaintext digest, and encrypts them with
+AES-256-GCM using a random 96-bit nonce and authenticated envelope version
+`v1`. Provision the active key on a trusted host:
+
+```bash
+openssl rand -base64 32
+```
+
+Store that output directly in a secret manager as
+`PRIVACY_EXPORT_KEY_BASE64`, set a non-secret rotation identifier such as
+`PRIVACY_EXPORT_KEY_ID=v1:2026-07`, and never commit or log the key. Missing,
+malformed, or non-256-bit keys fail startup. The worker accepts only the active
+encryption key. When rotating, deploy a new suffix and key together; the
+downstream delivery/decryption service must retain the old key in its keyring
+until every artifact bearing the old ID has expired. The database stores the
+key ID, nonce, ciphertext, digest, and size—not the encryption key or plaintext.
+
+Relevant operational settings are documented in `.env.example`. Keep both
+`PRIVACY_WORKER_CLAIM_TIMEOUT_SECS` and `PRIVACY_WORKER_JOB_TIMEOUT_SECS`
+below `PRIVACY_WORKER_LEASE_SECS`; Compose uses 5, 55, and 60 seconds so a
+stalled claim is bounded and a timed-out handler can record its retry before
+the lease expires. `PRIVACY_WORKER_RUN_ONCE=true` claims one
+bounded batch, waits for those handlers, then exits. Normal shutdown stops new
+claims and lets the current bounded batch finish.
+
+The worker serves unauthenticated, non-sensitive container-local probes on
+port 3010:
+
+- `/health` reports process liveness.
+- `/ready` is fail-closed until the privacy schema is verified, becomes
+  unavailable after database/lease-recording failures, and rejects stale
+  database-success state.
+
+Compose probes readiness by executing
+`/usr/local/bin/app-privacy-worker healthcheck` inside the container; the
+health image needs no shell HTTP client. Operational realtime events contain
+only job kinds, attempt numbers, stable error codes, and aggregate counts—no
+user, request, tenant, token, export, or payload values.
 
 ## Production Deployment
 

@@ -14,7 +14,7 @@ This repository now hosts the fully Rust-based Universus platform. All runtime s
 - `rust-realtime-gateway` (`crates/app-realtime-gateway`): websocket/realtime endpoints, chat moderation.
 - `rust-web-frontend` (`crates/app-web-frontend`): server-rendered UI listening on port `8080`.
 - `rust-admin-api`, `rust-bot-api`, `rust-sms-api`: scoped admin, bot, and SMS APIs.
-- Worker fleet (`rust-scheduler-worker`, `rust-sharding-worker`, `rust-analytics-worker`, `rust-email-worker`, `rust-bot-worker`): asynchronous schedulers, analytics, email, and bot loops.
+- Worker fleet (`rust-scheduler-worker`, `rust-sharding-worker`, `rust-privacy-worker`, `rust-analytics-worker`, `rust-email-worker`, `rust-bot-worker`): asynchronous schedulers, durable GDPR/export processing, analytics, email, and bot loops.
 - Shared platform crates (`platform-*`, `game-*`, `adapter-*`): persistence, domain logic, adapter integration.
 
 ## Quick start — Docker
@@ -24,7 +24,7 @@ This repository now hosts the fully Rust-based Universus platform. All runtime s
    ```
 2. Start the hard-cut services:
    ```
-   docker compose up -d rust-api-gateway rust-realtime-gateway rust-web-frontend rust-admin-api rust-bot-api rust-sms-api rust-core-engine rust-scheduler-worker rust-sharding-worker rust-analytics-worker rust-email-worker rust-bot-worker database-migrate redis rabbitmq
+   docker compose up -d rust-api-gateway rust-realtime-gateway rust-web-frontend rust-admin-api rust-bot-api rust-sms-api rust-core-engine rust-scheduler-worker rust-sharding-worker rust-privacy-worker rust-analytics-worker rust-email-worker rust-bot-worker database-migrate redis rabbitmq
    ```
 3. Open the services:
    - UI: http://localhost:8080
@@ -57,6 +57,9 @@ This repository now hosts the fully Rust-based Universus platform. All runtime s
   RUST_LOG=info
   API_PORT=3300
   WEB_PORT=8080
+  PRIVACY_WORKER_ID=privacy-worker-1
+  PRIVACY_EXPORT_KEY_ID=v1:2026-07
+  PRIVACY_EXPORT_KEY_BASE64=<base64-encoded-32-byte-secret>
   ```
 - Initialize the database:
   ```
