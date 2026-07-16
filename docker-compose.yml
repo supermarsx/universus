@@ -101,17 +101,25 @@ services:
         condition: service_healthy
       rust-core-engine:
         condition: service_started
+      rust-privacy-worker:
+        condition: service_healthy
     environment:
       <<: *auth-verifier-environment
       AUTH_EXPECTED_AUDIENCE: app-api-gateway
       AUTH_TOKEN_ISSUER: "true"
-      AUTH_TOKEN_AUDIENCES: app-api-gateway,app-web-frontend,app-admin-api,app-bot-api,app-realtime-gateway
+      AUTH_TOKEN_AUDIENCES: app-api-gateway,app-web-frontend,app-admin-api,app-bot-api,app-realtime-gateway,app-privacy-worker
       AUTH_JWT_SIGNING_KEY_ID: ${AUTH_JWT_SIGNING_KEY_ID:?AUTH_JWT_SIGNING_KEY_ID must select the active signing key}
       AUTH_JWT_PRIVATE_KEY_BASE64: ${AUTH_JWT_PRIVATE_KEY_BASE64:?AUTH_JWT_PRIVATE_KEY_BASE64 must be provisioned only to rust-api-gateway}
+      AUTH_SESSION_DIGEST_KEY: ${AUTH_SESSION_DIGEST_KEY:?AUTH_SESSION_DIGEST_KEY must contain at least 32 random bytes}
       PLATFORM_EVENTS_SERVICE_TOKEN: ${API_GATEWAY_REALTIME_PUBLISH_TOKEN:?API_GATEWAY_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      PRIVACY_POLICY_VERSION: ${PRIVACY_POLICY_VERSION:-privacy-v1}
+      PRIVACY_REQUEST_IP_PEPPER: ${PRIVACY_REQUEST_IP_PEPPER:?PRIVACY_REQUEST_IP_PEPPER must contain at least 32 random bytes}
+      PRIVACY_EXPORT_ACTIVE_KEY_ID: ${PRIVACY_EXPORT_ACTIVE_KEY_ID:?PRIVACY_EXPORT_ACTIVE_KEY_ID must select a versioned v1 key}
+      PRIVACY_EXPORT_KEYRING_JSON: ${PRIVACY_EXPORT_KEYRING_JSON:?PRIVACY_EXPORT_KEYRING_JSON must contain the active and retained 32-byte export keys}
+      PRIVACY_WORKER_INTERNAL_URL: http://rust-privacy-worker:3010
     ports:
       - "3300:3000"
     restart: unless-stopped
@@ -150,9 +158,10 @@ services:
       <<: *auth-verifier-environment
       AUTH_EXPECTED_AUDIENCE: app-admin-api
       RUST_LOG: info
+      PORT: 3001
       DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
     ports:
-      - "4302:4002"
+      - "${ADMIN_PORT:-4302}:3001"
     restart: unless-stopped
 
   rust-bot-api:
@@ -451,14 +460,16 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
-      <<: *runtime-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-privacy-worker
       RUST_LOG: info
       DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       PLATFORM_EVENTS_SERVICE_TOKEN: ${PRIVACY_WORKER_REALTIME_PUBLISH_TOKEN:?PRIVACY_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       PRIVACY_WORKER_ID: ${PRIVACY_WORKER_ID:?PRIVACY_WORKER_ID must be unique per worker replica}
-      PRIVACY_EXPORT_KEY_ID: ${PRIVACY_EXPORT_KEY_ID:?PRIVACY_EXPORT_KEY_ID must be a versioned v1 rotation identifier}
-      PRIVACY_EXPORT_KEY_BASE64: ${PRIVACY_EXPORT_KEY_BASE64:?PRIVACY_EXPORT_KEY_BASE64 must decode to exactly 32 bytes}
+      PRIVACY_EXPORT_ACTIVE_KEY_ID: ${PRIVACY_EXPORT_ACTIVE_KEY_ID:?PRIVACY_EXPORT_ACTIVE_KEY_ID must select a versioned v1 key}
+      PRIVACY_EXPORT_KEYRING_JSON: ${PRIVACY_EXPORT_KEYRING_JSON:?PRIVACY_EXPORT_KEYRING_JSON must contain the active and retained 32-byte export keys}
+      COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64: ${COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64:?COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64 must match the durable communications evidence key}
       PRIVACY_WORKER_CLAIM_LIMIT: ${PRIVACY_WORKER_CLAIM_LIMIT:-8}
       PRIVACY_WORKER_CLAIM_TIMEOUT_SECS: ${PRIVACY_WORKER_CLAIM_TIMEOUT_SECS:-5}
       PRIVACY_WORKER_LEASE_SECS: ${PRIVACY_WORKER_LEASE_SECS:-60}
@@ -468,8 +479,11 @@ services:
       PRIVACY_WORKER_RUN_ONCE: "false"
       PRIVACY_EXPORT_MAX_PLAINTEXT_BYTES: ${PRIVACY_EXPORT_MAX_PLAINTEXT_BYTES:-16777216}
       PRIVACY_EXPORT_RETENTION_SECS: ${PRIVACY_EXPORT_RETENTION_SECS:-604800}
+      PRIVACY_EXPORT_DELIVERY_TOKEN_TTL_SECS: ${PRIVACY_EXPORT_DELIVERY_TOKEN_TTL_SECS:-900}
+      PRIVACY_RETENTION_INTERVAL_SECS: ${PRIVACY_RETENTION_INTERVAL_SECS:-3600}
+      PRIVACY_OUTBOX_RETENTION_DAYS: ${PRIVACY_OUTBOX_RETENTION_DAYS:-30}
       PRIVACY_WORKER_HEALTH_ADDR: 0.0.0.0:3010
-      PRIVACY_WORKER_READINESS_STALE_SECS: 30
+      PRIVACY_WORKER_READINESS_STALE_SECS: ${PRIVACY_WORKER_READINESS_STALE_SECS:-30}
     healthcheck:
       test: ["CMD", "/usr/local/bin/app-privacy-worker", "healthcheck"]
       interval: 10s

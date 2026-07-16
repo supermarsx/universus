@@ -9,19 +9,21 @@ fn repo_file(name: &str) -> PathBuf {
 
 fn service_block(compose: &str, service: &str) -> String {
     let marker = format!("  {service}:");
-    let tail = compose
-        .split_once(&marker)
-        .unwrap_or_else(|| panic!("missing compose service {service}"))
-        .1;
     let mut block = String::new();
-    for line in tail.lines() {
-        if line.trim().is_empty() || line.starts_with("    ") {
+    let mut in_service = false;
+    for line in compose.lines() {
+        if line == marker {
+            in_service = true;
+            continue;
+        }
+        if in_service && (line.trim().is_empty() || line.starts_with("    ")) {
             block.push_str(line);
             block.push('\n');
-        } else {
+        } else if in_service {
             break;
         }
     }
+    assert!(in_service, "missing compose service {service}");
     block
 }
 
@@ -57,6 +59,7 @@ fn compose_separates_the_only_signer_from_audience_bound_verifiers() {
         ("rust-realtime-gateway", "app-realtime-gateway"),
         ("rust-email-worker", "app-email-worker"),
         ("rust-sms-api", "app-sms-api"),
+        ("rust-privacy-worker", "app-privacy-worker"),
     ];
     for (service, audience) in verifier_services {
         let block = service_block(&compose, service);
@@ -73,7 +76,7 @@ fn compose_separates_the_only_signer_from_audience_bound_verifiers() {
     let gateway = service_block(&compose, "rust-api-gateway");
     for required in [
         "AUTH_TOKEN_ISSUER: \"true\"",
-        "AUTH_TOKEN_AUDIENCES: app-api-gateway,app-web-frontend,app-admin-api,app-bot-api,app-realtime-gateway",
+        "AUTH_TOKEN_AUDIENCES: app-api-gateway,app-web-frontend,app-admin-api,app-bot-api,app-realtime-gateway,app-privacy-worker",
         "AUTH_JWT_SIGNING_KEY_ID: ${AUTH_JWT_SIGNING_KEY_ID:?",
         "AUTH_JWT_PRIVATE_KEY_BASE64: ${AUTH_JWT_PRIVATE_KEY_BASE64:?",
     ] {
@@ -87,6 +90,7 @@ fn compose_separates_the_only_signer_from_audience_bound_verifiers() {
         "rust-realtime-gateway",
         "rust-email-worker",
         "rust-sms-api",
+        "rust-privacy-worker",
     ] {
         let block = service_block(&compose, verifier);
         assert!(

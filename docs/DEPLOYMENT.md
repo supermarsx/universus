@@ -112,8 +112,9 @@ to work. Production traffic must terminate TLS before reaching the frontend.
 
 Production and staging use Ed25519 (`alg=EdDSA`) JWTs. The API gateway is the
 only online issuer and the only container that receives the private seed.
-Frontend, admin, bot, realtime, and gateway request validation receives only
-the public verification-key map and its own `AUTH_EXPECTED_AUDIENCE`.
+Frontend, admin, bot, realtime, privacy-worker delivery, and gateway request
+validators receive only the public verification-key map and their own
+`AUTH_EXPECTED_AUDIENCE`.
 `JWT_SECRET`/HS256 is rejected in production-like environments.
 
 Generate a key pair on a trusted provisioning host:
@@ -134,8 +135,10 @@ AUTH_JWT_VERIFICATION_KEYS=primary-2026-07:<public-key>
 ```
 
 User access tokens carry all intentional user-facing audiences
-(`app-api-gateway`, `app-web-frontend`, `app-admin-api`, `app-bot-api`, and
-`app-realtime-gateway`). Every verifier still requires its own audience.
+(`app-api-gateway`, `app-web-frontend`, `app-admin-api`, `app-bot-api`,
+`app-realtime-gateway`, and `app-privacy-worker`; the last is used by the
+gateway-forwarded export delivery flow). Every verifier still requires its own
+audience.
 Refresh tokens have `purpose=refresh` and are accepted only by the refresh
 flow; API, admin, bot, and realtime authorization reject them.
 
@@ -185,14 +188,28 @@ AES-256-GCM using a random 96-bit nonce and authenticated envelope version
 openssl rand -base64 32
 ```
 
-Store that output directly in a secret manager as
-`PRIVACY_EXPORT_KEY_BASE64`, set a non-secret rotation identifier such as
-`PRIVACY_EXPORT_KEY_ID=v1:2026-07`, and never commit or log the key. Missing,
-malformed, or non-256-bit keys fail startup. The worker accepts only the active
-encryption key. When rotating, deploy a new suffix and key together; the
-downstream delivery/decryption service must retain the old key in its keyring
-until every artifact bearing the old ID has expired. The database stores the
-key ID, nonce, ciphertext, digest, and size—not the encryption key or plaintext.
+Store each output directly in a secret manager and provision a JSON keyring,
+for example `{"v1:2026-06":"<old-key>","v1:2026-07":"<active-key>"}` through
+`PRIVACY_EXPORT_KEYRING_JSON`. Set `PRIVACY_EXPORT_ACTIVE_KEY_ID=v1:2026-07`.
+The active ID must exist in the keyring and every value must decode to exactly
+32 bytes; missing or malformed values fail closed. Provision the identical
+keyring and active ID to the API gateway for encrypted correction requests and
+to the privacy worker for export encryption and delivery. During rotation, add
+the new key before switching the active ID and retain old keys until every
+artifact bearing the old ID has expired. The database stores the key ID, nonce,
+ciphertext, digest, and size—not the encryption key or plaintext.
+
+The production API gateway also requires an independently generated
+`AUTH_SESSION_DIGEST_KEY` and `PRIVACY_REQUEST_IP_PEPPER`, each containing at
+least 32 random bytes. Never reuse either value as an export or communications
+key. Compose connects the gateway to the worker with
+`PRIVACY_WORKER_INTERNAL_URL=http://rust-privacy-worker:3010` and does not start
+the gateway until worker readiness succeeds. The worker validates forwarded
+access tokens with `AUTH_EXPECTED_AUDIENCE=app-privacy-worker` and checks the
+live PostgreSQL session before issuing or consuming one-time delivery grants.
+The admin API validates `app-admin-api` tokens and live sessions against the
+same migrated database; its container listens on port 3001 and Compose maps
+`${ADMIN_PORT:-4302}` to that port.
 
 Relevant operational settings are documented in `.env.example`. Keep both
 `PRIVACY_WORKER_CLAIM_TIMEOUT_SECS` and `PRIVACY_WORKER_JOB_TIMEOUT_SECS`
