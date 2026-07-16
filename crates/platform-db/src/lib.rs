@@ -1,3 +1,7 @@
+mod gameplay;
+
+pub use gameplay::*;
+
 use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
 use tokio_postgres::{error::SqlState, types::Json, NoTls};
 
@@ -352,6 +356,13 @@ impl Database {
         else {
             return Ok(None);
         };
+        Self::from_database_url(&database_url).map(Some)
+    }
+
+    /// Build a database pool from an explicit URL. This is primarily useful
+    /// for dependency injection and isolated integration tests; production
+    /// callers should normally use [`Database::try_from_env`].
+    pub fn from_database_url(database_url: &str) -> DbResult<Self> {
         let config = database_url
             .parse::<tokio_postgres::Config>()
             .map_err(|error| format!("invalid DATABASE_URL: {error}"))?;
@@ -364,7 +375,7 @@ impl Database {
             .runtime(Runtime::Tokio1)
             .build()
             .map_err(|error| format!("unable to create database pool: {error}"))?;
-        Ok(Some(Self { pool }))
+        Ok(Self { pool })
     }
 
     pub async fn ping(&self) -> DbResult<()> {
