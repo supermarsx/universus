@@ -1,6 +1,8 @@
+mod auth;
 mod gameplay;
 mod privacy;
 
+pub use auth::*;
 pub use gameplay::*;
 pub use privacy::*;
 

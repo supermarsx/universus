@@ -3,7 +3,7 @@ use app_api_gateway::routes::build_router_with_dependencies;
 use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use hyper::body::to_bytes;
-use platform_db::{AccountCreateInput, Database};
+use platform_db::{AccountCreateInput, AccountRow, AuthSessionCreateInput, Database};
 use serde_json::{json, Value};
 use tokio_postgres::NoTls;
 use tower::ServiceExt;
@@ -17,6 +17,7 @@ const GAMEPLAY_SCHEMA: &str =
     include_str!("../../../database/sql/steps/50_authoritative_gameplay_state.sql");
 const RESOURCE_SCHEMA: &str =
     include_str!("../../../database/sql/steps/51_resource_accrual_remainders.sql");
+const AUTH_SESSION_SCHEMA: &str = include_str!("../../../database/sql/steps/53_auth_sessions.sql");
 
 fn account_input(username: &str, email: &str) -> AccountCreateInput {
     AccountCreateInput {
@@ -26,13 +27,45 @@ fn account_input(username: &str, email: &str) -> AccountCreateInput {
     }
 }
 
-fn token(subject: &str) -> String {
+async fn token(database: &Database, account: &AccountRow) -> String {
     let config = platform_auth::AuthConfig {
         jwt_secret: "default-secret".to_string(),
         jwt_expiry_seconds: 86_400,
         ..platform_auth::AuthConfig::default()
     };
-    platform_auth::generate_token(&config, subject, "Commander", "player", Some(1)).unwrap()
+    let session_id = platform_auth::generate_secure_id();
+    let family_id = platform_auth::generate_secure_id();
+    let refresh_token = platform_auth::generate_opaque_refresh_token();
+    let issue = database
+        .create_auth_session(AuthSessionCreateInput {
+            account_id: account.id.clone(),
+            session_id,
+            family_id,
+            refresh_token_digest: platform_auth::refresh_token_digest(&refresh_token).to_vec(),
+            refresh_expiry_seconds: config.refresh_expiry_seconds,
+            max_active_sessions: config.max_sessions_per_user,
+            device_label: Some("gameplay integration fixture".to_string()),
+            ip_digest: None,
+            user_agent_digest: None,
+            account_throttle_digest: platform_auth::keyed_metadata_digest(
+                b"gameplay-integration-test-key-at-least-32-bytes",
+                account.email.as_bytes(),
+            )
+            .to_vec(),
+        })
+        .await
+        .unwrap();
+    platform_auth::generate_session_token_with_email(
+        &config,
+        &issue.principal.user_id,
+        &issue.principal.username,
+        Some(&issue.principal.email),
+        &issue.principal.role,
+        Some(issue.principal.universe_id),
+        &issue.session_id,
+        issue.principal.auth_epoch,
+    )
+    .unwrap()
 }
 
 fn request(method: &str, path: &str, token: &str, body: Option<Value>) -> Request<Body> {
@@ -79,6 +112,7 @@ async fn signed_routes_use_authoritative_persisted_gameplay_state() {
         QUEUE_SCHEMA,
         GAMEPLAY_SCHEMA,
         RESOURCE_SCHEMA,
+        AUTH_SESSION_SCHEMA,
     ] {
         client.batch_execute(schema).await.unwrap();
     }
@@ -102,8 +136,8 @@ async fn signed_routes_use_authoritative_persisted_gameplay_state() {
         Some(database.clone()),
         AccountRepository::from_environment(Some(database.clone())),
     );
-    let first_token = token(&first.id);
-    let second_token = token(&second.id);
+    let first_token = token(&database, &first).await;
+    let second_token = token(&database, &second).await;
 
     let planets = app
         .clone()

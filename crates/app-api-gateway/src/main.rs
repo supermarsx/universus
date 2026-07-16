@@ -20,7 +20,7 @@ async fn main() {
     tracing::info!(service = SERVICE_NAME, %addr, "startup");
 
     axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .expect("server failed");
 }

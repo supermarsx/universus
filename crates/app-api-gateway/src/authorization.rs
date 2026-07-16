@@ -49,8 +49,16 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
     rule!("GET", "/ready", ActorPolicy::Public),
     rule!("POST", "/api/auth/login", ActorPolicy::Public),
     rule!("POST", "/api/auth/register", ActorPolicy::Public),
+    rule!("POST", "/api/auth/refresh", ActorPolicy::Public),
     rule!("POST", "/api/auth/logout", ActorPolicy::Player),
     rule!("GET", "/api/auth/me", ActorPolicy::Player),
+    rule!("GET", "/api/auth/sessions", ActorPolicy::Player),
+    rule!("DELETE", "/api/auth/sessions", ActorPolicy::Player),
+    rule!(
+        "DELETE",
+        "/api/auth/sessions/:session_id",
+        ActorPolicy::Player
+    ),
     rule!("GET", "/api/achievements", ActorPolicy::Public),
     rule!("GET", "/api/achievements/badges", ActorPolicy::Public),
     rule!("GET", "/api/achievements/hall-of-fame", ActorPolicy::Public),

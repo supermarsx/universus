@@ -6,6 +6,7 @@ use axum::RequestExt;
 
 use platform_auth::{AuthConfig, Claims};
 
+use crate::accounts::AccountRepository;
 use crate::response::unauthorized;
 
 /// Cached auth configuration loaded once from environment.
@@ -32,7 +33,11 @@ where
             return Ok(Self(claims.sub.clone()));
         }
 
-        let (_token, claims) = validate_bearer_jwt(&parts.headers)?;
+        let (_token, claims) =
+            validate_bearer_jwt(&parts.headers).map_err(|()| unauthorized("Unauthorized"))?;
+        enforce_live_session(parts, &claims)
+            .await
+            .map_err(|()| unauthorized("Unauthorized"))?;
         let user_id = claims.sub.clone();
         parts.extensions.insert(claims);
         Ok(Self(user_id))
@@ -62,6 +67,27 @@ pub async fn require_bearer_auth(
 /// This must be used *after* [`BearerToken`] or [`require_bearer_auth`] has
 /// run, because those are responsible for inserting [`Claims`] into extensions.
 pub struct AuthUser(pub platform_auth::AuthUser);
+
+/// Complete validated claims for handlers that need session metadata. The
+/// claims have already passed signature, purpose, and live-session checks.
+pub struct AuthenticatedClaims(pub Claims);
+
+#[axum::async_trait]
+impl<S> FromRequestParts<S> for AuthenticatedClaims
+where
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<Claims>()
+            .cloned()
+            .map(Self)
+            .ok_or_else(|| unauthorized("Unauthorized"))
+    }
+}
 
 #[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthUser
@@ -115,18 +141,49 @@ pub fn require_role(
 /// Extract the Bearer token from headers and validate it as a JWT.
 ///
 /// Returns the raw token string and the decoded [`Claims`].
-fn validate_bearer_jwt(headers: &HeaderMap) -> Result<(String, Claims), Response> {
+fn validate_bearer_jwt(headers: &HeaderMap) -> Result<(String, Claims), ()> {
     let authorization = headers
         .get(AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| unauthorized("Unauthorized"))?;
+        .ok_or(())?;
 
-    let token = platform_auth::extract_bearer_token(authorization)
-        .ok_or_else(|| unauthorized("Unauthorized"))?;
+    let token = platform_auth::extract_bearer_token(authorization).ok_or(())?;
 
     let config = auth_config();
-    let claims =
-        platform_auth::validate_token(&config, token).map_err(|e| unauthorized(&e.to_string()))?;
+    let claims = platform_auth::validate_token(&config, token).map_err(|_| ())?;
 
     Ok((token.to_string(), claims))
+}
+
+async fn enforce_live_session(parts: &Parts, claims: &Claims) -> Result<(), ()> {
+    if claims.is_service_token() {
+        return Ok(());
+    }
+    if !claims.is_access_token() {
+        return Err(());
+    }
+    let accounts = parts.extensions.get::<AccountRepository>().ok_or(())?;
+    let Some(session_id) = claims.sid.as_deref() else {
+        return if accounts.allows_legacy_sessionless_tokens() {
+            Ok(())
+        } else {
+            Err(())
+        };
+    };
+    match accounts
+        .validate_auth_session(
+            &claims.sub,
+            session_id,
+            claims.auth_epoch,
+            claims.universe_id,
+        )
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(()),
+        Err(error) => {
+            tracing::warn!(?error, "live authentication session validation failed");
+            Err(())
+        }
+    }
 }

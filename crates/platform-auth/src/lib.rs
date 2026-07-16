@@ -7,7 +7,7 @@
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use rand_core::OsRng;
+use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -581,26 +581,39 @@ fn base64url_decode(input: &str) -> Result<Vec<u8>, AuthError> {
 }
 
 // ---------------------------------------------------------------------------
-// Simple counter-based unique ID (no unsafe, no deps)
+// Cryptographically secure identifiers and opaque refresh credentials
 // ---------------------------------------------------------------------------
 
 fn generate_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as u64;
-    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let raw = format!("{ts:016x}{seq:08x}");
-    // Hash for uniform distribution.
-    let hash = sha256(raw.as_bytes());
-    hex_encode(&hash[..16])
+    generate_secure_id()
 }
 
+/// Generate a 256-bit, URL-safe random identifier suitable for session and
+/// rotation-family identifiers.
+pub fn generate_secure_id() -> String {
+    let mut bytes = [0_u8; 32];
+    OsRng.fill_bytes(&mut bytes);
+    base64url_encode(&bytes)
+}
+
+/// Generate a 256-bit opaque one-time refresh credential. Only
+/// [`refresh_token_digest`] should be persisted.
+pub fn generate_opaque_refresh_token() -> String {
+    generate_secure_id()
+}
+
+/// SHA-256 digest of an opaque refresh credential for server-side storage.
+pub fn refresh_token_digest(token: &str) -> [u8; 32] {
+    sha256(token.as_bytes())
+}
+
+/// HMAC-SHA-256 digest for normalized, low-entropy metadata such as account
+/// identifiers, IP addresses, and user-agent strings.
+pub fn keyed_metadata_digest(key: &[u8], normalized_value: &[u8]) -> [u8; 32] {
+    hmac_sha256(key, normalized_value)
+}
+
+#[cfg(test)]
 fn hex_encode(data: &[u8]) -> String {
     let mut s = String::with_capacity(data.len() * 2);
     for &b in data {
@@ -641,6 +654,13 @@ pub struct Claims {
     pub jti: String,
     pub purpose: String,
     pub scopes: Vec<String>,
+    /// Durable human session identifier. Legacy development tokens and
+    /// service credentials intentionally omit this value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
+    /// Monotonic account security epoch captured when the session was issued.
+    #[serde(default)]
+    pub auth_epoch: i64,
 }
 
 impl Claims {
@@ -802,6 +822,11 @@ fn validate_registered_claims(
             .iter()
             .any(|audience| audience == &config.expected_audience)
         || !accepted_purposes.contains(&claims.purpose.as_str())
+        || claims.auth_epoch < 0
+        || claims
+            .sid
+            .as_ref()
+            .is_some_and(|sid| !(32..=128).contains(&sid.len()) || sid.trim() != sid)
     {
         return Err(AuthError::TokenInvalid);
     }
@@ -860,6 +885,49 @@ pub fn generate_token_with_email(
     role: &str,
     universe_id: Option<i64>,
 ) -> Result<String, AuthError> {
+    generate_access_token_with_session(config, user_id, username, email, role, universe_id, None, 0)
+}
+
+/// Generate an access JWT bound to a durable server-side session and account
+/// security epoch. Gateways must validate both values on every human request.
+#[allow(clippy::too_many_arguments)] // Explicit claim inputs avoid an ambiguous partially-filled bag.
+pub fn generate_session_token_with_email(
+    config: &AuthConfig,
+    user_id: &str,
+    username: &str,
+    email: Option<&str>,
+    role: &str,
+    universe_id: Option<i64>,
+    session_id: &str,
+    auth_epoch: i64,
+) -> Result<String, AuthError> {
+    if !(32..=128).contains(&session_id.len()) || session_id.trim() != session_id || auth_epoch < 0
+    {
+        return Err(AuthError::InvalidCredentials);
+    }
+    generate_access_token_with_session(
+        config,
+        user_id,
+        username,
+        email,
+        role,
+        universe_id,
+        Some(session_id),
+        auth_epoch,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_access_token_with_session(
+    config: &AuthConfig,
+    user_id: &str,
+    username: &str,
+    email: Option<&str>,
+    role: &str,
+    universe_id: Option<i64>,
+    session_id: Option<&str>,
+    auth_epoch: i64,
+) -> Result<String, AuthError> {
     if matches!(role, "service" | "refresh") {
         return Err(AuthError::InvalidCredentials);
     }
@@ -877,6 +945,8 @@ pub fn generate_token_with_email(
         jti: generate_id(),
         purpose: TOKEN_PURPOSE_ACCESS.to_string(),
         scopes: Vec::new(),
+        sid: session_id.map(str::to_owned),
+        auth_epoch,
     };
     encode_jwt(config, &claims)
 }
@@ -914,6 +984,8 @@ pub fn generate_service_token(
             jti: generate_id(),
             purpose: TOKEN_PURPOSE_SERVICE.to_string(),
             scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
+            sid: None,
+            auth_epoch: 0,
         },
     )
 }
@@ -951,6 +1023,8 @@ pub fn generate_refresh_token(config: &AuthConfig, user_id: &str) -> Result<Stri
         jti: generate_id(),
         purpose: TOKEN_PURPOSE_REFRESH.to_string(),
         scopes: Vec::new(),
+        sid: None,
+        auth_epoch: 0,
     };
     encode_jwt(config, &claims)
 }
@@ -1694,6 +1768,8 @@ mod tests {
             jti: "future-jti".to_string(),
             purpose: TOKEN_PURPOSE_ACCESS.to_string(),
             scopes: Vec::new(),
+            sid: None,
+            auth_epoch: 0,
         };
         let token = encode_jwt(&issuer, &future).unwrap();
         assert_eq!(
@@ -1909,5 +1985,53 @@ mod tests {
         let ids: Vec<String> = (0..100).map(|_| generate_id()).collect();
         let unique: std::collections::HashSet<&String> = ids.iter().collect();
         assert_eq!(ids.len(), unique.len());
+        assert!(ids.iter().all(|id| id.len() == 43));
+    }
+
+    #[test]
+    fn opaque_refresh_tokens_are_random_and_digest_only() {
+        let first = generate_opaque_refresh_token();
+        let second = generate_opaque_refresh_token();
+        assert_eq!(first.len(), 43);
+        assert_eq!(second.len(), 43);
+        assert_ne!(first, second);
+        assert_ne!(refresh_token_digest(&first), refresh_token_digest(&second));
+    }
+
+    #[test]
+    fn session_access_claims_round_trip_and_legacy_claims_default_safely() {
+        let cfg = test_config();
+        let session_id = generate_secure_id();
+        let token = generate_session_token_with_email(
+            &cfg,
+            "42",
+            "Commander",
+            Some("commander@example.test"),
+            "player",
+            Some(1),
+            &session_id,
+            7,
+        )
+        .unwrap();
+        let claims = validate_token(&cfg, &token).unwrap();
+        assert_eq!(claims.sid.as_deref(), Some(session_id.as_str()));
+        assert_eq!(claims.auth_epoch, 7);
+
+        let legacy: Claims = serde_json::from_value(serde_json::json!({
+            "iss": "universus-dev",
+            "aud": ["universus"],
+            "sub": "legacy",
+            "username": "Legacy",
+            "role": "player",
+            "universe_id": 1,
+            "exp": 2,
+            "iat": 1,
+            "jti": "legacy-id",
+            "purpose": "access",
+            "scopes": []
+        }))
+        .unwrap();
+        assert_eq!(legacy.sid, None);
+        assert_eq!(legacy.auth_epoch, 0);
     }
 }

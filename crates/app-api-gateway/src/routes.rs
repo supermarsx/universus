@@ -95,10 +95,10 @@ pub fn build_router_with_dependencies(
         .merge(analytics::router())
         .merge(themes::router())
         .merge(protected_routes)
+        .layer(middleware::from_fn(enforce_route_authorization))
         .layer(Extension(AppState::new()))
         .layer(Extension(accounts))
         .layer(Extension(db))
-        .layer(middleware::from_fn(enforce_route_authorization))
 }
 
 async fn health(service_name: &'static str) -> Json<ServiceStatus> {
