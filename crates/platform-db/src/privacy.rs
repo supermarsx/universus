@@ -173,6 +173,17 @@ impl ConsentStatus {
             Self::Withdrawn => "withdrawn",
         }
     }
+
+    fn parse(value: &str) -> Result<Self, PrivacyError> {
+        match value {
+            "granted" => Ok(Self::Granted),
+            "denied" => Ok(Self::Denied),
+            "withdrawn" => Ok(Self::Withdrawn),
+            _ => Err(PrivacyError::Database(format!(
+                "database returned unsupported consent status {value}"
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,6 +210,81 @@ pub struct CommunicationPreferenceUpdate {
     pub enabled: bool,
     pub changed_by_user_id: i32,
     pub actor_type: String,
+}
+
+pub const PRIVACY_COMMUNICATION_CHANNELS: &[&str] = &["email", "in_app", "push", "sms"];
+pub const PRIVACY_COMMUNICATION_CATEGORIES: &[&str] = &[
+    "marketing",
+    "product_updates",
+    "gameplay_digest",
+    "security",
+    "transactional",
+];
+
+/// Security and transactional messages are required to operate and protect an
+/// account. Self-service controls may describe them, but may never suppress
+/// them, including when an older row was persisted with `enabled = FALSE`.
+pub fn privacy_communication_category_is_essential(category: &str) -> bool {
+    matches!(category, "security" | "transactional")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivacyExportAvailability {
+    pub ready: bool,
+    pub expired: bool,
+    pub expires_at_unix: i64,
+    pub plaintext_size: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivacyRequestSummary {
+    pub request: PrivacyRequestRow,
+    pub export: Option<PrivacyExportAvailability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivacyRequestEventRow {
+    pub id: i64,
+    pub event_type: String,
+    pub from_status: Option<PrivacyRequestStatus>,
+    pub to_status: PrivacyRequestStatus,
+    pub actor_type: String,
+    pub reason_code: Option<String>,
+    pub request_version: i64,
+    pub created_at_unix: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivacyRequestDetail {
+    pub request: PrivacyRequestRow,
+    pub timeline: Vec<PrivacyRequestEventRow>,
+    pub export: Option<PrivacyExportAvailability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivacyConsentRow {
+    pub purpose: String,
+    pub channel: String,
+    pub status: ConsentStatus,
+    pub lawful_basis: String,
+    pub policy_version: String,
+    pub collected_at_unix: i64,
+    pub expires_at_unix: Option<i64>,
+    pub version: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommunicationPreferenceRow {
+    pub channel: String,
+    pub category: String,
+    pub enabled: bool,
+    pub explicitly_configured: bool,
+    pub effective_allowed: bool,
+    pub essential: bool,
+    pub marketing_consent_current: bool,
+    pub suppressed_by_restriction: bool,
+    pub updated_at_unix: Option<i64>,
+    pub version: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -392,6 +478,76 @@ impl Database {
             .as_ref()
             .map(|digest| digest.as_slice());
 
+        // Serialize request creation per tenant subject. The exact
+        // idempotency replay is resolved before the active-request bound so a
+        // retried network request always receives its original durable row.
+        transaction
+            .query_opt(
+                "SELECT id FROM users
+                 WHERE universe_id = $1 AND id = $2
+                 FOR UPDATE",
+                &[&input.universe_id, &input.user_id],
+            )
+            .await
+            .map_err(database_error)?
+            .ok_or(PrivacyError::NotFound)?;
+        if let Some(row) = transaction
+            .query_opt(
+                "SELECT id, universe_id, user_id, request_type, status,
+                    idempotency_key, EXTRACT(EPOCH FROM requested_at)::BIGINT,
+                    EXTRACT(EPOCH FROM cooling_off_until)::BIGINT,
+                    EXTRACT(EPOCH FROM completed_at)::BIGINT,
+                    EXTRACT(EPOCH FROM cancelled_at)::BIGINT,
+                    legal_hold_active, EXTRACT(EPOCH FROM retention_until)::BIGINT,
+                    version, payload_sha256
+                 FROM gdpr_requests
+                 WHERE universe_id = $1 AND user_id = $2 AND idempotency_key = $3",
+                &[
+                    &input.universe_id,
+                    &input.user_id,
+                    &input.idempotency_key.trim(),
+                ],
+            )
+            .await
+            .map_err(database_error)?
+        {
+            let existing_type: String = row.get("request_type");
+            let existing_digest: Option<Vec<u8>> = row.get("payload_sha256");
+            let expected_digest = input
+                .encrypted_payload
+                .as_ref()
+                .map(|payload| payload.plaintext_sha256.to_vec());
+            if existing_type != input.request_type.as_str() || existing_digest != expected_digest {
+                return Err(PrivacyError::Conflict(
+                    "idempotency key was already used for different request content",
+                ));
+            }
+            let request = map_request_row(&row)?;
+            transaction.commit().await.map_err(database_error)?;
+            return Ok(request);
+        }
+        let active_same_type = transaction
+            .query_one(
+                "SELECT EXISTS (
+                    SELECT 1 FROM gdpr_requests
+                    WHERE universe_id = $1 AND user_id = $2 AND request_type = $3
+                      AND status NOT IN ('completed', 'cancelled', 'rejected')
+                 ) AS active",
+                &[
+                    &input.universe_id,
+                    &input.user_id,
+                    &input.request_type.as_str(),
+                ],
+            )
+            .await
+            .map_err(database_error)?
+            .get::<_, bool>("active");
+        if active_same_type {
+            return Err(PrivacyError::Conflict(
+                "an active request of this type already exists",
+            ));
+        }
+
         let inserted = transaction
             .query_opt(
                 "INSERT INTO gdpr_requests (
@@ -516,11 +672,284 @@ impl Database {
         row.map(|row| map_request_row(&row)).transpose()
     }
 
+    pub async fn list_privacy_requests_for_owner(
+        &self,
+        universe_id: i64,
+        user_id: i32,
+        limit: i64,
+    ) -> Result<Vec<PrivacyRequestSummary>, PrivacyError> {
+        validate_owner(universe_id, user_id)?;
+        if !(1..=100).contains(&limit) {
+            return Err(PrivacyError::InvalidInput(
+                "privacy request list limit is invalid",
+            ));
+        }
+        let client = self.pool.get().await.map_err(database_error)?;
+        let rows = client
+            .query(
+                "SELECT requests.id, requests.universe_id, requests.user_id,
+                    requests.request_type, requests.status, requests.idempotency_key,
+                    EXTRACT(EPOCH FROM requests.requested_at)::BIGINT,
+                    EXTRACT(EPOCH FROM requests.cooling_off_until)::BIGINT,
+                    EXTRACT(EPOCH FROM requests.completed_at)::BIGINT,
+                    EXTRACT(EPOCH FROM requests.cancelled_at)::BIGINT,
+                    requests.legal_hold_active,
+                    EXTRACT(EPOCH FROM requests.retention_until)::BIGINT,
+                    requests.version,
+                    artifacts.id IS NOT NULL AS export_prepared,
+                    artifacts.ciphertext IS NOT NULL
+                        AND artifacts.purged_at IS NULL
+                        AND artifacts.expires_at > now() AS export_ready,
+                    artifacts.expires_at <= now() OR artifacts.purged_at IS NOT NULL
+                        AS export_expired,
+                    EXTRACT(EPOCH FROM artifacts.expires_at)::BIGINT AS export_expires_at,
+                    artifacts.plaintext_size AS export_plaintext_size
+                 FROM gdpr_requests AS requests
+                 LEFT JOIN privacy_export_artifacts AS artifacts
+                   ON artifacts.request_id = requests.id
+                  AND artifacts.universe_id = requests.universe_id
+                  AND artifacts.user_id = requests.user_id
+                 WHERE requests.universe_id = $1 AND requests.user_id = $2
+                 ORDER BY requests.requested_at DESC, requests.id DESC
+                 LIMIT $3",
+                &[&universe_id, &user_id, &limit],
+            )
+            .await
+            .map_err(database_error)?;
+        rows.iter().map(map_request_summary).collect()
+    }
+
+    pub async fn privacy_request_detail_for_owner(
+        &self,
+        universe_id: i64,
+        user_id: i32,
+        request_id: i32,
+    ) -> Result<Option<PrivacyRequestDetail>, PrivacyError> {
+        validate_owner(universe_id, user_id)?;
+        if request_id <= 0 {
+            return Err(PrivacyError::InvalidInput("privacy request id is invalid"));
+        }
+        let client = self.pool.get().await.map_err(database_error)?;
+        let Some(row) = client
+            .query_opt(
+                "SELECT requests.id, requests.universe_id, requests.user_id,
+                    requests.request_type, requests.status, requests.idempotency_key,
+                    EXTRACT(EPOCH FROM requests.requested_at)::BIGINT,
+                    EXTRACT(EPOCH FROM requests.cooling_off_until)::BIGINT,
+                    EXTRACT(EPOCH FROM requests.completed_at)::BIGINT,
+                    EXTRACT(EPOCH FROM requests.cancelled_at)::BIGINT,
+                    requests.legal_hold_active,
+                    EXTRACT(EPOCH FROM requests.retention_until)::BIGINT,
+                    requests.version,
+                    artifacts.id IS NOT NULL AS export_prepared,
+                    artifacts.ciphertext IS NOT NULL
+                        AND artifacts.purged_at IS NULL
+                        AND artifacts.expires_at > now() AS export_ready,
+                    artifacts.expires_at <= now() OR artifacts.purged_at IS NOT NULL
+                        AS export_expired,
+                    EXTRACT(EPOCH FROM artifacts.expires_at)::BIGINT AS export_expires_at,
+                    artifacts.plaintext_size AS export_plaintext_size
+                 FROM gdpr_requests AS requests
+                 LEFT JOIN privacy_export_artifacts AS artifacts
+                   ON artifacts.request_id = requests.id
+                  AND artifacts.universe_id = requests.universe_id
+                  AND artifacts.user_id = requests.user_id
+                 WHERE requests.id = $1
+                   AND requests.universe_id = $2
+                   AND requests.user_id = $3",
+                &[&request_id, &universe_id, &user_id],
+            )
+            .await
+            .map_err(database_error)?
+        else {
+            return Ok(None);
+        };
+        let summary = map_request_summary(&row)?;
+        let timeline = client
+            .query(
+                "SELECT id, event_type, from_status, to_status, actor_type,
+                    reason_code, request_version,
+                    EXTRACT(EPOCH FROM created_at)::BIGINT AS created_at_unix
+                 FROM privacy_request_events
+                 WHERE request_id = $1 AND universe_id = $2 AND user_id = $3
+                 ORDER BY id",
+                &[&request_id, &universe_id, &user_id],
+            )
+            .await
+            .map_err(database_error)?
+            .iter()
+            .map(map_request_event)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(PrivacyRequestDetail {
+            request: summary.request,
+            timeline,
+            export: summary.export,
+        }))
+    }
+
+    pub async fn list_privacy_consents_for_owner(
+        &self,
+        universe_id: i64,
+        user_id: i32,
+    ) -> Result<Vec<PrivacyConsentRow>, PrivacyError> {
+        validate_owner(universe_id, user_id)?;
+        let client = self.pool.get().await.map_err(database_error)?;
+        let rows = client
+            .query(
+                "SELECT purpose, channel, status, lawful_basis, policy_version,
+                    EXTRACT(EPOCH FROM collected_at)::BIGINT AS collected_at_unix,
+                    EXTRACT(EPOCH FROM expires_at)::BIGINT AS expires_at_unix,
+                    version
+                 FROM privacy_consents
+                 WHERE universe_id = $1 AND user_id = $2
+                 ORDER BY purpose, channel",
+                &[&universe_id, &user_id],
+            )
+            .await
+            .map_err(database_error)?;
+        rows.iter().map(map_consent_row).collect()
+    }
+
+    pub async fn communication_preferences_for_owner(
+        &self,
+        universe_id: i64,
+        user_id: i32,
+    ) -> Result<Vec<CommunicationPreferenceRow>, PrivacyError> {
+        validate_owner(universe_id, user_id)?;
+        let client = self.pool.get().await.map_err(database_error)?;
+        let rows = client
+            .query(
+                "WITH matrix(channel, category) AS (
+                    VALUES
+                        ('email', 'marketing'),
+                        ('email', 'product_updates'),
+                        ('email', 'gameplay_digest'),
+                        ('email', 'security'),
+                        ('email', 'transactional'),
+                        ('in_app', 'marketing'),
+                        ('in_app', 'product_updates'),
+                        ('in_app', 'gameplay_digest'),
+                        ('in_app', 'security'),
+                        ('in_app', 'transactional'),
+                        ('push', 'marketing'),
+                        ('push', 'product_updates'),
+                        ('push', 'gameplay_digest'),
+                        ('push', 'security'),
+                        ('push', 'transactional'),
+                        ('sms', 'marketing'),
+                        ('sms', 'product_updates'),
+                        ('sms', 'gameplay_digest'),
+                        ('sms', 'security'),
+                        ('sms', 'transactional')
+                 ), state AS (
+                    SELECT matrix.channel, matrix.category,
+                        preferences.enabled AS configured_enabled,
+                        preferences.version,
+                        EXTRACT(EPOCH FROM preferences.updated_at)::BIGINT AS updated_at_unix,
+                        matrix.category IN ('security', 'transactional') AS essential,
+                        users.privacy_restriction_active OR users.privacy_erasure_pending
+                            AS restricted,
+                        COALESCE(
+                            (
+                                SELECT consents.status = 'granted'
+                                   AND consents.lawful_basis = 'consent'
+                                   AND (consents.expires_at IS NULL OR consents.expires_at > now())
+                                FROM privacy_consents AS consents
+                                WHERE consents.universe_id = users.universe_id
+                                  AND consents.user_id = users.id
+                                  AND consents.purpose = 'marketing'
+                                  AND consents.channel = matrix.channel
+                            ),
+                            (
+                                SELECT consents.status = 'granted'
+                                   AND consents.lawful_basis = 'consent'
+                                   AND (consents.expires_at IS NULL OR consents.expires_at > now())
+                                FROM privacy_consents AS consents
+                                WHERE consents.universe_id = users.universe_id
+                                  AND consents.user_id = users.id
+                                  AND consents.purpose = 'marketing'
+                                  AND consents.channel = 'all'
+                            ),
+                            FALSE
+                        ) AS marketing_consent_current
+                    FROM users CROSS JOIN matrix
+                    LEFT JOIN privacy_communication_preferences AS preferences
+                      ON preferences.universe_id = users.universe_id
+                     AND preferences.user_id = users.id
+                     AND preferences.channel = matrix.channel
+                     AND preferences.category = matrix.category
+                    WHERE users.universe_id = $1 AND users.id = $2
+                 )
+                 SELECT channel, category,
+                    CASE WHEN essential THEN TRUE
+                         ELSE COALESCE(configured_enabled, FALSE) END AS enabled,
+                    configured_enabled IS NOT NULL AS explicitly_configured,
+                    CASE
+                        WHEN essential THEN TRUE
+                        WHEN NOT essential AND restricted THEN FALSE
+                        WHEN NOT COALESCE(configured_enabled, FALSE) THEN FALSE
+                        WHEN category = 'marketing' AND NOT marketing_consent_current THEN FALSE
+                        ELSE TRUE
+                    END AS effective_allowed,
+                    essential,
+                    marketing_consent_current,
+                    NOT essential AND restricted AS suppressed_by_restriction,
+                    updated_at_unix,
+                    COALESCE(version, 0) AS version
+                 FROM state
+                 ORDER BY array_position(ARRAY['email', 'in_app', 'push', 'sms'], channel),
+                    array_position(ARRAY['marketing', 'product_updates', 'gameplay_digest',
+                                         'security', 'transactional'], category)",
+                &[&universe_id, &user_id],
+            )
+            .await
+            .map_err(database_error)?;
+        if rows.is_empty() {
+            return Err(PrivacyError::NotFound);
+        }
+        Ok(rows.iter().map(map_communication_row).collect())
+    }
+
     pub async fn cancel_privacy_request(
         &self,
         universe_id: i64,
         user_id: i32,
         request_id: i32,
+        reason_code: &str,
+    ) -> Result<PrivacyRequestRow, PrivacyError> {
+        self.cancel_privacy_request_internal(universe_id, user_id, request_id, None, reason_code)
+            .await
+    }
+
+    pub async fn cancel_privacy_request_if_version(
+        &self,
+        universe_id: i64,
+        user_id: i32,
+        request_id: i32,
+        expected_version: i64,
+        reason_code: &str,
+    ) -> Result<PrivacyRequestRow, PrivacyError> {
+        if expected_version <= 0 {
+            return Err(PrivacyError::InvalidInput(
+                "privacy request version is invalid",
+            ));
+        }
+        self.cancel_privacy_request_internal(
+            universe_id,
+            user_id,
+            request_id,
+            Some(expected_version),
+            reason_code,
+        )
+        .await
+    }
+
+    async fn cancel_privacy_request_internal(
+        &self,
+        universe_id: i64,
+        user_id: i32,
+        request_id: i32,
+        expected_version: Option<i64>,
         reason_code: &str,
     ) -> Result<PrivacyRequestRow, PrivacyError> {
         validate_reason_code(reason_code)?;
@@ -529,7 +958,7 @@ impl Database {
         set_actor(&transaction, "user", Some(user_id), reason_code).await?;
         let current = transaction
             .query_opt(
-                "SELECT status, legal_hold_active
+                "SELECT status, legal_hold_active, version
                  FROM gdpr_requests
                  WHERE id = $1 AND universe_id = $2 AND user_id = $3
                  FOR UPDATE",
@@ -539,14 +968,55 @@ impl Database {
             .map_err(database_error)?
             .ok_or(PrivacyError::NotFound)?;
         let status: String = current.get("status");
+        if expected_version.is_some_and(|version| current.get::<_, i64>("version") != version) {
+            return Err(PrivacyError::Conflict("privacy request version changed"));
+        }
         if current.get::<_, bool>("legal_hold_active") {
             return Err(PrivacyError::LegalHold);
         }
+        let irreversible_job_completed = transaction
+            .query_one(
+                "SELECT EXISTS (
+                    SELECT 1 FROM privacy_outbox
+                    WHERE request_id = $1 AND universe_id = $2 AND user_id = $3
+                      AND status = 'delivered'
+                 ) AS completed",
+                &[&request_id, &universe_id, &user_id],
+            )
+            .await
+            .map_err(database_error)?
+            .get::<_, bool>("completed");
+        if irreversible_job_completed {
+            return Err(PrivacyError::Conflict(
+                "request side effects have already completed",
+            ));
+        }
         if !matches!(
             status.as_str(),
-            "pending" | "cooling_off" | "in_review" | "approved" | "queued" | "failed"
+            "pending"
+                | "cooling_off"
+                | "in_review"
+                | "approved"
+                | "queued"
+                | "processing"
+                | "failed"
         ) {
             return Err(PrivacyError::Conflict("request can no longer be cancelled"));
+        }
+        // The canonical lifecycle permits processing -> queued and queued ->
+        // cancelled, but not a direct processing -> cancelled edge. Both
+        // transitions occur under this request lock and transaction, so a
+        // claimed worker cannot observe or act on the intermediate state.
+        if status == "processing" {
+            transaction
+                .execute(
+                    "UPDATE gdpr_requests SET status = 'queued'
+                     WHERE id = $1 AND universe_id = $2 AND user_id = $3
+                       AND status = 'processing'",
+                    &[&request_id, &universe_id, &user_id],
+                )
+                .await
+                .map_err(database_error)?;
         }
         let row = transaction
             .query_one(
@@ -565,22 +1035,32 @@ impl Database {
             )
             .await
             .map_err(database_error)?;
-        transaction
-            .execute(
-                "UPDATE privacy_outbox
-                 SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL,
-                     updated_at = now()
-                 WHERE request_id = $1 AND universe_id = $2 AND user_id = $3
-                   AND status IN ('pending', 'retry')",
-                &[&request_id, &universe_id, &user_id],
-            )
-            .await
-            .map_err(database_error)?;
+        cancel_active_jobs(&transaction, request_id, universe_id, user_id, reason_code).await?;
         transaction.commit().await.map_err(database_error)?;
         map_request_row(&row)
     }
 
     pub async fn set_privacy_consent(&self, input: ConsentUpdate) -> Result<(), PrivacyError> {
+        self.set_privacy_consent_internal(input, None).await
+    }
+
+    pub async fn set_privacy_consent_if_version(
+        &self,
+        input: ConsentUpdate,
+        expected_version: i64,
+    ) -> Result<(), PrivacyError> {
+        if expected_version < 0 {
+            return Err(PrivacyError::InvalidInput("consent version is invalid"));
+        }
+        self.set_privacy_consent_internal(input, Some(expected_version))
+            .await
+    }
+
+    async fn set_privacy_consent_internal(
+        &self,
+        input: ConsentUpdate,
+        expected_version: Option<i64>,
+    ) -> Result<(), PrivacyError> {
         validate_consent(&input)?;
         let mut client = self.pool.get().await.map_err(database_error)?;
         let transaction = client.transaction().await.map_err(database_error)?;
@@ -592,37 +1072,92 @@ impl Database {
         )
         .await?;
         let proof = input.proof_digest.as_ref().map(|value| value.as_slice());
-        transaction
-            .execute(
-                "INSERT INTO privacy_consents (
-                    universe_id, user_id, purpose, channel, status, lawful_basis,
-                    policy_version, proof_digest, collected_at, expires_at
-                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, now(),
-                    CASE WHEN $9::BIGINT IS NULL THEN NULL
-                         ELSE to_timestamp($9::DOUBLE PRECISION) END
-                 )
-                 ON CONFLICT (universe_id, user_id, purpose, channel) DO UPDATE
-                 SET status = EXCLUDED.status,
-                     lawful_basis = EXCLUDED.lawful_basis,
-                     policy_version = EXCLUDED.policy_version,
-                     proof_digest = EXCLUDED.proof_digest,
-                     collected_at = EXCLUDED.collected_at,
-                     expires_at = EXCLUDED.expires_at",
-                &[
-                    &input.universe_id,
-                    &input.user_id,
-                    &input.purpose.trim(),
-                    &input.channel.as_str(),
-                    &input.status.as_str(),
-                    &input.lawful_basis.as_str(),
-                    &input.policy_version.trim(),
-                    &proof,
-                    &input.expires_at_unix,
-                ],
-            )
-            .await
-            .map_err(database_error)?;
+        let consent_values: &[&(dyn tokio_postgres::types::ToSql + Sync)] = &[
+            &input.universe_id,
+            &input.user_id,
+            &input.purpose.trim(),
+            &input.channel.as_str(),
+            &input.status.as_str(),
+            &input.lawful_basis.as_str(),
+            &input.policy_version.trim(),
+            &proof,
+            &input.expires_at_unix,
+        ];
+        let changed = match expected_version {
+            None => {
+                transaction
+                    .query_opt(
+                        "INSERT INTO privacy_consents (
+                        universe_id, user_id, purpose, channel, status, lawful_basis,
+                        policy_version, proof_digest, collected_at, expires_at
+                     ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, now(),
+                        CASE WHEN $9::BIGINT IS NULL THEN NULL
+                             ELSE TIMESTAMPTZ 'epoch' + ($9::BIGINT * interval '1 second') END
+                     )
+                     ON CONFLICT (universe_id, user_id, purpose, channel) DO UPDATE
+                     SET status = EXCLUDED.status,
+                         lawful_basis = EXCLUDED.lawful_basis,
+                         policy_version = EXCLUDED.policy_version,
+                         proof_digest = EXCLUDED.proof_digest,
+                         collected_at = EXCLUDED.collected_at,
+                         expires_at = EXCLUDED.expires_at
+                     RETURNING version",
+                        consent_values,
+                    )
+                    .await
+            }
+            Some(0) => {
+                transaction
+                    .query_opt(
+                        "INSERT INTO privacy_consents (
+                        universe_id, user_id, purpose, channel, status, lawful_basis,
+                        policy_version, proof_digest, collected_at, expires_at
+                     ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, now(),
+                        CASE WHEN $9::BIGINT IS NULL THEN NULL
+                             ELSE TIMESTAMPTZ 'epoch' + ($9::BIGINT * interval '1 second') END
+                     )
+                     ON CONFLICT (universe_id, user_id, purpose, channel) DO NOTHING
+                     RETURNING version",
+                        consent_values,
+                    )
+                    .await
+            }
+            Some(version) => {
+                transaction
+                    .query_opt(
+                        "UPDATE privacy_consents
+                     SET status = $5,
+                         lawful_basis = $6,
+                         policy_version = $7,
+                         proof_digest = $8,
+                         collected_at = now(),
+                         expires_at = CASE WHEN $9::BIGINT IS NULL THEN NULL
+                              ELSE TIMESTAMPTZ 'epoch' + ($9::BIGINT * interval '1 second') END
+                     WHERE universe_id = $1 AND user_id = $2
+                       AND purpose = $3 AND channel = $4 AND version = $10
+                     RETURNING version",
+                        &[
+                            consent_values[0],
+                            consent_values[1],
+                            consent_values[2],
+                            consent_values[3],
+                            consent_values[4],
+                            consent_values[5],
+                            consent_values[6],
+                            consent_values[7],
+                            consent_values[8],
+                            &version,
+                        ],
+                    )
+                    .await
+            }
+        }
+        .map_err(database_error)?;
+        if changed.is_none() {
+            return Err(PrivacyError::Conflict("consent version changed"));
+        }
         transaction.commit().await.map_err(database_error)?;
         Ok(())
     }
@@ -630,6 +1165,29 @@ impl Database {
     pub async fn set_communication_preference(
         &self,
         input: CommunicationPreferenceUpdate,
+    ) -> Result<(), PrivacyError> {
+        self.set_communication_preference_internal(input, None)
+            .await
+    }
+
+    pub async fn set_communication_preference_if_version(
+        &self,
+        input: CommunicationPreferenceUpdate,
+        expected_version: i64,
+    ) -> Result<(), PrivacyError> {
+        if expected_version < 0 {
+            return Err(PrivacyError::InvalidInput(
+                "communication preference version is invalid",
+            ));
+        }
+        self.set_communication_preference_internal(input, Some(expected_version))
+            .await
+    }
+
+    async fn set_communication_preference_internal(
+        &self,
+        input: CommunicationPreferenceUpdate,
+        expected_version: Option<i64>,
     ) -> Result<(), PrivacyError> {
         validate_communication(&input)?;
         let mut client = self.pool.get().await.map_err(database_error)?;
@@ -641,23 +1199,65 @@ impl Database {
             "communication_preference_updated",
         )
         .await?;
-        transaction
-            .execute(
-                "INSERT INTO privacy_communication_preferences (
-                    universe_id, user_id, channel, category, enabled
-                 ) VALUES ($1, $2, $3, $4, $5)
-                 ON CONFLICT (universe_id, user_id, channel, category) DO UPDATE
-                 SET enabled = EXCLUDED.enabled",
-                &[
-                    &input.universe_id,
-                    &input.user_id,
-                    &input.channel.as_str(),
-                    &input.category.as_str(),
-                    &input.enabled,
-                ],
-            )
-            .await
-            .map_err(database_error)?;
+        let preference_values: &[&(dyn tokio_postgres::types::ToSql + Sync)] = &[
+            &input.universe_id,
+            &input.user_id,
+            &input.channel.as_str(),
+            &input.category.as_str(),
+            &input.enabled,
+        ];
+        let changed = match expected_version {
+            None => {
+                transaction
+                    .query_opt(
+                        "INSERT INTO privacy_communication_preferences (
+                        universe_id, user_id, channel, category, enabled
+                     ) VALUES ($1, $2, $3, $4, $5)
+                     ON CONFLICT (universe_id, user_id, channel, category) DO UPDATE
+                     SET enabled = EXCLUDED.enabled
+                     RETURNING version",
+                        preference_values,
+                    )
+                    .await
+            }
+            Some(0) => {
+                transaction
+                    .query_opt(
+                        "INSERT INTO privacy_communication_preferences (
+                        universe_id, user_id, channel, category, enabled
+                     ) VALUES ($1, $2, $3, $4, $5)
+                     ON CONFLICT (universe_id, user_id, channel, category) DO NOTHING
+                     RETURNING version",
+                        preference_values,
+                    )
+                    .await
+            }
+            Some(version) => {
+                transaction
+                    .query_opt(
+                        "UPDATE privacy_communication_preferences
+                     SET enabled = $5
+                     WHERE universe_id = $1 AND user_id = $2
+                       AND channel = $3 AND category = $4 AND version = $6
+                     RETURNING version",
+                        &[
+                            preference_values[0],
+                            preference_values[1],
+                            preference_values[2],
+                            preference_values[3],
+                            preference_values[4],
+                            &version,
+                        ],
+                    )
+                    .await
+            }
+        }
+        .map_err(database_error)?;
+        if changed.is_none() {
+            return Err(PrivacyError::Conflict(
+                "communication preference version changed",
+            ));
+        }
         transaction.commit().await.map_err(database_error)?;
         Ok(())
     }
@@ -681,14 +1281,24 @@ impl Database {
                         WHERE universe_id = $1 AND user_id = $2
                           AND channel = $3 AND category = $4
                     ), $4 IN ('security', 'transactional')) AS preference_enabled,
-                    EXISTS (
-                        SELECT 1 FROM privacy_consents
-                        WHERE universe_id = $1 AND user_id = $2
-                          AND purpose = 'marketing'
-                          AND channel IN ($3, 'all')
-                          AND status = 'granted'
-                          AND lawful_basis = 'consent'
-                          AND (expires_at IS NULL OR expires_at > now())
+                    COALESCE(
+                        (
+                            SELECT status = 'granted'
+                               AND lawful_basis = 'consent'
+                               AND (expires_at IS NULL OR expires_at > now())
+                            FROM privacy_consents
+                            WHERE universe_id = $1 AND user_id = $2
+                              AND purpose = 'marketing' AND channel = $3
+                        ),
+                        (
+                            SELECT status = 'granted'
+                               AND lawful_basis = 'consent'
+                               AND (expires_at IS NULL OR expires_at > now())
+                            FROM privacy_consents
+                            WHERE universe_id = $1 AND user_id = $2
+                              AND purpose = 'marketing' AND channel = 'all'
+                        ),
+                        FALSE
                     ) AS marketing_consent
                  FROM users
                  WHERE universe_id = $1 AND id = $2",
@@ -697,10 +1307,12 @@ impl Database {
             .await
             .map_err(database_error)?
             .ok_or(PrivacyError::NotFound)?;
-        let essential = matches!(category, "security" | "transactional");
-        if !essential
-            && (row.get::<_, bool>("privacy_restriction_active")
-                || row.get::<_, bool>("privacy_erasure_pending"))
+        let essential = privacy_communication_category_is_essential(category);
+        if essential {
+            return Ok(true);
+        }
+        if row.get::<_, bool>("privacy_restriction_active")
+            || row.get::<_, bool>("privacy_erasure_pending")
         {
             return Ok(false);
         }
@@ -744,6 +1356,59 @@ impl Database {
         let status: String = request.get("status");
         let legal_hold: bool = request.get("legal_hold_active");
 
+        if legal_hold && input.decision != PrivacyAdminDecision::ReleaseLegalHold {
+            return Err(PrivacyError::LegalHold);
+        }
+        match input.decision {
+            PrivacyAdminDecision::ApplyLegalHold => {
+                if matches!(status.as_str(), "completed" | "cancelled" | "rejected") {
+                    return Err(PrivacyError::Conflict(
+                        "a terminal request cannot receive a legal hold",
+                    ));
+                }
+            }
+            PrivacyAdminDecision::ReleaseLegalHold => {
+                if !legal_hold {
+                    return Err(PrivacyError::Conflict("request has no active legal hold"));
+                }
+            }
+            PrivacyAdminDecision::Reject => {
+                if status != "in_review" {
+                    return Err(PrivacyError::Conflict(
+                        "request is not awaiting an administrative decision",
+                    ));
+                }
+            }
+            PrivacyAdminDecision::Approve => {
+                let approvable = if request_type == "erasure" {
+                    matches!(status.as_str(), "cooling_off" | "in_review")
+                } else {
+                    status == "in_review"
+                };
+                if !approvable {
+                    return Err(PrivacyError::Conflict(
+                        "request is not awaiting an administrative decision",
+                    ));
+                }
+            }
+            PrivacyAdminDecision::CompleteCorrection => {
+                if request_type != "correction"
+                    || !matches!(status.as_str(), "in_review" | "approved" | "processing")
+                {
+                    return Err(PrivacyError::Conflict(
+                        "correction executor has not reached an authorized state",
+                    ));
+                }
+            }
+            PrivacyAdminDecision::CompleteErasure => {
+                if request_type != "erasure" || status != "approved" {
+                    return Err(PrivacyError::Conflict(
+                        "erasure executor has not reached an authorized state",
+                    ));
+                }
+            }
+        }
+
         let inserted = transaction
             .execute(
                 "INSERT INTO privacy_admin_decisions (
@@ -765,14 +1430,6 @@ impl Database {
         if inserted > 0 {
             match input.decision {
                 PrivacyAdminDecision::ApplyLegalHold => {
-                    if legal_hold {
-                        return Err(PrivacyError::LegalHold);
-                    }
-                    if matches!(status.as_str(), "completed" | "cancelled" | "rejected") {
-                        return Err(PrivacyError::Conflict(
-                            "a terminal request cannot receive a legal hold",
-                        ));
-                    }
                     transaction
                         .execute(
                             "UPDATE gdpr_requests
@@ -791,11 +1448,15 @@ impl Database {
                         )
                         .await
                         .map_err(database_error)?;
+                    invalidate_processing_jobs_for_hold(
+                        &transaction,
+                        input.request_id,
+                        input.universe_id,
+                        user_id,
+                    )
+                    .await?;
                 }
                 PrivacyAdminDecision::ReleaseLegalHold => {
-                    if !legal_hold {
-                        return Err(PrivacyError::Conflict("request has no active legal hold"));
-                    }
                     transaction
                         .execute(
                             "UPDATE gdpr_requests
@@ -806,6 +1467,8 @@ impl Database {
                                     WHEN 'cooling_off' THEN 'cooling_off'
                                     WHEN 'approved' THEN 'approved'
                                     WHEN 'queued' THEN 'queued'
+                                    WHEN 'processing' THEN 'queued'
+                                    WHEN 'failed' THEN 'queued'
                                     ELSE 'in_review'
                                  END
                              WHERE id = $1 AND universe_id = $2",
@@ -813,6 +1476,14 @@ impl Database {
                         )
                         .await
                         .map_err(database_error)?;
+                    cancel_active_jobs(
+                        &transaction,
+                        input.request_id,
+                        input.universe_id,
+                        user_id,
+                        "request_rejected",
+                    )
+                    .await?;
                 }
                 PrivacyAdminDecision::Reject => {
                     if legal_hold {
@@ -902,11 +1573,6 @@ impl Database {
                     }
                 }
                 PrivacyAdminDecision::CompleteCorrection => {
-                    if request_type != "correction" {
-                        return Err(PrivacyError::Conflict(
-                            "completion decision does not match request type",
-                        ));
-                    }
                     transaction
                         .execute(
                             "UPDATE gdpr_requests SET status = 'completed'
@@ -918,11 +1584,6 @@ impl Database {
                         .map_err(database_error)?;
                 }
                 PrivacyAdminDecision::CompleteErasure => {
-                    if request_type != "erasure" || status != "approved" {
-                        return Err(PrivacyError::Conflict(
-                            "erasure executor has not reached an authorized state",
-                        ));
-                    }
                     transaction
                         .execute(
                             "UPDATE gdpr_requests SET status = 'completed'
@@ -977,7 +1638,7 @@ impl Database {
                      AND request.user_id = outbox.user_id
                     WHERE ($1::BIGINT IS NULL OR outbox.universe_id = $1)
                       AND request.legal_hold_active = FALSE
-                      AND request.status NOT IN ('completed', 'cancelled', 'rejected')
+                      AND request.status IN ('queued', 'processing', 'failed')
                       AND (
                         (outbox.status IN ('pending', 'retry') AND outbox.available_at <= now())
                         OR
@@ -985,7 +1646,7 @@ impl Database {
                       )
                       AND outbox.attempt_count < outbox.max_attempts
                     ORDER BY outbox.available_at, outbox.id
-                    FOR UPDATE OF outbox SKIP LOCKED
+                    FOR UPDATE OF request SKIP LOCKED
                     LIMIT $2
                  ), claimed AS (
                     UPDATE privacy_outbox AS outbox
@@ -1044,13 +1705,14 @@ impl Database {
         let mut client = self.pool.get().await.map_err(database_error)?;
         let transaction = client.transaction().await.map_err(database_error)?;
         set_actor(&transaction, "worker", None, "restriction_applied").await?;
-        let Some(job) = lock_job(&transaction, job_id).await? else {
+        let Some((request, job)) = lock_request_and_job(&transaction, job_id).await? else {
             return Err(PrivacyError::NotFound);
         };
         if job.status == "delivered" {
             return Ok(false);
         }
         validate_job_lease(&job, worker_id, "privacy.restriction.apply")?;
+        validate_request_for_job(&request, "privacy.restriction.apply")?;
         transaction
             .execute(
                 "UPDATE users
@@ -1063,15 +1725,20 @@ impl Database {
             .await
             .map_err(database_error)?;
         revoke_sessions(&transaction, job.user_id).await?;
-        transaction
+        let completed = transaction
             .execute(
                 "UPDATE gdpr_requests SET status = 'completed'
                  WHERE id = $1 AND universe_id = $2 AND user_id = $3
-                   AND legal_hold_active = FALSE",
+                   AND status = 'processing' AND legal_hold_active = FALSE",
                 &[&job.request_id, &job.universe_id, &job.user_id],
             )
             .await
             .map_err(database_error)?;
+        if completed != 1 {
+            return Err(PrivacyError::Conflict(
+                "privacy request is no longer executable",
+            ));
+        }
         mark_job_delivered(&transaction, job_id, worker_id).await?;
         transaction.commit().await.map_err(database_error)?;
         Ok(true)
@@ -1085,25 +1752,14 @@ impl Database {
         let mut client = self.pool.get().await.map_err(database_error)?;
         let transaction = client.transaction().await.map_err(database_error)?;
         set_actor(&transaction, "worker", None, "erasure_access_invalidated").await?;
-        let Some(job) = lock_job(&transaction, job_id).await? else {
+        let Some((request, job)) = lock_request_and_job(&transaction, job_id).await? else {
             return Err(PrivacyError::NotFound);
         };
         if job.status == "delivered" {
             return Ok(false);
         }
         validate_job_lease(&job, worker_id, "privacy.erasure.invalidate_access")?;
-        let hold = transaction
-            .query_one(
-                "SELECT legal_hold_active FROM gdpr_requests
-                 WHERE id = $1 AND universe_id = $2 AND user_id = $3",
-                &[&job.request_id, &job.universe_id, &job.user_id],
-            )
-            .await
-            .map_err(database_error)?
-            .get::<_, bool>("legal_hold_active");
-        if hold {
-            return Err(PrivacyError::LegalHold);
-        }
+        validate_request_for_job(&request, "privacy.erasure.invalidate_access")?;
         transaction
             .execute(
                 "UPDATE users
@@ -1117,15 +1773,20 @@ impl Database {
             .await
             .map_err(database_error)?;
         revoke_sessions(&transaction, job.user_id).await?;
-        transaction
+        let authorized = transaction
             .execute(
                 "UPDATE gdpr_requests SET status = 'approved'
                  WHERE id = $1 AND universe_id = $2 AND user_id = $3
-                   AND legal_hold_active = FALSE",
+                   AND status = 'processing' AND legal_hold_active = FALSE",
                 &[&job.request_id, &job.universe_id, &job.user_id],
             )
             .await
             .map_err(database_error)?;
+        if authorized != 1 {
+            return Err(PrivacyError::Conflict(
+                "privacy request is no longer executable",
+            ));
+        }
         mark_job_delivered(&transaction, job_id, worker_id).await?;
         transaction.commit().await.map_err(database_error)?;
         Ok(true)
@@ -1557,25 +2218,14 @@ impl Database {
         let mut client = self.pool.get().await.map_err(database_error)?;
         let transaction = client.transaction().await.map_err(database_error)?;
         set_actor(&transaction, "worker", None, "export_prepared").await?;
-        let Some(job) = lock_job(&transaction, job_id).await? else {
+        let Some((request, job)) = lock_request_and_job(&transaction, job_id).await? else {
             return Err(PrivacyError::NotFound);
         };
         if job.status == "delivered" {
             return Ok(false);
         }
         validate_job_lease(&job, worker_id, "privacy.export.prepare")?;
-        let hold = transaction
-            .query_one(
-                "SELECT legal_hold_active FROM gdpr_requests
-                 WHERE id = $1 AND universe_id = $2 AND user_id = $3",
-                &[&job.request_id, &job.universe_id, &job.user_id],
-            )
-            .await
-            .map_err(database_error)?
-            .get::<_, bool>("legal_hold_active");
-        if hold {
-            return Err(PrivacyError::LegalHold);
-        }
+        validate_request_for_job(&request, "privacy.export.prepare")?;
         transaction
             .execute(
                 "INSERT INTO privacy_export_artifacts (
@@ -1600,14 +2250,20 @@ impl Database {
             )
             .await
             .map_err(database_error)?;
-        transaction
+        let completed = transaction
             .execute(
                 "UPDATE gdpr_requests SET status = 'completed'
-                 WHERE id = $1 AND universe_id = $2 AND user_id = $3",
+                 WHERE id = $1 AND universe_id = $2 AND user_id = $3
+                   AND status = 'processing' AND legal_hold_active = FALSE",
                 &[&job.request_id, &job.universe_id, &job.user_id],
             )
             .await
             .map_err(database_error)?;
+        if completed != 1 {
+            return Err(PrivacyError::Conflict(
+                "privacy request is no longer executable",
+            ));
+        }
         mark_job_delivered(&transaction, job_id, worker_id).await?;
         transaction.commit().await.map_err(database_error)?;
         Ok(true)
@@ -1627,10 +2283,11 @@ impl Database {
         let mut client = self.pool.get().await.map_err(database_error)?;
         let transaction = client.transaction().await.map_err(database_error)?;
         set_actor(&transaction, "worker", None, error_code).await?;
-        let Some(job) = lock_job(&transaction, job_id).await? else {
+        let Some((request, job)) = lock_request_and_job(&transaction, job_id).await? else {
             return Err(PrivacyError::NotFound);
         };
         validate_job_lease_any_type(&job, worker_id)?;
+        validate_request_for_job(&request, &job.event_type)?;
         let terminal = job.attempt_count >= job.max_attempts;
         let updated = transaction
             .execute(
@@ -1653,16 +2310,21 @@ impl Database {
         if updated != 1 {
             return Err(PrivacyError::LeaseLost);
         }
-        transaction
+        let request_updated = transaction
             .execute(
                 "UPDATE gdpr_requests
                  SET status = CASE WHEN $4 THEN 'failed' ELSE 'queued' END
                  WHERE id = $1 AND universe_id = $2 AND user_id = $3
-                   AND status = 'processing'",
+                   AND status = 'processing' AND legal_hold_active = FALSE",
                 &[&job.request_id, &job.universe_id, &job.user_id, &terminal],
             )
             .await
             .map_err(database_error)?;
+        if request_updated != 1 {
+            return Err(PrivacyError::Conflict(
+                "privacy request is no longer executable",
+            ));
+        }
         transaction.commit().await.map_err(database_error)?;
         Ok(())
     }
@@ -1886,6 +2548,13 @@ impl Database {
 }
 
 #[derive(Debug)]
+struct LockedRequest {
+    request_type: String,
+    status: String,
+    legal_hold_active: bool,
+}
+
+#[derive(Debug)]
 struct LockedJob {
     request_id: i32,
     universe_id: i64,
@@ -1896,6 +2565,55 @@ struct LockedJob {
     lease_current: bool,
     attempt_count: i32,
     max_attempts: i32,
+}
+
+/// Locks lifecycle rows in the global order used by cancellation, legal-hold,
+/// claim, failure and completion transactions: request first, outbox second.
+/// Reading immutable identity before either lock lets a worker locate the
+/// request without ever taking the outbox lock first.
+async fn lock_request_and_job(
+    transaction: &Transaction<'_>,
+    job_id: i64,
+) -> Result<Option<(LockedRequest, LockedJob)>, PrivacyError> {
+    let Some(identity) = transaction
+        .query_opt(
+            "SELECT request_id, universe_id, user_id
+             FROM privacy_outbox WHERE id = $1",
+            &[&job_id],
+        )
+        .await
+        .map_err(database_error)?
+    else {
+        return Ok(None);
+    };
+    let request_id = identity.get::<_, i32>("request_id");
+    let universe_id = identity.get::<_, i64>("universe_id");
+    let user_id = identity.get::<_, i32>("user_id");
+    let request = transaction
+        .query_opt(
+            "SELECT request_type, status, legal_hold_active
+             FROM gdpr_requests
+             WHERE id = $1 AND universe_id = $2 AND user_id = $3
+             FOR UPDATE",
+            &[&request_id, &universe_id, &user_id],
+        )
+        .await
+        .map_err(database_error)?
+        .ok_or(PrivacyError::NotFound)?;
+    let Some(job) = lock_job(transaction, job_id).await? else {
+        return Ok(None);
+    };
+    if job.request_id != request_id || job.universe_id != universe_id || job.user_id != user_id {
+        return Err(PrivacyError::Conflict("privacy job identity changed"));
+    }
+    Ok(Some((
+        LockedRequest {
+            request_type: request.get("request_type"),
+            status: request.get("status"),
+            legal_hold_active: request.get("legal_hold_active"),
+        },
+        job,
+    )))
 }
 
 async fn lock_job(
@@ -1949,6 +2667,33 @@ fn validate_job_lease_any_type(job: &LockedJob, worker_id: &str) -> Result<(), P
     Ok(())
 }
 
+fn validate_request_for_job(request: &LockedRequest, event_type: &str) -> Result<(), PrivacyError> {
+    if request.legal_hold_active {
+        return Err(PrivacyError::LegalHold);
+    }
+    if request.status != "processing" {
+        return Err(PrivacyError::Conflict(
+            "privacy request is no longer executable",
+        ));
+    }
+    let expected_request_type = match event_type {
+        "privacy.export.prepare" => "export",
+        "privacy.restriction.apply" => "restriction",
+        "privacy.erasure.invalidate_access" => "erasure",
+        _ => {
+            return Err(PrivacyError::Conflict(
+                "worker handler does not match job type",
+            ))
+        }
+    };
+    if request.request_type != expected_request_type {
+        return Err(PrivacyError::Conflict(
+            "worker handler does not match request type",
+        ));
+    }
+    Ok(())
+}
+
 async fn mark_job_delivered(
     transaction: &Transaction<'_>,
     job_id: i64,
@@ -1970,6 +2715,46 @@ async fn mark_job_delivered(
     } else {
         Err(PrivacyError::LeaseLost)
     }
+}
+
+async fn cancel_active_jobs(
+    transaction: &Transaction<'_>,
+    request_id: i32,
+    universe_id: i64,
+    user_id: i32,
+    reason_code: &str,
+) -> Result<u64, PrivacyError> {
+    transaction
+        .execute(
+            "UPDATE privacy_outbox
+             SET status = 'cancelled', lease_owner = NULL, lease_expires_at = NULL,
+                 last_error_code = $4, updated_at = now()
+             WHERE request_id = $1 AND universe_id = $2 AND user_id = $3
+               AND status IN ('pending', 'retry', 'processing')",
+            &[&request_id, &universe_id, &user_id, &reason_code.trim()],
+        )
+        .await
+        .map_err(database_error)
+}
+
+async fn invalidate_processing_jobs_for_hold(
+    transaction: &Transaction<'_>,
+    request_id: i32,
+    universe_id: i64,
+    user_id: i32,
+) -> Result<u64, PrivacyError> {
+    transaction
+        .execute(
+            "UPDATE privacy_outbox
+             SET status = 'retry', available_at = now(),
+                 lease_owner = NULL, lease_expires_at = NULL,
+                 last_error_code = 'legal_hold', updated_at = now()
+             WHERE request_id = $1 AND universe_id = $2 AND user_id = $3
+               AND status = 'processing'",
+            &[&request_id, &universe_id, &user_id],
+        )
+        .await
+        .map_err(database_error)
 }
 
 async fn revoke_sessions(transaction: &Transaction<'_>, user_id: i32) -> Result<(), PrivacyError> {
@@ -2071,12 +2856,119 @@ fn map_request_row(row: &tokio_postgres::Row) -> Result<PrivacyRequestRow, Priva
     })
 }
 
-fn validate_request_input(input: &PrivacyRequestCreateInput) -> Result<(), PrivacyError> {
-    if input.universe_id <= 0 || input.user_id <= 0 {
+fn map_request_summary(row: &tokio_postgres::Row) -> Result<PrivacyRequestSummary, PrivacyError> {
+    let request = map_request_row(row)?;
+    let export = if row.get::<_, bool>("export_prepared") {
+        Some(PrivacyExportAvailability {
+            ready: row.get("export_ready"),
+            expired: row.get("export_expired"),
+            expires_at_unix: row.get("export_expires_at"),
+            plaintext_size: row.get("export_plaintext_size"),
+        })
+    } else {
+        None
+    };
+    Ok(PrivacyRequestSummary { request, export })
+}
+
+fn map_request_event(row: &tokio_postgres::Row) -> Result<PrivacyRequestEventRow, PrivacyError> {
+    let from_status = row
+        .get::<_, Option<String>>("from_status")
+        .map(|status| PrivacyRequestStatus::parse(&status))
+        .transpose()?;
+    Ok(PrivacyRequestEventRow {
+        id: row.get("id"),
+        event_type: row.get("event_type"),
+        from_status,
+        to_status: PrivacyRequestStatus::parse(&row.get::<_, String>("to_status"))?,
+        actor_type: row.get("actor_type"),
+        reason_code: row.get("reason_code"),
+        request_version: row.get("request_version"),
+        created_at_unix: row.get("created_at_unix"),
+    })
+}
+
+fn map_consent_row(row: &tokio_postgres::Row) -> Result<PrivacyConsentRow, PrivacyError> {
+    Ok(PrivacyConsentRow {
+        purpose: row.get("purpose"),
+        channel: row.get("channel"),
+        status: ConsentStatus::parse(&row.get::<_, String>("status"))?,
+        lawful_basis: row.get("lawful_basis"),
+        policy_version: row.get("policy_version"),
+        collected_at_unix: row.get("collected_at_unix"),
+        expires_at_unix: row.get("expires_at_unix"),
+        version: row.get("version"),
+    })
+}
+
+fn map_communication_row(row: &tokio_postgres::Row) -> CommunicationPreferenceRow {
+    CommunicationPreferenceRow {
+        channel: row.get("channel"),
+        category: row.get("category"),
+        enabled: row.get("enabled"),
+        explicitly_configured: row.get("explicitly_configured"),
+        effective_allowed: row.get("effective_allowed"),
+        essential: row.get("essential"),
+        marketing_consent_current: row.get("marketing_consent_current"),
+        suppressed_by_restriction: row.get("suppressed_by_restriction"),
+        updated_at_unix: row.get("updated_at_unix"),
+        version: row.get("version"),
+    }
+}
+
+/// Produce a domain-separated keyed SHA-256 digest for privacy evidence.
+/// Callers persist only the returned digest and must not log the evidence or
+/// pepper. The production pepper must be independently generated and at least
+/// 256 bits.
+pub fn privacy_evidence_digest(pepper: &[u8], evidence: &[u8]) -> Result<[u8; 32], PrivacyError> {
+    if !(32..=1024).contains(&pepper.len()) {
+        return Err(PrivacyError::InvalidInput(
+            "privacy evidence pepper is invalid",
+        ));
+    }
+    if evidence.is_empty() || evidence.len() > 4096 {
+        return Err(PrivacyError::InvalidInput("privacy evidence is invalid"));
+    }
+
+    let mut key = [0u8; 64];
+    if pepper.len() > key.len() {
+        key[..32].copy_from_slice(&Sha256::digest(pepper));
+    } else {
+        key[..pepper.len()].copy_from_slice(pepper);
+    }
+    let mut inner_pad = [0x36u8; 64];
+    let mut outer_pad = [0x5cu8; 64];
+    for index in 0..key.len() {
+        inner_pad[index] ^= key[index];
+        outer_pad[index] ^= key[index];
+    }
+    let mut inner = Sha256::new();
+    inner.update(inner_pad);
+    inner.update(b"universus-privacy-evidence:v1\0");
+    inner.update(evidence);
+    let mut inner_digest = inner.finalize();
+    let mut outer = Sha256::new();
+    outer.update(outer_pad);
+    outer.update(inner_digest.as_slice());
+    let digest: [u8; 32] = outer.finalize().into();
+    key.fill(0);
+    inner_pad.fill(0);
+    outer_pad.fill(0);
+    inner_digest.fill(0);
+    Ok(digest)
+}
+
+fn validate_owner(universe_id: i64, user_id: i32) -> Result<(), PrivacyError> {
+    if universe_id <= 0 || user_id <= 0 {
         return Err(PrivacyError::InvalidInput(
             "tenant and user ids must be positive",
         ));
     }
+    Ok(())
+}
+
+fn validate_request_input(input: &PrivacyRequestCreateInput) -> Result<(), PrivacyError> {
+    validate_owner(input.universe_id, input.user_id)?;
     if input.idempotency_key.trim().is_empty() || input.idempotency_key.len() > 200 {
         return Err(PrivacyError::InvalidInput("idempotency key is invalid"));
     }
@@ -2133,6 +3025,11 @@ fn validate_communication(input: &CommunicationPreferenceUpdate) -> Result<(), P
     }
     validate_channel(&input.channel, false)?;
     validate_category(&input.category)?;
+    if privacy_communication_category_is_essential(&input.category) && !input.enabled {
+        return Err(PrivacyError::InvalidInput(
+            "essential communications cannot be disabled",
+        ));
+    }
     if !matches!(input.actor_type.as_str(), "user" | "admin" | "system") {
         return Err(PrivacyError::InvalidInput(
             "communication preference actor type is invalid",
@@ -2278,4 +3175,38 @@ fn forbidden_export_field(name: &str) -> bool {
 
 fn database_error(error: impl fmt::Display) -> PrivacyError {
     PrivacyError::Database(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn privacy_evidence_digest_is_keyed_domain_separated_and_bounded() {
+        let evidence = b"192.0.2.10";
+        let first = privacy_evidence_digest(&[7u8; 32], evidence).unwrap();
+        assert_eq!(
+            first,
+            privacy_evidence_digest(&[7u8; 32], evidence).unwrap()
+        );
+        assert_ne!(
+            first,
+            privacy_evidence_digest(&[8u8; 32], evidence).unwrap()
+        );
+        assert_ne!(
+            first,
+            privacy_evidence_digest(&[7u8; 32], b"192.0.2.11").unwrap()
+        );
+        assert!(privacy_evidence_digest(&[7u8; 31], evidence).is_err());
+        assert!(privacy_evidence_digest(&[7u8; 32], &[]).is_err());
+    }
+
+    #[test]
+    fn communication_contract_is_the_complete_four_by_five_matrix() {
+        assert_eq!(PRIVACY_COMMUNICATION_CHANNELS.len(), 4);
+        assert_eq!(PRIVACY_COMMUNICATION_CATEGORIES.len(), 5);
+        assert!(privacy_communication_category_is_essential("security"));
+        assert!(privacy_communication_category_is_essential("transactional"));
+        assert!(!privacy_communication_category_is_essential("marketing"));
+    }
 }

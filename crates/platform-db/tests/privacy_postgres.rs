@@ -36,6 +36,155 @@ fn request_input(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ClaimedEffect {
+    Export,
+    Restriction,
+    Erasure,
+}
+
+impl ClaimedEffect {
+    fn request_type(self) -> PrivacyRequestType {
+        match self {
+            Self::Export => PrivacyRequestType::Export,
+            Self::Restriction => PrivacyRequestType::Restriction,
+            Self::Erasure => PrivacyRequestType::Erasure,
+        }
+    }
+
+    fn slug(self) -> &'static str {
+        match self {
+            Self::Export => "export",
+            Self::Restriction => "restriction",
+            Self::Erasure => "erasure",
+        }
+    }
+}
+
+async fn create_and_claim_effect(
+    database: &Database,
+    actors: Actors,
+    subject: i32,
+    effect: ClaimedEffect,
+    key: &str,
+    worker: &str,
+) -> (i32, i64) {
+    let request = database
+        .create_privacy_request(request_input(1, subject, effect.request_type(), key))
+        .await
+        .unwrap();
+    if matches!(effect, ClaimedEffect::Erasure) {
+        for (admin_user_id, reason_code) in [
+            (actors.admin_one, "barrier_approval_one"),
+            (actors.admin_two, "barrier_approval_two"),
+        ] {
+            database
+                .record_privacy_admin_decision(PrivacyAdminDecisionInput {
+                    universe_id: 1,
+                    request_id: request.id,
+                    admin_user_id,
+                    decision: PrivacyAdminDecision::Approve,
+                    reason_code: reason_code.to_string(),
+                })
+                .await
+                .unwrap();
+        }
+    }
+    let jobs = database
+        .claim_privacy_jobs(worker, Some(1), 100, 30)
+        .await
+        .unwrap();
+    let job = jobs
+        .iter()
+        .find(|job| job.request_id == request.id)
+        .unwrap_or_else(|| panic!("{} request was not claimed", effect.slug()));
+    (request.id, job.id)
+}
+
+async fn complete_claimed_effect(
+    database: &Database,
+    effect: ClaimedEffect,
+    job_id: i64,
+    worker: &str,
+) -> Result<bool, PrivacyError> {
+    match effect {
+        ClaimedEffect::Export => {
+            database
+                .complete_privacy_export_job(
+                    job_id,
+                    worker,
+                    PreparedExportArtifact {
+                        ciphertext: vec![4, 3, 2, 1],
+                        encryption_key_id: "barrier-export-key".to_string(),
+                        encryption_nonce: [7; 12],
+                        plaintext_sha256: [8; 32],
+                        plaintext_size: 4,
+                        expires_in_seconds: 3600,
+                    },
+                )
+                .await
+        }
+        ClaimedEffect::Restriction => {
+            database
+                .complete_privacy_restriction_job(job_id, worker)
+                .await
+        }
+        ClaimedEffect::Erasure => {
+            database
+                .complete_erasure_authorization_job(job_id, worker)
+                .await
+        }
+    }
+}
+
+async fn wait_for_lifecycle_barrier(client: &Client) {
+    for _ in 0..200 {
+        let paused = client
+            .query_one(
+                "SELECT EXISTS (
+                    SELECT 1 FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND wait_event_type = 'Lock'
+                      AND wait_event = 'advisory'
+                      AND query LIKE '%UPDATE gdpr_requests%'
+                 )",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0);
+        if paused {
+            return;
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    panic!("lifecycle transition did not reach the PostgreSQL barrier");
+}
+
+async fn wait_for_worker_request_lock(client: &Client) {
+    for _ in 0..200 {
+        let paused = client
+            .query_one(
+                "SELECT EXISTS (
+                    SELECT 1 FROM pg_stat_activity
+                    WHERE datname = current_database()
+                      AND wait_event_type = 'Lock'
+                      AND wait_event <> 'advisory'
+                      AND query LIKE '%FROM gdpr_requests%FOR UPDATE%'
+                 )",
+                &[],
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0);
+        if paused {
+            return;
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    panic!("worker did not block behind the request lifecycle lock");
+}
+
 fn encrypted_request_input(user_id: i32, key: &str) -> PrivacyRequestCreateInput {
     let mut input = request_input(1, user_id, PrivacyRequestType::Correction, key);
     input.encrypted_payload = Some(EncryptedPrivacyPayload {
@@ -603,6 +752,15 @@ async fn privacy_lifecycle_repository_round_trip() {
             .unwrap(),
         PrivacyAuthGuard::Allowed
     );
+    database
+        .cancel_privacy_request(
+            1,
+            actors.subject,
+            legacy_request_id,
+            "legacy_fixture_retired",
+        )
+        .await
+        .expect("retire the migrated active export before testing the bounded create policy");
 
     // Repository ownership is tenant + subject, and idempotency returns the
     // same request without duplicating its outbox delivery.
@@ -666,6 +824,148 @@ async fn privacy_lifecycle_repository_round_trip() {
         .cancel_privacy_request(1, actors.subject, export_request.id, "user_cancelled")
         .await
         .unwrap();
+    assert!(matches!(
+        database
+            .cancel_privacy_request_if_version(
+                1,
+                actors.subject,
+                export_request.id,
+                export_request.version,
+                "stale_user_cancelled",
+            )
+            .await,
+        Err(PrivacyError::Conflict(_))
+    ));
+    let owned_requests = database
+        .list_privacy_requests_for_owner(1, actors.subject, 50)
+        .await
+        .unwrap();
+    let owned_export = owned_requests
+        .iter()
+        .find(|summary| summary.request.id == export_request.id)
+        .expect("new export appears in the owner's list alongside legacy fixtures");
+    assert!(owned_export.export.is_none());
+    let owned_detail = database
+        .privacy_request_detail_for_owner(1, actors.subject, export_request.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(owned_detail.request.status, PrivacyRequestStatus::Cancelled);
+    assert!(owned_detail.timeline.len() >= 2);
+    assert_eq!(
+        owned_detail.timeline.last().unwrap().to_status,
+        PrivacyRequestStatus::Cancelled
+    );
+    assert!(database
+        .privacy_request_detail_for_owner(2, actors.second_tenant_subject, export_request.id)
+        .await
+        .unwrap()
+        .is_none());
+
+    let bounded_subjects = client
+        .query(
+            "INSERT INTO users (username, email, password_hash, universe_id, is_admin)
+             VALUES
+                ('PrivacyBoundedDistinct', 'privacy-bounded-distinct@example.test', '!test!', 1, FALSE),
+                ('PrivacyBoundedReplay', 'privacy-bounded-replay@example.test', '!test!', 1, FALSE)
+             RETURNING id, username",
+            &[],
+        )
+        .await
+        .unwrap();
+    let bounded_id = |username: &str| {
+        bounded_subjects
+            .iter()
+            .find(|row| row.get::<_, String>("username") == username)
+            .unwrap()
+            .get::<_, i32>("id")
+    };
+    let bounded_distinct = bounded_id("PrivacyBoundedDistinct");
+    let bounded_replay = bounded_id("PrivacyBoundedReplay");
+    let concurrent_database = database.clone();
+    let (first_distinct, second_distinct) = tokio::join!(
+        database.create_privacy_request(request_input(
+            1,
+            bounded_distinct,
+            PrivacyRequestType::Correction,
+            "bounded-distinct-one",
+        )),
+        concurrent_database.create_privacy_request(request_input(
+            1,
+            bounded_distinct,
+            PrivacyRequestType::Correction,
+            "bounded-distinct-two",
+        )),
+    );
+    assert_eq!(
+        usize::from(first_distinct.is_ok()) + usize::from(second_distinct.is_ok()),
+        1
+    );
+    assert!(matches!(
+        first_distinct
+            .as_ref()
+            .err()
+            .or(second_distinct.as_ref().err()),
+        Some(PrivacyError::Conflict(
+            "an active request of this type already exists"
+        ))
+    ));
+    let bounded_distinct_id = first_distinct
+        .as_ref()
+        .ok()
+        .or(second_distinct.as_ref().ok())
+        .unwrap()
+        .id;
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT COUNT(*)::BIGINT FROM gdpr_requests
+                 WHERE universe_id = 1 AND user_id = $1 AND request_type = 'correction'",
+                &[&bounded_distinct],
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        1
+    );
+    database
+        .cancel_privacy_request(
+            1,
+            bounded_distinct,
+            bounded_distinct_id,
+            "bounded_test_cleanup",
+        )
+        .await
+        .unwrap();
+
+    let concurrent_database = database.clone();
+    let (first_replay, second_replay) = tokio::join!(
+        database.create_privacy_request(request_input(
+            1,
+            bounded_replay,
+            PrivacyRequestType::Correction,
+            "bounded-exact-replay",
+        )),
+        concurrent_database.create_privacy_request(request_input(
+            1,
+            bounded_replay,
+            PrivacyRequestType::Correction,
+            "bounded-exact-replay",
+        )),
+    );
+    assert_eq!(
+        first_replay.as_ref().unwrap().id,
+        second_replay.as_ref().unwrap().id
+    );
+    database
+        .cancel_privacy_request(
+            1,
+            bounded_replay,
+            first_replay.unwrap().id,
+            "bounded_test_cleanup",
+        )
+        .await
+        .unwrap();
 
     // A user cannot mutate another subject's consent/preferences. Marketing
     // requires both an enabled preference and current explicit consent.
@@ -710,6 +1010,23 @@ async fn privacy_lifecycle_repository_round_trip() {
         })
         .await
         .unwrap();
+    assert!(matches!(
+        database
+            .set_communication_preference_if_version(
+                CommunicationPreferenceUpdate {
+                    universe_id: 1,
+                    user_id: actors.subject,
+                    channel: "email".to_string(),
+                    category: "marketing".to_string(),
+                    enabled: false,
+                    changed_by_user_id: actors.subject,
+                    actor_type: "user".to_string(),
+                },
+                0,
+            )
+            .await,
+        Err(PrivacyError::Conflict(_))
+    ));
     assert!(!database
         .communication_allowed(1, actors.subject, "email", "marketing")
         .await
@@ -743,6 +1060,238 @@ async fn privacy_lifecycle_repository_round_trip() {
         .communication_allowed(1, actors.subject, "email", "marketing")
         .await
         .unwrap());
+    let consent_expiry = client
+        .query_one(
+            "SELECT EXTRACT(EPOCH FROM now() + interval '1 hour')::BIGINT AS expires_at",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get::<_, i64>("expires_at");
+    database
+        .set_privacy_consent(ConsentUpdate {
+            universe_id: 1,
+            user_id: actors.subject,
+            purpose: "marketing".to_string(),
+            channel: "push".to_string(),
+            status: ConsentStatus::Granted,
+            lawful_basis: "consent".to_string(),
+            policy_version: "privacy-v1".to_string(),
+            proof_digest: Some([9; 32]),
+            expires_at_unix: Some(consent_expiry),
+            changed_by_user_id: actors.subject,
+            actor_type: "user".to_string(),
+        })
+        .await
+        .unwrap();
+    let expiring_update = |status| ConsentUpdate {
+        universe_id: 1,
+        user_id: actors.subject,
+        purpose: "marketing".to_string(),
+        channel: "push".to_string(),
+        status,
+        lawful_basis: "consent".to_string(),
+        policy_version: "privacy-v1".to_string(),
+        proof_digest: None,
+        expires_at_unix: Some(consent_expiry),
+        changed_by_user_id: actors.subject,
+        actor_type: "user".to_string(),
+    };
+    let concurrent_database = database.clone();
+    let (first_writer, second_writer) = tokio::join!(
+        database.set_privacy_consent_if_version(expiring_update(ConsentStatus::Denied), 1,),
+        concurrent_database
+            .set_privacy_consent_if_version(expiring_update(ConsentStatus::Withdrawn), 1,)
+    );
+    assert_eq!(
+        usize::from(first_writer.is_ok()) + usize::from(second_writer.is_ok()),
+        1
+    );
+    assert!(matches!(
+        first_writer.as_ref().err().or(second_writer.as_ref().err()),
+        Some(PrivacyError::Conflict(_))
+    ));
+    let consent_rows = database
+        .list_privacy_consents_for_owner(1, actors.subject)
+        .await
+        .unwrap();
+    assert_eq!(
+        consent_rows
+            .iter()
+            .find(|consent| consent.channel == "push")
+            .unwrap()
+            .expires_at_unix,
+        Some(consent_expiry)
+    );
+    assert_eq!(
+        consent_rows
+            .iter()
+            .find(|consent| consent.channel == "push")
+            .unwrap()
+            .version,
+        2
+    );
+    assert!(matches!(
+        database
+            .set_communication_preference(CommunicationPreferenceUpdate {
+                universe_id: 1,
+                user_id: actors.subject,
+                channel: "email".to_string(),
+                category: "security".to_string(),
+                enabled: false,
+                changed_by_user_id: actors.subject,
+                actor_type: "user".to_string(),
+            })
+            .await,
+        Err(PrivacyError::InvalidInput(
+            "essential communications cannot be disabled"
+        ))
+    ));
+    client
+        .execute(
+            "INSERT INTO privacy_communication_preferences (
+                universe_id, user_id, channel, category, enabled
+             ) VALUES (1, $1, 'email', 'security', FALSE)",
+            &[&actors.subject],
+        )
+        .await
+        .expect("seed a legacy essential preference that predates read-only enforcement");
+    let communication_matrix = database
+        .communication_preferences_for_owner(1, actors.subject)
+        .await
+        .unwrap();
+    assert_eq!(communication_matrix.len(), 20);
+    let email_security = communication_matrix
+        .iter()
+        .find(|entry| entry.channel == "email" && entry.category == "security")
+        .unwrap();
+    assert!(email_security.essential);
+    assert!(email_security.enabled);
+    assert!(email_security.effective_allowed);
+    assert!(email_security.explicitly_configured);
+    assert!(database
+        .communication_allowed(1, actors.subject, "email", "security")
+        .await
+        .unwrap());
+    let email_marketing = communication_matrix
+        .iter()
+        .find(|entry| entry.channel == "email" && entry.category == "marketing")
+        .unwrap();
+    assert!(email_marketing.enabled);
+    assert!(!email_marketing.effective_allowed);
+    assert!(!email_marketing.marketing_consent_current);
+
+    let precedence_subject = client
+        .query_one(
+            "INSERT INTO users (username, email, password_hash, universe_id, is_admin)
+             VALUES ('PrivacyConsentPrecedence', 'privacy-consent-precedence@example.test',
+                     '!test!', 1, FALSE)
+             RETURNING id",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get::<_, i32>("id");
+    for channel in ["email", "push"] {
+        database
+            .set_communication_preference(CommunicationPreferenceUpdate {
+                universe_id: 1,
+                user_id: precedence_subject,
+                channel: channel.to_string(),
+                category: "marketing".to_string(),
+                enabled: true,
+                changed_by_user_id: precedence_subject,
+                actor_type: "user".to_string(),
+            })
+            .await
+            .unwrap();
+    }
+    let precedence_consent =
+        |channel: &str, status: ConsentStatus, expires_at_unix| ConsentUpdate {
+            universe_id: 1,
+            user_id: precedence_subject,
+            purpose: "marketing".to_string(),
+            channel: channel.to_string(),
+            status,
+            lawful_basis: "consent".to_string(),
+            policy_version: "privacy-v1".to_string(),
+            proof_digest: (status == ConsentStatus::Granted).then_some([11; 32]),
+            expires_at_unix,
+            changed_by_user_id: precedence_subject,
+            actor_type: "user".to_string(),
+        };
+    database
+        .set_privacy_consent(precedence_consent("all", ConsentStatus::Granted, None))
+        .await
+        .unwrap();
+    database
+        .set_privacy_consent(precedence_consent("email", ConsentStatus::Denied, None))
+        .await
+        .unwrap();
+    assert!(!database
+        .communication_allowed(1, precedence_subject, "email", "marketing")
+        .await
+        .unwrap());
+    assert!(database
+        .communication_allowed(1, precedence_subject, "push", "marketing")
+        .await
+        .unwrap());
+
+    database
+        .set_privacy_consent(precedence_consent("email", ConsentStatus::Granted, None))
+        .await
+        .unwrap();
+    database
+        .set_privacy_consent(precedence_consent("all", ConsentStatus::Withdrawn, None))
+        .await
+        .unwrap();
+    assert!(database
+        .communication_allowed(1, precedence_subject, "email", "marketing")
+        .await
+        .unwrap());
+    assert!(!database
+        .communication_allowed(1, precedence_subject, "push", "marketing")
+        .await
+        .unwrap());
+
+    let expired_at = client
+        .query_one(
+            "SELECT EXTRACT(EPOCH FROM now() - interval '1 minute')::BIGINT",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get::<_, i64>(0);
+    database
+        .set_privacy_consent(precedence_consent("all", ConsentStatus::Granted, None))
+        .await
+        .unwrap();
+    database
+        .set_privacy_consent(precedence_consent(
+            "email",
+            ConsentStatus::Granted,
+            Some(expired_at),
+        ))
+        .await
+        .unwrap();
+    let precedence_matrix = database
+        .communication_preferences_for_owner(1, precedence_subject)
+        .await
+        .unwrap();
+    assert!(
+        !precedence_matrix
+            .iter()
+            .find(|entry| entry.channel == "email" && entry.category == "marketing")
+            .unwrap()
+            .marketing_consent_current
+    );
+    assert!(
+        precedence_matrix
+            .iter()
+            .find(|entry| entry.channel == "push" && entry.category == "marketing")
+            .unwrap()
+            .marketing_consent_current
+    );
     expect_sql_rejected(
         &client,
         "UPDATE privacy_consent_events SET status = 'granted' WHERE id = (
@@ -832,6 +1381,23 @@ async fn privacy_lifecycle_repository_round_trip() {
             .get::<_, String>("status"),
         "revoked"
     );
+    let restricted_matrix = database
+        .communication_preferences_for_owner(1, actors.subject)
+        .await
+        .unwrap();
+    assert!(
+        restricted_matrix
+            .iter()
+            .find(|entry| entry.channel == "email" && entry.category == "security")
+            .unwrap()
+            .effective_allowed
+    );
+    let restricted_marketing = restricted_matrix
+        .iter()
+        .find(|entry| entry.channel == "email" && entry.category == "marketing")
+        .unwrap();
+    assert!(restricted_marketing.suppressed_by_restriction);
+    assert!(!restricted_marketing.effective_allowed);
 
     // Legal hold blocks erasure. Repeating approval by one administrator is
     // idempotent and cannot satisfy dual control; a second distinct tenant
@@ -1083,6 +1649,215 @@ async fn privacy_lifecycle_repository_round_trip() {
             .await,
         Err(PrivacyError::DeliveryDenied)
     ));
+
+    // A disposable trigger supplies a real PostgreSQL interleaving barrier:
+    // cancellation/legal-hold owns the request row lock while the already-
+    // claimed worker attempts completion. Every code path must lock request
+    // before outbox, so the worker wakes without deadlocking and observes its
+    // atomically invalidated lease before it can apply any side effect.
+    client
+        .batch_execute(
+            "CREATE OR REPLACE FUNCTION privacy_test_lifecycle_barrier()
+             RETURNS TRIGGER AS $$
+             BEGIN
+                 IF OLD.status = 'processing'
+                    AND NEW.status IN ('queued', 'blocked_legal_hold') THEN
+                     PERFORM pg_advisory_xact_lock(918273645);
+                 END IF;
+                 RETURN NEW;
+             END;
+             $$ LANGUAGE plpgsql;
+             CREATE TRIGGER zz_privacy_test_lifecycle_barrier
+             BEFORE UPDATE ON gdpr_requests
+             FOR EACH ROW EXECUTE FUNCTION privacy_test_lifecycle_barrier();",
+        )
+        .await
+        .unwrap();
+    let mut barrier_subjects = Vec::new();
+    for index in 0..6 {
+        let username = format!("PrivacyBarrierSubject{index}");
+        let email = format!("privacy-barrier-{index}@example.test");
+        let subject = client
+            .query_one(
+                "INSERT INTO users (username, email, password_hash, universe_id, is_admin)
+                 VALUES ($1, $2, '!test!', 1, FALSE) RETURNING id",
+                &[&username, &email],
+            )
+            .await
+            .unwrap()
+            .get::<_, i32>("id");
+        barrier_subjects.push(subject);
+    }
+
+    for (index, effect) in [
+        ClaimedEffect::Export,
+        ClaimedEffect::Restriction,
+        ClaimedEffect::Erasure,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let subject = barrier_subjects[index];
+        let worker = format!("cancel-barrier-{}-worker", effect.slug());
+        let (request_id, job_id) = create_and_claim_effect(
+            &database,
+            actors,
+            subject,
+            effect,
+            &format!("cancel-barrier-{}", effect.slug()),
+            &worker,
+        )
+        .await;
+        client
+            .query_one("SELECT pg_advisory_lock(918273645)", &[])
+            .await
+            .unwrap();
+        let cancel_database = database.clone();
+        let cancel = tokio::spawn(async move {
+            cancel_database
+                .cancel_privacy_request(1, subject, request_id, "barrier_user_cancel")
+                .await
+        });
+        wait_for_lifecycle_barrier(&client).await;
+        let worker_database = database.clone();
+        let worker_id = worker.clone();
+        let completion = tokio::spawn(async move {
+            complete_claimed_effect(&worker_database, effect, job_id, &worker_id).await
+        });
+        wait_for_worker_request_lock(&client).await;
+        assert!(client
+            .query_one("SELECT pg_advisory_unlock(918273645)", &[])
+            .await
+            .unwrap()
+            .get::<_, bool>(0));
+        let (cancelled, completed) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(cancel, completion)
+        })
+        .await
+        .expect("cancel/worker interleaving must not deadlock");
+        assert_eq!(
+            cancelled.unwrap().unwrap().status,
+            PrivacyRequestStatus::Cancelled
+        );
+        assert!(matches!(completed.unwrap(), Err(PrivacyError::LeaseLost)));
+        let state = client
+            .query_one(
+                "SELECT request.status AS request_status,
+                    outbox.status AS outbox_status,
+                    users.privacy_restriction_active,
+                    users.privacy_erasure_pending,
+                    EXISTS (SELECT 1 FROM privacy_export_artifacts
+                            WHERE request_id = request.id) AS artifact_exists
+                 FROM gdpr_requests AS request
+                 JOIN privacy_outbox AS outbox ON outbox.request_id = request.id
+                 JOIN users ON users.universe_id = request.universe_id
+                           AND users.id = request.user_id
+                 WHERE request.id = $1",
+                &[&request_id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(state.get::<_, String>("request_status"), "cancelled");
+        assert_eq!(state.get::<_, String>("outbox_status"), "cancelled");
+        assert!(!state.get::<_, bool>("privacy_restriction_active"));
+        assert!(!state.get::<_, bool>("privacy_erasure_pending"));
+        assert!(!state.get::<_, bool>("artifact_exists"));
+    }
+
+    for (offset, effect) in [
+        ClaimedEffect::Export,
+        ClaimedEffect::Restriction,
+        ClaimedEffect::Erasure,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let subject = barrier_subjects[offset + 3];
+        let worker = format!("hold-barrier-{}-worker", effect.slug());
+        let (request_id, job_id) = create_and_claim_effect(
+            &database,
+            actors,
+            subject,
+            effect,
+            &format!("hold-barrier-{}", effect.slug()),
+            &worker,
+        )
+        .await;
+        client
+            .query_one("SELECT pg_advisory_lock(918273645)", &[])
+            .await
+            .unwrap();
+        let hold_database = database.clone();
+        let hold = tokio::spawn(async move {
+            hold_database
+                .record_privacy_admin_decision(PrivacyAdminDecisionInput {
+                    universe_id: 1,
+                    request_id,
+                    admin_user_id: actors.admin_one,
+                    decision: PrivacyAdminDecision::ApplyLegalHold,
+                    reason_code: "barrier_legal_hold".to_string(),
+                })
+                .await
+        });
+        wait_for_lifecycle_barrier(&client).await;
+        let worker_database = database.clone();
+        let worker_id = worker.clone();
+        let completion = tokio::spawn(async move {
+            complete_claimed_effect(&worker_database, effect, job_id, &worker_id).await
+        });
+        wait_for_worker_request_lock(&client).await;
+        assert!(client
+            .query_one("SELECT pg_advisory_unlock(918273645)", &[])
+            .await
+            .unwrap()
+            .get::<_, bool>(0));
+        let (held, completed) = tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::join!(hold, completion)
+        })
+        .await
+        .expect("legal-hold/worker interleaving must not deadlock");
+        assert_eq!(
+            held.unwrap().unwrap().status,
+            PrivacyRequestStatus::BlockedLegalHold
+        );
+        assert!(matches!(completed.unwrap(), Err(PrivacyError::LeaseLost)));
+        let state = client
+            .query_one(
+                "SELECT request.status AS request_status,
+                    request.legal_hold_active,
+                    outbox.status AS outbox_status,
+                    outbox.lease_owner IS NULL AS lease_cleared,
+                    users.privacy_restriction_active,
+                    users.privacy_erasure_pending,
+                    EXISTS (SELECT 1 FROM privacy_export_artifacts
+                            WHERE request_id = request.id) AS artifact_exists
+                 FROM gdpr_requests AS request
+                 JOIN privacy_outbox AS outbox ON outbox.request_id = request.id
+                 JOIN users ON users.universe_id = request.universe_id
+                           AND users.id = request.user_id
+                 WHERE request.id = $1",
+                &[&request_id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            state.get::<_, String>("request_status"),
+            "blocked_legal_hold"
+        );
+        assert!(state.get::<_, bool>("legal_hold_active"));
+        assert_eq!(state.get::<_, String>("outbox_status"), "retry");
+        assert!(state.get::<_, bool>("lease_cleared"));
+        assert!(!state.get::<_, bool>("privacy_restriction_active"));
+        assert!(!state.get::<_, bool>("privacy_erasure_pending"));
+        assert!(!state.get::<_, bool>("artifact_exists"));
+    }
+    client
+        .batch_execute(
+            "DROP TRIGGER zz_privacy_test_lifecycle_barrier ON gdpr_requests;
+             DROP FUNCTION privacy_test_lifecycle_barrier();",
+        )
+        .await
+        .unwrap();
 
     // Retention scrubs expired encrypted content but preserves a request under
     // legal hold. The redaction itself is immutable lifecycle evidence.

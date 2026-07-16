@@ -16,6 +16,7 @@ mod moons;
 mod notifications;
 mod planets;
 mod player_blocks;
+mod privacy;
 mod research;
 mod rips;
 mod shards;
@@ -71,6 +72,7 @@ pub fn build_router_with_dependencies(
         .merge(moons::router())
         .merge(notifications::protected_router())
         .merge(player_blocks::router())
+        .merge(privacy::router())
         .merge(research::router())
         .merge(research::protected_router())
         .merge(rips::router())

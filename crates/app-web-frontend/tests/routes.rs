@@ -104,6 +104,26 @@ async fn overview_route_serves_progressive_command_center_with_metadata() {
 }
 
 #[tokio::test]
+async fn privacy_route_serves_real_self_service_contract() {
+    let token = dev_token();
+    let response = get_response_with_token("/account/privacy", Some(&token)).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_body_text(response).await;
+    assert!(body.contains("<h1>Privacy and Data Management</h1>"));
+    assert!(body.contains("data-view=\"privacy\""));
+    assert!(body.contains("/api/privacy/requests?limit=50"));
+    assert!(body.contains("/api/privacy/communications"));
+    assert!(body.contains("RESTRICT MY ACCOUNT"));
+    assert!(body.contains("ERASE MY ACCOUNT"));
+    assert!(body.contains("CANCEL REQUEST"));
+    assert!(body.contains("Required for account operation"));
+    assert!(body.contains("aria-live=\"polite\""));
+    assert!(!body.contains("<section class=\"panel contract-gap\""));
+    assert!(!body.contains("href=\"#\">Download"));
+}
+
+#[tokio::test]
 async fn admin_users_route_serves_access_controlled_contract_state() {
     let token = admin_token();
     let response = get_response_with_token("/admin/users", Some(&token)).await;

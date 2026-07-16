@@ -14,7 +14,10 @@ use std::sync::Arc;
 use axum::body::Bytes;
 use axum::extract::{Extension, OriginalUri, Path};
 use axum::http::{
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE, HOST, ORIGIN, SET_COOKIE},
+    header::{
+        ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, HOST, ORIGIN, PRAGMA,
+        SET_COOKIE,
+    },
     HeaderMap, Method, StatusCode,
 };
 use axum::middleware::{self, Next};
@@ -761,6 +764,11 @@ async fn gateway_proxy_handler(
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .cloned();
+    let cache_control = upstream
+        .headers()
+        .get(reqwest::header::CACHE_CONTROL)
+        .cloned();
+    let pragma = upstream.headers().get(reqwest::header::PRAGMA).cloned();
     let bytes = match upstream.bytes().await {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -778,6 +786,16 @@ async fn gateway_proxy_handler(
     if let Some(content_type) = content_type {
         if let Ok(value) = content_type.to_str().unwrap_or_default().parse() {
             response.headers_mut().insert(CONTENT_TYPE, value);
+        }
+    }
+    if let Some(cache_control) = cache_control {
+        if let Ok(value) = cache_control.to_str().unwrap_or_default().parse() {
+            response.headers_mut().insert(CACHE_CONTROL, value);
+        }
+    }
+    if let Some(pragma) = pragma {
+        if let Ok(value) = pragma.to_str().unwrap_or_default().parse() {
+            response.headers_mut().insert(PRAGMA, value);
         }
     }
     if let Some(cookie) = session_cookie {
@@ -1216,11 +1234,16 @@ h2{font-size:1.08rem;color:#f0f5ff}h3{font-size:.95rem;color:#e8f1ff}small{color
 .tabs{display:flex;gap:.35rem;margin-bottom:.75rem}.tab{background:#101c2e;border-color:var(--line)}.tab.active{background:#21577b;border-color:#56b7e7}
 .galaxy-shell{display:grid;gap:1rem}.galaxy-slot-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:.65rem}.galaxy-slot{position:relative;min-height:180px;border:1px solid var(--line);background:linear-gradient(#0d1727,#080e18);padding:.65rem;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:.25rem;text-align:center}.galaxy-slot.empty{opacity:.65}.slot-number{position:absolute;left:.55rem;top:.4rem;color:#5f7089;font-size:.72rem}.planet-orbit{width:58px;height:58px;border-radius:50%;margin:.55rem;background:radial-gradient(circle at 35% 28%,#a9f6ff,#3a87b1 32%,#162b53 64%,#05080f 70%);box-shadow:0 0 18px #4ecfff55}.planet-orbit.vacant{background:transparent;border:1px dashed #31425c;box-shadow:none}.slot-status{font-size:.67rem;color:var(--warn);text-transform:uppercase}.number{text-align:right}
 .notification-row{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.85rem;border-bottom:1px solid var(--line)}.notification-row.unread{background:#10223966}.message-detail{display:grid;gap:.5rem}.contract-gap{max-width:720px}.contract-gap .button{margin-top:1rem}
+.privacy-shell{display:grid;gap:1rem}.privacy-intro{border-color:#315b78;background:radial-gradient(circle at 92% 10%,#16618a55,transparent 18rem),linear-gradient(145deg,#101d30,#0a1220)}.privacy-intro h2{font-size:1.35rem;margin-bottom:.35rem}.privacy-intro p{max-width:850px;color:#aab8cc}.privacy-global-feedback{min-height:1.5rem;color:var(--good)}.privacy-global-feedback.is-error,.row-feedback.is-error,.privacy-delivery-note.is-error{color:var(--danger)}
+.privacy-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.7rem}.privacy-action-card{display:flex;flex-direction:column;gap:.6rem;padding:.8rem;border:1px solid var(--line);border-radius:10px;background:#091321}.privacy-action-card p{color:var(--muted);font-size:.8rem}.privacy-action-card label{display:grid;gap:.25rem;color:var(--muted);font-size:.76rem}.privacy-action-card button{margin-top:auto}.privacy-action-card code,.privacy-cancel-form code{color:#fff;background:#1b2a40;border-radius:4px;padding:.08rem .28rem}.danger-zone{border-color:#713b4a;background:linear-gradient(145deg,#1b111b,#0b1220)}
+.privacy-request-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:1rem;align-items:start}.privacy-request-layout>.panel+.panel{margin-top:0}.privacy-detail{position:sticky;top:5rem}.privacy-request-list{display:grid;gap:.65rem}.privacy-request-card{display:grid;gap:.55rem;padding:.8rem;border:1px solid var(--line);border-radius:9px;background:#091321}.privacy-request-card .panel-heading{margin:0}.privacy-request-card h3{font-size:.78rem;color:var(--muted)}.privacy-badges{display:flex;gap:.35rem;flex-wrap:wrap}.privacy-delivery-note{font-size:.78rem;color:#b9c7d9;padding:.55rem;border-left:2px solid var(--accent);background:#0d1a2b}.privacy-hold{border-color:#843745;color:#ffc0c7}.privacy-timeline{list-style:none;padding:0;margin:1rem 0;display:grid;gap:.15rem}.privacy-timeline li{position:relative;display:grid;grid-template-columns:auto 1fr;gap:.65rem;padding:.35rem 0 .75rem}.privacy-timeline li:not(:last-child)::after{content:"";position:absolute;left:.32rem;top:1rem;bottom:-.15rem;width:1px;background:#2c4664}.privacy-timeline-dot{width:.7rem;height:.7rem;margin-top:.3rem;border:2px solid var(--accent);border-radius:50%;background:#0b1626;z-index:1}.privacy-timeline small{display:block}.privacy-status-completed{color:#a8f5d9;border-color:#27745c}.privacy-status-cancelled,.privacy-status-rejected,.privacy-status-failed{color:#ffc0c7;border-color:#843745}.privacy-status-blocked_legal_hold,.privacy-status-cooling_off{color:#ffe0a8;border-color:#80622c}
+.privacy-consent-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin-top:.8rem}.privacy-channel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-top:.8rem}.privacy-channel-card{border:1px solid var(--line);border-radius:10px;background:#091321;padding:.75rem}.privacy-channel-card h3{margin-bottom:.4rem}.privacy-preference-list{display:grid}.privacy-toggle-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:.55rem;align-items:center;padding:.65rem;border-bottom:1px solid #1b2b41;cursor:pointer}.privacy-toggle-row>span:first-child{display:grid}.privacy-toggle-row small{font-size:.7rem}.privacy-toggle-row input[type="checkbox"]{position:absolute;width:1px;height:1px;opacity:0}.switch-track{width:2.25rem;height:1.25rem;border-radius:999px;border:1px solid #42546c;background:#1a2638;position:relative;transition:.15s}.switch-track::after{content:"";position:absolute;width:.85rem;height:.85rem;left:.16rem;top:.14rem;border-radius:50%;background:#8795a9;transition:.15s}.privacy-toggle-row input:checked+.switch-track{background:#185b78;border-color:#52bce9}.privacy-toggle-row input:checked+.switch-track::after{transform:translateX(.95rem);background:#eaf8ff}.privacy-toggle-row input:focus-visible+.switch-track{outline:2px solid var(--accent);outline-offset:2px}.privacy-toggle-row input:disabled+.switch-track{opacity:.65;background:#253448}.privacy-toggle-row.is-essential{cursor:not-allowed;background:#101b2b}.row-feedback{grid-column:1/-1;min-height:0;color:var(--good);font-size:.7rem}
 .loading-state,.empty-state,.error-state{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:120px;color:var(--muted);padding:1rem;text-align:center}.empty-state.compact{min-height:auto}.error-state{flex-direction:column;color:#ffadb6}.spinner{width:1rem;height:1rem;border:2px solid #31445f;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .public-page{width:min(500px,calc(100% - 2rem));margin:8vh auto;padding:1.4rem;background:#0d1725;border-radius:14px;border:1px solid var(--line);box-shadow:0 25px 80px #0008}.public-page h1{text-align:center;margin-bottom:1.25rem}.public-page p{margin-top:.8rem}.error-page{text-align:center;padding:12vh 1.5rem}.error-page h1{font-size:2rem;margin-bottom:.75rem}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-@media(max-width:1000px){.galaxy-slot-grid{grid-template-columns:repeat(3,minmax(110px,1fr))}.metric-grid{grid-template-columns:repeat(2,1fr)}.progression-layout{grid-template-columns:1fr}.progression-sidebar{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}.resource-breakdown{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){header{position:static}.header-user .role{display:none}.layout{display:block}nav{width:100%;max-height:none;border-right:0;border-bottom:1px solid var(--line)}nav ul{display:flex;gap:.25rem;overflow-x:auto}nav .nav-section{display:none}nav li{flex:0 0 auto}.dashboard-grid,.dashboard-grid.wide-first,.messages-layout{grid-template-columns:1fr}.galaxy-slot-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.feature-grid{grid-template-columns:1fr}.planet-banner{height:210px}.progression-sidebar,.resource-stock-grid{grid-template-columns:1fr}.progression-toolbar>*{width:100%}.resource-breakdown{grid-template-columns:1fr}.inline-form{grid-template-columns:1fr}.inline-form .form-feedback{grid-column:auto}}
+@media(max-width:1100px){.privacy-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.privacy-request-layout{grid-template-columns:1fr}.privacy-detail{position:static}}
+@media(max-width:1000px){.galaxy-slot-grid{grid-template-columns:repeat(3,minmax(110px,1fr))}.metric-grid{grid-template-columns:repeat(2,1fr)}.progression-layout{grid-template-columns:1fr}.progression-sidebar{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}.resource-breakdown{grid-template-columns:repeat(2,minmax(0,1fr))}.privacy-consent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){header{position:static}.header-user .role{display:none}.layout{display:block}nav{width:100%;max-height:none;border-right:0;border-bottom:1px solid var(--line)}nav ul{display:flex;gap:.25rem;overflow-x:auto}nav .nav-section{display:none}nav li{flex:0 0 auto}.dashboard-grid,.dashboard-grid.wide-first,.messages-layout{grid-template-columns:1fr}.galaxy-slot-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.feature-grid{grid-template-columns:1fr}.planet-banner{height:210px}.progression-sidebar,.resource-stock-grid{grid-template-columns:1fr}.progression-toolbar>*{width:100%}.resource-breakdown{grid-template-columns:1fr}.inline-form{grid-template-columns:1fr}.inline-form .form-feedback{grid-column:auto}.privacy-action-grid,.privacy-consent-grid,.privacy-channel-grid{grid-template-columns:1fr}.privacy-toggle-row{grid-template-columns:minmax(0,1fr) auto}.privacy-toggle-row .status-chip{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 "#;
 
@@ -1366,7 +1389,7 @@ fn page_body_for(title: &str) -> String {
         "2FA Setup" => contract_gap("Two-factor authentication", "A 2FA enrollment and recovery-code contract is required before this control can safely be activated.", "/account/security", "Return to security"),
         "Email Verification" => contract_gap("Email verification", "The current account API exposes profile data but does not expose verification delivery or confirmation endpoints.", "/account/settings", "Return to account"),
         "Password Recovery" => contract_gap("Password change", "The gateway does not yet publish an authenticated password-change contract.", "/account/security", "Return to security"),
-        "Privacy and Data Management" => contract_gap("Privacy controls", "Account export and deletion operations require explicit gateway contracts and confirmation workflows.", "/account/settings", "Return to account"),
+        "Privacy and Data Management" => r#"<div id="privacy-center" data-view="privacy"><div class="loading-state"><span class="spinner" aria-hidden="true"></span>Loading privacy and communication controls…</div></div>"#.to_string(),
         "Account Transfer" => contract_gap("Account transfer", "Universe transfer eligibility and confirmation endpoints are not yet available.", "/account/settings", "Return to account"),
         "Chat" => contract_gap("Realtime chat", "Chat rooms and message delivery are owned by the realtime gateway and are not yet exposed through the web frontend bridge.", "/messages", "Open asynchronous messages"),
         "Admin Dashboard" => r#"<section id="admin-stats" class="panel"><span class="eyebrow">Operations</span><h2>Administration gateway required</h2><p>Admin data lives in the separate admin API. This frontend intentionally does not display invented metrics while that authenticated bridge is still absent.</p><table><thead><tr><th>Surface</th><th>Status</th></tr></thead><tbody id="admin-metrics"><tr><td>Web route access control</td><td><span class="status-chip ally">Active</span></td></tr><tr><td>Admin data bridge</td><td><span class="status-chip war">Not connected</span></td></tr></tbody></table></section>"#.to_string(),
@@ -2302,6 +2325,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gateway_bridge_preserves_privacy_no_store_headers() {
+        let upstream = Router::new().route(
+            "/api/privacy/requests",
+            get(|| async {
+                (
+                    [(CACHE_CONTROL, "no-store, max-age=0"), (PRAGMA, "no-cache")],
+                    Json(serde_json::json!({"success": true, "data": []})),
+                )
+            }),
+        );
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = axum::Server::from_tcp(listener)
+            .unwrap()
+            .serve(upstream.into_make_service());
+        let server = tokio::spawn(async move {
+            let _ = server.await;
+        });
+        let mut state = test_state();
+        state.api_gateway_url = format!("http://{address}");
+        let response = build_router_with_state(state)
+            .oneshot(
+                Request::get("/game-api/api/privacy/requests")
+                    .header(COOKIE, format!("universus_token={}", user_token()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).unwrap(),
+            "no-store, max-age=0"
+        );
+        assert_eq!(response.headers().get(PRAGMA).unwrap(), "no-cache");
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn gateway_bridge_rejects_non_api_paths_without_network_access() {
         let app = test_router();
         let resp = app
@@ -2521,6 +2585,51 @@ mod tests {
         assert_eq!(queued["data"]["queueId"], "q-1");
         assert_eq!(queued["data"]["queued"], true);
         server.abort();
+    }
+
+    #[test]
+    fn privacy_view_is_progressive_accessible_and_contract_complete() {
+        let body = page_body_for("Privacy and Data Management");
+        assert!(body.contains("data-view=\"privacy\""));
+        assert!(!body.contains("contract-gap"));
+
+        for endpoint in [
+            "/api/privacy/requests?limit=50",
+            "/api/privacy/requests/${encodeURIComponent(button.dataset.requestDetail)}",
+            "/api/privacy/requests/${encodeURIComponent(cancelForm.dataset.requestId)}/cancel",
+            "/api/privacy/consents",
+            "/api/privacy/consents/${encodeURIComponent(control.dataset.privacyConsent)}",
+            "/api/privacy/communications",
+            "/api/privacy/communications/${encodeURIComponent(control.dataset.channel)}/${encodeURIComponent(control.dataset.category)}",
+        ] {
+            assert!(CLIENT_JS.contains(endpoint), "missing privacy UI contract {endpoint}");
+        }
+        for contract in [
+            "RESTRICT MY ACCOUNT",
+            "ERASE MY ACCOUNT",
+            "CANCEL REQUEST",
+            "expectedVersion",
+            "idempotencyKey",
+            "aria-live=\"polite\"",
+            "role=\"switch\"",
+            "Secure delivery is not connected",
+            "Required for account operation",
+            "disabled aria-disabled=\"true\"",
+            "privacy_version_conflict",
+            "Inherited account-wide",
+            "specific?.version || 0",
+            "privacy_request_active",
+        ] {
+            assert!(
+                CLIENT_JS.contains(contract),
+                "missing privacy interaction contract {contract}"
+            );
+        }
+        assert_eq!(CLIENT_JS.matches("PRIVACY_CHANNELS =").count(), 1);
+        assert!(CLIENT_JS.contains("['email', 'in_app', 'push', 'sms']"));
+        assert!(CLIENT_JS.contains(
+            "['marketing', 'product_updates', 'gameplay_digest', 'security', 'transactional']"
+        ));
     }
 
     #[test]

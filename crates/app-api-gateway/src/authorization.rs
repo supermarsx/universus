@@ -97,6 +97,26 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
     // service identities do not inherit player data access.
     rule!("GET", "/api/account/profile", ActorPolicy::Player),
     rule!("GET", "/api/account/resources", ActorPolicy::Player),
+    rule!("GET", "/api/privacy/requests", ActorPolicy::Player),
+    rule!("POST", "/api/privacy/requests", ActorPolicy::Player),
+    rule!(
+        "GET",
+        "/api/privacy/requests/:request_id",
+        ActorPolicy::Player
+    ),
+    rule!(
+        "POST",
+        "/api/privacy/requests/:request_id/cancel",
+        ActorPolicy::Player
+    ),
+    rule!("GET", "/api/privacy/consents", ActorPolicy::Player),
+    rule!("PUT", "/api/privacy/consents/:channel", ActorPolicy::Player),
+    rule!("GET", "/api/privacy/communications", ActorPolicy::Player),
+    rule!(
+        "PUT",
+        "/api/privacy/communications/:channel/:category",
+        ActorPolicy::Player
+    ),
     rule!("GET", "/api/acs", ActorPolicy::Player),
     rule!("POST", "/api/acs", ActorPolicy::Player),
     rule!("POST", "/api/acs/:id/join", ActorPolicy::Player),
