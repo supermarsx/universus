@@ -773,7 +773,14 @@ async fn main() -> Result<()> {
     ));
 
     let state = AppState::new_with_services(Arc::new(adapter_registry), migration_runner);
-    let app = app_with_state(state);
+    let database = platform_db::Database::try_from_env()
+        .map_err(anyhow::Error::msg)?
+        .context("DATABASE_URL is required for GDPR administration")?;
+    database
+        .privacy_repository_ready()
+        .await
+        .context("validating GDPR administration schema")?;
+    let app = app_with_state(state).merge(app_admin_api::privacy::router(database));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], listen_port(DEFAULT_PORT)));
     tracing::info!(service = SERVICE_NAME, %addr, "startup");
