@@ -206,16 +206,38 @@ services:
     container_name: universus_rust_sms_api
     depends_on:
       <<: *database-dependencies
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     environment:
-      <<: *runtime-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-sms-api
       RUST_LOG: info
+      PORT: 3003
       DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
+      COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64: ${COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64:?COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64 must decode to at least 32 secret bytes}
+      COMMUNICATION_SERVICE_TOKEN_FILE: /run/secrets/sms_worker_communication_token
+      SMS_PROVIDER_URL: ${SMS_PROVIDER_URL:?SMS_PROVIDER_URL must be an HTTPS provider endpoint}
+      SMS_PROVIDER_BEARER_TOKEN: ${SMS_PROVIDER_BEARER_TOKEN:?SMS_PROVIDER_BEARER_TOKEN must be provisioned from a secret manager}
+      SMS_PROVIDER_KEY: ${SMS_PROVIDER_KEY:-sms_http}
+      SMS_PROVIDER_TIMEOUT_SECONDS: ${SMS_PROVIDER_TIMEOUT_SECONDS:-15}
+      SMS_WORKER_UNIVERSE_IDS: ${SMS_WORKER_UNIVERSE_IDS:?SMS_WORKER_UNIVERSE_IDS must list tenant IDs handled by this dispatcher}
+      SMS_WORKER_CLAIM_LIMIT: ${SMS_WORKER_CLAIM_LIMIT:-20}
+      SMS_WORKER_POLL_MILLIS: ${SMS_WORKER_POLL_MILLIS:-1000}
+      SMS_DISPATCH_WORKER_ID: ${SMS_DISPATCH_WORKER_ID:-sms-api-dispatcher-1}
+      SMS_DISPATCH_LEASE_SECONDS: ${SMS_DISPATCH_LEASE_SECONDS:-90}
+      SMS_READINESS_MAX_STALENESS_SECONDS: ${SMS_READINESS_MAX_STALENESS_SECONDS:-30}
+    secrets:
+      - source: sms_worker_communication_token
+        target: sms_worker_communication_token
+        mode: 0400
     ports:
-      - "4303:4003"
+      - "${SMS_PORT:-4303}:3003"
+    healthcheck:
+      test: ["CMD-SHELL", "/bin/bash -ec 'exec 3<>/dev/tcp/127.0.0.1/3003; printf \"GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; head -n 1 <&3 | grep -q \" 200 \"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    stop_signal: SIGINT
+    stop_grace_period: 130s
     restart: unless-stopped
 
   rust-email-worker:
@@ -226,19 +248,38 @@ services:
         BIN_NAME: app-email-worker
     container_name: universus_rust_email_worker
     depends_on:
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      <<: *database-dependencies
     environment:
-      <<: *runtime-environment
-      PLATFORM_EVENTS_SERVICE_TOKEN: ${EMAIL_WORKER_REALTIME_PUBLISH_TOKEN:?EMAIL_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
-      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-email-worker
       RUST_LOG: info
-      REDIS_URL: redis://redis:6379
-      WORKER_INTERVAL_SECONDS: 10
-      EMAIL_QUEUE_NAME: email.outbound
-      EMAIL_DLQ_NAME: email.dead-letter
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
+      COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64: ${COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64:?COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64 must decode to at least 32 secret bytes}
+      COMMUNICATION_SERVICE_TOKEN_FILE: /run/secrets/email_worker_communication_token
+      EMAIL_PROVIDER_URL: ${EMAIL_PROVIDER_URL:?EMAIL_PROVIDER_URL must be an HTTPS provider endpoint}
+      EMAIL_PROVIDER_BEARER_TOKEN: ${EMAIL_PROVIDER_BEARER_TOKEN:?EMAIL_PROVIDER_BEARER_TOKEN must be provisioned from a secret manager}
+      EMAIL_PROVIDER_KEY: ${EMAIL_PROVIDER_KEY:-email_http}
+      EMAIL_PROVIDER_TIMEOUT_SECONDS: ${EMAIL_PROVIDER_TIMEOUT_SECONDS:-15}
+      EMAIL_WORKER_UNIVERSE_ID: ${EMAIL_WORKER_UNIVERSE_ID:?EMAIL_WORKER_UNIVERSE_ID must identify the tenant handled by this worker}
+      EMAIL_WORKER_ID: ${EMAIL_WORKER_ID:-email-worker-1}
+      EMAIL_WORKER_CLAIM_LIMIT: ${EMAIL_WORKER_CLAIM_LIMIT:-20}
+      EMAIL_WORKER_LEASE_SECONDS: ${EMAIL_WORKER_LEASE_SECONDS:-90}
+      EMAIL_WORKER_POLL_MILLIS: ${EMAIL_WORKER_POLL_MILLIS:-1000}
+      EMAIL_WORKER_RETRY_BASE_SECONDS: ${EMAIL_WORKER_RETRY_BASE_SECONDS:-15}
+      EMAIL_WORKER_HEALTH_PORT: ${EMAIL_WORKER_HEALTH_PORT:-3002}
+      EMAIL_READINESS_MAX_STALENESS_SECONDS: ${EMAIL_READINESS_MAX_STALENESS_SECONDS:-30}
+    secrets:
+      - source: email_worker_communication_token
+        target: email_worker_communication_token
+        mode: 0400
+    healthcheck:
+      test: ["CMD-SHELL", "/bin/bash -ec 'exec 3<>/dev/tcp/127.0.0.1/$${EMAIL_WORKER_HEALTH_PORT}; printf \"GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; head -n 1 <&3 | grep -q \" 200 \"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    stop_signal: SIGINT
+    stop_grace_period: 130s
     restart: unless-stopped
 
   rust-analytics-worker:
@@ -531,3 +572,9 @@ volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+
+secrets:
+  email_worker_communication_token:
+    file: ${EMAIL_WORKER_COMMUNICATION_TOKEN_FILE:?EMAIL_WORKER_COMMUNICATION_TOKEN_FILE must point to a scoped signed JWT file}
+  sms_worker_communication_token:
+    file: ${SMS_WORKER_COMMUNICATION_TOKEN_FILE:?SMS_WORKER_COMMUNICATION_TOKEN_FILE must point to a scoped signed JWT file}

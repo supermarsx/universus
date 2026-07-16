@@ -342,9 +342,11 @@ name = "app-email-worker"
 version = "0.1.0"
 dependencies = [
  "adapter-provider-email",
+ "axum",
  "platform-auth",
  "platform-db",
  "platform-observability",
+ "serde",
  "tokio",
  "tracing",
  "tracing-subscriber",

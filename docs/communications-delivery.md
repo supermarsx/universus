@@ -56,6 +56,8 @@ Email provider and worker:
 - `EMAIL_WORKER_LEASE_SECONDS` (default 90, maximum 900)
 - `EMAIL_WORKER_POLL_MILLIS` (default 1000)
 - `EMAIL_WORKER_RETRY_BASE_SECONDS` (default 15)
+- `EMAIL_WORKER_HEALTH_PORT` (default 3002; container-internal by default)
+- `EMAIL_READINESS_MAX_STALENESS_SECONDS` (default 30)
 - `COMMUNICATION_SERVICE_TOKEN_FILE`
 
 SMS provider, API, and autonomous dispatcher:
@@ -78,6 +80,11 @@ The dispatch lease must exceed the provider timeout by at least five seconds.
 Startup rejects an unsafe combination. Plain HTTP is accepted only for an
 explicit development/test environment and a loopback host. Provider URLs with
 credentials, query parameters, or fragments are rejected.
+
+The email worker exposes `GET /health` on its dedicated health port. It reports
+ready only while PostgreSQL and the durable communication schema are reachable,
+the dispatch loop is running, and its last successful database claim or health
+ping is within the configured staleness window.
 
 ## SMS API
 

@@ -4,19 +4,29 @@
 //! contact data only at the dispatch boundary and never logs or persists raw
 //! destinations or message content.
 
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use adapter_provider_email::{EmailDispatch, EmailProvider, HttpEmailProvider};
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::get;
+use axum::{Json, Router};
 use platform_auth::{authenticate_request, require_service_scope, AuthConfig, AuthUser};
 use platform_db::{
     CommunicationActor, CommunicationChannel, CommunicationEvidenceKey, CommunicationJob,
     CommunicationState, Database, COMMUNICATION_SCOPE_DISPATCH, COMMUNICATION_SCOPE_GLOBAL,
 };
+use serde::Serialize;
 use tokio::signal;
 use zeroize::Zeroizing;
 
 const SERVICE_NAME: &str = "app-email-worker";
+const DEFAULT_HEALTH_PORT: u16 = 3002;
 
 #[derive(Debug, Clone)]
 struct WorkerConfig {
@@ -27,6 +37,8 @@ struct WorkerConfig {
     poll_interval: Duration,
     retry_base_seconds: i64,
     token_file: PathBuf,
+    health_port: u16,
+    readiness_max_staleness_seconds: i64,
 }
 
 impl WorkerConfig {
@@ -47,11 +59,16 @@ impl WorkerConfig {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .ok_or("COMMUNICATION_SERVICE_TOKEN_FILE is required")?;
+        let health_port = optional_i64("EMAIL_WORKER_HEALTH_PORT", DEFAULT_HEALTH_PORT.into())?;
+        let readiness_max_staleness_seconds =
+            optional_i64("EMAIL_READINESS_MAX_STALENESS_SECONDS", 30)?;
         if universe_id <= 0
             || !(1..=100).contains(&claim_limit)
             || !(5..=900).contains(&lease_seconds)
             || !(50..=60_000).contains(&poll_millis)
             || !(1..=86_400).contains(&retry_base_seconds)
+            || !(1..=i64::from(u16::MAX)).contains(&health_port)
+            || !(1..=3_600).contains(&readiness_max_staleness_seconds)
         {
             return Err("email worker numeric configuration is invalid");
         }
@@ -63,8 +80,27 @@ impl WorkerConfig {
             poll_interval: Duration::from_millis(poll_millis),
             retry_base_seconds,
             token_file,
+            health_port: health_port as u16,
+            readiness_max_staleness_seconds,
         })
     }
+}
+
+#[derive(Clone)]
+struct HealthState {
+    database: Database,
+    last_db_success_unix: Arc<AtomicI64>,
+    worker_running: Arc<AtomicBool>,
+    max_staleness_seconds: i64,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    service: &'static str,
+    durable_repository: bool,
+    worker_running: bool,
+    last_database_success_unix: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +135,67 @@ fn optional_u64(name: &str, default: u64) -> Result<u64, &'static str> {
             .map_err(|_| "integer configuration is invalid"),
         Err(_) => Ok(default),
     }
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn readiness_is_current(
+    database_ready: bool,
+    worker_running: bool,
+    last_database_success_unix: i64,
+    now_unix: i64,
+    max_staleness_seconds: i64,
+) -> bool {
+    database_ready
+        && worker_running
+        && now_unix.saturating_sub(last_database_success_unix) <= max_staleness_seconds
+}
+
+async fn health(State(state): State<Arc<HealthState>>) -> impl IntoResponse {
+    let database_ready = state.database.ping().await.is_ok()
+        && state
+            .database
+            .communication_repository_ready()
+            .await
+            .is_ok();
+    let now = unix_now();
+    if database_ready {
+        state.last_db_success_unix.store(now, Ordering::Relaxed);
+    }
+    let last_database_success_unix = state.last_db_success_unix.load(Ordering::Relaxed);
+    let worker_running = state.worker_running.load(Ordering::Relaxed);
+    let ready = readiness_is_current(
+        database_ready,
+        worker_running,
+        last_database_success_unix,
+        now,
+        state.max_staleness_seconds,
+    );
+    (
+        if ready {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(HealthResponse {
+            status: if ready { "ok" } else { "unavailable" },
+            service: SERVICE_NAME,
+            durable_repository: database_ready,
+            worker_running,
+            last_database_success_unix,
+        }),
+    )
+}
+
+fn health_router(state: Arc<HealthState>) -> Router {
+    Router::new()
+        .route("/health", get(health))
+        .with_state(state)
 }
 
 fn communication_actor(user: AuthUser) -> Result<CommunicationActor, &'static str> {
@@ -382,11 +479,33 @@ async fn main() {
         "EMAIL_WORKER_LEASE_SECONDS must exceed EMAIL_PROVIDER_TIMEOUT_SECONDS by at least 5 seconds"
     );
 
+    let last_db_success_unix = Arc::new(AtomicI64::new(unix_now()));
+    let worker_running = Arc::new(AtomicBool::new(true));
+    let health_state = Arc::new(HealthState {
+        database: database.clone(),
+        last_db_success_unix: Arc::clone(&last_db_success_unix),
+        worker_running: Arc::clone(&worker_running),
+        max_staleness_seconds: config.readiness_max_staleness_seconds,
+    });
+    let health_address = SocketAddr::from(([0, 0, 0, 0], config.health_port));
+    let (health_shutdown_tx, mut health_shutdown_rx) = tokio::sync::watch::channel(false);
+    let health_server = axum::Server::bind(&health_address)
+        .serve(health_router(health_state).into_make_service())
+        .with_graceful_shutdown(async move {
+            while !*health_shutdown_rx.borrow() {
+                if health_shutdown_rx.changed().await.is_err() {
+                    break;
+                }
+            }
+        });
+    let mut health_server_task = tokio::spawn(health_server);
+
     tracing::info!(
         service = SERVICE_NAME,
         universe_id = config.universe_id,
         worker_id = %config.worker_id,
         provider_key = provider.provider_key(),
+        %health_address,
         "durable email worker started"
     );
 
@@ -415,7 +534,10 @@ async fn main() {
             )
             .await
         {
-            Ok(jobs) => jobs,
+            Ok(jobs) => {
+                last_db_success_unix.store(unix_now(), Ordering::Relaxed);
+                jobs
+            }
             Err(_) => {
                 tracing::error!(service = SERVICE_NAME, "durable email claim failed");
                 Vec::new()
@@ -436,9 +558,21 @@ async fn main() {
                 tracing::info!(service = SERVICE_NAME, "shutdown requested");
                 break;
             }
+            result = &mut health_server_task => {
+                result
+                    .expect("email worker health server task failed")
+                    .expect("email worker health server failed");
+                panic!("email worker health server stopped unexpectedly");
+            }
             _ = tokio::time::sleep(config.poll_interval) => {}
         }
     }
+    worker_running.store(false, Ordering::Relaxed);
+    let _ = health_shutdown_tx.send(true);
+    health_server_task
+        .await
+        .expect("email worker health server task failed")
+        .expect("email worker health server failed");
 }
 
 #[cfg(test)]
@@ -465,5 +599,13 @@ mod tests {
             scopes: vec![COMMUNICATION_SCOPE_DISPATCH.to_string()],
         };
         assert!(communication_actor(user).is_err());
+    }
+
+    #[test]
+    fn readiness_requires_a_live_worker_and_fresh_repository_success() {
+        assert!(readiness_is_current(true, true, 90, 100, 30));
+        assert!(!readiness_is_current(false, true, 90, 100, 30));
+        assert!(!readiness_is_current(true, false, 90, 100, 30));
+        assert!(!readiness_is_current(true, true, 60, 100, 30));
     }
 }
