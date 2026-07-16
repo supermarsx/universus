@@ -1,21 +1,6 @@
 -- Achievements, Badges, Rewards, Ladders, and Hall of Fame Schema
 
--- Achievements table
-drop table if exists achievements cascade;
-CREATE TABLE IF NOT EXISTS achievements (
-    id SERIAL PRIMARY KEY,
-    code VARCHAR(64) UNIQUE NOT NULL, -- e.g. 'FIRST_BLOOD'
-    name VARCHAR(128) NOT NULL,
-    description TEXT NOT NULL,
-    points INTEGER DEFAULT 0,
-    badge_id INTEGER REFERENCES badges(id),
-    reward_id INTEGER REFERENCES rewards(id),
-    is_secret BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Badges table
-drop table if exists badges cascade;
 CREATE TABLE IF NOT EXISTS badges (
     id SERIAL PRIMARY KEY,
     code VARCHAR(64) UNIQUE NOT NULL, -- e.g. 'VETERAN'
@@ -26,7 +11,6 @@ CREATE TABLE IF NOT EXISTS badges (
 );
 
 -- Rewards table
-drop table if exists rewards cascade;
 CREATE TABLE IF NOT EXISTS rewards (
     id SERIAL PRIMARY KEY,
     code VARCHAR(64) UNIQUE NOT NULL, -- e.g. '1000_DARK_MATTER'
@@ -34,6 +18,20 @@ CREATE TABLE IF NOT EXISTS rewards (
     description TEXT NOT NULL,
     reward_type VARCHAR(32) NOT NULL, -- e.g. 'currency', 'item', 'title'
     value INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Achievements reference badges and rewards, so their dependencies must exist
+-- first. Migrations never drop these durable player-progression tables.
+CREATE TABLE IF NOT EXISTS achievements (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(64) UNIQUE NOT NULL, -- e.g. 'FIRST_BLOOD'
+    name VARCHAR(128) NOT NULL,
+    description TEXT NOT NULL,
+    points INTEGER DEFAULT 0,
+    badge_id INTEGER REFERENCES badges(id),
+    reward_id INTEGER REFERENCES rewards(id),
+    is_secret BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

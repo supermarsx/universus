@@ -1,6 +1,4 @@
 -- Migration 101: Moon destruction mission scheduling/logging
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS rip_attack (
     id SERIAL PRIMARY KEY,
     attacker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -21,5 +19,3 @@ CREATE TABLE IF NOT EXISTS rip_attack (
 
 CREATE INDEX IF NOT EXISTS idx_rip_attack_status_eta ON rip_attack(status, scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_rip_attack_attacker ON rip_attack(attacker_id, created_at DESC);
-
-COMMIT;

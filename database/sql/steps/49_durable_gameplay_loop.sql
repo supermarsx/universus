@@ -1,7 +1,5 @@
 -- Durable, idempotent non-fleet gameplay queues and complete planet inventory.
 
-BEGIN;
-
 ALTER TABLE planets
     ADD COLUMN IF NOT EXISTS terraformer INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS space_dock INTEGER NOT NULL DEFAULT 0,
@@ -223,5 +221,3 @@ CREATE INDEX IF NOT EXISTS idx_research_queue_due
 CREATE INDEX IF NOT EXISTS idx_shipyard_queue_due
     ON shipyard_queue (end_time, id)
     WHERE location_type = 'planet' AND planet_id IS NOT NULL AND status = 'queued';
-
-COMMIT;

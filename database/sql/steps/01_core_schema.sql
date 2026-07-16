@@ -26,9 +26,19 @@ CREATE TABLE IF NOT EXISTS alliances (
     total_score BIGINT DEFAULT 0
 );
 
--- Add foreign key for users alliance_id
-ALTER TABLE users ADD CONSTRAINT fk_users_alliance 
-    FOREIGN KEY (alliance_id) REFERENCES alliances(id) ON DELETE SET NULL;
+-- Add foreign key for users alliance_id. Legacy installs may already contain
+-- the untracked core schema, so guard the named constraint explicitly.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'users'::regclass AND conname = 'fk_users_alliance'
+    ) THEN
+        ALTER TABLE users ADD CONSTRAINT fk_users_alliance
+            FOREIGN KEY (alliance_id) REFERENCES alliances(id) ON DELETE SET NULL;
+    END IF;
+END
+$$;
 
 -- Planets table
 CREATE TABLE IF NOT EXISTS planets (
@@ -281,17 +291,17 @@ CREATE TABLE IF NOT EXISTS player_scores (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_planets_user_id ON planets(user_id);
-CREATE INDEX idx_planets_coordinates ON planets(galaxy, system, position);
-CREATE INDEX idx_fleets_user_id ON fleets(user_id);
-CREATE INDEX idx_fleets_arrival_time ON fleets(arrival_time);
-CREATE INDEX idx_fleets_status ON fleets(status);
-CREATE INDEX idx_construction_queue_planet_id ON construction_queue(planet_id);
-CREATE INDEX idx_construction_queue_end_time ON construction_queue(end_time);
-CREATE INDEX idx_research_queue_user_id ON research_queue(user_id);
-CREATE INDEX idx_messages_recipient_id ON messages(recipient_id);
-CREATE INDEX idx_messages_is_read ON messages(is_read);
-CREATE INDEX idx_combat_reports_attacker_id ON combat_reports(attacker_id);
-CREATE INDEX idx_combat_reports_defender_id ON combat_reports(defender_id);
-CREATE INDEX idx_alliance_members_user_id ON alliance_members(user_id);
-CREATE INDEX idx_player_scores_total_score ON player_scores(total_score DESC);
+CREATE INDEX IF NOT EXISTS idx_planets_user_id ON planets(user_id);
+CREATE INDEX IF NOT EXISTS idx_planets_coordinates ON planets(galaxy, system, position);
+CREATE INDEX IF NOT EXISTS idx_fleets_user_id ON fleets(user_id);
+CREATE INDEX IF NOT EXISTS idx_fleets_arrival_time ON fleets(arrival_time);
+CREATE INDEX IF NOT EXISTS idx_fleets_status ON fleets(status);
+CREATE INDEX IF NOT EXISTS idx_construction_queue_planet_id ON construction_queue(planet_id);
+CREATE INDEX IF NOT EXISTS idx_construction_queue_end_time ON construction_queue(end_time);
+CREATE INDEX IF NOT EXISTS idx_research_queue_user_id ON research_queue(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_recipient_id ON messages(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_messages_is_read ON messages(is_read);
+CREATE INDEX IF NOT EXISTS idx_combat_reports_attacker_id ON combat_reports(attacker_id);
+CREATE INDEX IF NOT EXISTS idx_combat_reports_defender_id ON combat_reports(defender_id);
+CREATE INDEX IF NOT EXISTS idx_alliance_members_user_id ON alliance_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_player_scores_total_score ON player_scores(total_score DESC);

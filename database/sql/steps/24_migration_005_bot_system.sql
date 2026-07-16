@@ -215,7 +215,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger for bot_targets
-DROP TRIGGER IF NOT EXISTS update_bot_targets_updated_at_trigger ON bot_targets;
+DROP TRIGGER IF EXISTS update_bot_targets_updated_at_trigger ON bot_targets;
 CREATE TRIGGER update_bot_targets_updated_at_trigger
     BEFORE UPDATE ON bot_targets
     FOR EACH ROW

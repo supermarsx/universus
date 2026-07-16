@@ -197,23 +197,10 @@ CREATE INDEX idx_gdpr_requests_type ON gdpr_requests(request_type);
 CREATE INDEX idx_gdpr_requests_status ON gdpr_requests(status);
 CREATE INDEX idx_gdpr_requests_created_at ON gdpr_requests(created_at DESC);
 
--- =====================================================
--- TABLE: user_blocks
--- Purpose: User blocking and muting functionality
--- =====================================================
-CREATE TABLE IF NOT EXISTS user_blocks (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    blocked_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    block_type VARCHAR(50) NOT NULL DEFAULT 'full',
-    reason TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, blocked_user_id)
-);
-
-CREATE INDEX idx_user_blocks_user_id ON user_blocks(user_id);
-CREATE INDEX idx_user_blocks_blocked_user_id ON user_blocks(blocked_user_id);
-CREATE INDEX idx_user_blocks_type ON user_blocks(block_type);
+-- Administrative sanctions use user_blocks (created by Phase 2). Peer-to-peer
+-- blocking is intentionally separate and is introduced as player_blocks by
+-- migration 28; reusing this table name here previously produced two
+-- incompatible schemas and made a clean install impossible.
 
 -- =====================================================
 -- TABLE: user_activity_logs

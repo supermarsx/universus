@@ -1,6 +1,4 @@
 -- Migration 31: Add moon defense and ship columns plus energy tracking
-BEGIN;
-
 ALTER TABLE moons
     ADD COLUMN IF NOT EXISTS energy INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS last_resource_update TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -24,5 +22,3 @@ ALTER TABLE moons
     ADD COLUMN IF NOT EXISTS bomber INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS destroyer INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS deathstar INTEGER DEFAULT 0;
-
-COMMIT;

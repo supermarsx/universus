@@ -1,7 +1,5 @@
 -- Migration 26: Alliance Combat System (ACS) support
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS acs_groups (
     id SERIAL PRIMARY KEY,
     alliance_id INTEGER REFERENCES alliances(id) ON DELETE CASCADE,
@@ -29,5 +27,3 @@ ALTER TABLE fleets
     ADD COLUMN IF NOT EXISTS acs_group_id INTEGER REFERENCES acs_groups(id);
 
 CREATE INDEX IF NOT EXISTS idx_fleets_acs_group ON fleets(acs_group_id);
-
-COMMIT;

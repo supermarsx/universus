@@ -1,8 +1,6 @@
 -- Durable authentication account constraints used by app-api-gateway.
 -- Usable password values stored in users.password_hash are Argon2id PHC strings.
 
-BEGIN;
-
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS password_hash TEXT,
     ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ,
@@ -33,5 +31,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_normalized
 
 CREATE INDEX IF NOT EXISTS idx_users_last_login_auth
     ON users (last_login DESC);
-
-COMMIT;

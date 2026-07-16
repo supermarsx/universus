@@ -1,7 +1,5 @@
 -- Migration 30: Initial moon schema and queue adjustments
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS moons (
     id SERIAL PRIMARY KEY,
     planet_id INTEGER UNIQUE NOT NULL REFERENCES planets(id) ON DELETE CASCADE,
@@ -37,5 +35,3 @@ CREATE INDEX IF NOT EXISTS idx_construction_queue_moon ON construction_queue(moo
 CREATE INDEX IF NOT EXISTS idx_shipyard_queue_moon ON shipyard_queue(moon_id);
 
 CREATE INDEX IF NOT EXISTS idx_moons_user ON moons(user_id);
-
-COMMIT;

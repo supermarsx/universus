@@ -5,7 +5,56 @@
 ALTER TABLE admin_audit_logs 
 ADD COLUMN IF NOT EXISTS permission_changes JSONB,
 ADD COLUMN IF NOT EXISTS old_values JSONB,
-ADD COLUMN IF NOT EXISTS new_values JSONB;
+ADD COLUMN IF NOT EXISTS new_values JSONB,
+ADD COLUMN IF NOT EXISTS admin_user_id INTEGER,
+ADD COLUMN IF NOT EXISTS action TEXT,
+ADD COLUMN IF NOT EXISTS resource_type TEXT,
+ADD COLUMN IF NOT EXISTS resource_id INTEGER,
+ADD COLUMN IF NOT EXISTS details JSONB,
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ;
+
+-- RBAC originally used a second audit vocabulary. Normalize it into the
+-- canonical Phase 2 columns while retaining the compatibility fields for
+-- existing readers and deployments.
+CREATE OR REPLACE FUNCTION normalize_admin_audit_log()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.admin_id IS NULL AND COALESCE(NEW.admin_user_id, 0) > 0 THEN
+        SELECT COALESCE(au.user_id, u.id)
+        INTO NEW.admin_id
+        FROM users u
+        LEFT JOIN admin_users au ON au.id = NEW.admin_user_id
+        WHERE u.id = COALESCE(au.user_id, NEW.admin_user_id)
+        LIMIT 1;
+    END IF;
+
+    IF NEW.admin_username IS NULL OR BTRIM(NEW.admin_username) = '' THEN
+        SELECT username INTO NEW.admin_username
+        FROM users WHERE id = NEW.admin_id;
+        NEW.admin_username := COALESCE(NEW.admin_username, 'system');
+    END IF;
+
+    NEW.action_type := COALESCE(NEW.action_type, NEW.action, 'RBAC_CHANGE');
+    NEW.action := COALESCE(NEW.action, NEW.action_type);
+    NEW.action_category := COALESCE(NEW.action_category, 'security');
+    NEW.target_type := COALESCE(NEW.target_type, NEW.resource_type);
+    NEW.resource_type := COALESCE(NEW.resource_type, NEW.target_type);
+    NEW.target_id := COALESCE(NEW.target_id, NEW.resource_id);
+    NEW.resource_id := COALESCE(NEW.resource_id, NEW.target_id);
+    NEW.action_details := COALESCE(NEW.action_details, NEW.details);
+    NEW.details := COALESCE(NEW.details, NEW.action_details);
+    NEW.timestamp := COALESCE(NEW.timestamp, NEW.created_at, NOW());
+    NEW.created_at := COALESCE(NEW.created_at, NEW.timestamp);
+    NEW.severity := COALESCE(NEW.severity, 'medium');
+    NEW.success := COALESCE(NEW.success, TRUE);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_normalize_admin_audit_log ON admin_audit_logs;
+CREATE TRIGGER trigger_normalize_admin_audit_log
+    BEFORE INSERT OR UPDATE ON admin_audit_logs
+    FOR EACH ROW EXECUTE FUNCTION normalize_admin_audit_log();
 
 -- Create indexes for better audit log querying
 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_permission_changes ON admin_audit_logs USING GIN(permission_changes);

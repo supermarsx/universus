@@ -29,61 +29,50 @@ CREATE TYPE alliance_permission AS ENUM (
     'kick_members'
 );
 
--- Alliances table
-CREATE TABLE alliances (
-    id SERIAL PRIMARY KEY,
-    tag VARCHAR(6) UNIQUE NOT NULL,
-    name VARCHAR(100) UNIQUE NOT NULL,
-    description TEXT,
-    founder_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    logo_url TEXT,
-    banner_url TEXT,
-    color_primary VARCHAR(7) DEFAULT '#00ff41',
-    color_secondary VARCHAR(7) DEFAULT '#008f11',
-    
-    -- Settings
-    is_open BOOLEAN DEFAULT false,
-    is_recruiting BOOLEAN DEFAULT true,
-    min_score_requirement INTEGER DEFAULT 0,
-    
-    -- Statistics
-    total_members INTEGER DEFAULT 1,
-    total_score BIGINT DEFAULT 0,
-    total_planets INTEGER DEFAULT 0,
-    total_fleets INTEGER DEFAULT 0,
-    
-    -- Treasury
-    metal_treasury BIGINT DEFAULT 0,
-    crystal_treasury BIGINT DEFAULT 0,
-    deuterium_treasury BIGINT DEFAULT 0,
-    
-    -- Metadata
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    disbanded_at TIMESTAMP
-);
+-- The core schema already creates alliances. Phase 11 extends that canonical
+-- table instead of declaring a second, incompatible copy.
+ALTER TABLE alliances
+    ADD COLUMN IF NOT EXISTS logo_url TEXT,
+    ADD COLUMN IF NOT EXISTS banner_url TEXT,
+    ADD COLUMN IF NOT EXISTS color_primary VARCHAR(7) DEFAULT '#00ff41',
+    ADD COLUMN IF NOT EXISTS color_secondary VARCHAR(7) DEFAULT '#008f11',
+    ADD COLUMN IF NOT EXISTS is_open BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS is_recruiting BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS min_score_requirement INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS total_members INTEGER DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS total_planets INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS total_fleets INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS metal_treasury BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS crystal_treasury BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS deuterium_treasury BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS disbanded_at TIMESTAMP;
 
--- Alliance Members
-CREATE TABLE alliance_members (
-    id SERIAL PRIMARY KEY,
-    alliance_id INTEGER NOT NULL REFERENCES alliances(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    rank alliance_rank NOT NULL DEFAULT 'recruit',
-    
-    -- Contributions
-    metal_contributed BIGINT DEFAULT 0,
-    crystal_contributed BIGINT DEFAULT 0,
-    deuterium_contributed BIGINT DEFAULT 0,
-    wars_participated INTEGER DEFAULT 0,
-    battles_won INTEGER DEFAULT 0,
-    
-    -- Metadata
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    promoted_at TIMESTAMP,
-    last_contribution_at TIMESTAMP,
-    
-    UNIQUE(alliance_id, user_id)
-);
+-- The core table uses (alliance_id, user_id) as its durable identity. Preserve
+-- that key and extend the row with Phase 11 rank/statistics fields.
+ALTER TABLE alliance_members
+    ADD COLUMN IF NOT EXISTS rank alliance_rank,
+    ADD COLUMN IF NOT EXISTS metal_contributed BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS crystal_contributed BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS deuterium_contributed BIGINT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS wars_participated INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS battles_won INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS promoted_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS last_contribution_at TIMESTAMP;
+
+UPDATE alliance_members
+SET rank = CASE role
+    WHEN 'founder' THEN 'founder'::alliance_rank
+    WHEN 'leader' THEN 'leader'::alliance_rank
+    WHEN 'officer' THEN 'officer'::alliance_rank
+    WHEN 'member' THEN 'member'::alliance_rank
+    ELSE 'recruit'::alliance_rank
+END
+WHERE rank IS NULL;
+
+ALTER TABLE alliance_members
+    ALTER COLUMN rank SET DEFAULT 'recruit'::alliance_rank,
+    ALTER COLUMN rank SET NOT NULL;
 
 -- Alliance Rank Permissions
 CREATE TABLE alliance_rank_permissions (

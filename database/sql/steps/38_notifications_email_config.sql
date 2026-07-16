@@ -1,7 +1,7 @@
 -- Migration 38: Notification/email configuration & category
 
-INSERT INTO config_categories (category_name, description, sort_order)
-SELECT 'notifications', 'Email and notification delivery settings', 90
+INSERT INTO config_categories (category_name, display_name, description, sort_order)
+SELECT 'notifications', 'Notifications', 'Email and notification delivery settings', 90
 WHERE NOT EXISTS (
     SELECT 1 FROM config_categories WHERE category_name = 'notifications'
 );

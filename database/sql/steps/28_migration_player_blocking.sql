@@ -1,7 +1,5 @@
 -- Migration 28: Player blocking + shadow bans
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS player_blocks (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -22,5 +20,3 @@ ALTER TABLE chat_restrictions
 ALTER TABLE chat_restrictions
     ADD CONSTRAINT chat_restrictions_restriction_type_check
     CHECK (restriction_type IN ('mute', 'ban', 'slowmode', 'shadow'));
-
-COMMIT;

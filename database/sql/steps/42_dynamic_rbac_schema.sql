@@ -54,8 +54,9 @@ BEGIN
   END LOOP;
 END $$;
 
--- 6. Remove admin_level column (after migration)
-ALTER TABLE admin_users DROP COLUMN IF EXISTS admin_level;
+-- 6. Keep admin_level as a compatibility projection for existing views and
+-- deployments while role_id becomes the authoritative dynamic RBAC link.
+-- Dropping it here invalidated v_active_admins and made clean installs fail.
 
 -- 7. Add index for role_id
 CREATE INDEX IF NOT EXISTS idx_admin_users_role_id ON admin_users(role_id);

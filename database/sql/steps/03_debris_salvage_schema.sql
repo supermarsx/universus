@@ -272,9 +272,8 @@ GROUP BY cd.id, dc.user_id, u.username;
 -- Top Salvagers View
 CREATE OR REPLACE VIEW v_top_salvagers AS
 SELECT 
-  u.id,
-  u.username,
   ss.*,
+  u.username,
   RANK() OVER (ORDER BY ss.total_salvage_value DESC) as global_rank
 FROM salvage_statistics ss
 JOIN users u ON ss.user_id = u.id

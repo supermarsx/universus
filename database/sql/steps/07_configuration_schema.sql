@@ -38,12 +38,12 @@ CREATE TABLE IF NOT EXISTS config_change_history (
     parameter_id INTEGER REFERENCES config_parameters(parameter_id),
     old_value TEXT,
     new_value TEXT,
-    changed_by INTEGER REFERENCES users(user_id),
+    changed_by INTEGER REFERENCES users(id),
     change_reason TEXT,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_rolled_back BOOLEAN DEFAULT FALSE,
     rolled_back_at TIMESTAMP,
-    rolled_back_by INTEGER REFERENCES users(user_id)
+    rolled_back_by INTEGER REFERENCES users(id)
 );
 
 -- Configuration templates (presets)
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS config_templates (
     template_name VARCHAR(200) UNIQUE NOT NULL,
     description TEXT,
     template_data JSONB NOT NULL, -- Complete configuration snapshot
-    created_by INTEGER REFERENCES users(user_id),
+    created_by INTEGER REFERENCES users(id),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_public BOOLEAN DEFAULT FALSE,
     usage_count INTEGER DEFAULT 0
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS config_cache (
 CREATE TABLE IF NOT EXISTS config_locks (
     lock_id SERIAL PRIMARY KEY,
     category_id INTEGER REFERENCES config_categories(category_id),
-    locked_by INTEGER REFERENCES users(user_id),
+    locked_by INTEGER REFERENCES users(id),
     locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     lock_reason TEXT,
     UNIQUE(category_id)
@@ -417,7 +417,7 @@ SELECT
     ch.is_rolled_back
 FROM config_change_history ch
 JOIN config_parameters cp ON ch.parameter_id = cp.parameter_id
-LEFT JOIN users u ON ch.changed_by = u.user_id
+LEFT JOIN users u ON ch.changed_by = u.id
 ORDER BY ch.applied_at DESC
 LIMIT 100;
 

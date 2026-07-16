@@ -1,7 +1,5 @@
 -- Migration 29: Persist leaderboard snapshots for SQL access
 
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS player_leaderboard_snapshots (
     snapshot_at TIMESTAMP NOT NULL,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -46,7 +44,9 @@ CREATE TABLE IF NOT EXISTS alliance_leaderboard_snapshots (
 CREATE INDEX IF NOT EXISTS idx_alliance_leaderboard_latest
     ON alliance_leaderboard_snapshots(alliance_id, snapshot_at DESC);
 
-CREATE VIEW v_alliance_leaderboard AS
+-- Keep the historical-snapshot projection distinct from the live alliance
+-- leaderboard created by the alliance-management schema.
+CREATE VIEW v_alliance_leaderboard_snapshot AS
 SELECT DISTINCT ON (als.alliance_id)
     als.alliance_id,
     als.alliance_name,
@@ -57,5 +57,3 @@ SELECT DISTINCT ON (als.alliance_id)
     als.snapshot_at
 FROM alliance_leaderboard_snapshots als
 ORDER BY als.alliance_id, als.snapshot_at DESC;
-
-COMMIT;
