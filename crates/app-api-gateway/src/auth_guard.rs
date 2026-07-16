@@ -28,6 +28,10 @@ where
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        if let Some(claims) = parts.extensions.get::<Claims>() {
+            return Ok(Self(claims.sub.clone()));
+        }
+
         let (_token, claims) = validate_bearer_jwt(&parts.headers)?;
         let user_id = claims.sub.clone();
         parts.extensions.insert(claims);
@@ -75,6 +79,7 @@ where
         Ok(AuthUser(platform_auth::AuthUser {
             user_id: claims.sub.clone(),
             username: claims.username.clone(),
+            email: claims.email.clone(),
             role: claims.role.clone(),
             universe_id: claims.universe_id,
         }))

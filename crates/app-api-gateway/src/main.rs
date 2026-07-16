@@ -8,6 +8,9 @@ const DEFAULT_PORT: u16 = 3000;
 #[tokio::main]
 async fn main() {
     platform_observability::init(SERVICE_NAME);
+    app_api_gateway::accounts::validate_runtime_configuration()
+        .await
+        .expect("invalid authentication/database runtime configuration");
 
     let app = routes::build_router(SERVICE_NAME);
     let addr = SocketAddr::from((

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 axum = { workspace = true }
+platform-auth = { path = "../platform-auth" }
 serde = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

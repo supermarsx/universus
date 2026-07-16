@@ -1,4 +1,4 @@
-use app_web_frontend::{build_router, SERVICE_NAME};
+use app_web_frontend::{build_router, build_router_with_state, AppState, SERVICE_NAME};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use hyper::body::to_bytes;
@@ -19,6 +19,10 @@ fn dev_token() -> String {
 
 fn admin_token() -> String {
     auth_token("admin-1", "admin", "admin")
+}
+
+fn superadmin_token() -> String {
+    auth_token("superadmin-1", "root", "superadmin")
 }
 
 async fn response_body_text(response: axum::response::Response) -> String {
@@ -59,16 +63,34 @@ async fn health_returns_ok_with_service_name() {
 
 #[tokio::test]
 async fn ready_returns_ok_with_service_name() {
-    let response = get_response("/ready").await;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let address = listener.local_addr().unwrap();
+    let upstream =
+        axum::Router::new().route("/ready", axum::routing::get(|| async { StatusCode::OK }));
+    let server = axum::Server::from_tcp(listener)
+        .unwrap()
+        .serve(upstream.into_make_service());
+    let handle = tokio::spawn(async move {
+        let _ = server.await;
+    });
+    let mut state = AppState::new(platform_auth::AuthConfig::default());
+    state.api_gateway_url = format!("http://{address}");
+    let response = build_router_with_state(state)
+        .oneshot(Request::get("/ready").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_json(response).await;
     assert_eq!(body["status"], "ok");
     assert_eq!(body["service"], SERVICE_NAME);
+    assert_eq!(body["dependency"], "app-api-gateway");
+    handle.abort();
 }
 
 #[tokio::test]
-async fn overview_route_serves_placeholder_html_with_metadata() {
+async fn overview_route_serves_progressive_command_center_with_metadata() {
     let token = dev_token();
     let response = get_response_with_token("/overview", Some(&token)).await;
 
@@ -77,10 +99,12 @@ async fn overview_route_serves_placeholder_html_with_metadata() {
     assert!(body.contains("<h1>Overview</h1>"));
     assert!(body.contains("name=\"route-title\" content=\"Overview\""));
     assert!(body.contains("name=\"route-path\" content=\"/overview\""));
+    assert!(body.contains("data-view=\"overview\""));
+    assert!(body.contains("/api/account/resources"));
 }
 
 #[tokio::test]
-async fn admin_users_route_serves_placeholder_html() {
+async fn admin_users_route_serves_access_controlled_contract_state() {
     let token = admin_token();
     let response = get_response_with_token("/admin/users", Some(&token)).await;
 
@@ -91,7 +115,7 @@ async fn admin_users_route_serves_placeholder_html() {
 }
 
 #[tokio::test]
-async fn alliance_manage_route_serves_placeholder_html() {
+async fn alliance_manage_route_reports_unsupported_mutation_contract() {
     let token = dev_token();
     let response = get_response_with_token("/alliance/manage", Some(&token)).await;
 
@@ -99,6 +123,8 @@ async fn alliance_manage_route_serves_placeholder_html() {
     let body = response_body_text(response).await;
     assert!(body.contains("<h1>Alliance Management</h1>"));
     assert!(body.contains("/alliance/manage"));
+    assert!(body.contains("Contract status"));
+    assert!(body.contains("no membership, role, or diplomacy mutation contract"));
 }
 
 #[tokio::test]
@@ -180,6 +206,13 @@ async fn protected_route_with_dev_token_returns_200() {
 #[tokio::test]
 async fn admin_route_with_admin_token_returns_200() {
     let token = admin_token();
+    let response = get_response_with_token("/admin/users", Some(&token)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn admin_route_with_superadmin_token_returns_200() {
+    let token = superadmin_token();
     let response = get_response_with_token("/admin/users", Some(&token)).await;
     assert_eq!(response.status(), StatusCode::OK);
 }
@@ -278,4 +311,38 @@ async fn all_template_routes_have_expected_auth_gating_and_render() {
         let admin = get_response_with_token(route, Some(&admin_token)).await;
         assert_eq!(admin.status(), StatusCode::OK, "admin route {}", route);
     }
+}
+
+#[test]
+fn compose_wires_frontend_to_container_gateway() {
+    let compose_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("docker-compose.yml");
+    let compose = std::fs::read_to_string(&compose_path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", compose_path.display()));
+    let frontend = compose
+        .split("  rust-web-frontend:")
+        .nth(1)
+        .and_then(|tail| tail.split("\n  rust-admin-api:").next())
+        .expect("rust-web-frontend compose service");
+
+    assert!(
+        frontend.contains("API_GATEWAY_URL: http://rust-api-gateway:3000"),
+        "frontend container must use service DNS instead of loopback"
+    );
+}
+
+#[test]
+fn service_image_copies_runtime_planet_assets() {
+    let dockerfile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("Dockerfile.service");
+    let dockerfile = std::fs::read_to_string(&dockerfile_path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", dockerfile_path.display()));
+
+    assert!(
+        dockerfile.contains("COPY assets /app/assets"),
+        "runtime service image must include the asset tree served by app-web-frontend"
+    );
 }

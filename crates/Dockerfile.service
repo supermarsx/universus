@@ -21,6 +21,7 @@ WORKDIR /app
 
 COPY --from=builder /workspace/target/release/${BIN_NAME} /usr/local/bin/${BIN_NAME}
 COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+COPY assets /app/assets
 
 ENV RUST_LOG=info
 

@@ -12,7 +12,8 @@ use platform_db::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::auth_guard::BearerToken;
+use crate::auth_guard::{AuthUser, BearerToken};
+use crate::authorization::{effective_numeric_user_id, numeric_subject};
 use crate::response::{bad_request, success};
 
 fn store() -> &'static Mutex<NotificationStore> {
@@ -93,11 +94,14 @@ pub fn protected_router() -> Router {
 }
 
 async fn list_notifications_handler(
-    BearerToken(_token): BearerToken,
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Query(query): Query<ListQuery>,
 ) -> Response {
-    let user_id = query.user_id.unwrap_or(1);
+    let user_id = match effective_numeric_user_id(&user, query.user_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
@@ -118,11 +122,14 @@ async fn list_notifications_handler(
 }
 
 async fn unread_count_handler(
-    BearerToken(_token): BearerToken,
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Query(query): Query<ListQuery>,
 ) -> Response {
-    let user_id = query.user_id.unwrap_or(1);
+    let user_id = match effective_numeric_user_id(&user, query.user_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
@@ -142,7 +149,7 @@ async fn unread_count_handler(
 }
 
 async fn create_notification_handler(
-    BearerToken(_token): BearerToken,
+    BearerToken(subject): BearerToken,
     Extension(db): Extension<Option<Database>>,
     Json(input): Json<CreateNotificationRequest>,
 ) -> Response {
@@ -152,7 +159,7 @@ async fn create_notification_handler(
     {
         return bad_request("Title, message and category are required");
     }
-    let user_id = input.user_id.unwrap_or(1);
+    let user_id = input.user_id.unwrap_or_else(|| numeric_subject(&subject));
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
@@ -197,12 +204,15 @@ async fn create_notification_handler(
 }
 
 async fn mark_read_handler(
-    BearerToken(_token): BearerToken,
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Query(query): Query<ListQuery>,
     Path(notification_id): Path<i64>,
 ) -> Response {
-    let user_id = query.user_id.unwrap_or(1);
+    let user_id = match effective_numeric_user_id(&user, query.user_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     if user_id <= 0 || notification_id <= 0 {
         return bad_request("Invalid user id or notification id");
     }
@@ -242,11 +252,14 @@ async fn mark_read_handler(
 }
 
 async fn mark_all_read_handler(
-    BearerToken(_token): BearerToken,
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Query(query): Query<ListQuery>,
 ) -> Response {
-    let user_id = query.user_id.unwrap_or(1);
+    let user_id = match effective_numeric_user_id(&user, query.user_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
@@ -291,11 +304,14 @@ fn to_notification(row: NotificationRow) -> Notification {
 }
 
 async fn list_preferences_handler(
-    BearerToken(_token): BearerToken,
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Query(query): Query<ListQuery>,
 ) -> Response {
-    let user_id = query.user_id.unwrap_or(1);
+    let user_id = match effective_numeric_user_id(&user, query.user_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }
@@ -332,12 +348,15 @@ async fn list_preferences_handler(
 }
 
 async fn update_preference_handler(
-    BearerToken(_token): BearerToken,
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Path(category): Path<String>,
     Json(input): Json<PreferenceUpdateRequest>,
 ) -> Response {
-    let user_id = input.user_id.unwrap_or(1);
+    let user_id = match effective_numeric_user_id(&user, input.user_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     if user_id <= 0 {
         return bad_request("Invalid user id");
     }

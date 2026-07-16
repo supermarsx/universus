@@ -458,8 +458,21 @@ pub async fn publish_http(
 ) -> Result<u16, String> {
     let url = format!("{}/api/realtime/publish", base_url.trim_end_matches('/'));
     let body = build_publish_payload(channel, event);
+    let auth_config = platform_auth::AuthConfig::from_env();
+    auth_config
+        .validate_runtime()
+        .map_err(|error| error.to_string())?;
+    let token = platform_auth::generate_token(
+        &auth_config,
+        "service:platform-events",
+        "platform-events",
+        "admin",
+        None,
+    )
+    .map_err(|error| error.to_string())?;
     let response = reqwest::Client::new()
         .post(url)
+        .bearer_auth(token)
         .json(&body)
         .send()
         .await

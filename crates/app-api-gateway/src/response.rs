@@ -39,6 +39,18 @@ pub fn not_found(message: &str) -> Response {
     app_error_response(AppError::not_found(message))
 }
 
+pub fn internal_error(message: &str) -> Response {
+    app_error_response(AppError::internal(message))
+}
+
+pub fn conflict(message: &str) -> Response {
+    app_error_response(AppError::Conflict(message.to_string()))
+}
+
+pub fn service_unavailable(message: &str) -> Response {
+    app_error_response(AppError::ServiceUnavailable(message.to_string()))
+}
+
 fn app_error_response(error: AppError) -> Response {
     let (status, message) = match error {
         AppError::BadRequest(message) => (StatusCode::BAD_REQUEST, message),

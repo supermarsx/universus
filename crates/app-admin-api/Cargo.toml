@@ -8,6 +8,7 @@ axum = { workspace = true }
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 platform-adapter = { path = "../platform-adapter" }
+platform-auth = { path = "../platform-auth" }
 platform-consensus = { path = "../platform-consensus" }
 platform-migrations = { path = "../platform-migrations" }
 platform-tenancy = { path = "../platform-tenancy" }

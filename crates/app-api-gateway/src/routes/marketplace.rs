@@ -5,6 +5,7 @@ use axum::{Extension, Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::auth_guard::BearerToken;
+use crate::authorization::numeric_subject;
 use crate::response::{bad_request, not_found, success};
 use crate::state::{
     AppState, MarketplaceListFilters, MarketplaceListingInput, MarketplaceListingSnapshot,
@@ -320,10 +321,5 @@ async fn get_listing_handler(
 }
 
 fn user_id_from_token(token: &str) -> i64 {
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    token.hash(&mut hasher);
-    let value = hasher.finish();
-    (value % i64::MAX as u64) as i64 + 1
+    numeric_subject(token)
 }

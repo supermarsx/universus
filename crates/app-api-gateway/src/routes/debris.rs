@@ -5,6 +5,8 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::auth_guard::AuthUser;
+use crate::authorization::effective_numeric_user_id;
 use crate::response::success;
 
 #[derive(Debug, Serialize)]
@@ -110,13 +112,18 @@ async fn system_stats_handler() -> Response {
 }
 
 async fn claim_debris_handler(
+    AuthUser(user): AuthUser,
     Path(id): Path<i64>,
     Json(payload): Json<ClaimDebrisRequest>,
 ) -> Response {
+    let collector_id = match effective_numeric_user_id(&user, payload.collector_id) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     success(json!({
         "claimId": id.saturating_mul(10).saturating_add(1),
         "debrisId": id,
-        "collectorId": payload.collector_id.unwrap_or(1),
+        "collectorId": collector_id,
         "claimed": true,
         "resources": {
             "metal": 5_000i64,
@@ -126,18 +133,22 @@ async fn claim_debris_handler(
     }))
 }
 
-async fn my_claims_handler() -> Response {
+async fn my_claims_handler(AuthUser(user): AuthUser) -> Response {
+    let collector_id = match effective_numeric_user_id(&user, None) {
+        Ok(user_id) => user_id,
+        Err(response) => return response,
+    };
     success(vec![
         json!({
             "claimId": 101,
             "debrisId": 11,
-            "collectorId": 1,
+            "collectorId": collector_id,
             "claimedAtUnix": 1_700_000_001i64
         }),
         json!({
             "claimId": 102,
             "debrisId": 12,
-            "collectorId": 1,
+            "collectorId": collector_id,
             "claimedAtUnix": 1_700_000_002i64
         }),
     ])

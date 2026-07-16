@@ -1,13 +1,70 @@
 use app_bot_api::build_router;
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{Request as HttpRequest, StatusCode};
 use hyper::body::to_bytes;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
+struct Request;
+
+impl Request {
+    fn builder() -> axum::http::request::Builder {
+        let config = platform_auth::AuthConfig::from_env();
+        let token =
+            platform_auth::generate_token(&config, "admin-test", "Admin Test", "admin", None)
+                .expect("generate admin token");
+        HttpRequest::builder().header("authorization", format!("Bearer {token}"))
+    }
+}
+
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body()).await.unwrap();
     serde_json::from_slice(&body).unwrap()
+}
+
+#[tokio::test]
+async fn admin_bot_routes_reject_anonymous_and_player_but_accept_admin() {
+    let app = build_router();
+
+    let anonymous = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/admin/bots")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+    let config = platform_auth::AuthConfig::from_env();
+    let player_token =
+        platform_auth::generate_token(&config, "player-test", "Player", "player", None)
+            .expect("generate player token");
+    let player = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/admin/bots")
+                .header("authorization", format!("Bearer {player_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(player.status(), StatusCode::FORBIDDEN);
+
+    let admin = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/admin/bots")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(admin.status(), StatusCode::OK);
 }
 
 async fn create_test_bot(app: &axum::Router, username: &str) -> u64 {

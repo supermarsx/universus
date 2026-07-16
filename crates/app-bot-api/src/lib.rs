@@ -3,7 +3,9 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header::AUTHORIZATION, Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -261,9 +263,7 @@ fn personalities() -> Vec<Personality> {
 pub fn build_router() -> Router {
     let state = AppState::new();
 
-    Router::new()
-        .route("/health", get(health))
-        .route("/ready", get(ready))
+    let admin_router = Router::new()
         .route("/api/admin/bots/health", get(bots_health))
         .route("/api/admin/bots/process-all", post(process_all_bots))
         .route("/api/admin/bots/process/all", post(process_all_bots))
@@ -288,7 +288,42 @@ pub fn build_router() -> Router {
             "/api/admin/bots/:id",
             get(get_bot).put(update_bot).delete(delete_bot),
         )
+        .route_layer(middleware::from_fn(require_admin_auth));
+
+    Router::new()
+        .route("/health", get(health))
+        .route("/ready", get(ready))
+        .merge(admin_router)
         .with_state(state)
+}
+
+async fn require_admin_auth(
+    mut request: Request<axum::body::Body>,
+    next: Next<axum::body::Body>,
+) -> Response {
+    let Some(authorization) = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized");
+    };
+
+    let config = platform_auth::AuthConfig::from_env();
+    let user = match platform_auth::authenticate_request(&config, authorization) {
+        Ok(user) => user,
+        Err(_) => return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized"),
+    };
+    if platform_auth::require_role(&user, platform_auth::UserRole::Admin).is_err() {
+        return auth_failure(StatusCode::FORBIDDEN, "Forbidden");
+    }
+
+    request.extensions_mut().insert(user);
+    next.run(request).await
+}
+
+fn auth_failure(status: StatusCode, error: &'static str) -> Response {
+    (status, Json(ApiResponse::<serde_json::Value>::err(error))).into_response()
 }
 
 pub fn listen_port(default_port: u16) -> u16 {
@@ -300,6 +335,10 @@ pub fn listen_port(default_port: u16) -> u16 {
 
 pub async fn serve() {
     tracing_subscriber::fmt::init();
+
+    platform_auth::AuthConfig::from_env()
+        .validate_runtime()
+        .expect("invalid authentication configuration");
 
     let addr = SocketAddr::from(([0, 0, 0, 0], listen_port(DEFAULT_PORT)));
     tracing::info!(service = SERVICE_NAME, %addr, "startup");

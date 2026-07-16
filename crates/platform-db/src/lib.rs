@@ -1,12 +1,45 @@
 use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
-use tokio_postgres::{types::Json, NoTls};
+use tokio_postgres::{error::SqlState, types::Json, NoTls};
 
 #[derive(Clone)]
 pub struct Database {
     pool: Pool,
 }
 
-type DbResult<T> = Result<T, String>;
+pub type DbResult<T> = Result<T, String>;
+
+/// Durable account identity used by the API authentication layer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountRow {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    pub password_hash: String,
+    pub role: String,
+    pub universe_id: Option<i64>,
+    pub is_banned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountCreateInput {
+    pub username: String,
+    pub email: String,
+    pub password_hash: String,
+}
+
+impl AccountCreateInput {
+    pub fn normalized(mut self) -> Self {
+        self.username = self.username.trim().to_string();
+        self.email = normalize_account_email(&self.email);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountCreateError {
+    Duplicate,
+    Database(String),
+}
 
 #[derive(Clone)]
 pub struct AnalyticsUsageRow {
@@ -307,10 +340,21 @@ pub struct ChatRestrictionUpsert {
 
 impl Database {
     pub fn from_env() -> Option<Self> {
-        let database_url = std::env::var("DATABASE_URL")
+        Self::try_from_env().ok().flatten()
+    }
+
+    /// Build a database pool from the runtime configuration without silently
+    /// discarding malformed URLs or pool construction errors.
+    pub fn try_from_env() -> DbResult<Option<Self>> {
+        let Some(database_url) = std::env::var("DATABASE_URL")
             .ok()
-            .filter(|value| !value.trim().is_empty())?;
-        let config = database_url.parse::<tokio_postgres::Config>().ok()?;
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        let config = database_url
+            .parse::<tokio_postgres::Config>()
+            .map_err(|error| format!("invalid DATABASE_URL: {error}"))?;
         let mgr_config = ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         };
@@ -319,8 +363,130 @@ impl Database {
             .max_size(16)
             .runtime(Runtime::Tokio1)
             .build()
-            .ok()?;
-        Some(Self { pool })
+            .map_err(|error| format!("unable to create database pool: {error}"))?;
+        Ok(Some(Self { pool }))
+    }
+
+    pub async fn ping(&self) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        client
+            .simple_query("SELECT 1")
+            .await
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn account_repository_ready(&self) -> DbResult<()> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_one(
+                "SELECT to_regclass('public.users') IS NOT NULL
+                    AND to_regclass('public.idx_users_username_normalized') IS NOT NULL
+                    AND to_regclass('public.idx_users_email_normalized') IS NOT NULL
+                    AND (SELECT COUNT(*) = 7
+                         FROM information_schema.columns
+                         WHERE table_schema = 'public'
+                           AND table_name = 'users'
+                           AND column_name IN ('id', 'username', 'email', 'password_hash',
+                                               'last_login', 'is_admin', 'is_banned')) AS ready",
+                &[],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        if row.get::<_, bool>("ready") {
+            Ok(())
+        } else {
+            Err(
+                "users authentication schema is missing; run ordered database migrations"
+                    .to_string(),
+            )
+        }
+    }
+
+    pub async fn create_account(
+        &self,
+        input: AccountCreateInput,
+    ) -> Result<AccountRow, AccountCreateError> {
+        let input = input.normalized();
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|error| AccountCreateError::Database(error.to_string()))?;
+        let result = client
+            .query_one(
+                "INSERT INTO users (username, email, password_hash, is_admin, is_banned)
+                 VALUES ($1, $2, $3, FALSE, FALSE)
+                 RETURNING id::TEXT AS id, username, email, password_hash,
+                           CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
+                           1::BIGINT AS universe_id, is_banned",
+                &[&input.username, &input.email, &input.password_hash],
+            )
+            .await;
+
+        match result {
+            Ok(row) => Ok(map_account_row(&row)),
+            Err(error) if error.code() == Some(&SqlState::UNIQUE_VIOLATION) => {
+                Err(AccountCreateError::Duplicate)
+            }
+            Err(error) => Err(AccountCreateError::Database(error.to_string())),
+        }
+    }
+
+    pub async fn account_by_normalized_email(&self, email: &str) -> DbResult<Option<AccountRow>> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_opt(
+                "SELECT id::TEXT AS id, username, email, password_hash,
+                        CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
+                        1::BIGINT AS universe_id, is_banned
+                 FROM users
+                 WHERE LOWER(BTRIM(email)) = $1
+                 LIMIT 1",
+                &[&normalize_account_email(email)],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(row.map(|row| map_account_row(&row)))
+    }
+
+    pub async fn account_by_id(&self, account_id: &str) -> DbResult<Option<AccountRow>> {
+        let Ok(account_id) = account_id.parse::<i32>() else {
+            return Ok(None);
+        };
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_opt(
+                "SELECT id::TEXT AS id, username, email, password_hash,
+                        CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
+                        1::BIGINT AS universe_id, is_banned
+                 FROM users
+                 WHERE id = $1
+                 LIMIT 1",
+                &[&account_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(row.map(|row| map_account_row(&row)))
+    }
+
+    pub async fn update_account_last_login(&self, account_id: &str) -> DbResult<()> {
+        let account_id = account_id
+            .parse::<i32>()
+            .map_err(|_| "invalid account id".to_string())?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let updated = client
+            .execute(
+                "UPDATE users SET last_login = now() WHERE id = $1",
+                &[&account_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        if updated == 1 {
+            Ok(())
+        } else {
+            Err("account disappeared before last-login update".to_string())
+        }
     }
 
     async fn ensure_analytics_schema(&self) -> DbResult<()> {
@@ -2215,6 +2381,22 @@ fn map_chat_restriction_row(row: &tokio_postgres::Row) -> ChatRestrictionRow {
     }
 }
 
+fn map_account_row(row: &tokio_postgres::Row) -> AccountRow {
+    AccountRow {
+        id: row.get::<_, String>("id"),
+        username: row.get::<_, String>("username"),
+        email: row.get::<_, String>("email"),
+        password_hash: row.get::<_, String>("password_hash"),
+        role: row.get::<_, String>("role"),
+        universe_id: row.get::<_, Option<i64>>("universe_id"),
+        is_banned: row.get::<_, bool>("is_banned"),
+    }
+}
+
+pub fn normalize_account_email(email: &str) -> String {
+    email.trim().to_ascii_lowercase()
+}
+
 fn unix_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2232,4 +2414,30 @@ fn load_percent(current_load: i64, max_capacity: i64) -> f64 {
 
 fn round_2(value: f64) -> f64 {
     (value * 100.0).round() / 100.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn account_input_normalizes_email_and_trims_username() {
+        let input = AccountCreateInput {
+            username: "  Commander  ".to_string(),
+            email: "  COMMANDER@Example.COM ".to_string(),
+            password_hash: "$argon2id$v=19$m=19456,t=2,p=1$example$hash".to_string(),
+        }
+        .normalized();
+
+        assert_eq!(input.username, "Commander");
+        assert_eq!(input.email, "commander@example.com");
+        assert!(input.password_hash.starts_with("$argon2id$"));
+    }
+
+    #[test]
+    fn account_email_normalization_is_idempotent() {
+        let normalized = normalize_account_email(" A@B.COM ");
+        assert_eq!(normalized, "a@b.com");
+        assert_eq!(normalize_account_email(&normalized), normalized);
+    }
 }

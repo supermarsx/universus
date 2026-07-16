@@ -7,7 +7,7 @@
 //! - `BOT_WORKER_INTERVAL_MS` — interval between processing cycles in ms (default: 60000)
 //! - `BOT_WORKER_MAX_INFLIGHT` — max concurrent tasks (default: 8)
 //! - `BOT_API_URL` — base URL for the bot API (default: "http://localhost:4001")
-//! - `BOT_SERVICE_API_KEY` — optional API key for authentication
+//! - `JWT_SECRET` — shared signing secret used for service Bearer JWTs
 //! - `BOT_WORKER_TENANT_ID` — tenant ID for worker context
 //! - `BOT_WORKER_TENANT_NAME` — tenant display name
 //! - `BOT_HTTP_TIMEOUT_SECS` — HTTP request timeout in seconds (default: 30)
@@ -91,12 +91,6 @@ fn parse_bot_api_url(raw: Option<&str>) -> String {
         .to_string()
 }
 
-fn parse_optional_api_key(raw: Option<&str>) -> Option<String> {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
 fn parse_env<T: std::str::FromStr>(key: &str, default: T) -> T {
     env::var(key)
         .ok()
@@ -141,14 +135,20 @@ struct ProcessCallOutcome {
 async fn call_process_all_bots(
     client: &Client,
     endpoint: &Url,
-    api_key: Option<&str>,
+    auth_config: &platform_auth::AuthConfig,
 ) -> Result<ProcessCallOutcome, String> {
-    let mut request = client.post(endpoint.clone());
-    if let Some(api_key) = api_key {
-        request = request.header("x-api-key", api_key);
-    }
+    let token = platform_auth::generate_token(
+        auth_config,
+        "service:app-bot-worker",
+        SERVICE_NAME,
+        "admin",
+        None,
+    )
+    .map_err(|error| format!("failed to issue service token: {error}"))?;
 
-    let response = request
+    let response = client
+        .post(endpoint.clone())
+        .bearer_auth(token)
         .send()
         .await
         .map_err(|error| format!("request failed: {error}"))?;
@@ -224,7 +224,11 @@ async fn main() {
     let max_inflight: usize = parse_env("BOT_WORKER_MAX_INFLIGHT", 8);
     let http_timeout_secs: u64 = parse_env("BOT_HTTP_TIMEOUT_SECS", 30);
     let bot_api_url = parse_bot_api_url(env::var("BOT_API_URL").ok().as_deref());
-    let api_key = parse_optional_api_key(env::var("BOT_SERVICE_API_KEY").ok().as_deref());
+    let auth_config = platform_auth::AuthConfig::from_env();
+    if let Err(error) = auth_config.validate_runtime() {
+        tracing::error!(service = SERVICE_NAME, %error, "worker startup failed");
+        return;
+    }
     let realtime_url: Option<String> = env::var("REALTIME_GATEWAY_URL")
         .ok()
         .filter(|v| !v.trim().is_empty());
@@ -262,7 +266,6 @@ async fn main() {
         http_timeout_secs,
         tenant_id = %tenant_context.tenant_id,
         endpoint = %endpoint,
-        api_key_configured = api_key.is_some(),
         has_realtime_url = realtime_url.is_some(),
         "worker startup"
     );
@@ -280,11 +283,11 @@ async fn main() {
 
                 let client_ref = client.clone();
                 let endpoint_ref = endpoint.clone();
-                let api_key_ref = api_key.clone();
+                let auth_config_ref = auth_config.clone();
                 let context = tenant_context.clone();
                 let (done_tx, done_rx) = oneshot::channel::<Result<ProcessCallOutcome, String>>();
                 let spawned = runtime.spawn_tenant_task(context, async move {
-                    let result = call_process_all_bots(&client_ref, &endpoint_ref, api_key_ref.as_deref()).await;
+                    let result = call_process_all_bots(&client_ref, &endpoint_ref, &auth_config_ref).await;
                     let _ = done_tx.send(result);
                     Ok(())
                 });
@@ -469,17 +472,6 @@ mod tests {
         assert_eq!(
             parse_bot_api_url(Some("http://bots.local:9000")),
             "http://bots.local:9000"
-        );
-    }
-
-    #[test]
-    fn parse_optional_api_key_behavior() {
-        assert_eq!(parse_optional_api_key(None), None);
-        assert_eq!(parse_optional_api_key(Some("")), None);
-        assert_eq!(parse_optional_api_key(Some("  ")), None);
-        assert_eq!(
-            parse_optional_api_key(Some("secret-key-123")),
-            Some("secret-key-123".to_string())
         );
     }
 

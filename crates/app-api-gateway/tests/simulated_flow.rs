@@ -4,7 +4,12 @@ use hyper::body::to_bytes;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use app_api_gateway::routes::build_router;
+use app_api_gateway::accounts::AccountRepository;
+use app_api_gateway::routes::build_router_with_dependencies;
+
+fn build_router(service_name: &'static str) -> axum::Router {
+    build_router_with_dependencies(service_name, None, AccountRepository::in_memory())
+}
 
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body())
@@ -54,6 +59,7 @@ async fn simulated_player_flow_happy_path() {
         .oneshot(
             Request::builder()
                 .uri("/api/planets")
+                .header(header::AUTHORIZATION, format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -71,6 +77,7 @@ async fn simulated_player_flow_happy_path() {
         .oneshot(
             Request::builder()
                 .uri("/api/fleet")
+                .header(header::AUTHORIZATION, format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -119,10 +126,15 @@ async fn simulated_player_flow_happy_path() {
 
     let movement_response = app
         .clone()
-        .oneshot(json_request_with_body(
-            "/api/fleet/helpers/movement",
-            movement_payload,
-        ))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/fleet/helpers/movement")
+                .header(header::AUTHORIZATION, format!("Bearer {}", dev_token()))
+                .header("content-type", "application/json")
+                .body(Body::from(movement_payload.to_string()))
+                .unwrap(),
+        )
         .await
         .unwrap();
     assert_eq!(movement_response.status(), StatusCode::OK);

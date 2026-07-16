@@ -4,7 +4,21 @@ use hyper::body::to_bytes;
 use serde_json::Value;
 use tower::ServiceExt;
 
-use app_api_gateway::routes::build_router;
+use app_api_gateway::accounts::AccountRepository;
+use app_api_gateway::routes::build_router_with_dependencies;
+
+fn build_router(service_name: &'static str) -> axum::Router {
+    build_router_with_dependencies(service_name, None, AccountRepository::in_memory())
+}
+
+fn dev_token() -> String {
+    let config = platform_auth::AuthConfig {
+        jwt_secret: "default-secret".to_string(),
+        jwt_expiry_seconds: 86_400,
+        ..platform_auth::AuthConfig::default()
+    };
+    platform_auth::generate_token(&config, "u-rust-1", "Commander", "player", Some(1)).unwrap()
+}
 
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body())
@@ -36,6 +50,7 @@ async fn integration_health_and_game_routes_work() {
         .oneshot(
             Request::builder()
                 .uri("/api/fleet")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -53,6 +68,7 @@ async fn integration_health_and_game_routes_work() {
         .oneshot(
             Request::builder()
                 .uri("/api/fleet/f-1001")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -71,6 +87,7 @@ async fn integration_handles_missing_fleet() {
         .oneshot(
             Request::builder()
                 .uri("/api/fleet/unknown")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )

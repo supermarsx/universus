@@ -1,4 +1,5 @@
-use app_api_gateway::routes::build_router;
+use app_api_gateway::accounts::AccountRepository;
+use app_api_gateway::routes::build_router_with_dependencies;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use hyper::body::to_bytes;
@@ -7,17 +8,28 @@ use tower::ServiceExt;
 
 const TEST_SERVICE_NAME: &str = "app-api-gateway";
 
+fn build_router(service_name: &'static str) -> axum::Router {
+    build_router_with_dependencies(service_name, None, AccountRepository::in_memory())
+}
+
 /// Generate a valid JWT that the auth guard will accept.
 ///
 /// Uses the default secret (`"default-secret"`) which is what
 /// [`platform_auth::AuthConfig::from_env`] returns when `JWT_SECRET` is unset.
 fn dev_token() -> String {
+    // Broad legacy route-contract tests exercise handler behavior. The
+    // dedicated authorization_matrix target separately tests every role and
+    // route, so this helper deliberately uses the highest human tier.
+    role_token("u-rust-1", "Commander", "superadmin")
+}
+
+fn role_token(subject: &str, username: &str, role: &str) -> String {
     let config = platform_auth::AuthConfig {
         jwt_secret: "default-secret".to_string(),
         jwt_expiry_seconds: 86_400,
         ..platform_auth::AuthConfig::default()
     };
-    platform_auth::generate_token(&config, "u-rust-1", "Commander", "player", Some(1)).unwrap()
+    platform_auth::generate_token(&config, subject, username, role, Some(1)).unwrap()
 }
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -42,6 +54,115 @@ async fn health_returns_200_and_service_name() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_json(response).await;
     assert_eq!(body["service"], TEST_SERVICE_NAME);
+}
+
+#[tokio::test]
+async fn readiness_returns_503_when_account_repository_is_unavailable() {
+    let app = build_router_with_dependencies(
+        TEST_SERVICE_NAME,
+        None,
+        AccountRepository::unavailable("database offline"),
+    );
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response_json(response).await;
+    assert_eq!(body["status"], "unavailable");
+    assert_eq!(body["dependency"], "account-repository");
+}
+
+#[tokio::test]
+async fn login_returns_503_when_account_repository_is_unavailable() {
+    let app = build_router_with_dependencies(
+        TEST_SERVICE_NAME,
+        None,
+        AccountRepository::unavailable("database offline"),
+    );
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/login")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "email": "commander@example.com",
+                        "password": "Str0ng-Commander-Password"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response_json(response).await;
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Account service is unavailable");
+}
+
+#[tokio::test]
+async fn personal_gameplay_routes_require_signed_authentication() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let movement = r#"{
+        "origin":{"galaxy":1,"system":1,"position":1},
+        "target":{"galaxy":1,"system":2,"position":1},
+        "ships":{"lightFighter":1}
+    }"#;
+    let cases = [
+        ("GET", "/api/messages", None),
+        ("GET", "/api/messages/unread-count", None),
+        ("GET", "/api/fleet", None),
+        ("GET", "/api/fleet/f-1001", None),
+        ("POST", "/api/fleet/helpers/movement", Some(movement)),
+        ("GET", "/api/planets", None),
+        ("GET", "/api/planets/p-001", None),
+        ("GET", "/api/planets/p-001/resources", None),
+        ("GET", "/api/research", None),
+        ("GET", "/api/research/queue", None),
+        ("POST", "/api/research/energy_tech/cost", None),
+        ("GET", "/api/shipyard/p-001/queue", None),
+        ("GET", "/api/shipyard/p-001/build-options", None),
+    ];
+
+    for (method, path, body) in cases {
+        let request = |token: Option<&str>| {
+            let mut builder = Request::builder().method(method).uri(path);
+            if let Some(token) = token {
+                builder = builder.header("authorization", format!("Bearer {token}"));
+            }
+            if body.is_some() {
+                builder = builder.header("content-type", "application/json");
+            }
+            builder
+                .body(body.map(Body::from).unwrap_or_else(Body::empty))
+                .unwrap()
+        };
+
+        let anonymous = app.clone().oneshot(request(None)).await.unwrap();
+        assert_eq!(
+            anonymous.status(),
+            StatusCode::UNAUTHORIZED,
+            "anonymous request unexpectedly reached {method} {path}"
+        );
+
+        let token = dev_token();
+        let authenticated = app.clone().oneshot(request(Some(&token))).await.unwrap();
+        assert_ne!(
+            authenticated.status(),
+            StatusCode::UNAUTHORIZED,
+            "valid JWT was rejected for {method} {path}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -92,6 +213,7 @@ async fn helper_movement_invalid_payload_returns_400_and_error_envelope() {
             Request::builder()
                 .uri("/api/fleet/helpers/movement")
                 .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"origin":{}}"#))
                 .unwrap(),
@@ -119,6 +241,7 @@ async fn helper_movement_valid_payload_returns_200_and_distance_data() {
             Request::builder()
                 .uri("/api/fleet/helpers/movement")
                 .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -134,30 +257,259 @@ async fn helper_movement_valid_payload_returns_200_and_distance_data() {
 }
 
 #[tokio::test]
-async fn auth_login_returns_success_envelope_and_token() {
+async fn auth_register_login_me_and_protected_route_journey() {
     let app = build_router(TEST_SERVICE_NAME);
-    let payload = json!({
-        "email": "commander@example.com",
-        "password": "secret"
-    });
+    let password = "Str0ng-Commander-Password";
+    let register = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/register")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "username": "NewCommander",
+                        "email": "  New.Commander@Example.COM ",
+                        "password": password
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register.status(), StatusCode::OK);
+    let register_body = response_json(register).await;
+    assert_eq!(register_body["data"]["user"]["id"], "dev-1");
+    assert_eq!(
+        register_body["data"]["user"]["email"],
+        "new.commander@example.com"
+    );
 
-    let response = app
+    let login = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/auth/login")
                 .method("POST")
                 .header("content-type", "application/json")
-                .body(Body::from(payload.to_string()))
+                .body(Body::from(
+                    json!({
+                        "email": "NEW.COMMANDER@example.com",
+                        "password": password
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
+    assert_eq!(login.status(), StatusCode::OK);
+    let login_body = response_json(login).await;
+    let token = login_body["data"]["token"].as_str().unwrap();
+    let claims = platform_auth::validate_token(&platform_auth::AuthConfig::from_env(), token)
+        .expect("login returns a signed platform JWT");
+    assert_eq!(claims.sub, "dev-1");
+    assert_eq!(claims.username, "NewCommander");
+    assert_eq!(claims.email.as_deref(), Some("new.commander@example.com"));
+    assert_eq!(claims.role, "player");
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = response_json(response).await;
-    assert_eq!(body["success"], true);
-    assert!(body["data"]["token"].is_string());
-    assert_eq!(body["data"]["user"]["email"], "commander@example.com");
+    let me = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/me")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(me.status(), StatusCode::OK);
+    let me_body = response_json(me).await;
+    assert_eq!(me_body["data"]["id"], "dev-1");
+    assert_eq!(me_body["data"]["username"], "NewCommander");
+
+    let profile = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/profile")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(profile.status(), StatusCode::OK);
+    let profile_body = response_json(profile).await;
+    assert_eq!(profile_body["data"]["username"], "NewCommander");
+
+    let protected = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/account/resources")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(protected.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn auth_registration_enforces_case_insensitive_uniqueness() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let registration = |username: &str, email: &str| {
+        Request::builder()
+            .uri("/api/auth/register")
+            .method("POST")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                json!({
+                    "username": username,
+                    "email": email,
+                    "password": "Str0ng-Commander-Password"
+                })
+                .to_string(),
+            ))
+            .unwrap()
+    };
+
+    let first = app
+        .clone()
+        .oneshot(registration("Commander", "commander@example.com"))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    for request in [
+        registration("Other", " COMMANDER@EXAMPLE.COM "),
+        registration("COMMANDER", "other@example.com"),
+    ] {
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], "Username or email is already registered");
+    }
+}
+
+#[tokio::test]
+async fn auth_wrong_and_unknown_credentials_share_the_same_401() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let register = Request::builder()
+        .uri("/api/auth/register")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({
+                "username": "Commander",
+                "email": "commander@example.com",
+                "password": "Str0ng-Commander-Password"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(register).await.unwrap().status(),
+        StatusCode::OK
+    );
+
+    for (email, password) in [
+        ("commander@example.com", "Wr0ng-Password"),
+        ("unknown@example.com", "Wr0ng-Password"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/login")
+                    .method("POST")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": password}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let body = response_json(response).await;
+        assert_eq!(body["error"], "Invalid email or password");
+    }
+}
+
+#[tokio::test]
+async fn auth_registration_rejects_malformed_and_weak_input() {
+    let app = build_router(TEST_SERVICE_NAME);
+    for payload in [
+        json!({"username":"x", "email":"valid@example.com", "password":"Str0ngPassword"}),
+        json!({"username":"ValidUser", "email":"not-an-email", "password":"Str0ngPassword"}),
+        json!({"username":"ValidUser", "email":"valid@example.com", "password":"alllowercase"}),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/auth/register")
+                    .method("POST")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    let malformed = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/register")
+                .method("POST")
+                .header("content-type", "application/json")
+                .body(Body::from("{"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn auth_logout_rejects_forged_token_and_reports_stateless_semantics() {
+    let app = build_router(TEST_SERVICE_NAME);
+    let forged = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/logout")
+                .method("POST")
+                .header("authorization", "Bearer forged-token")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(forged.status(), StatusCode::UNAUTHORIZED);
+
+    let valid = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/auth/logout")
+                .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(valid.status(), StatusCode::OK);
+    let body = response_json(valid).await;
+    assert_eq!(body["data"]["revoked"], false);
+    assert_eq!(body["data"]["sessionRevocationSupported"], false);
 }
 
 #[tokio::test]
@@ -180,6 +532,7 @@ async fn fleet_move_alias_matches_movement_response_shape() {
             Request::builder()
                 .uri("/api/fleet/move")
                 .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -200,6 +553,7 @@ async fn planets_list_returns_success_envelope() {
             Request::builder()
                 .uri("/api/planets")
                 .method("GET")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -220,10 +574,7 @@ async fn planets_list_returns_success_envelope() {
         "/assets/planet-rust-prototype/new-terra-rust-480p-overview-banner.png"
     );
     assert_eq!(planets[0]["visualSeed"], json!(0x5EED_1208_0001u64));
-    assert_eq!(
-        planets[0]["visualVersion"],
-        "game-planet-visuals@0.1.0"
-    );
+    assert_eq!(planets[0]["visualVersion"], "game-planet-visuals@0.1.0");
 }
 
 #[tokio::test]
@@ -276,6 +627,7 @@ async fn messages_unread_count_returns_success_envelope() {
             Request::builder()
                 .uri("/api/messages/unread-count")
                 .method("GET")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -339,10 +691,7 @@ async fn galaxy_system_returns_requested_coordinates() {
         "/assets/planet-rust-prototype/new-terra-rust-480p-icon.png"
     );
     assert_eq!(new_terra["visualSeed"], json!(0x5EED_1208_0001u64));
-    assert_eq!(
-        new_terra["visualVersion"],
-        "game-planet-visuals@0.1.0"
-    );
+    assert_eq!(new_terra["visualVersion"], "game-planet-visuals@0.1.0");
 
     let empty_slot = slots
         .iter()
@@ -387,6 +736,7 @@ async fn research_cost_for_known_tech_returns_payload() {
             Request::builder()
                 .uri("/api/research/energy_tech/cost")
                 .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -412,6 +762,7 @@ async fn shipyard_build_preview_requires_positive_count() {
             Request::builder()
                 .uri("/api/shipyard/p-001/build-preview")
                 .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(payload.to_string()))
                 .unwrap(),
@@ -446,7 +797,7 @@ async fn account_profile_without_auth_returns_401() {
 }
 
 #[tokio::test]
-async fn account_profile_with_valid_bearer_token_returns_200() {
+async fn account_profile_rejects_token_without_persisted_account() {
     let app = build_router(TEST_SERVICE_NAME);
     let response = app
         .oneshot(
@@ -460,10 +811,10 @@ async fn account_profile_with_valid_bearer_token_returns_200() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     let body = response_json(response).await;
-    assert_eq!(body["success"], true);
-    assert_eq!(body["data"]["username"], "Commander");
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Authenticated account is unavailable");
 }
 
 #[tokio::test]
@@ -524,10 +875,11 @@ async fn users_me_with_auth_returns_parity_friendly_shape() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = response_json(response).await;
-    assert_eq!(body["id"], 1);
+    let expected_id = platform_auth::stable_numeric_subject_id("u-rust-1") as i64;
+    assert_eq!(body["id"], expected_id);
     assert_eq!(body["username"], "Commander");
-    assert_eq!(body["data"]["id"], 1);
-    assert_eq!(body["user"]["id"], 1);
+    assert_eq!(body["data"]["id"], expected_id);
+    assert_eq!(body["user"]["id"], expected_id);
     assert_eq!(body["research"]["energy_technology"], 12);
 }
 
@@ -2295,6 +2647,7 @@ async fn analytics_events_and_usage_routes_work() {
             Request::builder()
                 .uri("/api/analytics/events")
                 .method("POST")
+                .header("authorization", format!("Bearer {}", dev_token()))
                 .header("content-type", "application/json")
                 .body(Body::from(event_payload.to_string()))
                 .unwrap(),

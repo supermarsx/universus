@@ -3,15 +3,16 @@ use axum::routing::get;
 use axum::{Extension, Json, Router};
 use serde::Serialize;
 
-use crate::auth_guard::BearerToken;
+use crate::auth_guard::AuthUser;
+use crate::authorization::numeric_subject;
 use crate::state::AppState;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct UserIdentity {
     id: i64,
-    username: &'static str,
-    email: &'static str,
-    role: &'static str,
+    username: String,
+    email: Option<String>,
+    role: String,
     is_admin: bool,
     dark_matter: i64,
 }
@@ -20,9 +21,9 @@ struct UserIdentity {
 #[serde(rename_all = "camelCase")]
 struct MeResponse {
     id: i64,
-    username: &'static str,
-    email: &'static str,
-    role: &'static str,
+    username: String,
+    email: Option<String>,
+    role: String,
     is_admin: bool,
     dark_matter: i64,
     is_admin_user: bool,
@@ -61,29 +62,33 @@ pub fn router() -> Router {
 }
 
 async fn me_handler(
-    BearerToken(token): BearerToken,
+    AuthUser(actor): AuthUser,
     Extension(app_state): Extension<AppState>,
 ) -> Response {
-    let resources = app_state.account_resources(&token);
+    let resources = app_state.account_resources(&actor.user_id);
+    let is_admin = matches!(
+        actor.role.to_ascii_lowercase().as_str(),
+        "admin" | "superadmin"
+    );
     let user = UserIdentity {
-        id: 1,
-        username: "Commander",
-        email: "commander@example.com",
-        role: "player",
-        is_admin: false,
+        id: numeric_subject(&actor.user_id),
+        username: actor.username,
+        email: actor.email,
+        role: actor.role,
+        is_admin,
         dark_matter: resources.dark_matter,
     };
 
     Json(MeResponse {
         id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
+        username: user.username.clone(),
+        email: user.email.clone(),
+        role: user.role.clone(),
         is_admin: user.is_admin,
         dark_matter: user.dark_matter,
         is_admin_user: user.is_admin,
         dark_matter_balance: user.dark_matter,
-        user: UserIdentity { ..user },
+        user: user.clone(),
         research: UserResearchLevels {
             energy_technology: 12,
             weapons_technology: 9,

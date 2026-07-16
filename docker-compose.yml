@@ -1,3 +1,7 @@
+x-auth-environment: &auth-environment
+  UNIVERSUS_ENV: production
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a unique value of at least 32 bytes}
+
 services:
   database:
     build:
@@ -67,6 +71,7 @@ services:
       rust-core-engine:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -85,7 +90,9 @@ services:
       rust-api-gateway:
         condition: service_started
     environment:
+      <<: *auth-environment
       PORT: 3005
+      API_GATEWAY_URL: http://rust-api-gateway:3000
     ports:
       - "8080:3005"
     restart: unless-stopped
@@ -101,6 +108,7 @@ services:
       database:
         condition: service_healthy
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
@@ -122,6 +130,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
@@ -139,6 +148,7 @@ services:
       rust-bot-api:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       BOT_API_URL: http://rust-bot-api:4001
       BOT_WORKER_INTERVAL_MS: 60000
@@ -159,6 +169,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
@@ -178,6 +189,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       REDIS_URL: redis://redis:6379
       WORKER_INTERVAL_SECONDS: 10
@@ -198,6 +210,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
@@ -220,9 +233,12 @@ services:
       rust-core-engine:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       PORT: 4004
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      REDIS_URL: redis://redis:6379
+      REALTIME_ALLOWED_ORIGINS: ${REALTIME_ALLOWED_ORIGINS:?REALTIME_ALLOWED_ORIGINS must list trusted browser origins}
     ports:
       - "4304:4004"
     restart: unless-stopped
@@ -240,6 +256,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      <<: *auth-environment
       CORE_BIND_ADDR: 0.0.0.0:50051
     ports:
       - "50051:50051"
@@ -258,6 +275,7 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -278,6 +296,7 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -299,6 +318,7 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -318,6 +338,7 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -343,6 +364,7 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
+      <<: *auth-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004

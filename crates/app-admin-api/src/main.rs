@@ -5,7 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{header::AUTHORIZATION, Request, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use platform_adapter::{PlatformAdapterDefinition, PlatformAdapterRegistry};
@@ -70,6 +72,12 @@ struct Envelope<T> {
 struct ServiceStatus {
     status: &'static str,
     service: &'static str,
+}
+
+#[derive(Serialize)]
+struct AuthFailure {
+    status: &'static str,
+    error: &'static str,
 }
 
 #[derive(Serialize)]
@@ -193,21 +201,11 @@ struct MigrationRollbackRequest {
     migration_id: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct AdminOpsState {
     blocked_users: BTreeSet<String>,
     maintenance: MaintenancePayload,
     resource_adjustments: BTreeMap<String, BTreeMap<String, i64>>,
-}
-
-impl Default for AdminOpsState {
-    fn default() -> Self {
-        Self {
-            blocked_users: BTreeSet::new(),
-            maintenance: MaintenancePayload::default(),
-            resource_adjustments: BTreeMap::new(),
-        }
-    }
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -244,6 +242,7 @@ struct AdminOpsSnapshot {
     resource_adjustments: BTreeMap<String, BTreeMap<String, i64>>,
 }
 
+#[cfg(test)]
 fn app_router() -> Router {
     app_with_state(AppState::default())
 }
@@ -280,7 +279,8 @@ fn app_with_state(state: AppState) -> Router {
         .route(
             "/tenants/:tenant_id/migrations/rollback",
             post(rollback_tenant_migration),
-        );
+        )
+        .route_layer(middleware::from_fn(require_admin_auth));
 
     Router::new()
         .route("/health", get(health))
@@ -288,6 +288,42 @@ fn app_with_state(state: AppState) -> Router {
         .route("/status", get(status))
         .nest("/api/admin", admin_router)
         .with_state(state)
+}
+
+async fn require_admin_auth(
+    mut request: Request<axum::body::Body>,
+    next: Next<axum::body::Body>,
+) -> Response {
+    let Some(authorization) = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized");
+    };
+
+    let config = platform_auth::AuthConfig::from_env();
+    let user = match platform_auth::authenticate_request(&config, authorization) {
+        Ok(user) => user,
+        Err(_) => return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized"),
+    };
+    if platform_auth::require_role(&user, platform_auth::UserRole::Admin).is_err() {
+        return auth_failure(StatusCode::FORBIDDEN, "Forbidden");
+    }
+
+    request.extensions_mut().insert(user);
+    next.run(request).await
+}
+
+fn auth_failure(status: StatusCode, error: &'static str) -> Response {
+    (
+        status,
+        Json(AuthFailure {
+            status: "error",
+            error,
+        }),
+    )
+        .into_response()
 }
 
 async fn health() -> Json<ServiceStatus> {
@@ -716,6 +752,10 @@ fn listen_port(default_port: u16) -> u16 {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
+    platform_auth::AuthConfig::from_env()
+        .validate_runtime()
+        .context("validating authentication configuration")?;
+
     let adapter_config_path = std::env::var("ADAPTER_REGISTRY_PATH")
         .unwrap_or_else(|_| "database/runtime-adapters.json".into());
     let adapter_lease_coordinator = Arc::new(LeaseCoordinator::new());
@@ -749,7 +789,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
-    use axum::http::{Method, Request, StatusCode};
+    use axum::http::{Method, Request as HttpRequest, StatusCode};
     use axum::Router;
     use hyper::body::to_bytes;
     use serde_json::{json, Value};
@@ -766,6 +806,18 @@ mod tests {
     use platform_migrations::{MigrationRunner, MigrationSpec};
 
     use super::{app_router, app_with_state, AppState};
+
+    struct Request;
+
+    impl Request {
+        fn builder() -> axum::http::request::Builder {
+            let config = platform_auth::AuthConfig::from_env();
+            let token =
+                platform_auth::generate_token(&config, "admin-test", "Admin Test", "admin", None)
+                    .expect("generate admin token");
+            HttpRequest::builder().header("authorization", format!("Bearer {token}"))
+        }
+    }
 
     async fn json_body(response: axum::response::Response) -> Value {
         let bytes = to_bytes(response.into_body()).await.expect("read body");
@@ -805,7 +857,8 @@ mod tests {
                 description: "integration".into(),
                 script: "SELECT 1".into(),
             })
-            .await;
+            .await
+            .expect("register migration");
 
         let state = AppState::new_with_services(Arc::new(registry), runner);
         app_with_state(state)
@@ -829,6 +882,51 @@ mod tests {
         let body = json_body(response).await;
         assert_eq!(body["status"], "ok");
         assert_eq!(body["service"], "app-admin-api");
+    }
+
+    #[tokio::test]
+    async fn admin_routes_reject_anonymous_and_player_but_accept_admin() {
+        let app = app_router();
+
+        let anonymous = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/admin/dashboard")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+        let config = platform_auth::AuthConfig::from_env();
+        let player_token =
+            platform_auth::generate_token(&config, "player-test", "Player", "player", None)
+                .expect("generate player token");
+        let player = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/api/admin/dashboard")
+                    .header("authorization", format!("Bearer {player_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(player.status(), StatusCode::FORBIDDEN);
+
+        let admin = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/dashboard")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(admin.status(), StatusCode::OK);
     }
 
     #[tokio::test]

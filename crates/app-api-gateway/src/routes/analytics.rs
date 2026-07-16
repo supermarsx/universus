@@ -5,7 +5,8 @@ use axum::{Extension, Json, Router};
 use platform_db::Database;
 use serde::Deserialize;
 
-use crate::auth_guard::BearerToken;
+use crate::auth_guard::{AuthUser, BearerToken};
+use crate::authorization::numeric_subject;
 use crate::response::{bad_request, success};
 use crate::state::AppState;
 
@@ -29,6 +30,7 @@ pub fn router() -> Router {
 }
 
 async fn track_event_handler(
+    AuthUser(user): AuthUser,
     Extension(db): Extension<Option<Database>>,
     Extension(app_state): Extension<AppState>,
     payload: Result<Json<AnalyticsEventRequest>, JsonRejection>,
@@ -48,7 +50,7 @@ async fn track_event_handler(
                 input.event_type.trim(),
                 input.session_id.as_deref(),
                 input.properties.clone(),
-                None,
+                Some(numeric_subject(&user.user_id)),
             )
             .await;
         if track_result.is_err() {

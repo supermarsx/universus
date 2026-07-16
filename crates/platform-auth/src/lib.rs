@@ -4,6 +4,9 @@
 //! Provides JWT token management, password hashing, session management,
 //! role-based access control, and auth middleware helpers for Axum services.
 
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::Argon2;
+use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -21,10 +24,30 @@ pub enum AuthError {
     TokenInvalid,
     TokenMissing,
     WeakPassword(String),
+    PasswordHashFailed,
     SessionExpired,
     SessionRevoked,
     TooManySessions,
 }
+
+/// Invalid authentication configuration detected before a service starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuthConfigError {
+    InsecureProductionSecret,
+}
+
+impl fmt::Display for AuthConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InsecureProductionSecret => write!(
+                f,
+                "JWT_SECRET must be explicitly configured with at least 32 bytes in production"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for AuthConfigError {}
 
 impl fmt::Display for AuthError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -34,6 +57,7 @@ impl fmt::Display for AuthError {
             Self::TokenInvalid => write!(f, "token invalid"),
             Self::TokenMissing => write!(f, "token missing"),
             Self::WeakPassword(reason) => write!(f, "weak password: {reason}"),
+            Self::PasswordHashFailed => write!(f, "password hashing failed"),
             Self::SessionExpired => write!(f, "session expired"),
             Self::SessionRevoked => write!(f, "session revoked"),
             Self::TooManySessions => write!(f, "too many sessions"),
@@ -96,6 +120,44 @@ impl AuthConfig {
             bcrypt_cost,
             max_sessions_per_user,
         }
+    }
+
+    /// Reject development/default signing secrets in production-like environments.
+    ///
+    /// Local development intentionally retains the existing default so tests and
+    /// one-command development remain compatible. Deployments identify themselves
+    /// with `UNIVERSUS_ENV`, `APP_ENV`, `ENVIRONMENT`, or `RUST_ENV`.
+    pub fn validate_runtime(&self) -> Result<(), AuthConfigError> {
+        let environment = ["UNIVERSUS_ENV", "APP_ENV", "ENVIRONMENT", "RUST_ENV"]
+            .into_iter()
+            .find_map(|name| std::env::var(name).ok())
+            .unwrap_or_else(|| "development".to_string());
+        self.validate_for_environment(&environment)
+    }
+
+    /// Validate a configuration for an explicit deployment environment.
+    pub fn validate_for_environment(&self, environment: &str) -> Result<(), AuthConfigError> {
+        let production_like = matches!(
+            environment.trim().to_ascii_lowercase().as_str(),
+            "production" | "prod" | "staging" | "stage"
+        );
+        if !production_like {
+            return Ok(());
+        }
+
+        let secret = self.jwt_secret.trim();
+        let known_default = matches!(
+            secret.to_ascii_lowercase().as_str(),
+            "default-secret"
+                | "change-me"
+                | "change-me-in-production"
+                | "replace-with-a-random-secret-at-least-32-bytes"
+        );
+        if known_default || secret.len() < 32 {
+            return Err(AuthConfigError::InsecureProductionSecret);
+        }
+
+        Ok(())
     }
 }
 
@@ -368,6 +430,8 @@ fn now_timestamp() -> i64 {
 pub struct Claims {
     pub sub: String,
     pub username: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     pub role: String,
     pub universe_id: Option<i64>,
     pub exp: i64,
@@ -418,10 +482,39 @@ pub fn generate_token(
     role: &str,
     universe_id: Option<i64>,
 ) -> Result<String, AuthError> {
+    generate_token_with_email(config, user_id, username, None, role, universe_id)
+}
+
+/// Produce a deterministic positive numeric bridge for legacy stores that
+/// cannot yet represent the platform's string user subjects.
+///
+/// Authorization must still be based on the signed string subject; this value
+/// is only an internal compatibility identifier.
+pub fn stable_numeric_subject_id(subject: &str) -> u64 {
+    let digest = sha256(subject.as_bytes());
+    let value = u64::from_be_bytes([
+        digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+    ]);
+    (value & i64::MAX as u64).max(1)
+}
+
+/// Generate a signed access token that also carries the authenticated email.
+///
+/// The email claim is optional so tokens issued by older callers remain
+/// compatible with [`validate_token`].
+pub fn generate_token_with_email(
+    config: &AuthConfig,
+    user_id: &str,
+    username: &str,
+    email: Option<&str>,
+    role: &str,
+    universe_id: Option<i64>,
+) -> Result<String, AuthError> {
     let now = now_timestamp();
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
+        email: email.map(str::to_owned),
         role: role.to_string(),
         universe_id,
         iat: now,
@@ -452,6 +545,7 @@ pub fn generate_refresh_token(config: &AuthConfig, user_id: &str) -> Result<Stri
     let claims = Claims {
         sub: user_id.to_string(),
         username: String::new(),
+        email: None,
         role: "refresh".to_string(),
         universe_id: None,
         iat: now,
@@ -475,53 +569,41 @@ pub fn refresh_access_token(
     if claims.role != "refresh" {
         return Err(AuthError::TokenInvalid);
     }
-    generate_token(config, &claims.sub, username, role, None)
+    generate_token_with_email(
+        config,
+        &claims.sub,
+        username,
+        claims.email.as_deref(),
+        role,
+        None,
+    )
 }
 
 // ---------------------------------------------------------------------------
-// Password hashing (iterative SHA-256 with salt — no external crates)
+// Password hashing (Argon2id PHC format)
 // ---------------------------------------------------------------------------
 
-/// Hash a password using iterative SHA-256 with a random salt.
+/// Hash a password with Argon2id and a cryptographically random salt.
 ///
-/// Output format: `$iter$<cost>$<hex-salt>$<hex-hash>`
-pub fn hash_password(password: &str, cost: u32) -> String {
-    let iterations = 1u32 << cost.min(20); // cap to avoid unreasonable work
-    let salt_bytes = sha256(generate_id().as_bytes());
-    let salt = hex_encode(&salt_bytes[..16]);
-
-    let mut hash = sha256(format!("{salt}{password}").as_bytes());
-    for _ in 1..iterations {
-        let mut buf = Vec::with_capacity(32 + password.len());
-        buf.extend_from_slice(&hash);
-        buf.extend_from_slice(password.as_bytes());
-        hash = sha256(&buf);
-    }
-    format!("$iter${cost}${salt}${}", hex_encode(&hash))
+/// The Argon2 crate's reviewed defaults define the memory and time parameters.
+/// Callers must run this CPU- and memory-intensive operation outside async
+/// executor worker threads.
+pub fn hash_password(password: &str) -> Result<String, AuthError> {
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|hash| hash.to_string())
+        .map_err(|_| AuthError::PasswordHashFailed)
 }
 
 /// Verify a password against its hash produced by [`hash_password`].
 pub fn verify_password(password: &str, stored: &str) -> bool {
-    let parts: Vec<&str> = stored.split('$').collect();
-    // Expected: ["", "iter", "<cost>", "<salt>", "<hash>"]
-    if parts.len() != 5 || parts[1] != "iter" {
+    let Ok(parsed) = PasswordHash::new(stored) else {
         return false;
-    }
-    let cost: u32 = match parts[2].parse() {
-        Ok(c) => c,
-        Err(_) => return false,
     };
-    let salt = parts[3];
-    let iterations = 1u32 << cost.min(20);
-
-    let mut hash = sha256(format!("{salt}{password}").as_bytes());
-    for _ in 1..iterations {
-        let mut buf = Vec::with_capacity(32 + password.len());
-        buf.extend_from_slice(&hash);
-        buf.extend_from_slice(password.as_bytes());
-        hash = sha256(&buf);
-    }
-    hex_encode(&hash) == parts[4]
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok()
 }
 
 /// Validate that a password meets minimum complexity requirements.
@@ -574,6 +656,8 @@ pub struct Session {
 pub struct SessionStore {
     pub sessions: HashMap<String, Session>,
     pub max_sessions_per_user: usize,
+    creation_order: HashMap<String, u64>,
+    next_creation_order: u64,
 }
 
 impl SessionStore {
@@ -581,6 +665,8 @@ impl SessionStore {
         Self {
             sessions: HashMap::new(),
             max_sessions_per_user,
+            creation_order: HashMap::new(),
+            next_creation_order: 0,
         }
     }
 
@@ -595,16 +681,21 @@ impl SessionStore {
         expires_at: i64,
     ) -> Session {
         // Enforce per-user limit.
-        let mut user_sessions: Vec<(String, i64)> = self
+        let mut user_sessions: Vec<(String, u64)> = self
             .sessions
             .iter()
             .filter(|(_, s)| s.user_id == user_id && !s.is_revoked)
-            .map(|(id, s)| (id.clone(), s.created_at))
+            .map(|(id, _)| {
+                (
+                    id.clone(),
+                    self.creation_order.get(id).copied().unwrap_or(u64::MAX),
+                )
+            })
             .collect();
 
         if user_sessions.len() >= self.max_sessions_per_user {
             // Sort oldest-first, revoke enough to make room.
-            user_sessions.sort_by_key(|(_, ts)| *ts);
+            user_sessions.sort_by_key(|(_, order)| *order);
             let to_revoke = user_sessions.len() - self.max_sessions_per_user + 1;
             for (sid, _) in user_sessions.iter().take(to_revoke) {
                 if let Some(s) = self.sessions.get_mut(sid) {
@@ -624,6 +715,9 @@ impl SessionStore {
             is_revoked: false,
         };
         let id = session.id.clone();
+        self.creation_order
+            .insert(id.clone(), self.next_creation_order);
+        self.next_creation_order = self.next_creation_order.saturating_add(1);
         self.sessions.insert(id, session.clone());
         session
     }
@@ -677,6 +771,8 @@ impl SessionStore {
     pub fn cleanup_expired(&mut self, now: i64) -> usize {
         let before = self.sessions.len();
         self.sessions.retain(|_, s| s.expires_at > now);
+        self.creation_order
+            .retain(|session_id, _| self.sessions.contains_key(session_id));
         before - self.sessions.len()
     }
 }
@@ -700,6 +796,7 @@ pub fn extract_bearer_token(authorization_header: &str) -> Option<&str> {
 pub struct AuthUser {
     pub user_id: String,
     pub username: String,
+    pub email: Option<String>,
     pub role: String,
     pub universe_id: Option<i64>,
 }
@@ -714,6 +811,7 @@ pub fn authenticate_request(
     Ok(AuthUser {
         user_id: claims.sub,
         username: claims.username,
+        email: claims.email,
         role: claims.role,
         universe_id: claims.universe_id,
     })
@@ -804,6 +902,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn production_rejects_default_and_short_jwt_secrets() {
+        let mut config = test_config();
+        config.jwt_secret = "default-secret".to_string();
+        assert_eq!(
+            config.validate_for_environment("production"),
+            Err(AuthConfigError::InsecureProductionSecret)
+        );
+
+        config.jwt_secret = "still-too-short".to_string();
+        assert_eq!(
+            config.validate_for_environment("staging"),
+            Err(AuthConfigError::InsecureProductionSecret)
+        );
+    }
+
+    #[test]
+    fn production_accepts_strong_secret_and_development_keeps_compatibility() {
+        let mut config = test_config();
+        config.jwt_secret = "0123456789abcdef0123456789abcdef".to_string();
+        assert_eq!(config.validate_for_environment("prod"), Ok(()));
+
+        config.jwt_secret = "default-secret".to_string();
+        assert_eq!(config.validate_for_environment("development"), Ok(()));
+    }
+
     // -- SHA-256 sanity ---------------------------------------------------
 
     #[test]
@@ -822,6 +946,14 @@ mod tests {
             hex_encode(&digest),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn stable_numeric_subject_id_is_positive_and_deterministic() {
+        let first = stable_numeric_subject_id("user:alpha");
+        assert_eq!(first, stable_numeric_subject_id("user:alpha"));
+        assert_ne!(first, stable_numeric_subject_id("user:beta"));
+        assert!((1..=i64::MAX as u64).contains(&first));
     }
 
     // -- Base64-URL -------------------------------------------------------
@@ -912,9 +1044,11 @@ mod tests {
 
     #[test]
     fn hash_and_verify_password() {
-        let hash = hash_password("Str0ngP@ss", 4);
+        let hash = hash_password("Str0ngP@ss").unwrap();
+        assert!(hash.starts_with("$argon2id$"));
         assert!(verify_password("Str0ngP@ss", &hash));
         assert!(!verify_password("wrongpassword", &hash));
+        assert!(!verify_password("Str0ngP@ss", "$iter$4$salt$legacy"));
     }
 
     #[test]
@@ -1083,6 +1217,7 @@ mod tests {
         let admin_user = AuthUser {
             user_id: "u1".into(),
             username: "admin_alice".into(),
+            email: None,
             role: "admin".into(),
             universe_id: None,
         };
@@ -1093,6 +1228,7 @@ mod tests {
         let player_user = AuthUser {
             user_id: "u2".into(),
             username: "player_bob".into(),
+            email: None,
             role: "player".into(),
             universe_id: None,
         };
