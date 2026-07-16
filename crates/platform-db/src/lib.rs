@@ -1056,7 +1056,7 @@ impl Database {
                 SET
                     status = 'processing',
                     lease_owner = $3,
-                    lease_until = now() + ($4::TEXT || ' seconds')::INTERVAL,
+                    lease_until = now() + ($4::BIGINT * INTERVAL '1 second'),
                     updated_at = now()
                 FROM candidates
                 WHERE m.id = candidates.id
@@ -1123,7 +1123,7 @@ impl Database {
                     lease_owner = NULL,
                     lease_until = CASE
                         WHEN attempt_count + 1 >= $4 THEN NULL
-                        ELSE now() + ($3::TEXT || ' seconds')::INTERVAL
+                        ELSE now() + ($3::BIGINT * INTERVAL '1 second')
                     END,
                     last_error = $2,
                     updated_at = now()
@@ -1249,7 +1249,7 @@ impl Database {
         let row = client
             .query_one(
                 "INSERT INTO scheduled_tasks (task_type, payload, run_at, task_key)
-                 VALUES ($1, $2, to_timestamp($3), $4)
+                 VALUES ($1, $2, TIMESTAMPTZ 'epoch' + ($3::BIGINT * INTERVAL '1 second'), $4)
                  ON CONFLICT (task_key) DO UPDATE SET
                     run_at = LEAST(scheduled_tasks.run_at, EXCLUDED.run_at),
                     updated_at = now()
@@ -1296,7 +1296,7 @@ impl Database {
                 "WITH candidates AS (
                     SELECT id
                     FROM scheduled_tasks
-                    WHERE status IN ('queued', 'retry')
+                    WHERE status IN ('queued', 'retry', 'running')
                       AND run_at <= now()
                       AND (lease_until IS NULL OR lease_until < now())
                     ORDER BY run_at ASC, id ASC
@@ -1307,7 +1307,7 @@ impl Database {
                 SET
                     status = 'running',
                     lease_owner = $2,
-                    lease_until = now() + ($3::TEXT || ' seconds')::INTERVAL,
+                    lease_until = now() + ($3::BIGINT * INTERVAL '1 second'),
                     updated_at = now()
                 FROM candidates
                 WHERE t.id = candidates.id
@@ -1334,6 +1334,8 @@ impl Database {
             .collect())
     }
 
+    /// Complete by id for legacy callers that do not participate in leases.
+    /// Lease-based workers must use `complete_scheduled_task_for_owner`.
     pub async fn complete_scheduled_task(&self, task_id: i64) -> DbResult<bool> {
         self.ensure_scheduler_schema().await?;
         let client = self.pool.get().await.map_err(|error| error.to_string())?;
@@ -1354,6 +1356,38 @@ impl Database {
         Ok(affected > 0)
     }
 
+    /// Complete a running task only while `lease_owner` still holds its live
+    /// lease. A worker whose lease expired cannot overwrite a retry or a newer
+    /// worker's result after the task is re-claimed.
+    pub async fn complete_scheduled_task_for_owner(
+        &self,
+        task_id: i64,
+        lease_owner: &str,
+    ) -> DbResult<bool> {
+        self.ensure_scheduler_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let affected = client
+            .execute(
+                "UPDATE scheduled_tasks
+                 SET
+                    status = 'completed',
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    completed_at = now(),
+                    updated_at = now()
+                 WHERE id = $1
+                   AND status = 'running'
+                   AND lease_owner = $2
+                   AND lease_until >= now()",
+                &[&task_id, &lease_owner],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    /// Fail by id for legacy callers that do not participate in leases.
+    /// Lease-based workers must use `fail_scheduled_task_for_owner`.
     pub async fn fail_scheduled_task(
         &self,
         task_id: i64,
@@ -1376,7 +1410,7 @@ impl Database {
                     END,
                     run_at = CASE
                         WHEN attempt_count + 1 >= $4 THEN run_at
-                        ELSE now() + ($3::TEXT || ' seconds')::INTERVAL
+                        ELSE now() + ($3::BIGINT * INTERVAL '1 second')
                     END,
                     last_error = $2,
                     lease_owner = NULL,
@@ -1384,6 +1418,54 @@ impl Database {
                     updated_at = now()
                  WHERE id = $1",
                 &[&task_id, &error_message, &delay_secs, &attempts],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(affected > 0)
+    }
+
+    /// Record failure only for the worker that still owns the live lease.
+    /// This is the scheduler-safe counterpart to the legacy id-only method.
+    pub async fn fail_scheduled_task_for_owner(
+        &self,
+        task_id: i64,
+        lease_owner: &str,
+        error_message: &str,
+        retry_delay_secs: i64,
+        max_attempts: i32,
+    ) -> DbResult<bool> {
+        self.ensure_scheduler_schema().await?;
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let delay_secs = retry_delay_secs.max(1);
+        let attempts = max_attempts.max(1);
+        let affected = client
+            .execute(
+                "UPDATE scheduled_tasks
+                 SET
+                    attempt_count = attempt_count + 1,
+                    status = CASE
+                        WHEN attempt_count + 1 >= $5 THEN 'failed'
+                        ELSE 'retry'
+                    END,
+                    run_at = CASE
+                        WHEN attempt_count + 1 >= $5 THEN run_at
+                        ELSE now() + ($4::BIGINT * INTERVAL '1 second')
+                    END,
+                    last_error = $3,
+                    lease_owner = NULL,
+                    lease_until = NULL,
+                    updated_at = now()
+                 WHERE id = $1
+                   AND status = 'running'
+                   AND lease_owner = $2
+                   AND lease_until >= now()",
+                &[
+                    &task_id,
+                    &lease_owner,
+                    &error_message,
+                    &delay_secs,
+                    &attempts,
+                ],
             )
             .await
             .map_err(|error| error.to_string())?;
@@ -1415,7 +1497,7 @@ impl Database {
             .query_one(
                 "INSERT INTO chat_restrictions
                     (user_id, channel_id, restriction_type, reason, restricted_by, expires_at)
-                 VALUES ($1, $2, $3, $4, $5, CASE WHEN $6::BIGINT IS NULL THEN NULL ELSE to_timestamp($6) END)
+                 VALUES ($1, $2, $3, $4, $5, CASE WHEN $6::BIGINT IS NULL THEN NULL ELSE TIMESTAMPTZ 'epoch' + ($6::BIGINT * INTERVAL '1 second') END)
                  RETURNING
                     id,
                     user_id,
@@ -1512,7 +1594,7 @@ impl Database {
             .execute(
                 "DELETE FROM chat_restrictions
                  WHERE expires_at IS NOT NULL
-                   AND expires_at <= to_timestamp($1)",
+                   AND expires_at <= TIMESTAMPTZ 'epoch' + ($1::BIGINT * INTERVAL '1 second')",
                 &[&now_unix],
             )
             .await
