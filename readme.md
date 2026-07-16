@@ -24,7 +24,7 @@ This repository now hosts the fully Rust-based Universus platform. All runtime s
    ```
 2. Start the hard-cut services:
    ```
-   docker compose up -d rust-api-gateway rust-realtime-gateway rust-web-frontend rust-admin-api rust-bot-api rust-sms-api rust-core-engine rust-scheduler-worker rust-sharding-worker rust-analytics-worker rust-email-worker rust-bot-worker database redis rabbitmq
+   docker compose up -d rust-api-gateway rust-realtime-gateway rust-web-frontend rust-admin-api rust-bot-api rust-sms-api rust-core-engine rust-scheduler-worker rust-sharding-worker rust-analytics-worker rust-email-worker rust-bot-worker database-migrate redis rabbitmq
    ```
 3. Open the services:
    - UI: http://localhost:8080
@@ -50,7 +50,9 @@ This repository now hosts the fully Rust-based Universus platform. All runtime s
 ## Environment
 - Copy `.env.example` (root or service-specific) and set:
   ```
-  DATABASE_URL=postgres://postgres:postgres@localhost:5432/universus_rpg
+  DATABASE_URL=postgres://postgres:<url-encoded-password>@localhost:5432/universus_rpg
+  POSTGRES_PASSWORD=<long-random-password>
+  DATABASE_URL_INTERNAL=postgres://postgres:<url-encoded-password>@database:5432/universus_rpg
   REDIS_URL=redis://localhost:6379
   RUST_LOG=info
   API_PORT=3300
@@ -59,13 +61,18 @@ This repository now hosts the fully Rust-based Universus platform. All runtime s
 - Initialize the database:
   ```
   createdb universus_rpg
-  psql -U postgres -d universus_rpg -f database/sql/schema.sql
+  PGDATABASE=universus_rpg database/scripts/migrate-db.sh
   ```
+  The canonical runner applies numeric migration order, records SHA-256
+  checksums, serializes concurrent runners, and safely skips completed steps.
+  Compose runs the same command in the one-shot `database-migrate` service on
+  every startup, including when `postgres_data` already exists.
 
 ## Testing & observability
 - `cargo check --workspace`
 - `cargo test --workspace` (standard)
 - `scripts/rust/run-cutover-validation.ps1`
+- `database/scripts/test-migrations.sh` (PostgreSQL 16 migration durability)
 
 Telemetry/logging:
 ```

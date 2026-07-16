@@ -7,24 +7,51 @@ x-auth-verifier-environment: &auth-verifier-environment
   AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-https://auth.universus.internal}
   AUTH_JWT_VERIFICATION_KEYS: ${AUTH_JWT_VERIFICATION_KEYS:?AUTH_JWT_VERIFICATION_KEYS must contain kid:base64url-public-key entries}
 
+x-database-dependencies: &database-dependencies
+  database:
+    condition: service_healthy
+  database-migrate:
+    condition: service_completed_successfully
+
 services:
   database:
+    image: universus-database:local
     build:
       context: ./database
     container_name: universus_database
     environment:
-      POSTGRES_DB: universus_rpg
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-universus_rpg}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "test \"$$(head -n 1 /var/lib/postgresql/data/postmaster.pid)\" = \"1\" && pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 5s
+
+  database-migrate:
+    image: universus-database:local
+    build:
+      context: ./database
+    container_name: universus_database_migrate
+    entrypoint: ["/opt/universus/database/scripts/migrate-db.sh"]
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      PGHOST: database
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-universus_rpg}
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      MIGRATION_WAIT_SECONDS: ${MIGRATION_WAIT_SECONDS:-60}
+      MIGRATION_LOCK_TIMEOUT_SECONDS: ${MIGRATION_LOCK_TIMEOUT_SECONDS:-120}
+    restart: "no"
 
   redis:
     build:
@@ -67,8 +94,7 @@ services:
         BIN_NAME: app-api-gateway
     container_name: universus_rust_api_gateway
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       redis:
         condition: service_healthy
       rabbitmq:
@@ -84,7 +110,7 @@ services:
       AUTH_JWT_PRIVATE_KEY_BASE64: ${AUTH_JWT_PRIVATE_KEY_BASE64:?AUTH_JWT_PRIVATE_KEY_BASE64 must be provisioned only to rust-api-gateway}
       PLATFORM_EVENTS_SERVICE_TOKEN: ${API_GATEWAY_REALTIME_PUBLISH_TOKEN:?API_GATEWAY_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
     ports:
       - "3300:3000"
@@ -119,13 +145,12 @@ services:
         BIN_NAME: app-admin-api
     container_name: universus_rust_admin_api
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
     environment:
       <<: *auth-verifier-environment
       AUTH_EXPECTED_AUDIENCE: app-admin-api
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
     ports:
       - "4302:4002"
     restart: unless-stopped
@@ -138,8 +163,7 @@ services:
         BIN_NAME: app-bot-api
     container_name: universus_rust_bot_api
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       redis:
         condition: service_healthy
       rabbitmq:
@@ -148,7 +172,7 @@ services:
       <<: *auth-verifier-environment
       AUTH_EXPECTED_AUDIENCE: app-bot-api
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
     ports:
       - "4301:4001"
     restart: unless-stopped
@@ -181,8 +205,7 @@ services:
         BIN_NAME: app-sms-api
     container_name: universus_rust_sms_api
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       redis:
         condition: service_healthy
       rabbitmq:
@@ -190,7 +213,7 @@ services:
     environment:
       <<: *runtime-environment
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
     ports:
       - "4303:4003"
     restart: unless-stopped
@@ -226,6 +249,7 @@ services:
         BIN_NAME: app-analytics-worker
     container_name: universus_rust_analytics_worker
     depends_on:
+      <<: *database-dependencies
       redis:
         condition: service_healthy
       rabbitmq:
@@ -235,7 +259,7 @@ services:
       PLATFORM_EVENTS_SERVICE_TOKEN: ${ANALYTICS_WORKER_REALTIME_PUBLISH_TOKEN:?ANALYTICS_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
       WORKER_INTERVAL_SECONDS: 10
       ANALYTICS_BATCH_SIZE: 100
@@ -249,8 +273,7 @@ services:
         BIN_NAME: app-realtime-gateway
     container_name: universus_rust_realtime_gateway
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       redis:
         condition: service_healthy
       rust-core-engine:
@@ -260,7 +283,7 @@ services:
       AUTH_EXPECTED_AUDIENCE: app-realtime-gateway
       RUST_LOG: info
       PORT: 4004
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REDIS_URL: redis://redis:6379
       REALTIME_ALLOWED_ORIGINS: ${REALTIME_ALLOWED_ORIGINS:?REALTIME_ALLOWED_ORIGINS must list trusted browser origins}
     ports:
@@ -275,8 +298,7 @@ services:
         BIN_NAME: backend-core
     container_name: universus_rust_core_engine
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       redis:
         condition: service_healthy
     environment:
@@ -294,15 +316,14 @@ services:
         BIN_NAME: app-core-engine
     container_name: universus_rust_app_core_engine
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       rust-realtime-gateway:
         condition: service_started
     environment:
       <<: *runtime-environment
       PLATFORM_EVENTS_SERVICE_TOKEN: ${CORE_ENGINE_REALTIME_PUBLISH_TOKEN:?CORE_ENGINE_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
     ports:
       - "4307:3007"
@@ -316,15 +337,14 @@ services:
         BIN_NAME: app-notifications-worker
     container_name: universus_rust_notifications_worker
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       rust-realtime-gateway:
         condition: service_started
     environment:
       <<: *runtime-environment
       PLATFORM_EVENTS_SERVICE_TOKEN: ${NOTIFICATIONS_WORKER_REALTIME_PUBLISH_TOKEN:?NOTIFICATIONS_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       NOTIFICATION_CLEANUP_INTERVAL_SECS: 900
       NOTIFICATION_RETENTION_DAYS: 30
@@ -339,15 +359,14 @@ services:
         BIN_NAME: app-chat-worker
     container_name: universus_rust_chat_worker
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       rust-realtime-gateway:
         condition: service_started
     environment:
       <<: *runtime-environment
       PLATFORM_EVENTS_SERVICE_TOKEN: ${CHAT_WORKER_REALTIME_PUBLISH_TOKEN:?CHAT_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       CHAT_CLEANUP_INTERVAL_SECS: 300
     restart: unless-stopped
@@ -360,15 +379,14 @@ services:
         BIN_NAME: app-scheduler-worker
     container_name: universus_rust_scheduler_worker
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       rust-realtime-gateway:
         condition: service_started
     environment:
       <<: *runtime-environment
       PLATFORM_EVENTS_SERVICE_TOKEN: ${SCHEDULER_WORKER_REALTIME_PUBLISH_TOKEN:?SCHEDULER_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       GAME_LOOP_INTERVAL_SECS: 5
       FLEET_SCHEDULER_INTERVAL_SECS: 10
@@ -387,15 +405,14 @@ services:
         BIN_NAME: app-sharding-worker
     container_name: universus_rust_sharding_worker
     depends_on:
-      database:
-        condition: service_healthy
+      <<: *database-dependencies
       rust-realtime-gateway:
         condition: service_started
     environment:
       <<: *runtime-environment
       PLATFORM_EVENTS_SERVICE_TOKEN: ${SHARDING_WORKER_REALTIME_PUBLISH_TOKEN:?SHARDING_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
-      DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
+      DATABASE_URL: "${DATABASE_URL_INTERNAL:?DATABASE_URL_INTERNAL must use the database service host}"
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       SERVER_ID: rust-shard-1
       SERVER_TYPE: game

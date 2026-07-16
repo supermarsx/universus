@@ -653,7 +653,7 @@ const distribution = {
 - `UNIVERSE_SEEDING_QUICK_REFERENCE.md` - This document
 
 ### Code Files
-- Database: `database/sql/universe_seeding_schema.sql`
+- Database: `database/sql/steps/04_universe_seeding_schema.sql`
 - Types: `backend/src/types/universe.ts`
 - Services: `backend/src/services/universe*.ts`
 - Routes: `backend/src/routes/universeRoutes.ts`

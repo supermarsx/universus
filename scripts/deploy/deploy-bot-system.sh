@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 TOTAL_STEPS=6
 CURRENT_STEP=0
@@ -31,19 +31,31 @@ log_info() {
 
 cd "$REPO_ROOT"
 
-log_step "Ensuring PostgreSQL and Redis are online"
-sudo service postgresql start >/dev/null 2>&1 || true
-sudo service redis-server start >/dev/null 2>&1 || true
-log_success "PostgreSQL and Redis services started"
+log_step "Starting Compose infrastructure"
+docker compose config --quiet
+docker compose up -d --build database redis rabbitmq database-migrate >/dev/null
+for _ in {1..90}; do
+  MIGRATION_STATE=$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' universus_database_migrate 2>/dev/null || true)
+  [[ "$MIGRATION_STATE" == "exited:0" ]] && break
+  if [[ "$MIGRATION_STATE" == exited:* ]]; then
+    docker compose logs database-migrate
+    log_error "Database migration service failed ($MIGRATION_STATE)"
+    exit 1
+  fi
+  sleep 2
+done
+[[ "${MIGRATION_STATE:-}" == "exited:0" ]] || { log_error "Database migrations timed out"; exit 1; }
+log_success "PostgreSQL, Redis, RabbitMQ, and migrations are ready"
 
-log_step "Applying bot system migration (#005)"
-PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg \
-  -f database/sql/migrations/005_bot_system.sql >/dev/null
-log_success "Bot migration applied"
+log_step "Verifying bot migration history"
+BOT_MIGRATION_COUNT=$(docker compose exec -T database sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM universus_schema_migrations WHERE version = 24;"')
+[[ "$BOT_MIGRATION_COUNT" == "1" ]] || { log_error "Bot migration 24 is not recorded"; exit 1; }
+log_success "Bot migration is current"
 
 log_step "Creating bot tables snapshot"
-TABLES=$(PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d universus_rpg -t -c \
-  "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'bot%';")
+TABLES=$(docker compose exec -T database sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT table_name FROM information_schema.tables WHERE table_schema = '\''public'\'' AND table_name LIKE '\''bot%'\'';"')
 if [ -n "$TABLES" ]; then
   log_success "Bot tables present"
 else
@@ -63,9 +75,17 @@ else
 fi
 
 log_step "Testing bot control endpoints"
+if [[ -z "${UNIVERSUS_ADMIN_EMAIL:-}" || -z "${UNIVERSUS_ADMIN_PASSWORD:-}" ]]; then
+  log_error "Set UNIVERSUS_ADMIN_EMAIL and UNIVERSUS_ADMIN_PASSWORD for the endpoint smoke test"
+  exit 1
+fi
+LOGIN_PAYLOAD=$(jq -n \
+  --arg email "$UNIVERSUS_ADMIN_EMAIL" \
+  --arg password "$UNIVERSUS_ADMIN_PASSWORD" \
+  '{email: $email, password: $password}')
 ADMIN_TOKEN=$(curl -s -X POST http://localhost:3300/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"admin123"}' | jq -r '.token')
+  -d "$LOGIN_PAYLOAD" | jq -r '.token')
 if [ "$ADMIN_TOKEN" == "null" ] || [ -z "$ADMIN_TOKEN" ]; then
   log_error "Unable to obtain admin token"
   exit 1

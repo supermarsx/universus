@@ -48,7 +48,7 @@ jobs:
     needs: build-and-test
     services:
       postgres:
-        image: postgres:15
+        image: postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -81,8 +81,23 @@ jobs:
           PGPASSWORD: postgres
           PGDATABASE: testdb
         run: |
-          chmod +x database/scripts/migrate-test-db.sh
+          chmod +x database/scripts/migrate-db.sh database/scripts/migrate-test-db.sh
           database/scripts/migrate-test-db.sh
+
+      - name: Verify migration durability
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: testdb
+        run: database/scripts/test-migrations.sh
+
+      - name: Verify Compose migration contract and lifecycle
+        shell: pwsh
+        env:
+          POSTGRES_PORT: 55432
+        run: database/scripts/test-compose-migrations.ps1 -Lifecycle
 
       - name: Run Rust integration tests
         env:

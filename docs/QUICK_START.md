@@ -122,8 +122,8 @@ After verification, you should see:
 ### Backend (465+ lines)
 - `backend/src/services/millisecondCombatTracker.ts` (465 lines)
 - `backend/src/routes/admin.ts` (539 lines)
-- `database/sql/migrations/003_*.sql` (143 lines)
-- `database/sql/migrations/004_*.sql` (101 lines)
+- `database/sql/steps/22_migration_003_millisecond_precision_combat.sql`
+- `database/sql/steps/23_migration_004_admin_features.sql`
 
 ### Frontend (4,500+ lines)
 - `frontend/views/pages/leaderboard.njk` (414 lines)

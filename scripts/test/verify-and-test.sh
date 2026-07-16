@@ -72,36 +72,31 @@ else
     exit 1
 fi
 
-# Check if migration 003 has been applied
-log_info "Checking if migration 003 needs to be applied..."
-if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\dt fleet_movements_precise" 2>&1 | grep -q "fleet_movements_precise"; then
-    log_warning "Migration 003 already applied, skipping..."
-else
-    log_info "Applying migration 003 (Millisecond Precision Combat)..."
-    docker-compose exec -T database psql -U postgres -d universus_rpg < database/sql/migrations/003_millisecond_precision_combat.sql
-    
-    # Verify
-    if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\dt fleet_movements_precise" 2>&1 | grep -q "fleet_movements_precise"; then
-        log_success "Migration 003 applied successfully"
-    else
-        log_error "Migration 003 failed"
+# The Compose migration service is the sole schema writer. Wait for the
+# one-shot container and fail the verification run if the durable chain did
+# not complete; never replay individual legacy files here.
+log_info "Waiting for the canonical migration service..."
+for _ in {1..90}; do
+    MIGRATION_STATE=$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' universus_database_migrate 2>/dev/null || true)
+    [[ "$MIGRATION_STATE" == "exited:0" ]] && break
+    if [[ "$MIGRATION_STATE" == exited:* ]]; then
+        docker compose logs database-migrate
+        log_error "Migration service failed ($MIGRATION_STATE)"
+        exit 1
     fi
+    sleep 2
+done
+if [[ "${MIGRATION_STATE:-}" != "exited:0" ]]; then
+    log_error "Migration service did not complete within 180 seconds"
+    exit 1
 fi
-
-# Check if migration 004 has been applied
-log_info "Checking if migration 004 needs to be applied..."
-if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\d users" 2>&1 | grep -q "is_admin"; then
-    log_warning "Migration 004 already applied, skipping..."
+MIGRATION_COUNT=$(docker compose exec -T database sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM universus_schema_migrations;"')
+if [[ "$MIGRATION_COUNT" -gt 0 ]]; then
+    log_success "Canonical migration history contains $MIGRATION_COUNT steps"
 else
-    log_info "Applying migration 004 (Admin Features)..."
-    docker-compose exec -T database psql -U postgres -d universus_rpg < database/sql/migrations/004_admin_features.sql
-    
-    # Verify
-    if docker-compose exec -T database psql -U postgres -d universus_rpg -c "\d users" 2>&1 | grep -q "is_admin"; then
-        log_success "Migration 004 applied successfully"
-    else
-        log_error "Migration 004 failed"
-    fi
+    log_error "Canonical migration history is empty"
+    exit 1
 fi
 
 # Create admin user

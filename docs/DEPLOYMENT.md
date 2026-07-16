@@ -15,6 +15,9 @@
    # Provision the Ed25519 keys and scoped service credentials described below.
    docker compose up --build -d
    ```
+   PostgreSQL becomes healthy only after its final server process is running.
+   The one-shot `database-migrate` service then upgrades both fresh and
+   existing volumes before any database-backed Rust service can start.
 
 3. **Access the game**:
    The Rust web frontend is available at `http://localhost:8080` (the Rust API gateway sits behind it on `http://localhost:3300`).
@@ -28,15 +31,21 @@
 
 1. **Prerequisites**:
    - Rust toolchain (stable)
-   - PostgreSQL 15+
+   - PostgreSQL 16+
    - Redis 7+
    - Docker Compose 2.x
 
 2. **Database Setup**:
    ```bash
    createdb universus_rpg
-   psql -U postgres -d universus_rpg -f database/sql/schema.sql
+   export PGDATABASE=universus_rpg
+   export PGUSER=postgres
+   export PGPASSWORD='<database-password>'
+   database/scripts/migrate-db.sh
    ```
+   Do not apply individual SQL files. The runner owns semantic numeric order,
+   per-step atomic transactions, advisory locking, immutable checksums, and
+   migration history.
 
 3. **Start Redis**:
    ```bash
@@ -69,7 +78,11 @@ Edit the top-level `.env` (or the service-specific `.env` files `crates/app-api-
 
 ```env
 # Database
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/universus_rpg
+DATABASE_URL=postgres://postgres:<url-encoded-password>@localhost:5432/universus_rpg
+POSTGRES_DB=universus_rpg
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=<long-random-password>
+DATABASE_URL_INTERNAL=postgres://postgres:<url-encoded-password>@database:5432/universus_rpg
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -84,6 +97,9 @@ WEB_PORT=8080
 # Browser session cookie. Production/staging defaults to true when omitted.
 COOKIE_SECURE=true
 ```
+
+The password represented in both URLs must be the URL-encoded form of
+`POSTGRES_PASSWORD`.
 
 The frontend rejects `COOKIE_SECURE=false` in production or staging unless
 `UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE=true` is also set. That override is
@@ -202,10 +218,10 @@ production.
 
 ```bash
 # Create backup
-docker exec universus_postgres pg_dump -U postgres universus_rpg > backup.sql
+docker exec universus_database pg_dump -U postgres -d universus_rpg > backup.sql
 
 # Restore backup
-docker exec -i universus_postgres psql -U postgres universus_rpg < backup.sql
+docker exec -i universus_database psql -U postgres -d universus_rpg < backup.sql
 ```
 
 ## Monitoring

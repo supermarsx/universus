@@ -3,9 +3,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-TOTAL_STEPS=10
+TOTAL_STEPS=8
 CURRENT_STEP=0
 
 log_step() {
@@ -27,72 +27,69 @@ log_info() {
 
 cd "$REPO_ROOT"
 
-log_step "Checking PostgreSQL and Redis clients are installed"
-if ! command -v psql &> /dev/null; then
-  log_error "psql missing; please install PostgreSQL client"
-  exit 1
-fi
-if ! command -v redis-cli &> /dev/null; then
-  log_error "redis-cli missing; please install Redis"
-  exit 1
-fi
-log_success "PostgreSQL and Redis clients are available"
-
-log_step "Ensuring PostgreSQL and Redis services are running"
-if ! sudo service postgresql status &> /dev/null; then
-  sudo service postgresql start
-  sleep 2
-fi
-if ! sudo service redis-server status &> /dev/null; then
-  sudo service redis-server start
-  sleep 2
-fi
-log_success "PostgreSQL and Redis are running"
-
-log_step "Recreating universus_rpg database"
-sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" 2>/dev/null || true
-sudo -u postgres psql -c "DROP DATABASE IF EXISTS universus_rpg;" 2>/dev/null || true
-sudo -u postgres psql -c "CREATE DATABASE universus_rpg;" 2>/dev/null || true
-log_success "Database universus_rpg is ready"
-
-log_step "Applying schema and migrations"
-apply_if_exists() {
-  local script="$1"
-  if [ -f "$script" ]; then
-    log_info "Applying $(basename "$script")"
-    sudo -u postgres psql -d universus_rpg -f "$script" >/dev/null 2>&1
-    log_success "  $(basename "$script") applied"
-  else
-    log_info "  $(basename "$script") missing (skipping)"
+log_step "Checking deployment tools"
+for command in docker cargo curl pwsh; do
+  if ! command -v "$command" &> /dev/null; then
+    log_error "$command is required"
+    exit 1
   fi
-}
-
-apply_if_exists "$REPO_ROOT/database/sql/schema.sql"
-for migration in \
-  "$REPO_ROOT/database/sql/migrations/001_update_messages_table.sql" \
-  "$REPO_ROOT/database/sql/migrations/002_add_shop_tables.sql" \
-  "$REPO_ROOT/database/sql/migrations/003_millisecond_precision_combat.sql" \
-  "$REPO_ROOT/database/sql/migrations/004_admin_features.sql" \
-  "$REPO_ROOT/database/sql/migrations/005_bot_system.sql"; do
-  apply_if_exists "$migration"
 done
-apply_if_exists "$REPO_ROOT/database/sql/admin_schema.sql"
-apply_if_exists "$REPO_ROOT/database/sql/debris_schema.sql"
-apply_if_exists "$REPO_ROOT/database/sql/universe_seeding_schema.sql"
+docker compose version >/dev/null
+docker compose config --quiet
+log_success "Docker Compose, Rust, curl, and PowerShell are available"
+
+log_step "Starting infrastructure and applying durable migrations"
+docker compose up -d --build database redis rabbitmq database-migrate >/dev/null
+for _ in {1..90}; do
+  MIGRATION_STATE=$(docker inspect -f '{{.State.Status}}:{{.State.ExitCode}}' universus_database_migrate 2>/dev/null || true)
+  if [[ "$MIGRATION_STATE" == "exited:0" ]]; then
+    break
+  fi
+  if [[ "$MIGRATION_STATE" == exited:* ]]; then
+    docker compose logs database-migrate
+    log_error "Database migration service failed ($MIGRATION_STATE)"
+    exit 1
+  fi
+  sleep 2
+done
+if [[ "${MIGRATION_STATE:-}" != "exited:0" ]]; then
+  docker compose logs database database-migrate
+  log_error "Database migrations did not complete within 180 seconds"
+  exit 1
+fi
+log_success "PostgreSQL, Redis, RabbitMQ, and the migration chain are ready"
 
 log_step "Inspecting schema"
-TABLE_COUNT=$(sudo -u postgres psql -d universus_rpg -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
+TABLE_COUNT=$(docker compose exec -T database sh -c \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '\''public'\'';"')
 log_info "Created tables: ${TABLE_COUNT}"
 log_success "Schema inspection recorded"
 
-log_step "Creating admin user"
-ADMIN_PASSWORD_HASH='$2b$10$rOZhW9K4qVXZ9KqH.xZxVu3kB8pQw3qJ5YTl5Z8vZ9QZxQZxQZxQZ'
-sudo -u postgres psql -d universus_rpg <<'EOF' >/dev/null 2>&1
-INSERT INTO users (username, email, password, created_at, is_admin)
-VALUES ('admin', 'admin@universus.com', '$ADMIN_PASSWORD_HASH', NOW(), true)
+log_step "Creating optional bootstrap admin"
+if [[ -n "${UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH:-}" ]]; then
+  if [[ "$UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH" != '$argon2id$'* ]]; then
+    log_error "UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH must be an Argon2id PHC string"
+    exit 1
+  fi
+  docker compose exec -T \
+    -e UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH="$UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH" \
+    database sh -c \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -v admin_password_hash="$UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH"' \
+    <<'EOF' >/dev/null
+INSERT INTO users (username, email, password_hash, created_at, is_admin)
+VALUES (
+  'admin',
+  'admin@universus.com',
+  :'admin_password_hash',
+  NOW(),
+  true
+)
 ON CONFLICT (email) DO NOTHING;
 EOF
-log_success "Admin user seeded (admin@universus.com / admin123)"
+  log_success "Bootstrap admin seeded at admin@universus.com"
+else
+  log_info "Set UNIVERSUS_BOOTSTRAP_ADMIN_PASSWORD_HASH to seed an admin account"
+fi
 
 log_step "Building Rust workspace"
 cargo build --workspace >/dev/null
