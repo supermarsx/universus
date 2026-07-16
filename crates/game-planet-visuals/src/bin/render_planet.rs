@@ -826,6 +826,8 @@ fn main() -> anyhow::Result<()> {
     let height_file = format!("new-terra-rust{suffix}-height-map.png");
     let vegetation_file = format!("new-terra-rust{suffix}-vegetation-map.png");
     let roughness_file = format!("new-terra-rust{suffix}-roughness-map.png");
+    let ao_file = format!("new-terra-rust{suffix}-ambient-occlusion-map.png");
+    let horizon_occlusion_file = format!("new-terra-rust{suffix}-horizon-occlusion-map.png");
     let physics_file = format!("new-terra-rust{suffix}-physics-map.png");
     let density_file = format!("new-terra-rust{suffix}-density-map.png");
     let raytrace_file = format!("new-terra-rust{suffix}-raytrace-preview.png");
@@ -842,6 +844,8 @@ fn main() -> anyhow::Result<()> {
     let height_path = out_dir.join(&height_file);
     let vegetation_path = out_dir.join(&vegetation_file);
     let roughness_path = out_dir.join(&roughness_file);
+    let ao_path = out_dir.join(&ao_file);
+    let horizon_occlusion_path = out_dir.join(&horizon_occlusion_file);
     let physics_path = out_dir.join(&physics_file);
     let density_path = out_dir.join(&density_file);
     let raytrace_path = out_dir.join(&raytrace_file);
@@ -1014,6 +1018,40 @@ fn main() -> anyhow::Result<()> {
             roughness_path.clone(),
         );
         reporter.wrote_file("roughness-map", &roughness_path);
+
+        reporter.render_start("ambient-occlusion-map", dimensions.map, &ao_path);
+        renderer
+            .render_ambient_occlusion_map_with_progress(dimensions.map, execution_mode, |event| {
+                reporter.progress("ambient-occlusion-map", event)
+            })
+            .save(&ao_path)
+            .with_context(|| format!("writing {}", ao_path.display()))?;
+        record_file(
+            &mut files,
+            "ambient-occlusion-map",
+            ao_file,
+            ao_path.clone(),
+        );
+        reporter.wrote_file("ambient-occlusion-map", &ao_path);
+
+        reporter.render_start(
+            "horizon-occlusion-map",
+            dimensions.map,
+            &horizon_occlusion_path,
+        );
+        renderer
+            .render_horizon_occlusion_map_with_progress(dimensions.map, execution_mode, |event| {
+                reporter.progress("horizon-occlusion-map", event)
+            })
+            .save(&horizon_occlusion_path)
+            .with_context(|| format!("writing {}", horizon_occlusion_path.display()))?;
+        record_file(
+            &mut files,
+            "horizon-occlusion-map",
+            horizon_occlusion_file,
+            horizon_occlusion_path.clone(),
+        );
+        reporter.wrote_file("horizon-occlusion-map", &horizon_occlusion_path);
     }
 
     if options.emit_physics_maps {
@@ -1294,7 +1332,7 @@ Options:
   --time-days <days>                      Advance the seeded planet simulation by this many days for currents, clouds, waves, densities, and magnetism.
   --archetype <key>                       Request a catalog archetype key for profile generation.
   --output-dir <path>                     Output directory. Defaults to assets/planet-rust-prototype under the workspace root.
-  --emit-material-maps                    Also emit normal, height, vegetation, and roughness/wetness maps.
+  --emit-material-maps                    Also emit normal, height, vegetation, roughness/wetness, AO, and horizon-occlusion maps.
   --emit-physics-maps                     Also emit physics and density maps for currents, clouds, magnetism, and densities.
   --emit-raytrace-preview                 Also emit a bounded CPU path-traced preview image.
   --emit-manifest                         Emit a JSON run manifest next to the generated files.
@@ -2020,6 +2058,8 @@ fn render_phase_label(phase: RenderPhase) -> &'static str {
         RenderPhase::HeightMap => "height-map",
         RenderPhase::VegetationMap => "vegetation-map",
         RenderPhase::RoughnessMap => "roughness-map",
+        RenderPhase::AmbientOcclusionMap => "ambient-occlusion-map",
+        RenderPhase::HorizonOcclusionMap => "horizon-occlusion-map",
         RenderPhase::PhysicsMap => "physics-map",
         RenderPhase::DensityMap => "density-map",
         RenderPhase::Sharpen => "sharpen",

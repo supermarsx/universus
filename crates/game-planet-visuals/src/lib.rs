@@ -836,6 +836,8 @@ pub enum RenderPhase {
     HeightMap,
     VegetationMap,
     RoughnessMap,
+    AmbientOcclusionMap,
+    HorizonOcclusionMap,
     PhysicsMap,
     DensityMap,
     Sharpen,
@@ -1240,6 +1242,7 @@ fn pathtrace_icon_supersample_for_size(options: RenderOptions, size: RenderSize)
 pub struct PlanetRenderer {
     pub profile: PlanetVisualProfile,
     maps: PlanetMaps,
+    stable_terrain: Option<StableTerrainContext>,
 }
 
 const DEFAULT_PLANET_MAP_WIDTH: usize = 768;
@@ -1252,7 +1255,24 @@ impl PlanetRenderer {
             DEFAULT_PLANET_MAP_WIDTH,
             DEFAULT_PLANET_MAP_HEIGHT,
         );
-        Self { profile, maps }
+        let stable_terrain = if matches!(
+            planet_render_style(&profile),
+            PlanetRenderStyle::Terrestrial
+        ) {
+            let (anchor_u, anchor_v) = select_overview_anchor(&maps);
+            let frame = StableTerrainFrame::for_anchor(&maps, anchor_u, anchor_v, profile.seed);
+            Some(StableTerrainContext {
+                frame,
+                tile: LocalTerrainTile::generate(frame, &maps, &profile),
+            })
+        } else {
+            None
+        };
+        Self {
+            profile,
+            maps,
+            stable_terrain,
+        }
     }
 
     pub fn render_icon(&self, size: u32) -> RgbaImage {
@@ -1682,6 +1702,7 @@ impl PlanetRenderer {
             &mut canvas,
             &self.maps,
             &self.profile,
+            self.stable_terrain.as_ref(),
             execution_mode,
             lighting_mode,
             progress,
@@ -1908,6 +1929,85 @@ impl PlanetRenderer {
         canvas.into_image()
     }
 
+    /// Renders baked multi-scale terrain ambient occlusion.
+    ///
+    /// The map is linear grayscale: black is open terrain and white is fully
+    /// occluded. It is derived once from the deterministic global heightfield
+    /// by integrating logarithmically spaced horizon probes in eight azimuths.
+    pub fn render_ambient_occlusion_map(&self, size: RenderSize) -> RgbaImage {
+        self.render_ambient_occlusion_map_with_progress(
+            size,
+            RenderExecutionMode::Automatic,
+            noop_progress,
+        )
+    }
+
+    pub fn render_ambient_occlusion_map_with_progress<F>(
+        &self,
+        size: RenderSize,
+        execution_mode: RenderExecutionMode,
+        mut progress: F,
+    ) -> RgbaImage
+    where
+        F: FnMut(RenderProgressEvent),
+    {
+        let plan = TilePlan::for_size(size, execution_mode);
+        emit_plan_progress(&mut progress, &plan);
+        let maps = &self.maps;
+        render_tiled_canvas(
+            size,
+            RenderPhase::AmbientOcclusionMap,
+            execution_mode,
+            &mut progress,
+            |x, y| {
+                let (u, v) = material_map_uv(size, x, y);
+                let value = (maps.sample(u, v).ambient_occlusion * 255.0).round() as u8;
+                [value, value, value, 255]
+            },
+        )
+        .into_image()
+    }
+
+    /// Renders the distant terrain horizon/sky occlusion product.
+    ///
+    /// This is intentionally separate from local AO: it answers how much of
+    /// the upper hemisphere is blocked by ridges and crater walls, which lets
+    /// surface cameras attenuate diffuse sky light without baking a light
+    /// direction into the material maps.
+    pub fn render_horizon_occlusion_map(&self, size: RenderSize) -> RgbaImage {
+        self.render_horizon_occlusion_map_with_progress(
+            size,
+            RenderExecutionMode::Automatic,
+            noop_progress,
+        )
+    }
+
+    pub fn render_horizon_occlusion_map_with_progress<F>(
+        &self,
+        size: RenderSize,
+        execution_mode: RenderExecutionMode,
+        mut progress: F,
+    ) -> RgbaImage
+    where
+        F: FnMut(RenderProgressEvent),
+    {
+        let plan = TilePlan::for_size(size, execution_mode);
+        emit_plan_progress(&mut progress, &plan);
+        let maps = &self.maps;
+        render_tiled_canvas(
+            size,
+            RenderPhase::HorizonOcclusionMap,
+            execution_mode,
+            &mut progress,
+            |x, y| {
+                let (u, v) = material_map_uv(size, x, y);
+                let value = (maps.sample(u, v).horizon_occlusion * 255.0).round() as u8;
+                [value, value, value, 255]
+            },
+        )
+        .into_image()
+    }
+
     pub fn physics_model(&self) -> PlanetPhysicsModel {
         PlanetPhysicsModel::from_profile(&self.profile)
     }
@@ -2088,6 +2188,22 @@ impl PlanetRenderer {
     {
         self.render_roughness_map_with_progress(size, execution_mode, progress)
     }
+
+    pub fn render_surface_ao_map(&self, size: RenderSize) -> RgbaImage {
+        self.render_ambient_occlusion_map(size)
+    }
+
+    pub fn render_surface_ao_map_with_progress<F>(
+        &self,
+        size: RenderSize,
+        execution_mode: RenderExecutionMode,
+        progress: F,
+    ) -> RgbaImage
+    where
+        F: FnMut(RenderProgressEvent),
+    {
+        self.render_ambient_occlusion_map_with_progress(size, execution_mode, progress)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2103,6 +2219,8 @@ struct PlanetMaps {
     biome: Vec<f32>,
     roughness: Vec<f32>,
     wetness: Vec<f32>,
+    ambient_occlusion: Vec<f32>,
+    horizon_occlusion: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2116,6 +2234,8 @@ struct SurfaceSample {
     biome: f32,
     roughness: f32,
     wetness: f32,
+    ambient_occlusion: f32,
+    horizon_occlusion: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3605,6 +3725,8 @@ fn gas_giant_map_sample(
             0.32,
         ),
         wetness: 0.0,
+        ambient_occlusion: 0.0,
+        horizon_occlusion: 0.0,
     }
 }
 
@@ -4994,6 +5116,13 @@ impl PlanetMaps {
             }
         }
 
+        let (ambient_occlusion, horizon_occlusion) = if matches!(style, PlanetRenderStyle::GasGiant)
+        {
+            (vec![0.0; len], vec![0.0; len])
+        } else {
+            bake_terrain_occlusion_maps(width, height, &height_map, &water)
+        };
+
         Self {
             width,
             height,
@@ -5006,6 +5135,8 @@ impl PlanetMaps {
             biome,
             roughness,
             wetness,
+            ambient_occlusion,
+            horizon_occlusion,
         }
     }
 
@@ -5097,6 +5228,22 @@ impl PlanetMaps {
                 tx,
                 ty,
             ),
+            ambient_occlusion: bilerp(
+                self.ambient_occlusion[i00],
+                self.ambient_occlusion[i10],
+                self.ambient_occlusion[i01],
+                self.ambient_occlusion[i11],
+                tx,
+                ty,
+            ),
+            horizon_occlusion: bilerp(
+                self.horizon_occlusion[i00],
+                self.horizon_occlusion[i10],
+                self.horizon_occlusion[i01],
+                self.horizon_occlusion[i11],
+                tx,
+                ty,
+            ),
         }
     }
 
@@ -5112,6 +5259,99 @@ impl PlanetMaps {
 
         Vec3::new((left - right) * strength, (up - down) * strength, 1.0).normalize()
     }
+}
+
+/// Integrates a compact heightfield horizon in eight azimuths. Distances are
+/// logarithmic so the first probes capture contact/cavity occlusion while the
+/// last probes capture ridges and crater walls. The calculation happens once
+/// at the renderer's canonical map resolution; every output then bilinearly
+/// samples the same deterministic products.
+fn bake_terrain_occlusion_maps(
+    width: usize,
+    height: usize,
+    height_map: &[f32],
+    water: &[f32],
+) -> (Vec<f32>, Vec<f32>) {
+    const DIRECTIONS: [(isize, isize); 8] = [
+        (1, 0),
+        (1, 1),
+        (0, 1),
+        (-1, 1),
+        (-1, 0),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+    ];
+    const DISTANCES: [isize; 6] = [1, 2, 4, 8, 16, 28];
+
+    let len = width.saturating_mul(height);
+    let mut ambient = vec![0.0; len];
+    let mut horizon = vec![0.0; len];
+    if width == 0 || height == 0 || height_map.len() != len || water.len() != len {
+        return (ambient, horizon);
+    }
+
+    for y in 0..height {
+        let latitude = (0.5 - y as f32 / height.saturating_sub(1).max(1) as f32) * PI;
+        let longitude_scale = latitude.cos().abs().max(0.16);
+        for x in 0..width {
+            let index = y * width + x;
+            let center = height_map[index];
+            let land = 1.0 - smoothstep(0.34, 0.88, water[index]);
+            if land <= 0.002 {
+                continue;
+            }
+
+            let mut directional_occlusion = 0.0;
+            let mut local_neighbor_height = 0.0;
+            for (direction_index, (dx, dy)) in DIRECTIONS.iter().copied().enumerate() {
+                let mut max_horizon_slope = 0.0_f32;
+                for distance in DISTANCES {
+                    let sample_x = (x as isize + dx * distance).rem_euclid(width as isize) as usize;
+                    let sample_y = (y as isize + dy * distance)
+                        .clamp(0, height.saturating_sub(1) as isize)
+                        as usize;
+                    let sample_height = height_map[sample_y * width + sample_x];
+                    if distance == 1 {
+                        local_neighbor_height += sample_height;
+                    }
+
+                    let world_dx = dx as f32 * longitude_scale;
+                    let world_dy = dy as f32;
+                    let horizontal_distance =
+                        (world_dx * world_dx + world_dy * world_dy).sqrt() * distance as f32;
+                    let elevation_delta =
+                        sample_height - center - (0.0015 + horizontal_distance * 0.000_08);
+                    let slope = elevation_delta.max(0.0) * 34.0 / horizontal_distance.max(0.25);
+                    max_horizon_slope = max_horizon_slope.max(slope);
+                }
+
+                // sin(atan(slope)) is the blocked fraction of the upper
+                // hemisphere in this azimuth for a heightfield horizon.
+                let blocked =
+                    max_horizon_slope / (1.0 + max_horizon_slope * max_horizon_slope).sqrt();
+                let azimuth_weight = if direction_index % 2 == 0 { 1.0 } else { 0.86 };
+                directional_occlusion += blocked * azimuth_weight;
+            }
+
+            let horizon_occ = clamp01(directional_occlusion / 7.44) * land;
+            let local_average = local_neighbor_height / DIRECTIONS.len() as f32;
+            let cavity = clamp01((local_average - center - 0.001) * 18.0) * land;
+            let curvature = clamp01(
+                (height_map[y * width + (x + 1) % width]
+                    + height_map[y * width + (x + width - 1) % width]
+                    + height_map[y.saturating_sub(1) * width + x]
+                    + height_map[(y + 1).min(height - 1) * width + x]
+                    - center * 4.0)
+                    * 11.0,
+            ) * land;
+
+            horizon[index] = horizon_occ;
+            ambient[index] = clamp01(horizon_occ * 0.68 + cavity * 0.22 + curvature * 0.10);
+        }
+    }
+
+    (ambient, horizon)
 }
 
 fn material_map_uv(size: RenderSize, x: u32, y: u32) -> (f32, f32) {
@@ -5989,6 +6229,7 @@ fn render_terrain_overview_with_progress<P>(
     canvas: &mut Canvas,
     maps: &PlanetMaps,
     profile: &PlanetVisualProfile,
+    stable_terrain: Option<&StableTerrainContext>,
     execution_mode: RenderExecutionMode,
     lighting_mode: LightingMode,
     progress: &mut P,
@@ -6001,7 +6242,22 @@ fn render_terrain_overview_with_progress<P>(
     };
     let plan = TilePlan::for_size(size, execution_mode);
     let camera = TerrainOverviewCamera::for_size(size);
-    let (anchor_u, anchor_v) = select_overview_anchor(maps);
+    let (anchor_u, anchor_v, stable_frame, stable_tile) = if let Some(context) = stable_terrain {
+        (
+            context.frame.anchor_u,
+            context.frame.anchor_v,
+            context.frame,
+            Some(&context.tile),
+        )
+    } else {
+        let (anchor_u, anchor_v) = select_overview_anchor(maps);
+        (
+            anchor_u,
+            anchor_v,
+            StableTerrainFrame::for_anchor(maps, anchor_u, anchor_v, profile.seed),
+            None,
+        )
+    };
     let style = planet_render_style(profile);
     let physics = PlanetPhysicsModel::from_profile(profile);
 
@@ -6018,6 +6274,8 @@ fn render_terrain_overview_with_progress<P>(
                 camera,
                 anchor_u,
                 anchor_v,
+                stable_frame,
+                stable_tile,
                 maps,
                 profile,
                 style,
@@ -6119,6 +6377,361 @@ struct TerrainOverviewGradient {
     relief: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StableTerrainFrame {
+    anchor_u: f32,
+    anchor_v: f32,
+    side_u: f32,
+    side_v: f32,
+    forward_u: f32,
+    forward_v: f32,
+    reference_elevation: f32,
+}
+
+impl StableTerrainFrame {
+    fn for_anchor(maps: &PlanetMaps, anchor_u: f32, anchor_v: f32, seed: u64) -> Self {
+        let eps_u = 6.0 / maps.width.max(1) as f32;
+        let eps_v = 6.0 / maps.height.max(1) as f32;
+        let water_du = maps.sample(anchor_u + eps_u, anchor_v).water
+            - maps.sample(anchor_u - eps_u, anchor_v).water;
+        let water_dv = maps.sample(anchor_u, anchor_v + eps_v).water
+            - maps.sample(anchor_u, anchor_v - eps_v).water;
+        let gradient_length = (water_du * water_du + water_dv * water_dv).sqrt();
+        let seed_angle = hash2(71, 113, seed + 40_003) * PI * 2.0;
+        let (mut forward_u, mut forward_v) = if gradient_length > 0.035 {
+            // Face from the water side of the selected coast toward land. The
+            // camera origin sits slightly behind the anchor, so this yields a
+            // readable foreground water plane, shoreline scale cue, and
+            // displaced inland relief rather than staring out over empty sea.
+            (-water_du / gradient_length, -water_dv / gradient_length)
+        } else {
+            (seed_angle.cos(), seed_angle.sin())
+        };
+
+        // Do not aim exactly along a discrete map gradient. A small stable
+        // yaw gives coastlines depth while keeping the camera predominantly
+        // pointed across, rather than along, the shore.
+        let yaw = (hash2(127, 31, seed + 40_019) - 0.5) * 0.34;
+        let cos_yaw = yaw.cos();
+        let sin_yaw = yaw.sin();
+        let rotated_u = forward_u * cos_yaw - forward_v * sin_yaw;
+        let rotated_v = forward_u * sin_yaw + forward_v * cos_yaw;
+        forward_u = rotated_u;
+        forward_v = rotated_v;
+
+        Self {
+            anchor_u,
+            anchor_v,
+            side_u: -forward_v,
+            side_v: forward_u,
+            forward_u,
+            forward_v,
+            reference_elevation: terrain_overview_elevation(maps.sample(anchor_u, anchor_v)),
+        }
+    }
+
+    fn map_uv(self, world_x: f32, world_z: f32, warp_x: f32, warp_z: f32) -> (f32, f32) {
+        const MAP_SCALE: f32 = 0.029;
+        (
+            self.anchor_u + (self.side_u * world_x + self.forward_u * world_z) * MAP_SCALE + warp_x,
+            self.anchor_v + (self.side_v * world_x + self.forward_v * world_z) * MAP_SCALE + warp_z,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StableTerrainContext {
+    frame: StableTerrainFrame,
+    tile: LocalTerrainTile,
+}
+
+#[derive(Debug, Clone)]
+struct LocalTerrainTile {
+    width: usize,
+    height: usize,
+    x_min: f32,
+    x_max: f32,
+    z_min: f32,
+    z_max: f32,
+    heights: Vec<f32>,
+    details: Vec<f32>,
+    waters: Vec<f32>,
+}
+
+impl LocalTerrainTile {
+    const WIDTH: usize = 896;
+    const HEIGHT: usize = 640;
+    const X_MIN: f32 = -7.0;
+    const X_MAX: f32 = 7.0;
+    const Z_MIN: f32 = -1.0;
+    const Z_MAX: f32 = 9.0;
+
+    fn generate(
+        frame: StableTerrainFrame,
+        maps: &PlanetMaps,
+        profile: &PlanetVisualProfile,
+    ) -> Self {
+        let mut heights = vec![0.0; Self::WIDTH * Self::HEIGHT];
+        let mut details = vec![0.0; Self::WIDTH * Self::HEIGHT];
+        let mut waters = vec![0.0; Self::WIDTH * Self::HEIGHT];
+        let phase = hash2(241, 419, profile.seed + 41_001) * PI * 2.0;
+        for y in 0..Self::HEIGHT {
+            let z_t = y as f32 / Self::HEIGHT.saturating_sub(1).max(1) as f32;
+            let world_z = Self::Z_MIN + (Self::Z_MAX - Self::Z_MIN) * z_t;
+            for x in 0..Self::WIDTH {
+                let x_t = x as f32 / Self::WIDTH.saturating_sub(1).max(1) as f32;
+                let world_x = Self::X_MIN + (Self::X_MAX - Self::X_MIN) * x_t;
+                let warp_x = ((world_x * 0.73 + world_z * 0.29 + phase).sin()
+                    + (world_x * -0.37 + world_z * 0.91 - phase * 0.7).sin() * 0.46)
+                    * 0.0017;
+                let warp_z = ((world_x * -0.24 + world_z * 0.68 - phase).sin()
+                    + (world_x * 0.83 + world_z * 0.34 + phase * 1.3).sin() * 0.42)
+                    * 0.0016;
+                let (u, v) = frame.map_uv(world_x, world_z, warp_x, warp_z);
+                let sample = maps.sample(u, v);
+                let du = 2.6 / maps.width.max(1) as f32;
+                let dv = 2.6 / maps.height.max(1) as f32;
+                let filtered_water = (sample.water * 6.0
+                    + maps.sample(u - du, v).water
+                    + maps.sample(u + du, v).water
+                    + maps.sample(u, v - dv).water
+                    + maps.sample(u, v + dv).water
+                    + maps.sample(u - du, v - dv).water * 0.5
+                    + maps.sample(u + du, v - dv).water * 0.5
+                    + maps.sample(u - du, v + dv).water * 0.5
+                    + maps.sample(u + du, v + dv).water * 0.5)
+                    / 12.0;
+                let water = smoothstep(0.16, 0.84, filtered_water);
+                let land = 1.0 - water;
+                let continental = fbm_tiled(
+                    world_x * 0.070 + frame.anchor_u,
+                    world_z * 0.064 + frame.anchor_v,
+                    13,
+                    5,
+                    profile.seed + 41_017,
+                    0.54,
+                );
+                let eroded = fbm_tiled(
+                    world_x * 0.145 + continental * 0.10,
+                    world_z * 0.132 - continental * 0.08,
+                    19,
+                    4,
+                    profile.seed + 41_029,
+                    0.50,
+                );
+                let rock = fbm_tiled(
+                    world_x * 0.34 - eroded * 0.07,
+                    world_z * 0.31 + continental * 0.06,
+                    31,
+                    3,
+                    profile.seed + 41_047,
+                    0.46,
+                );
+                let fine = fbm_tiled(
+                    world_x * 0.36 + rock * 0.045,
+                    world_z * 0.33 - eroded * 0.035,
+                    47,
+                    2,
+                    profile.seed + 41_063,
+                    0.43,
+                );
+                let broad_ridge = ridge(eroded).powf(2.4);
+                let rock_ridge = ridge(rock).powf(3.0);
+                let drainage = ridge(clamp01(continental * 0.58 + eroded * 0.42)).powf(4.0);
+                let detail =
+                    clamp01(continental * 0.34 + eroded * 0.30 + rock * 0.22 + fine * 0.14);
+                let macro_height =
+                    (terrain_overview_elevation(sample) - frame.reference_elevation) * 0.24;
+                let local_relief = (continental - 0.5) * 0.045
+                    + (eroded - 0.5) * 0.035
+                    + (rock - 0.5) * 0.020
+                    + (broad_ridge - 0.32) * 0.045
+                    + (rock_ridge - 0.24) * 0.056
+                    - drainage * 0.020;
+                let micro_height = (fine - 0.5) * 0.018 + (rock - 0.5) * 0.018;
+                let shore_lift =
+                    (1.0 - smoothstep(0.025, 0.24, (sample.water - 0.5).abs())) * land * 0.010;
+                let land_height = 0.038 + macro_height + local_relief + micro_height + shore_lift;
+                // Use a domain-warped, stochastic wave surface instead of a
+                // small set of sinusoids. Perspective turns even oblique
+                // periodic waves into implausible screen-space bands, while
+                // this multi-scale surface stays irregular at every distance.
+                let water_warp = fbm_tiled(
+                    world_x * 0.083 + phase * 0.013,
+                    world_z * 0.076 - phase * 0.011,
+                    17,
+                    3,
+                    profile.seed + 41_071,
+                    0.52,
+                );
+                let water_swell = fbm_tiled(
+                    world_x * 0.128 + (water_warp - 0.5) * 0.18,
+                    world_z * 0.112 - (water_warp - 0.5) * 0.15,
+                    23,
+                    4,
+                    profile.seed + 41_077,
+                    0.50,
+                );
+                let water_chop = fbm_tiled(
+                    world_x * 0.315 + (water_swell - 0.5) * 0.10,
+                    world_z * 0.278 + (water_warp - 0.5) * 0.09,
+                    37,
+                    3,
+                    profile.seed + 41_083,
+                    0.44,
+                );
+                // Keep the geometric ocean as a single stable plane. Wave
+                // energy belongs in the shading normal below; displacing a
+                // low-angle heightfield makes perspective turn harmless swell
+                // into coherent horizontal bands and can open coast cracks.
+                let water_height = 0.0;
+                let index = y * Self::WIDTH + x;
+                let planetary_curvature = (world_x * world_x + world_z * world_z) * 0.0032;
+                let coast_grade = smoothstep(0.02, 0.98, land);
+                heights[index] = (land_height * coast_grade + water_height * water
+                    - planetary_curvature)
+                    .clamp(-0.48, 0.34);
+                details[index] = detail * land + water_chop * water;
+                waters[index] = water;
+            }
+        }
+
+        // Relax only the geometric coast transition. The material mask stays
+        // sharp enough for a narrow wet/foam line, but the underlying land
+        // must meet the ocean with a bounded slope or a low camera ray sees a
+        // near-vertical dark wall that reads as an intersection hole.
+        for _ in 0..14 {
+            let previous = heights.clone();
+            for y in 1..Self::HEIGHT - 1 {
+                for x in 1..Self::WIDTH - 1 {
+                    let index = y * Self::WIDTH + x;
+                    let water = waters[index];
+                    let coast_weight = 4.0 * water * (1.0 - water);
+                    if coast_weight <= 0.012 {
+                        continue;
+                    }
+                    let north = previous[index - Self::WIDTH];
+                    let south = previous[index + Self::WIDTH];
+                    let west = previous[index - 1];
+                    let east = previous[index + 1];
+                    let northwest = previous[index - Self::WIDTH - 1];
+                    let northeast = previous[index - Self::WIDTH + 1];
+                    let southwest = previous[index + Self::WIDTH - 1];
+                    let southeast = previous[index + Self::WIDTH + 1];
+                    let local_mean = (north + south + west + east) * 0.17
+                        + (northwest + northeast + southwest + southeast) * 0.08;
+                    heights[index] =
+                        previous[index] + (local_mean - previous[index]) * coast_weight * 0.52;
+                }
+            }
+        }
+
+        Self {
+            width: Self::WIDTH,
+            height: Self::HEIGHT,
+            x_min: Self::X_MIN,
+            x_max: Self::X_MAX,
+            z_min: Self::Z_MIN,
+            z_max: Self::Z_MAX,
+            heights,
+            details,
+            waters,
+        }
+    }
+
+    fn sample(&self, world_x: f32, world_z: f32) -> (f32, f32, f32) {
+        let tx = clamp01((world_x - self.x_min) / (self.x_max - self.x_min).max(0.001))
+            * self.width.saturating_sub(1) as f32;
+        let tz = clamp01((world_z - self.z_min) / (self.z_max - self.z_min).max(0.001))
+            * self.height.saturating_sub(1) as f32;
+        let x0 = tx.floor() as usize;
+        let z0 = tz.floor() as usize;
+        let x1 = (x0 + 1).min(self.width - 1);
+        let z1 = (z0 + 1).min(self.height - 1);
+        let fx = tx - tx.floor();
+        let fz = tz - tz.floor();
+        let i00 = z0 * self.width + x0;
+        let i10 = z0 * self.width + x1;
+        let i01 = z1 * self.width + x0;
+        let i11 = z1 * self.width + x1;
+        (
+            bilerp(
+                self.heights[i00],
+                self.heights[i10],
+                self.heights[i01],
+                self.heights[i11],
+                fx,
+                fz,
+            ),
+            bilerp(
+                self.details[i00],
+                self.details[i10],
+                self.details[i01],
+                self.details[i11],
+                fx,
+                fz,
+            ),
+            bilerp(
+                self.waters[i00],
+                self.waters[i10],
+                self.waters[i01],
+                self.waters[i11],
+                fx,
+                fz,
+            ),
+        )
+    }
+
+    fn sample_smooth(&self, world_x: f32, world_z: f32) -> (f32, f32, f32) {
+        (
+            self.sample_channel_smooth(&self.heights, world_x, world_z),
+            self.sample_channel_smooth(&self.details, world_x, world_z),
+            clamp01(self.sample_channel_smooth(&self.waters, world_x, world_z)),
+        )
+    }
+
+    fn sample_height_smooth(&self, world_x: f32, world_z: f32) -> f32 {
+        self.sample_channel_smooth(&self.heights, world_x, world_z)
+    }
+
+    fn sample_channel_smooth(&self, values: &[f32], world_x: f32, world_z: f32) -> f32 {
+        let tx = clamp01((world_x - self.x_min) / (self.x_max - self.x_min).max(0.001))
+            * self.width.saturating_sub(1) as f32;
+        let tz = clamp01((world_z - self.z_min) / (self.z_max - self.z_min).max(0.001))
+            * self.height.saturating_sub(1) as f32;
+        let x1 = tx.floor() as isize;
+        let z1 = tz.floor() as isize;
+        let fx = tx - tx.floor();
+        let fz = tz - tz.floor();
+        let mut rows = [0.0; 4];
+        let mut neighborhood_min = f32::MAX;
+        let mut neighborhood_max = f32::MIN;
+        for (row_index, dz) in (-1_isize..=2).enumerate() {
+            let z = (z1 + dz).clamp(0, self.height.saturating_sub(1) as isize) as usize;
+            let mut samples = [0.0; 4];
+            for (column_index, dx) in (-1_isize..=2).enumerate() {
+                let x = (x1 + dx).clamp(0, self.width.saturating_sub(1) as isize) as usize;
+                let value = values[z * self.width + x];
+                neighborhood_min = neighborhood_min.min(value);
+                neighborhood_max = neighborhood_max.max(value);
+                samples[column_index] = value;
+            }
+            rows[row_index] = catmull_rom(samples[0], samples[1], samples[2], samples[3], fx);
+        }
+        catmull_rom(rows[0], rows[1], rows[2], rows[3], fz)
+            .clamp(neighborhood_min, neighborhood_max)
+    }
+}
+
+fn catmull_rom(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    0.5 * (2.0 * p1
+        + (-p0 + p2) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+}
+
 fn terrain_overview_project(
     camera: TerrainOverviewCamera,
     anchor_u: f32,
@@ -6128,7 +6741,12 @@ fn terrain_overview_project(
 ) -> TerrainOverviewProjection {
     let ground_v = clamp01(ground_v);
     let distance = 1.0 / (ground_v * camera.distance_ground_scale + camera.distance_offset);
-    let spread = (0.011 + distance * 0.034) * camera.spread_scale;
+    // A production surface camera needs enough lateral footprint in the near
+    // field to avoid magnifying a handful of global map texels into radial
+    // streaks. The perspective term still converges at the vanishing point,
+    // while this finite camera-footprint term keeps foreground materials and
+    // shorelines spatially resolved.
+    let spread = (0.044 + distance * 0.034) * camera.spread_scale;
     let forward = distance * 0.035 * camera.forward_scale;
     let perspective_x = sx / camera.x_scale.max(1.0).sqrt();
 
@@ -6160,6 +6778,24 @@ fn terrain_overview_elevation(sample: SurfaceSample) -> f32 {
     )
 }
 
+fn terrain_overview_filtered_elevation(maps: &PlanetMaps, u: f32, v: f32, distance: f32) -> f32 {
+    let center = terrain_overview_elevation(maps.sample(u, v));
+    let filter = smoothstep(0.72, 4.65, distance);
+    if filter <= 0.001 {
+        return center;
+    }
+
+    let radius = 0.65 + filter * 3.2;
+    let eps_u = radius / maps.width.max(1) as f32;
+    let eps_v = radius / maps.height.max(1) as f32;
+    let cross = (terrain_overview_elevation(maps.sample(u - eps_u, v))
+        + terrain_overview_elevation(maps.sample(u + eps_u, v))
+        + terrain_overview_elevation(maps.sample(u, v - eps_v))
+        + terrain_overview_elevation(maps.sample(u, v + eps_v)))
+        * 0.25;
+    center + (cross - center) * filter * 0.72
+}
+
 fn terrain_overview_height_lift(elevation: f32, ground_v: f32, distance: f32) -> f32 {
     let horizon_gain = smoothstep(0.72, 0.0, ground_v);
     let distance_gain = smoothstep(0.42, 5.20, distance);
@@ -6177,8 +6813,12 @@ fn terrain_overview_trace(
 ) -> TerrainOverviewHit {
     let screen_ground_v = clamp01(pixel_ground_v);
     let base_projection = terrain_overview_project(camera, anchor_u, anchor_v, sx, screen_ground_v);
-    let base_sample = maps.sample(base_projection.u, base_projection.v);
-    let base_elevation = terrain_overview_elevation(base_sample);
+    let base_elevation = terrain_overview_filtered_elevation(
+        maps,
+        base_projection.u,
+        base_projection.v,
+        base_projection.distance,
+    );
     let mut best = TerrainOverviewHit {
         u: base_projection.u,
         v: base_projection.v,
@@ -6200,8 +6840,12 @@ fn terrain_overview_trace(
         let eased_t = t * t * (3.0 - 2.0 * t);
         let layer_ground_v = clamp(screen_ground_v + eased_t * scan_window, 0.0, 0.985);
         let projection = terrain_overview_project(camera, anchor_u, anchor_v, sx, layer_ground_v);
-        let sample = maps.sample(projection.u, projection.v);
-        let elevation = terrain_overview_elevation(sample);
+        let elevation = terrain_overview_filtered_elevation(
+            maps,
+            projection.u,
+            projection.v,
+            projection.distance,
+        );
         let lift = terrain_overview_height_lift(elevation, layer_ground_v, projection.distance);
         let projected_ground_v = layer_ground_v - lift;
         let coverage = pixel_ground_v - projected_ground_v;
@@ -6281,18 +6925,15 @@ fn terrain_overview_lod(distance: f32, ground_v: f32, parallax: f32) -> TerrainO
         smoothstep(0.34, 0.94, ground_v) * (1.0 - smoothstep(0.70, 2.35, distance) * 0.78);
     let far = smoothstep(1.05, 4.85, distance);
     let horizon = smoothstep(0.18, 0.0, ground_v);
-    let projection_safety = smoothstep(0.72, 0.96, ground_v);
-
     TerrainOverviewLod {
         footprint: clamp(
-            0.30 + distance * 0.58 + parallax * 0.16 + far * 0.34 - foreground * 0.13
-                + projection_safety * 1.10,
+            0.30 + distance * 0.58 + parallax * 0.16 + far * 0.34 - foreground * 0.13,
             0.24,
             5.20,
         ),
-        material_filter: clamp01(far * 0.62 + horizon * 0.14 + projection_safety * 0.46),
-        foreground_detail: foreground * (1.0 - projection_safety * 0.62),
-        streak_weight: clamp01(1.0 - foreground * 0.68 + projection_safety * 0.38),
+        material_filter: clamp01(far * 0.66 + horizon * 0.18),
+        foreground_detail: foreground,
+        streak_weight: clamp01(1.0 - foreground * 0.86),
     }
 }
 
@@ -6344,6 +6985,18 @@ fn weighted_surface_sample(
             + (east.roughness + west.roughness + north.roughness + south.roughness) * SIDE,
         wetness: center.wetness * CENTER
             + (east.wetness + west.wetness + north.wetness + south.wetness) * SIDE,
+        ambient_occlusion: center.ambient_occlusion * CENTER
+            + (east.ambient_occlusion
+                + west.ambient_occlusion
+                + north.ambient_occlusion
+                + south.ambient_occlusion)
+                * SIDE,
+        horizon_occlusion: center.horizon_occlusion * CENTER
+            + (east.horizon_occlusion
+                + west.horizon_occlusion
+                + north.horizon_occlusion
+                + south.horizon_occlusion)
+                * SIDE,
     }
 }
 
@@ -6359,6 +7012,8 @@ fn lerp_surface_sample(a: SurfaceSample, b: SurfaceSample, t: f32) -> SurfaceSam
         biome: a.biome + (b.biome - a.biome) * t,
         roughness: a.roughness + (b.roughness - a.roughness) * t,
         wetness: a.wetness + (b.wetness - a.wetness) * t,
+        ambient_occlusion: a.ambient_occlusion + (b.ambient_occlusion - a.ambient_occlusion) * t,
+        horizon_occlusion: a.horizon_occlusion + (b.horizon_occlusion - a.horizon_occlusion) * t,
     }
 }
 
@@ -6370,6 +7025,8 @@ fn terrain_overview_pixel(
     camera: TerrainOverviewCamera,
     anchor_u: f32,
     anchor_v: f32,
+    stable_frame: StableTerrainFrame,
+    stable_tile: Option<&LocalTerrainTile>,
     maps: &PlanetMaps,
     profile: &PlanetVisualProfile,
     style: PlanetRenderStyle,
@@ -6405,18 +7062,23 @@ fn terrain_overview_pixel(
         Vec3::new(0.010, 0.026, 0.078).lerp(Vec3::new(0.020, 0.044, 0.120), atmosphere * 0.30);
     let sky_mid =
         Vec3::new(0.070, 0.168, 0.330).lerp(Vec3::new(0.100, 0.220, 0.410), atmosphere * 0.26);
-    let sky_horizon = Vec3::new(0.500, 0.670, 0.830)
-        .lerp(Vec3::new(0.660, 0.760, 0.830), atmosphere * 0.34)
-        .lerp(Vec3::new(0.610, 0.760, 0.870), ocean_air * 0.26)
-        .lerp(Vec3::new(0.760, 0.660, 0.470), volcanic_air * 0.32);
-    let horizon_air = Vec3::new(0.820, 0.850, 0.800)
-        .lerp(Vec3::new(0.960, 0.780, 0.560), atmosphere * 0.12)
-        .lerp(Vec3::new(0.760, 0.870, 0.880), ocean_air * 0.22)
-        .lerp(Vec3::new(0.980, 0.720, 0.360), volcanic_air * 0.36);
+    let sky_horizon = Vec3::new(0.340, 0.540, 0.740)
+        .lerp(Vec3::new(0.480, 0.620, 0.720), atmosphere * 0.34)
+        .lerp(Vec3::new(0.450, 0.650, 0.780), ocean_air * 0.26)
+        .lerp(Vec3::new(0.680, 0.540, 0.350), volcanic_air * 0.32);
+    let horizon_air = Vec3::new(0.560, 0.640, 0.640)
+        .lerp(Vec3::new(0.780, 0.590, 0.380), atmosphere * 0.12)
+        .lerp(Vec3::new(0.540, 0.700, 0.730), ocean_air * 0.22)
+        .lerp(Vec3::new(0.820, 0.550, 0.270), volcanic_air * 0.36);
     let light_dir = overview_light_dir(lighting_mode);
 
-    let sky_color = if fy < local_horizon {
-        let sky_v = fy / local_horizon;
+    let sky_color = if fy < local_horizon + 0.22 {
+        // Keep one atmospheric solution alive slightly below the geometric
+        // horizon. Rays in this transition can either miss the curved planet
+        // or hit distant terrain; terminating the sky exactly at the horizon
+        // gave those two cases different fallback colors and produced visible
+        // concentric contour bands.
+        let sky_v = clamp01(fy / local_horizon.max(0.001));
         let horizon_blend = smoothstep(0.50, 1.0, sky_v);
         let sky_depth = atmosphere_optical_depth(1.0 - horizon_blend * 0.92, atmosphere);
         let mut color = if night_view {
@@ -6689,7 +7351,7 @@ fn terrain_overview_pixel(
                 * 0.34;
         }
 
-        Some(color)
+        Some(color * if night_view { 1.0 } else { 0.72 })
     } else {
         None
     };
@@ -6720,6 +7382,38 @@ fn terrain_overview_pixel(
             profile,
             rocky_material,
             volcanic_world,
+            lighting_mode,
+        );
+    }
+
+    if matches!(style, PlanetRenderStyle::Terrestrial) {
+        if let Some(tile) = stable_tile {
+            return raymarched_terrain_overview_pixel(
+                fx,
+                fy,
+                sx,
+                local_horizon,
+                camera.aspect,
+                camera.sun_screen,
+                sky_color,
+                stable_frame,
+                tile,
+                maps,
+                profile,
+                lighting_mode,
+            );
+        }
+        return stable_terrain_overview_pixel(
+            fx,
+            fy,
+            sx,
+            local_horizon,
+            camera.aspect,
+            camera.sun_screen,
+            sky_color,
+            stable_frame,
+            maps,
+            profile,
             lighting_mode,
         );
     }
@@ -6776,7 +7470,7 @@ fn terrain_overview_pixel(
     let shore_water = smoothstep(0.34, 0.58, raw_water) * shore;
     let projection_safety = smoothstep(0.72, 0.96, ground_v);
     let mixed_projection_safety = if !ocean_world && !dry_world {
-        smoothstep(0.44, 0.90, ground_v)
+        smoothstep(0.74, 0.985, ground_v)
     } else {
         0.0
     };
@@ -6799,7 +7493,7 @@ fn terrain_overview_pixel(
         + relief * (7.0 + rocky_overview_relief * 1.8)
         + hit.parallax * 2.0;
     let normal_strength =
-        normal_strength * (1.0 - projection_safety * 0.42 - dry_projection_safety * 0.36).max(0.26);
+        normal_strength * (1.0 - projection_safety * 0.14 - dry_projection_safety * 0.36).max(0.42);
     let terrain_n = Vec3::new(
         (left - right) * normal_strength,
         1.0,
@@ -6980,7 +7674,7 @@ fn terrain_overview_pixel(
                     ridge(local_grain) * land * 0.12,
                 )
                 * (0.90 + (local_mass - 0.5) * 0.18 + (local_grain - 0.5) * 0.10);
-            base = base.lerp(local_soil, mixed_projection_safety * land * 0.90);
+            base = base.lerp(local_soil, mixed_projection_safety * land * 0.28);
         }
 
         if dry_projection_safety > 0.001 {
@@ -7295,7 +7989,7 @@ fn terrain_overview_pixel(
     let micro_strength = land
         * (3.0 + lod.foreground_detail * 3.2 + relief * 0.90 + rocky_land * 1.55)
         * (1.0 - water * 0.45)
-        * (1.0 - projection_safety * 0.58 - dry_projection_safety * 0.30).max(0.18);
+        * (1.0 - projection_safety * 0.16 - dry_projection_safety * 0.30).max(0.36);
     let micro_nudge = Vec3::new(
         (micro_left - micro_right) * micro_strength,
         0.0,
@@ -7311,11 +8005,12 @@ fn terrain_overview_pixel(
     let ndotl = terrain_n.dot(light_dir).max(0.0);
     let half = (light_dir + view_dir).normalize();
 
-    let ambient = if night_view {
+    let sky_visibility = 1.0 - sample.horizon_occlusion * land;
+    let ambient = (if night_view {
         0.038 + profile.atmosphere_density * 0.024
     } else {
         0.18 + profile.atmosphere_density * 0.055
-    };
+    }) * (0.62 + sky_visibility * 0.38);
     let grazing_fill = smoothstep(0.22, 0.0, ground_v) * if night_view { 0.025 } else { 0.06 };
     let terrain_shadow = smoothstep(0.014, 0.082, far - hit.elevation)
         * land
@@ -7370,6 +8065,12 @@ fn terrain_overview_pixel(
             + (1.0 - lava_thread) * relief * 0.030)
         * smoothstep(0.08, 0.92, ground_v)
         * (1.0 - dry_projection_safety * 0.70);
+    let baked_terrain_ao = sample.ambient_occlusion
+        * land
+        * smoothstep(0.025, 0.96, ground_v)
+        * (0.22 + lod.foreground_detail * 0.18 + relief * 0.10);
+    let baked_horizon_ao =
+        sample.horizon_occlusion * land * smoothstep(0.16, 0.92, ground_v) * 0.12;
     let occlusion = clamp01(
         terrain_shadow
             + cloud_shadow
@@ -7377,7 +8078,9 @@ fn terrain_overview_pixel(
             + shore_contact
             + mountain_ao
             + horizon_ao
-            + rocky_crevice_ao,
+            + rocky_crevice_ao
+            + baked_terrain_ao
+            + baked_horizon_ao,
     );
     let mut color = base * (ambient + grazing_fill + ndotl * 1.02) * (1.0 - occlusion);
     color += if night_view {
@@ -7598,7 +8301,7 @@ fn terrain_overview_pixel(
         let local_floor = local_floor.lerp(bottom_floor, bottom_soften * 0.92);
         let mix = mixed_projection_safety
             * smoothstep(0.48, 0.96, ground_v)
-            * (0.84 + water * 0.10 + land * 0.08);
+            * (0.22 + water * 0.05 + land * 0.06);
         color = color.lerp(local_floor, mix);
     }
 
@@ -7826,6 +8529,879 @@ fn terrain_overview_pixel(
     );
 
     rgba(tone_map(color * if night_view { 1.08 } else { 0.90 }), 255)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HeightfieldSurfacePoint {
+    world_x: f32,
+    world_z: f32,
+    height: f32,
+    u: f32,
+    v: f32,
+    detail: f32,
+    water: f32,
+    sample: SurfaceSample,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HeightfieldRayHit {
+    point: HeightfieldSurfacePoint,
+    distance: f32,
+}
+
+fn heightfield_surface_point(
+    frame: StableTerrainFrame,
+    tile: &LocalTerrainTile,
+    maps: &PlanetMaps,
+    profile: &PlanetVisualProfile,
+    world_x: f32,
+    world_z: f32,
+) -> HeightfieldSurfacePoint {
+    let phase = hash2(241, 419, profile.seed + 41_001) * PI * 2.0;
+    let warp_x = ((world_x * 0.73 + world_z * 0.29 + phase).sin()
+        + (world_x * -0.37 + world_z * 0.91 - phase * 0.7).sin() * 0.46)
+        * 0.0017;
+    let warp_z = ((world_x * -0.24 + world_z * 0.68 - phase).sin()
+        + (world_x * 0.83 + world_z * 0.34 + phase * 1.3).sin() * 0.42)
+        * 0.0016;
+    let (u, v) = frame.map_uv(world_x, world_z, warp_x, warp_z);
+    let sample = maps.sample(u, v);
+    let (height, detail, water) = tile.sample_smooth(world_x, world_z);
+
+    HeightfieldSurfacePoint {
+        world_x,
+        world_z,
+        height,
+        u,
+        v,
+        detail,
+        water,
+        sample,
+    }
+}
+
+fn raymarch_heightfield(
+    frame: StableTerrainFrame,
+    tile: &LocalTerrainTile,
+    maps: &PlanetMaps,
+    profile: &PlanetVisualProfile,
+    origin: Vec3,
+    direction: Vec3,
+) -> Option<HeightfieldRayHit> {
+    const MAX_DISTANCE: f32 = 8.4;
+    const MARCH_STEPS: usize = 160;
+    const REFINE_STEPS: usize = 8;
+
+    let mut previous_t = 0.04_f32;
+    let mut previous_clearance = f32::MAX;
+    let mut t = previous_t;
+    for _ in 0..MARCH_STEPS {
+        let world_x = origin.x + direction.x * t;
+        let world_z = origin.z + direction.z * t;
+        let (terrain_height, _, _) = tile.sample(world_x, world_z);
+        let ray_height = origin.y + direction.y * t;
+        let clearance = ray_height - terrain_height;
+        if clearance <= 0.0 && previous_clearance > 0.0 {
+            let mut low = previous_t;
+            let mut high = t;
+            for _ in 0..REFINE_STEPS {
+                let mid = (low + high) * 0.5;
+                let mid_x = origin.x + direction.x * mid;
+                let mid_z = origin.z + direction.z * mid;
+                let mid_height = tile.sample_height_smooth(mid_x, mid_z);
+                let mid_clearance = origin.y + direction.y * mid - mid_height;
+                if mid_clearance > 0.0 {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            let hit_t = (low + high) * 0.5;
+            return Some(HeightfieldRayHit {
+                point: heightfield_surface_point(
+                    frame,
+                    tile,
+                    maps,
+                    profile,
+                    origin.x + direction.x * hit_t,
+                    origin.z + direction.z * hit_t,
+                ),
+                distance: hit_t,
+            });
+        }
+
+        previous_t = t;
+        previous_clearance = clearance;
+        // Clearance-adaptive stepping prevents a ray from hopping across a
+        // narrow ridge between two positive samples. It is deliberately
+        // bounded below the smallest resolved terrain wavelength; the exact
+        // crossing is then solved by the bracketed binary search above.
+        t += (clearance.max(0.0) * 0.34 + 0.012).clamp(0.012, 0.082);
+        if t > MAX_DISTANCE {
+            break;
+        }
+    }
+    None
+}
+
+fn heightfield_normal(
+    tile: &LocalTerrainTile,
+    point: HeightfieldSurfacePoint,
+    distance: f32,
+) -> Vec3 {
+    let step = 0.018 + smoothstep(3.2, 7.6, distance) * 0.052;
+    let left = tile.sample_height_smooth(point.world_x - step, point.world_z);
+    let right = tile.sample_height_smooth(point.world_x + step, point.world_z);
+    let far = tile.sample_height_smooth(point.world_x, point.world_z + step);
+    let near = tile.sample_height_smooth(point.world_x, point.world_z - step);
+    Vec3::new(
+        (left - right) / (step * 2.0),
+        1.0,
+        (near - far) / (step * 2.0),
+    )
+    .normalize()
+}
+
+fn heightfield_contact_shadow(
+    tile: &LocalTerrainTile,
+    point: HeightfieldSurfacePoint,
+    light_dir: Vec3,
+) -> f32 {
+    let ground_length = (light_dir.x * light_dir.x + light_dir.z * light_dir.z).sqrt();
+    if light_dir.y <= 0.001 || ground_length <= 0.001 {
+        return 1.0;
+    }
+    let ray_x = light_dir.x / ground_length;
+    let ray_z = light_dir.z / ground_length;
+    let rise = light_dir.y / ground_length;
+    let mut shadow = 0.0_f32;
+    for distance in [0.08_f32, 0.16, 0.30, 0.52, 0.84, 1.26, 1.86] {
+        let (blocker_height, _, _) = tile.sample(
+            point.world_x + ray_x * distance,
+            point.world_z + ray_z * distance,
+        );
+        let ray_height = point.height + 0.008 + rise * distance;
+        let penetration = blocker_height - ray_height;
+        shadow = shadow.max(smoothstep(0.002, 0.065 + distance * 0.012, penetration));
+    }
+    shadow
+}
+
+#[allow(clippy::too_many_arguments)]
+fn raymarched_terrain_overview_pixel(
+    fx: f32,
+    fy: f32,
+    sx: f32,
+    local_horizon: f32,
+    aspect: f32,
+    sun_screen: Vec3,
+    sky_color: Option<Vec3>,
+    frame: StableTerrainFrame,
+    tile: &LocalTerrainTile,
+    maps: &PlanetMaps,
+    profile: &PlanetVisualProfile,
+    lighting_mode: LightingMode,
+) -> [u8; 4] {
+    let night_view = lighting_mode.is_night();
+    let atmosphere = clamp(profile.atmosphere_density, 0.0, 1.6);
+    let fallback_sky = if night_view {
+        Vec3::new(0.006, 0.016, 0.050)
+    } else {
+        Vec3::new(0.54, 0.69, 0.80)
+    };
+    let vertical_ray = (local_horizon - fy) / (1.0 - local_horizon).max(0.1);
+    let origin = Vec3::new(0.0, 0.48, -0.34);
+    let direction = Vec3::new(
+        sx * 0.46 / aspect.max(0.72).sqrt(),
+        vertical_ray * 0.86,
+        1.0,
+    )
+    .normalize();
+    let Some(hit) = raymarch_heightfield(frame, tile, maps, profile, origin, direction) else {
+        let miss_haze = if night_view {
+            Vec3::new(0.062, 0.115, 0.235)
+        } else {
+            Vec3::new(0.34, 0.50, 0.60)
+        };
+        let horizon_proximity = smoothstep(0.16, 0.0, vertical_ray.abs());
+        return rgba(
+            tone_map(
+                sky_color
+                    .unwrap_or(fallback_sky)
+                    .lerp(miss_haze, horizon_proximity * (0.62 + atmosphere * 0.12)),
+            ),
+            255,
+        );
+    };
+
+    let point = hit.point;
+    let sample = point.sample;
+    let raw_water = clamp01(point.water);
+    let water = smoothstep(0.24, 0.76, raw_water);
+    let land = 1.0 - water;
+    let shore = 1.0 - smoothstep(0.035, 0.20, (raw_water - 0.50).abs());
+    let detail_visibility = 1.0 - smoothstep(3.2, 7.6, hit.distance) * 0.58;
+    let mut normal = heightfield_normal(tile, point, hit.distance);
+    let geometric_normal = normal;
+    let detail_step = 0.026 + smoothstep(2.8, 7.2, hit.distance) * 0.058;
+    let (_, detail_left, _) = tile.sample(point.world_x - detail_step, point.world_z);
+    let (_, detail_right, _) = tile.sample(point.world_x + detail_step, point.world_z);
+    let (_, detail_far, _) = tile.sample(point.world_x, point.world_z + detail_step);
+    let (_, detail_near, _) = tile.sample(point.world_x, point.world_z - detail_step);
+    let detail_dx = (detail_left - detail_right) / (detail_step * 2.0);
+    let detail_dz = (detail_near - detail_far) / (detail_step * 2.0);
+    let bump_strength = (land * 0.050 + water * 0.0025) * detail_visibility;
+    normal = Vec3::new(
+        normal.x + detail_dx * bump_strength,
+        normal.y,
+        normal.z + detail_dz * bump_strength,
+    )
+    .normalize();
+    let grain_step = 0.008 + smoothstep(2.6, 7.0, hit.distance) * 0.020;
+    let surface_grain = fbm_tiled(
+        point.world_x * 0.48 + point.detail * 0.035,
+        point.world_z * 0.44 - point.detail * 0.030,
+        47,
+        3,
+        profile.seed + 41_223,
+        0.44,
+    );
+    let grain_x = fbm_tiled(
+        (point.world_x + grain_step) * 0.48 + point.detail * 0.035,
+        point.world_z * 0.44 - point.detail * 0.030,
+        47,
+        3,
+        profile.seed + 41_223,
+        0.44,
+    );
+    let grain_z = fbm_tiled(
+        point.world_x * 0.48 + point.detail * 0.035,
+        (point.world_z + grain_step) * 0.44 - point.detail * 0.030,
+        47,
+        3,
+        profile.seed + 41_223,
+        0.44,
+    );
+    let grain_bump = land * detail_visibility * 0.018 / grain_step;
+    normal = Vec3::new(
+        normal.x + (surface_grain - grain_x) * grain_bump,
+        normal.y,
+        normal.z + (surface_grain - grain_z) * grain_bump,
+    )
+    .normalize();
+
+    let light_dir = overview_light_dir(lighting_mode);
+    let view_dir = (origin - Vec3::new(point.world_x, point.height, point.world_z)).normalize();
+    let half = (light_dir + view_dir).normalize();
+    let ndotl = normal.dot(light_dir).max(0.0);
+    let ndotv = normal.dot(view_dir).max(0.0);
+    let mut roughness = clamp(sample.roughness, 0.04, 0.96);
+    let terrain_shadow = heightfield_contact_shadow(tile, point, light_dir) * land;
+    let cast_cloud = maps
+        .sample(point.u - light_dir.x * 0.018, point.v - light_dir.z * 0.014)
+        .cloud;
+    let cloud_shadow = smoothstep(0.10, 0.72, cast_cloud)
+        * (0.10 + atmosphere * 0.035)
+        * (1.0 - terrain_shadow * 0.30);
+    let shadow = clamp01(terrain_shadow * 0.62 + cloud_shadow);
+    let sky_visibility = 1.0 - sample.horizon_occlusion * land;
+    let material_ao = sample.ambient_occlusion * land * (0.38 + roughness * 0.12);
+    let local_detail = fbm_tiled(
+        point.world_x * 0.30 + point.detail * 0.10,
+        point.world_z * 0.27 - point.detail * 0.08,
+        41,
+        3,
+        profile.seed + 41_211,
+        0.47,
+    );
+    let material_fine_noise = fbm_tiled(
+        point.world_x * 0.82 + local_detail * 0.045,
+        point.world_z * 0.74 - point.detail * 0.038,
+        53,
+        2,
+        profile.seed + 41_229,
+        0.42,
+    );
+    let material_fine = clamp01(material_fine_noise * 0.64 + surface_grain * 0.36);
+    let material_macro = fbm_tiled(
+        point.world_x * 0.092 + point.detail * 0.075,
+        point.world_z * 0.084 - local_detail * 0.060,
+        19,
+        4,
+        profile.seed + 41_239,
+        0.52,
+    );
+    let surface_slope = clamp01((1.0 - geometric_normal.y) / 0.24);
+    let highland = smoothstep(0.055, 0.24, point.height);
+    let rock_mask = smoothstep(
+        0.16,
+        0.68,
+        surface_slope * 0.70
+            + ridge(local_detail) * 0.24
+            + ridge(point.detail) * 0.10
+            + highland * 0.13,
+    ) * land
+        * detail_visibility;
+    roughness = clamp(
+        roughness
+            + (material_fine - 0.5) * land * 0.34
+            + (surface_grain - 0.5) * land * 0.28
+            + rock_mask * 0.07
+            - water * 0.34,
+        0.045,
+        0.96,
+    );
+    let mut base = sample.albedo
+        * (0.58
+            + (local_detail - 0.5) * land * 0.46 * detail_visibility
+            + (point.detail - 0.5) * land * 0.24
+            + (material_fine - 0.5) * land * 0.24 * detail_visibility);
+    base = base * (0.74 + surface_grain * 0.52 * land * detail_visibility + water * 0.26);
+    let soil = Vec3::new(0.12, 0.115, 0.085).lerp(Vec3::new(0.34, 0.27, 0.17), local_detail);
+    base = base.lerp(soil, land * (0.28 + (1.0 - surface_slope) * 0.20));
+    let mineral_patch =
+        smoothstep(0.43, 0.70, material_macro) * smoothstep(0.30, 0.82, ridge(local_detail));
+    base = base.lerp(
+        Vec3::new(0.16, 0.145, 0.125).lerp(Vec3::new(0.43, 0.31, 0.20), material_fine),
+        mineral_patch * land * (0.18 + surface_slope * 0.22),
+    );
+    base = base.lerp(
+        Vec3::new(0.17, 0.18, 0.18).lerp(
+            Vec3::new(0.56, 0.52, 0.43),
+            local_detail * 0.68 + material_fine * 0.32,
+        ),
+        rock_mask * 0.84,
+    );
+    let scree = smoothstep(
+        0.48,
+        0.86,
+        ridge(surface_grain) * 0.56 + ridge(material_fine) * 0.24 + surface_slope * 0.20,
+    ) * land
+        * (0.24 + surface_slope * 0.76)
+        * detail_visibility;
+    base = base.lerp(
+        Vec3::new(0.065, 0.070, 0.068).lerp(Vec3::new(0.27, 0.25, 0.21), material_fine),
+        scree * 0.62,
+    );
+    let fracture_noise = fbm_tiled(
+        point.world_x * 0.22 + material_macro * 0.085,
+        point.world_z * 0.20 - local_detail * 0.070,
+        61,
+        3,
+        profile.seed + 41_251,
+        0.46,
+    );
+    let fracture = smoothstep(0.88, 0.985, ridge(fracture_noise))
+        * land
+        * (0.24 + surface_slope * 0.76)
+        * detail_visibility;
+    base = base.lerp(Vec3::new(0.028, 0.032, 0.030), fracture * 0.62);
+    base = base.lerp(
+        Vec3::new(0.055, 0.070, 0.052),
+        shore * land * (0.54 + sample.wetness * 0.18),
+    );
+    base = base.lerp(
+        Vec3::new(0.10, 0.27, 0.10).lerp(Vec3::new(0.24, 0.38, 0.15), local_detail),
+        sample.vegetation * land * (1.0 - surface_slope * 0.72) * 0.34,
+    );
+    let procedural_cover = smoothstep(
+        0.38,
+        0.62,
+        local_detail * 0.44 + point.detail * 0.34 + material_fine * 0.22,
+    ) * (1.0 - surface_slope)
+        * (1.0 - highland * 0.64)
+        * (1.0 - shore * 0.52)
+        * land;
+    base = base.lerp(
+        Vec3::new(0.095, 0.225, 0.075).lerp(Vec3::new(0.20, 0.32, 0.11), point.detail),
+        procedural_cover * (0.42 + sample.vegetation * 0.34),
+    );
+    let strata =
+        ((point.height * 24.0 + point.world_x * 0.42 + (material_macro - 0.5) * 5.8).sin() * 0.5
+            + 0.5)
+            * surface_slope
+            * rock_mask;
+    base = base.lerp(
+        Vec3::new(0.31, 0.28, 0.24).lerp(Vec3::new(0.62, 0.57, 0.47), material_fine),
+        strata * 0.24 * detail_visibility,
+    );
+
+    let oren_nayar = 1.0 - roughness * 0.23 + roughness * 0.11 * (1.0 - ndotv);
+    let direct_visibility = (1.0 - shadow) * (1.0 - material_ao * 0.42);
+    let mut color = if night_view {
+        let base_luma = base.x * 0.2126 + base.y * 0.7152 + base.z * 0.0722;
+        let moon = Vec3::new(0.14, 0.27, 0.70) * base_luma;
+        let sky_ambient = (Vec3::new(0.022, 0.046, 0.115) * base_luma + base * 0.009)
+            * (0.52 + sky_visibility * 0.48);
+        sky_ambient + moon * ndotl * oren_nayar * direct_visibility * 0.72
+    } else {
+        let sun = Vec3::new(base.x * 1.00, base.y * 0.94, base.z * 0.84);
+        let ambient = base * (0.22 + atmosphere * 0.040) * (0.62 + sky_visibility * 0.38);
+        ambient + sun * ndotl * oren_nayar * direct_visibility
+    };
+
+    if land > 0.01 {
+        let land_specular = normal
+            .dot(half)
+            .max(0.0)
+            .powf(12.0 + (1.0 - roughness) * 52.0)
+            * ndotl
+            * (1.0 - roughness)
+            * (sample.wetness * 0.14 + rock_mask * 0.035)
+            * (1.0 - shadow);
+        color += if night_view {
+            Vec3::new(0.16, 0.24, 0.58)
+        } else {
+            Vec3::new(0.92, 0.82, 0.64)
+        } * land_specular;
+    }
+
+    if water > 0.01 {
+        let depth = clamp01((0.62 - sample.height) * 1.70 + raw_water * 0.36);
+        let water_base = Vec3::new(0.002, 0.020, 0.082)
+            .lerp(Vec3::new(0.012, 0.082, 0.185), 1.0 - depth * 0.62)
+            .lerp(Vec3::new(0.026, 0.072, 0.082), shore * (1.0 - depth) * 0.30);
+        let reflected = (normal * (2.0 * normal.dot(view_dir)) - view_dir).normalize();
+        let space_environment = sample_environment(
+            reflected,
+            profile.seed + 41_307,
+            distant_light_for_mode(lighting_mode),
+        );
+        let grazing = (1.0 - ndotv).powf(1.5);
+        let atmosphere_reflection = if night_view {
+            Vec3::new(0.004, 0.012, 0.040).lerp(Vec3::new(0.020, 0.035, 0.082), grazing)
+        } else {
+            Vec3::new(0.16, 0.32, 0.52).lerp(Vec3::new(0.62, 0.73, 0.76), grazing)
+        };
+        // The atmospheric sky is the surface-water environment. Retain only
+        // a very small deep-space contribution for genuinely tenuous air;
+        // otherwise the distant-light lobe becomes a detached white blob
+        // instead of a half-vector-aligned reflection streak.
+        let environment =
+            atmosphere_reflection.lerp(space_environment, (1.0 - clamp01(atmosphere)) * 0.08);
+        let fresnel = schlick_fresnel(ndotv, 0.022);
+        let wave_tone = (point.detail - 0.5) * 0.016 * detail_visibility;
+        let water_direct = if night_view {
+            Vec3::new(
+                water_base.x * 0.08,
+                water_base.y * 0.16,
+                water_base.z * 0.42,
+            ) * (0.045 + ndotl * 0.22 * (1.0 - shadow))
+        } else {
+            water_base * (0.16 + ndotl * 0.46 * (1.0 - shadow) + wave_tone)
+        };
+        let mut water_color = water_direct.lerp(
+            environment,
+            clamp01(fresnel * (0.56 + (1.0 - roughness) * 0.30)),
+        );
+        let specular = normal
+            .dot(half)
+            .max(0.0)
+            .powf(62.0 + (1.0 - roughness) * 94.0)
+            * ndotl
+            * (1.0 - shadow)
+            * (0.16 + fresnel * 1.30);
+        water_color += if night_view {
+            Vec3::new(0.34, 0.48, 1.0) * specular * 0.26
+        } else {
+            Vec3::new(1.0, 0.88, 0.64) * specular
+        };
+        let reflected_cloud =
+            smoothstep(0.10, 0.68, cast_cloud) * fresnel * (0.20 + grazing * 0.22);
+        water_color = water_color.lerp(
+            if night_view {
+                Vec3::new(0.018, 0.032, 0.075)
+            } else {
+                Vec3::new(0.58, 0.66, 0.68)
+            },
+            reflected_cloud * if night_view { 0.28 } else { 1.0 },
+        );
+        let foam = shore
+            * smoothstep(
+                0.43,
+                0.91,
+                ridge(local_detail) * 0.46 + ridge(point.detail) * 0.34,
+            )
+            * (0.30 + detail_visibility * 0.26);
+        water_color += Vec3::new(0.62, 0.74, 0.72) * foam * if night_view { 0.035 } else { 0.18 };
+        color = color.lerp(water_color, water);
+    }
+
+    if night_view && sample.city > 0.006 {
+        let city_du = 1.25 / maps.width.max(1) as f32;
+        let city_dv = 1.25 / maps.height.max(1) as f32;
+        let city_field = sample.city * 0.56
+            + maps.sample(point.u - city_du, point.v).city * 0.11
+            + maps.sample(point.u + city_du, point.v).city * 0.11
+            + maps.sample(point.u, point.v - city_dv).city * 0.11
+            + maps.sample(point.u, point.v + city_dv).city * 0.11;
+        let terrain_conformity = land
+            * (1.0 - smoothstep(0.32, 0.92, surface_slope))
+            * (1.0 - shore * 0.58)
+            * (1.0 - sample.cloud * 0.46);
+        let edge_fade = smoothstep(0.050, 0.125, fx) * smoothstep(0.050, 0.125, 1.0 - fx);
+        let distance_fade = 1.0 - smoothstep(5.4, 8.0, hit.distance);
+        let city = city_field.powf(1.22) * terrain_conformity * edge_fade * distance_fade;
+        color += Vec3::new(2.15, 1.08, 0.34) * city;
+    }
+    let hot_albedo = clamp01(
+        (sample.albedo.x - sample.albedo.z * 1.55) * 1.30
+            + (sample.albedo.y - sample.albedo.z) * 0.52,
+    );
+    let lava_crack = smoothstep(
+        0.72,
+        0.96,
+        ridge(material_fine) * 0.62 + ridge(local_detail) * 0.38,
+    ) * smoothstep(0.82, 0.97, profile.volcanic_activity)
+        * rock_mask;
+    color += Vec3::new(2.8, 0.62, 0.085)
+        * hot_albedo
+        * lava_crack
+        * if night_view { 0.30 } else { 0.045 };
+
+    let aerial_breakup = fbm_tiled(
+        point.world_x * 0.052 + point.detail * 0.025,
+        point.world_z * 0.048 - local_detail * 0.020,
+        17,
+        2,
+        profile.seed + 41_487,
+        0.50,
+    );
+    let far_haze = smoothstep(3.0, 8.1, hit.distance)
+        * (0.25 + atmosphere * 0.34 + sample.cloud * 0.045)
+        * (0.88 + aerial_breakup * 0.12);
+    let haze = if night_view {
+        Vec3::new(0.022, 0.052, 0.120)
+    } else {
+        Vec3::new(0.34, 0.50, 0.60)
+    };
+    color = color.lerp(haze, clamp01(far_haze));
+    let horizon_proximity = smoothstep(-0.34, 0.035, vertical_ray);
+    let horizon_lod = horizon_proximity * if night_view { 0.42 } else { 0.26 };
+    let horizon_air = if night_view {
+        Vec3::new(0.062, 0.115, 0.235)
+    } else {
+        sky_color
+            .unwrap_or(Vec3::new(0.34, 0.50, 0.60))
+            .lerp(Vec3::new(0.34, 0.50, 0.60), 0.08)
+    };
+    color = color.lerp(horizon_air, horizon_lod);
+
+    let reflection_x = if night_view { 0.74 } else { sun_screen.x };
+    let screen_ground = clamp01((fy - local_horizon) / (1.0 - local_horizon).max(0.1));
+    let water_glow = water
+        * smoothstep(0.20, 0.0, ((fx - reflection_x) * aspect).abs())
+        * smoothstep(0.76, 0.03, screen_ground);
+    color += if night_view {
+        Vec3::new(0.16, 0.24, 0.65)
+    } else {
+        Vec3::new(0.86, 0.68, 0.36)
+    } * water_glow
+        * if night_view { 0.024 } else { 0.050 };
+    let vignette = smoothstep(1.08, 0.22, sx.abs()) * smoothstep(1.0, 0.38, screen_ground);
+    color = color * (0.91 + vignette * 0.10);
+    color = apply_anti_band_grain(
+        color,
+        fx + point.detail * 0.011,
+        screen_ground + local_detail * 0.009,
+        profile.seed + 41_503,
+        if night_view { 0.0038 } else { 0.0028 } + far_haze * 0.0015,
+    );
+    rgba(tone_map(color * if night_view { 1.26 } else { 0.78 }), 255)
+}
+
+/// Stable local tangent-plane renderer for solid-surface temperate and
+/// artificial worlds. Unlike the legacy reciprocal UV projector, this path
+/// has bounded screen-to-world derivatives at both the horizon and the near
+/// field. It therefore cannot magnify a few map texels into full-height
+/// ribbons. Geometry remains a deterministic CPU heightfield product: global
+/// maps provide macro materials and relief, while analytic microgeometry keeps
+/// the near field resolved without allocating a second giant texture.
+#[allow(clippy::too_many_arguments)]
+fn stable_terrain_overview_pixel(
+    fx: f32,
+    fy: f32,
+    sx: f32,
+    local_horizon: f32,
+    aspect: f32,
+    sun_screen: Vec3,
+    sky_color: Option<Vec3>,
+    frame: StableTerrainFrame,
+    maps: &PlanetMaps,
+    profile: &PlanetVisualProfile,
+    lighting_mode: LightingMode,
+) -> [u8; 4] {
+    let night_view = lighting_mode.is_night();
+    let atmosphere = clamp(profile.atmosphere_density, 0.0, 1.6);
+    let skyline_mass = fbm_periodic(
+        fx * 0.44 + frame.anchor_u * 0.17,
+        0.37 + frame.anchor_v * 0.11,
+        3,
+        4,
+        profile.seed + 40_101,
+        0.53,
+    );
+    let skyline_detail = fbm_periodic(
+        fx * 0.82 - frame.anchor_v * 0.13,
+        0.61 + frame.anchor_u * 0.09,
+        7,
+        2,
+        profile.seed + 40_127,
+        0.46,
+    );
+    let skyline_lift =
+        0.004 + smoothstep(0.48, 0.90, skyline_mass) * 0.017 + ridge(skyline_detail) * 0.0045;
+    let skyline = clamp(
+        local_horizon - skyline_lift,
+        local_horizon - 0.028,
+        local_horizon - 0.003,
+    );
+    let fallback_sky = if night_view {
+        Vec3::new(0.008, 0.020, 0.060)
+    } else {
+        Vec3::new(0.54, 0.69, 0.80)
+    };
+    if fy < skyline {
+        return rgba(tone_map(sky_color.unwrap_or(fallback_sky)), 255);
+    }
+
+    let ground_v = clamp01((fy - skyline) / (1.0 - skyline));
+    let far = 1.0 - ground_v;
+    let world_z = 0.22 + far * 5.35;
+    let world_x = sx * (0.78 + world_z * 0.22) / aspect.max(0.72).sqrt();
+    let domain_a = fbm_tiled(
+        world_x * 0.095 + frame.anchor_u,
+        world_z * 0.082 + frame.anchor_v,
+        19,
+        3,
+        profile.seed + 40_211,
+        0.51,
+    );
+    let domain_b = fbm_tiled(
+        world_x * 0.071 - domain_a * 0.10,
+        world_z * 0.104 + domain_a * 0.08,
+        23,
+        3,
+        profile.seed + 40_237,
+        0.49,
+    );
+    let warp_x = (domain_a - 0.5) * 0.0045 + (domain_b - 0.5) * 0.0020;
+    let warp_z = (domain_b - 0.5) * 0.0040 - (domain_a - 0.5) * 0.0018;
+    let (u, v) = frame.map_uv(world_x, world_z, warp_x, warp_z);
+
+    let distance_filter = smoothstep(3.65, 5.55, world_z);
+    let sample_step = 0.80 + distance_filter * 2.4;
+    let eps_u = sample_step / maps.width.max(1) as f32;
+    let eps_v = sample_step / maps.height.max(1) as f32;
+    let sample = terrain_overview_sample_lod(maps, u, v, eps_u, eps_v, distance_filter * 0.82);
+    let raw_water = clamp01(sample.water);
+    let water = smoothstep(0.40, 0.64, raw_water);
+    let land = 1.0 - water;
+    let shore = 1.0 - smoothstep(0.028, 0.30, (raw_water - 0.50).abs());
+
+    let map_gradient_step = 1.45 / maps.width.max(1) as f32;
+    let side_u = frame.side_u * map_gradient_step;
+    let side_v = frame.side_v * map_gradient_step;
+    let forward_u = frame.forward_u * map_gradient_step;
+    let forward_v = frame.forward_v * map_gradient_step;
+    let height_left = terrain_overview_elevation(maps.sample(u - side_u, v - side_v));
+    let height_right = terrain_overview_elevation(maps.sample(u + side_u, v + side_v));
+    let height_far = terrain_overview_elevation(maps.sample(u + forward_u, v + forward_v));
+    let height_near = terrain_overview_elevation(maps.sample(u - forward_u, v - forward_v));
+
+    let seed_phase = hash2(211, 307, profile.seed + 40_307) * PI * 2.0;
+    let phase_a = world_x * 7.4 + world_z * 2.7 + seed_phase;
+    let phase_b = world_x * -3.8 + world_z * 8.1 - seed_phase * 0.63;
+    let phase_c = world_x * 12.7 + world_z * -5.3 + seed_phase * 1.37;
+    let micro_dx = (phase_a.cos() * 0.072 - phase_b.cos() * 0.030 + phase_c.cos() * 0.018)
+        * land
+        * (1.0 - distance_filter * 0.72);
+    let micro_dz = (phase_a.cos() * 0.026 + phase_b.cos() * 0.064 - phase_c.cos() * 0.022)
+        * land
+        * (1.0 - distance_filter * 0.72);
+    let relief_strength = 18.0 + land * 12.0 + smoothstep(0.60, 0.96, ground_v) * 7.0;
+    let mut normal = Vec3::new(
+        (height_left - height_right) * relief_strength + micro_dx,
+        1.0,
+        (height_near - height_far) * relief_strength + micro_dz,
+    )
+    .normalize();
+
+    let wave_a = (world_x * 9.2 + world_z * 3.4 + seed_phase * 0.8).sin();
+    let wave_b = (world_x * -5.7 + world_z * 11.3 - seed_phase).sin();
+    let wave_c = (world_x * 17.1 + world_z * -7.6 + seed_phase * 1.6).sin();
+    if water > 0.01 {
+        let wave_normal = Vec3::new(
+            wave_a * 0.055 - wave_b * 0.028 + wave_c * 0.012,
+            1.0,
+            wave_a * 0.021 + wave_b * 0.060 - wave_c * 0.018,
+        )
+        .normalize();
+        normal = normal
+            .lerp(wave_normal, water * (0.84 - distance_filter * 0.30))
+            .normalize();
+    }
+
+    let local_detail = fbm_tiled(
+        world_x * 0.18 + domain_a * 0.12,
+        world_z * 0.16 - domain_b * 0.10,
+        37,
+        4,
+        profile.seed + 40_401,
+        0.48,
+    );
+    let local_fine = fbm_tiled(
+        world_x * 0.46 - local_detail * 0.08,
+        world_z * 0.41 + local_detail * 0.07,
+        61,
+        2,
+        profile.seed + 40_433,
+        0.44,
+    );
+    let light_dir = overview_light_dir(lighting_mode);
+    let view_dir = Vec3::new(-sx * 0.08, 0.58 + ground_v * 0.10, 0.82).normalize();
+    let half = (light_dir + view_dir).normalize();
+    let ndotl = normal.dot(light_dir).max(0.0);
+    let ndotv = normal.dot(view_dir).max(0.0);
+    let roughness = clamp(sample.roughness, 0.04, 0.96);
+    let sky_visibility = 1.0 - sample.horizon_occlusion * land;
+    let ambient = (if night_view {
+        0.045
+    } else {
+        0.205 + atmosphere * 0.040
+    }) * (0.58 + sky_visibility * 0.42);
+    let oren_nayar = 1.0 - roughness * 0.22 + roughness * 0.10 * (1.0 - ndotv);
+    let cast_cloud = maps
+        .sample(
+            u - light_dir.x * (0.012 + sample.cloud * 0.008),
+            v - light_dir.z * (0.010 + sample.cloud * 0.006),
+        )
+        .cloud;
+    let cloud_shadow = smoothstep(0.10, 0.72, cast_cloud)
+        * (0.12 + atmosphere * 0.035)
+        * smoothstep(0.02, 0.78, ground_v);
+    let material_ao = sample.ambient_occlusion * land * (0.34 + roughness * 0.12);
+
+    let mut base = sample.albedo
+        * (0.88 + (local_detail - 0.5) * land * 0.24 + (local_fine - 0.5) * land * 0.10);
+    if land > 0.01 {
+        let wet_soil = Vec3::new(0.22, 0.20, 0.15).lerp(Vec3::new(0.34, 0.32, 0.24), local_detail);
+        base = base.lerp(wet_soil, shore * land * (0.24 + sample.wetness * 0.18));
+        base = base.lerp(
+            Vec3::new(0.19, 0.30, 0.16),
+            sample.vegetation * land * (0.16 + local_detail * 0.10),
+        );
+    }
+    let mut color =
+        base * (ambient + ndotl * oren_nayar * (1.0 - cloud_shadow)) * (1.0 - material_ao);
+
+    if water > 0.01 {
+        let depth = clamp01((0.62 - sample.height) * 1.65 + raw_water * 0.34);
+        let deep = Vec3::new(0.003, 0.024, 0.095);
+        let mid = Vec3::new(0.012, 0.082, 0.190);
+        let shelf = Vec3::new(0.045, 0.270, 0.350);
+        let water_base = deep
+            .lerp(mid, 1.0 - depth * 0.62)
+            .lerp(shelf, shore * (1.0 - depth) * 0.72)
+            * (0.84 + (local_detail - 0.5) * 0.08);
+        let reflected = (normal * (2.0 * normal.dot(view_dir)) - view_dir).normalize();
+        let environment = sample_environment(
+            reflected,
+            profile.seed + 40_509,
+            distant_light_for_mode(lighting_mode),
+        );
+        let fresnel = schlick_fresnel(ndotv, 0.022);
+        let water_diffuse = water_base
+            * ((if night_view { 0.055 } else { 0.13 }) + ndotl * 0.42)
+            * (1.0 - cloud_shadow * 0.54);
+        let mut water_color = water_diffuse.lerp(
+            environment,
+            clamp01(fresnel * (0.52 + (1.0 - roughness) * 0.28)),
+        );
+        let specular = normal
+            .dot(half)
+            .max(0.0)
+            .powf(48.0 + (1.0 - roughness) * 84.0)
+            * ndotl
+            * (0.18 + fresnel * 1.25);
+        water_color += if night_view {
+            Vec3::new(0.46, 0.60, 1.0)
+        } else {
+            Vec3::new(1.0, 0.88, 0.64)
+        } * specular;
+        let foam = shore
+            * smoothstep(0.42, 0.94, ridge(local_fine) * 0.56 + wave_a.abs() * 0.24)
+            * (0.30 + ground_v * 0.24);
+        water_color += Vec3::new(0.58, 0.72, 0.70) * foam * if night_view { 0.08 } else { 0.19 };
+        color = color.lerp(water_color, water);
+    }
+
+    if sample.cloud > 0.025 {
+        let cloud_edge = clamp01(
+            (maps.sample(u + eps_u, v).cloud - maps.sample(u - eps_u, v).cloud).abs()
+                + (maps.sample(u, v + eps_v).cloud - maps.sample(u, v - eps_v).cloud).abs(),
+        );
+        let cloud_alpha = smoothstep(0.04, 0.72, sample.cloud)
+            * (0.10 + cloud_edge * 0.16 + atmosphere * 0.025)
+            * smoothstep(0.02, 0.64, ground_v);
+        let cloud_color = if night_view {
+            Vec3::new(0.12, 0.16, 0.30) * (0.34 + ndotl * 0.28)
+        } else {
+            Vec3::new(0.78, 0.82, 0.80).lerp(
+                Vec3::new(0.98, 0.98, 0.94),
+                ndotl * 0.58 + cloud_edge * 0.16,
+            )
+        };
+        color = color.lerp(cloud_color, cloud_alpha);
+    }
+
+    if night_view && sample.city > 0.01 {
+        let city = sample.city * land * (1.0 - sample.cloud * 0.38);
+        color += Vec3::new(3.4, 1.72, 0.56) * city;
+    }
+    let hot_albedo = clamp01(
+        (sample.albedo.x - sample.albedo.z * 1.55) * 1.30
+            + (sample.albedo.y - sample.albedo.z) * 0.52,
+    );
+    color += Vec3::new(2.8, 0.64, 0.095)
+        * hot_albedo
+        * profile.volcanic_activity
+        * land
+        * if night_view { 0.34 } else { 0.075 };
+
+    let far_haze =
+        smoothstep(2.65, 5.56, world_z) * (0.12 + atmosphere * 0.18 + sample.cloud * 0.035);
+    let haze = if night_view {
+        Vec3::new(0.018, 0.040, 0.095)
+    } else {
+        Vec3::new(0.57, 0.70, 0.76)
+    };
+    color = color.lerp(haze, clamp01(far_haze));
+    if let Some(sky) = sky_color {
+        color = sky.lerp(color, smoothstep(0.0, 0.026, ground_v));
+    }
+
+    let reflection_x = if night_view { 0.74 } else { sun_screen.x };
+    let water_glow = water
+        * smoothstep(0.20, 0.0, ((fx - reflection_x) * aspect).abs())
+        * smoothstep(0.74, 0.03, ground_v);
+    color += if night_view {
+        Vec3::new(0.24, 0.34, 0.78)
+    } else {
+        Vec3::new(0.86, 0.68, 0.36)
+    } * water_glow
+        * 0.055;
+    let vignette = smoothstep(1.08, 0.22, sx.abs()) * smoothstep(1.0, 0.40, ground_v);
+    color = color * (0.90 + vignette * 0.11);
+    color = apply_anti_band_grain(
+        color,
+        fx + domain_a * 0.013,
+        ground_v + domain_b * 0.011,
+        profile.seed + 40_607,
+        if night_view { 0.0042 } else { 0.0030 } + far_haze * 0.0016,
+    );
+
+    rgba(tone_map(color * if night_view { 1.04 } else { 0.98 }), 255)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -9136,11 +10712,13 @@ fn shade_surface(
         )
     };
     let oren = 1.0 - roughness * 0.24 + roughness * 0.12 * (1.0 - view_dot);
-    let ambient = if night_view {
+    let land_occlusion = land_for_bump * sample.ambient_occlusion;
+    let sky_visibility = 1.0 - land_for_bump * sample.horizon_occlusion;
+    let ambient = (if night_view {
         0.010 + atmosphere_density * 0.022
     } else {
         0.020 + atmosphere_density * 0.045
-    };
+    }) * (0.58 + sky_visibility * 0.42);
     let terminator = smoothstep(-0.18, 0.10, raw_light);
     let cloud_altitude = clamp01(
         0.34 + atmosphere_density * 0.18
@@ -9171,7 +10749,9 @@ fn shade_surface(
             1.0
         };
 
-    let mut color = sample.albedo * (ambient + ndotl * oren * (1.0 - shadow));
+    let mut color = sample.albedo
+        * (ambient + ndotl * oren * (1.0 - shadow))
+        * (1.0 - land_occlusion * (0.30 + roughness * 0.12));
 
     if ocean_world && sample.water > 0.35 {
         let depth_cues = ocean_depth_cues(u, v, profile.seed);
@@ -10616,6 +12196,7 @@ mod tests {
         let renderer = PlanetRenderer {
             profile: profile.clone(),
             maps: PlanetMaps::generate(&profile, 128, 64),
+            stable_terrain: None,
         };
         let icon = renderer.render_icon(96);
         let nontransparent = icon.pixels().filter(|p| p[3] > 0).count();
@@ -10636,6 +12217,7 @@ mod tests {
         let renderer = PlanetRenderer {
             profile: profile.clone(),
             maps: PlanetMaps::generate(&profile, 128, 64),
+            stable_terrain: None,
         };
 
         let day_icon = renderer.render_icon_with_options(96, RenderOptions::preview());
@@ -10714,6 +12296,7 @@ mod tests {
         let renderer = PlanetRenderer {
             profile: profile.clone(),
             maps: PlanetMaps::generate(&profile, 96, 48),
+            stable_terrain: None,
         };
         let size = RenderSize {
             width: 160,
@@ -10737,6 +12320,7 @@ mod tests {
         let renderer = PlanetRenderer {
             profile: profile.clone(),
             maps: PlanetMaps::generate(&profile, 128, 64),
+            stable_terrain: None,
         };
         let size = RenderSize {
             width: 192,
@@ -10783,6 +12367,7 @@ mod tests {
         let renderer = PlanetRenderer {
             profile: profile.clone(),
             maps: PlanetMaps::generate(&profile, 128, 64),
+            stable_terrain: None,
         };
         let size = RenderSize {
             width: 128,
@@ -10843,6 +12428,7 @@ mod tests {
         let renderer = PlanetRenderer {
             profile: profile.clone(),
             maps: PlanetMaps::generate(&profile, 128, 64),
+            stable_terrain: None,
         };
         let size = RenderSize {
             width: 128,
