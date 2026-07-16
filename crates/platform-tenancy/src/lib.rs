@@ -428,7 +428,7 @@ impl TenantAuditLog {
             action: action.to_string(),
             actor: actor.to_string(),
             details: details.map(|d| d.to_string()),
-            timestamp: "2026-01-01T00:00:00Z".to_string(), // placeholder ISO 8601
+            timestamp: platform_common::iso8601_now(),
         });
         id
     }

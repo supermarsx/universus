@@ -374,9 +374,7 @@ impl Default for UniverseManager {
 // ---------------------------------------------------------------------------
 
 fn current_timestamp() -> String {
-    // Simple ISO-8601-ish placeholder; in production this would use chrono or
-    // std::time, but we avoid extra dependencies for the game-universe crate.
-    "2026-01-01T00:00:00Z".to_string()
+    platform_common::iso8601_now()
 }
 
 // ---------------------------------------------------------------------------

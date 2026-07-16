@@ -257,6 +257,12 @@ impl LeaseCoordinator {
     }
 }
 
+impl Default for LeaseCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // FencingTokenIssuer — monotonically increasing tokens to guard stale writes
 // ---------------------------------------------------------------------------
@@ -289,6 +295,12 @@ impl FencingTokenIssuer {
     /// Validate that `token` is not stale. A token is valid if it is >= `min_token`.
     pub fn validate(token: u64, min_token: u64) -> bool {
         token >= min_token
+    }
+}
+
+impl Default for FencingTokenIssuer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -383,6 +395,12 @@ impl FencedLeaseCoordinator {
     /// Access the inner coordinator for lower-level operations.
     pub fn coordinator(&self) -> &LeaseCoordinator {
         &self.inner
+    }
+}
+
+impl Default for FencedLeaseCoordinator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

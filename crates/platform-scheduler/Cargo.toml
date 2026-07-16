@@ -9,6 +9,7 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 thiserror = "1"
 tracing = "0.1"
+platform-common = { path = "../platform-common" }
 platform-tenant-routing = { path = "../platform-tenant-routing" }
 platform-sharding = { path = "../platform-sharding" }
 platform-tenancy = { path = "../platform-tenancy" }

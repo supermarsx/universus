@@ -485,7 +485,7 @@ impl DarkMatterStore {
 
         balance.amount += amount;
         balance.lifetime_earned += amount;
-        balance.last_updated = now_placeholder();
+        balance.last_updated = current_timestamp();
 
         let tx = DarkMatterTransaction {
             id: self.next_tx_id,
@@ -493,7 +493,7 @@ impl DarkMatterStore {
             amount: amount as i64,
             reason,
             balance_after: balance.amount,
-            timestamp: now_placeholder(),
+            timestamp: current_timestamp(),
         };
         self.next_tx_id += 1;
         self.transactions.push(tx.clone());
@@ -514,7 +514,7 @@ impl DarkMatterStore {
         let balance = self.balances.get_mut(player_id).unwrap();
         balance.amount -= amount;
         balance.lifetime_spent += amount;
-        balance.last_updated = now_placeholder();
+        balance.last_updated = current_timestamp();
 
         let tx = DarkMatterTransaction {
             id: self.next_tx_id,
@@ -522,7 +522,7 @@ impl DarkMatterStore {
             amount: -(amount as i64),
             reason,
             balance_after: balance.amount,
-            timestamp: now_placeholder(),
+            timestamp: current_timestamp(),
         };
         self.next_tx_id += 1;
         self.transactions.push(tx.clone());
@@ -788,8 +788,8 @@ impl Default for ShopStore {
 // Timestamp Helpers (simple ISO 8601 string manipulation)
 // =============================================================================
 
-fn now_placeholder() -> String {
-    "2026-01-01T00:00:00Z".to_string()
+fn current_timestamp() -> String {
+    platform_common::iso8601_now()
 }
 
 /// Add weeks to an ISO 8601 timestamp string.
@@ -864,7 +864,7 @@ fn days_in_month(year: u32, month: u32) -> u32 {
 }
 
 fn is_leap_year(year: u32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 // =============================================================================

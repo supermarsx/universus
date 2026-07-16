@@ -413,7 +413,7 @@ impl Scheduler {
                 .filter(|j| j.is_due())
                 .map(|j| (j.config.job_id.clone(), j.config.priority))
                 .collect();
-            due.sort_by(|a, b| b.1.cmp(&a.1)); // descending priority
+            due.sort_by_key(|entry| std::cmp::Reverse(entry.1)); // descending priority
             due
         };
 
@@ -513,8 +513,7 @@ impl Scheduler {
 }
 
 fn now_iso() -> String {
-    // Simple timestamp — in production this would use chrono or time crate.
-    format!("2026-01-01T00:00:00Z")
+    platform_common::iso8601_now()
 }
 
 // ---------------------------------------------------------------------------
