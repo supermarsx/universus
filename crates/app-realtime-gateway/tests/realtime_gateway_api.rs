@@ -1,9 +1,136 @@
 use app_realtime_gateway::build_router;
 use axum::body::Body;
-use axum::http::{Method, Request, StatusCode};
+use axum::http::{Method, Request as HttpRequest, StatusCode};
+use futures_util::{SinkExt, StreamExt};
 use hyper::body::to_bytes;
 use serde_json::{json, Value};
+use tokio::time::{timeout, Duration};
+use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Error as WebSocketError, Message};
 use tower::ServiceExt;
+
+struct Request;
+struct AdminRequest;
+
+fn authenticated_request(role: &str, user_id: &str) -> axum::http::request::Builder {
+    let token = auth_token(role, user_id);
+    HttpRequest::builder().header("authorization", format!("Bearer {token}"))
+}
+
+fn auth_token(role: &str, user_id: &str) -> String {
+    let config = platform_auth::AuthConfig::from_env();
+    platform_auth::generate_token(&config, user_id, "Route Test", role, Some(7))
+        .expect("generate route token")
+}
+
+impl Request {
+    fn builder() -> axum::http::request::Builder {
+        authenticated_request("player", "11")
+    }
+}
+
+impl AdminRequest {
+    fn builder() -> axum::http::request::Builder {
+        authenticated_request("admin", "1")
+    }
+}
+
+struct TestServer {
+    http_url: String,
+    ws_url: String,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+async fn spawn_gateway() -> TestServer {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test gateway");
+    listener
+        .set_nonblocking(true)
+        .expect("set listener nonblocking");
+    let address = listener.local_addr().expect("test gateway address");
+    let server = axum::Server::from_tcp(listener)
+        .expect("test server")
+        .serve(build_router().into_make_service());
+    let task = tokio::spawn(async move {
+        let _ = server.await;
+    });
+    TestServer {
+        http_url: format!("http://{address}"),
+        ws_url: format!("ws://{address}/ws"),
+        task,
+    }
+}
+
+type TestSocket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn connect_player(server: &TestServer, user_id: &str) -> TestSocket {
+    let token = auth_token("player", user_id);
+    let mut request = server
+        .ws_url
+        .as_str()
+        .into_client_request()
+        .expect("websocket request");
+    request.headers_mut().insert(
+        "cookie",
+        format!("universus_token={token}").parse().unwrap(),
+    );
+    request
+        .headers_mut()
+        .insert("origin", server.http_url.parse().unwrap());
+    let (mut socket, response) = tokio_tungstenite::connect_async(request)
+        .await
+        .expect("connect websocket");
+    assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+    let ready = next_ws_json(&mut socket).await;
+    assert_eq!(ready["type"], "ready");
+    assert_eq!(ready["user_id"], user_id);
+    socket
+}
+
+async fn next_ws_json(socket: &mut TestSocket) -> Value {
+    let message = timeout(Duration::from_secs(2), socket.next())
+        .await
+        .expect("websocket response timeout")
+        .expect("websocket stream ended")
+        .expect("websocket response");
+    match message {
+        Message::Text(text) => serde_json::from_str(&text).expect("websocket json"),
+        other => panic!("expected websocket text frame, got {other:?}"),
+    }
+}
+
+async fn publish_over_http(server: &TestServer, channel: &str, event: &str) -> (StatusCode, Value) {
+    let request = HttpRequest::builder()
+        .method(Method::POST)
+        .uri(format!("{}/api/realtime/publish", server.http_url))
+        .header(
+            "authorization",
+            format!("Bearer {}", auth_token("admin", "1")),
+        )
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({ "channel": channel, "event": event }).to_string(),
+        ))
+        .expect("publish request");
+    let response = hyper::Client::new()
+        .request(request)
+        .await
+        .expect("publish response");
+    let status = response.status();
+    (status, network_json_body(response).await)
+}
+
+async fn network_json_body(response: hyper::Response<hyper::Body>) -> Value {
+    let bytes = to_bytes(response.into_body())
+        .await
+        .expect("read network response body");
+    serde_json::from_slice(&bytes).expect("parse network response json")
+}
 
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = to_bytes(response.into_body())
@@ -33,6 +160,286 @@ async fn health_endpoint_returns_service_status() {
 }
 
 #[tokio::test]
+async fn websocket_upgrade_rejects_missing_and_invalid_authentication() {
+    let server = spawn_gateway().await;
+
+    let missing = tokio_tungstenite::connect_async(server.ws_url.as_str())
+        .await
+        .expect_err("anonymous upgrade must fail");
+    match missing {
+        WebSocketError::Http(response) => {
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED)
+        }
+        other => panic!("expected HTTP authentication rejection, got {other:?}"),
+    }
+
+    let mut request = server
+        .ws_url
+        .as_str()
+        .into_client_request()
+        .expect("invalid websocket request");
+    request.headers_mut().insert(
+        "cookie",
+        "universus_token=not-a-valid-token".parse().unwrap(),
+    );
+    let invalid = tokio_tungstenite::connect_async(request)
+        .await
+        .expect_err("invalid token upgrade must fail");
+    match invalid {
+        WebSocketError::Http(response) => {
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED)
+        }
+        other => panic!("expected HTTP authentication rejection, got {other:?}"),
+    }
+
+    let token = auth_token("player", "origin-test");
+    let mut request = server
+        .ws_url
+        .as_str()
+        .into_client_request()
+        .expect("cross-origin websocket request");
+    request.headers_mut().insert(
+        "cookie",
+        format!("universus_token={token}").parse().unwrap(),
+    );
+    request
+        .headers_mut()
+        .insert("origin", "https://attacker.example".parse().unwrap());
+    let cross_origin = tokio_tungstenite::connect_async(request)
+        .await
+        .expect_err("cross-origin cookie upgrade must fail");
+    match cross_origin {
+        WebSocketError::Http(response) => assert_eq!(response.status(), StatusCode::FORBIDDEN),
+        other => panic!("expected origin rejection, got {other:?}"),
+    }
+
+    let mut request = server
+        .ws_url
+        .as_str()
+        .into_client_request()
+        .expect("origin-bearing Authorization request");
+    request.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", auth_token("player", "header-origin-test"))
+            .parse()
+            .unwrap(),
+    );
+    request
+        .headers_mut()
+        .insert("origin", "https://attacker.example".parse().unwrap());
+    let cross_origin = tokio_tungstenite::connect_async(request)
+        .await
+        .expect_err("origin-bearing Authorization upgrade must follow origin policy");
+    match cross_origin {
+        WebSocketError::Http(response) => assert_eq!(response.status(), StatusCode::FORBIDDEN),
+        other => panic!("expected Authorization origin rejection, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn websocket_delivery_is_isolated_and_unsubscribe_stops_fanout() {
+    let server = spawn_gateway().await;
+    let mut player_one = connect_player(&server, "player-one").await;
+    let mut player_two = connect_player(&server, "player-two").await;
+
+    let (status, publish) = publish_over_http(&server, "player:player-one", "fleet_arrived").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(publish["data"]["delivered_to"], 1);
+    assert_eq!(publish["data"]["local_subscribers"], 1);
+    assert_eq!(publish["data"]["delivery_scope"], "local_process");
+    assert_eq!(publish["data"]["accepted"], true);
+
+    let event = next_ws_json(&mut player_one).await;
+    assert_eq!(event["type"], "event");
+    assert_eq!(event["channel"], "player:player-one");
+    assert_eq!(event["event"], "fleet_arrived");
+    assert!(timeout(Duration::from_millis(150), player_two.next())
+        .await
+        .is_err());
+
+    player_one
+        .send(Message::Text(
+            json!({ "type": "unsubscribe", "channel": "player:player-one" }).to_string(),
+        ))
+        .await
+        .expect("unsubscribe frame");
+    let unsubscribed = next_ws_json(&mut player_one).await;
+    assert_eq!(unsubscribed["type"], "unsubscribed");
+
+    let (_, publish) = publish_over_http(&server, "player:player-one", "second").await;
+    assert_eq!(publish["data"]["delivered_to"], 0);
+    assert!(timeout(Duration::from_millis(150), player_one.next())
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn websocket_rejects_forbidden_and_malformed_frames_and_answers_ping() {
+    let server = spawn_gateway().await;
+    let mut socket = connect_player(&server, "player-frame-test").await;
+
+    socket
+        .send(Message::Text(
+            json!({ "type": "subscribe", "channel": "ops.scheduler" }).to_string(),
+        ))
+        .await
+        .expect("forbidden subscribe frame");
+    let forbidden = next_ws_json(&mut socket).await;
+    assert_eq!(forbidden["type"], "error");
+    assert_eq!(forbidden["code"], "forbidden_channel");
+
+    socket
+        .send(Message::Text("{".to_string()))
+        .await
+        .expect("malformed frame");
+    let malformed = next_ws_json(&mut socket).await;
+    assert_eq!(malformed["type"], "error");
+    assert_eq!(malformed["code"], "malformed_frame");
+
+    socket
+        .send(Message::Text(
+            json!({ "type": "ping", "nonce": "roundtrip-1" }).to_string(),
+        ))
+        .await
+        .expect("ping frame");
+    let pong = next_ws_json(&mut socket).await;
+    assert_eq!(pong["type"], "pong");
+    assert_eq!(pong["nonce"], "roundtrip-1");
+}
+
+#[tokio::test]
+async fn repeated_binary_protocol_errors_close_the_websocket() {
+    let server = spawn_gateway().await;
+    let mut socket = connect_player(&server, "binary-protocol-test").await;
+
+    for _ in 0..3 {
+        socket
+            .send(Message::Binary(vec![1, 2, 3]))
+            .await
+            .expect("binary frame");
+        let error = next_ws_json(&mut socket).await;
+        assert_eq!(error["code"], "binary_not_supported");
+    }
+
+    let closed = timeout(Duration::from_secs(2), socket.next())
+        .await
+        .expect("close timeout")
+        .expect("close frame missing")
+        .expect("websocket close response");
+    assert!(matches!(closed, Message::Close(_)));
+}
+
+#[tokio::test]
+async fn websocket_close_cleans_up_connection_metrics() {
+    let server = spawn_gateway().await;
+    let mut socket = connect_player(&server, "player-disconnect").await;
+
+    socket.close(None).await.expect("close websocket");
+    let mut active_connections = usize::MAX;
+    for _ in 0..50 {
+        let request = HttpRequest::builder()
+            .uri(format!("{}/ws-info", server.http_url))
+            .body(Body::empty())
+            .expect("ws-info request");
+        let response = hyper::Client::new()
+            .request(request)
+            .await
+            .expect("ws-info response");
+        let body = network_json_body(response).await;
+        active_connections = body["active_connections"].as_u64().unwrap_or(u64::MAX) as usize;
+        if active_connections == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(active_connections, 0);
+}
+
+#[tokio::test]
+async fn realtime_auth_matrix_keeps_health_public_and_enforces_player_and_admin_roles() {
+    let app = build_router();
+
+    let public = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/ready")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(public.status(), StatusCode::OK);
+
+    let anonymous = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/realtime/channels")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
+
+    let player = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/realtime/channels")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(player.status(), StatusCode::OK);
+
+    let player_admin_operation = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/realtime/publish")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "channel": "ops.test", "event": "test" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(player_admin_operation.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn string_jwt_subjects_use_a_server_derived_legacy_numeric_id() {
+    let app = build_router();
+    let subject = "user:durable-account-id";
+
+    let response = app
+        .oneshot(
+            authenticated_request("player", subject)
+                .method(Method::PUT)
+                .uri("/chat/messages/string-subject-message")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "userId": 999, "message": "Authenticated owner" }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["message"]["userId"],
+        platform_auth::stable_numeric_subject_id(subject)
+    );
+    assert_ne!(body["message"]["userId"], 999);
+}
+
+#[tokio::test]
 async fn channels_endpoint_returns_empty_list_initially() {
     let app = build_router();
 
@@ -53,7 +460,7 @@ async fn channels_endpoint_returns_empty_list_initially() {
 }
 
 #[tokio::test]
-async fn subscribe_creates_channel_and_updates_channel_listing() {
+async fn legacy_rest_subscribe_requires_websocket_upgrade() {
     let app = build_router();
 
     let subscribe_payload = json!({
@@ -74,12 +481,10 @@ async fn subscribe_creates_channel_and_updates_channel_listing() {
         .await
         .unwrap();
 
-    assert_eq!(subscribe_response.status(), StatusCode::OK);
+    assert_eq!(subscribe_response.status(), StatusCode::UPGRADE_REQUIRED);
     let subscribe_body = json_body(subscribe_response).await;
-    assert_eq!(subscribe_body["status"], "ok");
-    assert_eq!(subscribe_body["data"]["channel"], "alliance-updates");
-    assert_eq!(subscribe_body["data"]["subscriber_id"], "player-7");
-    assert_eq!(subscribe_body["data"]["subscriber_count"], 1);
+    assert_eq!(subscribe_body["status"], "error");
+    assert!(subscribe_body["error"].as_str().unwrap().contains("/ws"));
 
     let channels_response = app
         .oneshot(
@@ -94,38 +499,12 @@ async fn subscribe_creates_channel_and_updates_channel_listing() {
     assert_eq!(channels_response.status(), StatusCode::OK);
     let channels_body = json_body(channels_response).await;
     assert_eq!(channels_body["status"], "ok");
-    assert_eq!(
-        channels_body["data"]["channels"][0]["name"],
-        "alliance-updates"
-    );
-    assert_eq!(channels_body["data"]["channels"][0]["subscriber_count"], 1);
+    assert_eq!(channels_body["data"]["channels"], json!([]));
 }
 
 #[tokio::test]
 async fn publish_reports_delivered_subscribers_and_sequence() {
     let app = build_router();
-
-    for subscriber_id in ["player-1", "player-2"] {
-        let payload = json!({
-            "channel": "battle-feed",
-            "subscriber_id": subscriber_id
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method(Method::POST)
-                    .uri("/api/realtime/subscribe")
-                    .header("content-type", "application/json")
-                    .body(Body::from(payload.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-    }
 
     let publish_payload = json!({
         "channel": "battle-feed",
@@ -135,7 +514,7 @@ async fn publish_reports_delivered_subscribers_and_sequence() {
     let publish_response = app
         .clone()
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .method(Method::POST)
                 .uri("/api/realtime/publish")
                 .header("content-type", "application/json")
@@ -150,7 +529,8 @@ async fn publish_reports_delivered_subscribers_and_sequence() {
     assert_eq!(publish_body["status"], "ok");
     assert_eq!(publish_body["data"]["channel"], "battle-feed");
     assert_eq!(publish_body["data"]["event"], "fleet_arrived");
-    assert_eq!(publish_body["data"]["delivered_to"], 2);
+    assert_eq!(publish_body["data"]["delivered_to"], 0);
+    assert_eq!(publish_body["data"]["delivery_scope"], "local_process");
     assert_eq!(publish_body["data"]["publish_sequence"], 1);
 }
 
@@ -160,7 +540,7 @@ async fn publish_validates_required_fields() {
 
     let publish_response = app
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .method(Method::POST)
                 .uri("/api/realtime/publish")
                 .header("content-type", "application/json")
@@ -441,7 +821,7 @@ async fn recent_events_endpoint_tracks_published_events() {
     let publish_response = app
         .clone()
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .method(Method::POST)
                 .uri("/api/realtime/publish")
                 .header("content-type", "application/json")
@@ -454,7 +834,7 @@ async fn recent_events_endpoint_tracks_published_events() {
 
     let events_response = app
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .uri("/api/realtime/events/recent?limit=10")
                 .method(Method::GET)
                 .body(Body::empty())
@@ -479,7 +859,7 @@ async fn chat_restrictions_endpoint_returns_empty_list_without_database() {
 
     let response = app
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .uri("/api/realtime/chat/restrictions")
                 .method(Method::GET)
                 .body(Body::empty())
@@ -499,7 +879,7 @@ async fn chat_restriction_upsert_requires_database_url() {
 
     let response = app
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .uri("/api/realtime/chat/restrictions")
                 .method(Method::POST)
                 .header("content-type", "application/json")
@@ -552,7 +932,7 @@ async fn chat_message_moderation_endpoints_update_state() {
     let pin = app
         .clone()
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .uri("/chat/messages/msg-1/pin")
                 .method(Method::POST)
                 .header("content-type", "application/json")
@@ -588,7 +968,7 @@ async fn chat_message_moderation_endpoints_update_state() {
     assert_eq!(reaction_body["reactionType"], "clap");
     assert_eq!(reaction_body["count"], 1);
 
-    let delete_forbidden = app
+    let forged_admin_claim = app
         .clone()
         .oneshot(
             Request::builder()
@@ -596,22 +976,22 @@ async fn chat_message_moderation_endpoints_update_state() {
                 .method(Method::DELETE)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "userId": 99, "isAdmin": false }).to_string(),
+                    json!({ "userId": 99, "isAdmin": true }).to_string(),
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(delete_forbidden.status(), StatusCode::FORBIDDEN);
+    assert_eq!(forged_admin_claim.status(), StatusCode::FORBIDDEN);
 
     let delete_admin = app
         .oneshot(
-            Request::builder()
+            AdminRequest::builder()
                 .uri("/api/realtime/chat/messages/msg-1")
                 .method(Method::DELETE)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({ "userId": 99, "isAdmin": true }).to_string(),
+                    json!({ "userId": 99, "isAdmin": false }).to_string(),
                 ))
                 .unwrap(),
         )
