@@ -421,6 +421,7 @@ fn authorize_channel_inner(
     }
 
     let admin = platform_auth::require_role(user, platform_auth::UserRole::Admin).is_ok();
+    let scoped_publisher = platform_auth::require_service_scope(user, "realtime.publish").is_ok();
     if matches!(channel, "global" | "announcements" | "battle-feed") {
         return Ok(channel.to_string());
     }
@@ -428,14 +429,14 @@ fn authorize_channel_inner(
         .strip_prefix("player:")
         .or_else(|| channel.strip_prefix(platform_events::USER_NOTIFICATION_CHANNEL_PREFIX))
     {
-        return if admin || target == user.user_id {
+        return if admin || scoped_publisher || target == user.user_id {
             Ok(channel.to_string())
         } else {
             Err(ChannelError::Forbidden)
         };
     }
     if let Some(target) = channel.strip_prefix("universe:") {
-        return if admin || target.parse::<i64>().ok() == user.universe_id {
+        return if admin || scoped_publisher || target.parse::<i64>().ok() == user.universe_id {
             Ok(channel.to_string())
         } else {
             Err(ChannelError::Forbidden)
@@ -447,7 +448,7 @@ fn authorize_channel_inner(
         || channel.starts_with("combat:")
         || channel.starts_with("chat:")
     {
-        return if admin {
+        return if admin || scoped_publisher {
             Ok(channel.to_string())
         } else {
             Err(ChannelError::Forbidden)
@@ -804,6 +805,8 @@ mod tests {
             email: None,
             role: "player".to_string(),
             universe_id: Some(7),
+            token_purpose: platform_auth::TOKEN_PURPOSE_ACCESS.to_string(),
+            scopes: Vec::new(),
         }
     }
 

@@ -265,8 +265,6 @@ pub fn build_router() -> Router {
 
     let admin_router = Router::new()
         .route("/api/admin/bots/health", get(bots_health))
-        .route("/api/admin/bots/process-all", post(process_all_bots))
-        .route("/api/admin/bots/process/all", post(process_all_bots))
         .route("/api/admin/bots/bulk", post(bulk_create_bots))
         .route(
             "/api/admin/bots/universe/:id/generate",
@@ -290,10 +288,16 @@ pub fn build_router() -> Router {
         )
         .route_layer(middleware::from_fn(require_admin_auth));
 
+    let process_router = Router::new()
+        .route("/api/admin/bots/process-all", post(process_all_bots))
+        .route("/api/admin/bots/process/all", post(process_all_bots))
+        .route_layer(middleware::from_fn(require_process_auth));
+
     Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
         .merge(admin_router)
+        .merge(process_router)
         .with_state(state)
 }
 
@@ -315,6 +319,33 @@ async fn require_admin_auth(
         Err(_) => return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized"),
     };
     if platform_auth::require_role(&user, platform_auth::UserRole::Admin).is_err() {
+        return auth_failure(StatusCode::FORBIDDEN, "Forbidden");
+    }
+
+    request.extensions_mut().insert(user);
+    next.run(request).await
+}
+
+async fn require_process_auth(
+    mut request: Request<axum::body::Body>,
+    next: Next<axum::body::Body>,
+) -> Response {
+    let Some(authorization) = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized");
+    };
+
+    let config = platform_auth::AuthConfig::from_env();
+    let user = match platform_auth::authenticate_request(&config, authorization) {
+        Ok(user) => user,
+        Err(_) => return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized"),
+    };
+    let human_admin = platform_auth::require_role(&user, platform_auth::UserRole::Admin).is_ok();
+    let scoped_service = platform_auth::require_service_scope(&user, "bot.process").is_ok();
+    if !human_admin && !scoped_service {
         return auth_failure(StatusCode::FORBIDDEN, "Forbidden");
     }
 

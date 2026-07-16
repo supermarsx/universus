@@ -7,7 +7,7 @@
 //! - `BOT_WORKER_INTERVAL_MS` — interval between processing cycles in ms (default: 60000)
 //! - `BOT_WORKER_MAX_INFLIGHT` — max concurrent tasks (default: 8)
 //! - `BOT_API_URL` — base URL for the bot API (default: "http://localhost:4001")
-//! - `JWT_SECRET` — shared signing secret used for service Bearer JWTs
+//! - `BOT_WORKER_SERVICE_TOKEN` — externally provisioned `bot.process` service credential
 //! - `BOT_WORKER_TENANT_ID` — tenant ID for worker context
 //! - `BOT_WORKER_TENANT_NAME` — tenant display name
 //! - `BOT_HTTP_TIMEOUT_SECS` — HTTP request timeout in seconds (default: 30)
@@ -135,20 +135,15 @@ struct ProcessCallOutcome {
 async fn call_process_all_bots(
     client: &Client,
     endpoint: &Url,
-    auth_config: &platform_auth::AuthConfig,
+    service_token: &str,
 ) -> Result<ProcessCallOutcome, String> {
-    let token = platform_auth::generate_token(
-        auth_config,
-        "service:app-bot-worker",
-        SERVICE_NAME,
-        "admin",
-        None,
-    )
-    .map_err(|error| format!("failed to issue service token: {error}"))?;
+    if service_token.trim().is_empty() {
+        return Err("BOT_WORKER_SERVICE_TOKEN is empty".to_string());
+    }
 
     let response = client
         .post(endpoint.clone())
-        .bearer_auth(token)
+        .bearer_auth(service_token)
         .send()
         .await
         .map_err(|error| format!("request failed: {error}"))?;
@@ -224,11 +219,19 @@ async fn main() {
     let max_inflight: usize = parse_env("BOT_WORKER_MAX_INFLIGHT", 8);
     let http_timeout_secs: u64 = parse_env("BOT_HTTP_TIMEOUT_SECS", 30);
     let bot_api_url = parse_bot_api_url(env::var("BOT_API_URL").ok().as_deref());
-    let auth_config = platform_auth::AuthConfig::from_env();
-    if let Err(error) = auth_config.validate_runtime() {
-        tracing::error!(service = SERVICE_NAME, %error, "worker startup failed");
-        return;
-    }
+    let service_token = match env::var("BOT_WORKER_SERVICE_TOKEN")
+        .ok()
+        .filter(|token| !token.trim().is_empty())
+    {
+        Some(token) => token,
+        None => {
+            tracing::error!(
+                service = SERVICE_NAME,
+                "worker startup failed: BOT_WORKER_SERVICE_TOKEN is required"
+            );
+            return;
+        }
+    };
     let realtime_url: Option<String> = env::var("REALTIME_GATEWAY_URL")
         .ok()
         .filter(|v| !v.trim().is_empty());
@@ -283,11 +286,11 @@ async fn main() {
 
                 let client_ref = client.clone();
                 let endpoint_ref = endpoint.clone();
-                let auth_config_ref = auth_config.clone();
+                let service_token_ref = service_token.clone();
                 let context = tenant_context.clone();
                 let (done_tx, done_rx) = oneshot::channel::<Result<ProcessCallOutcome, String>>();
                 let spawned = runtime.spawn_tenant_task(context, async move {
-                    let result = call_process_all_bots(&client_ref, &endpoint_ref, &auth_config_ref).await;
+                    let result = call_process_all_bots(&client_ref, &endpoint_ref, &service_token_ref).await;
                     let _ = done_tx.send(result);
                     Ok(())
                 });

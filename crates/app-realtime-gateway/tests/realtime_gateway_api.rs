@@ -22,6 +22,23 @@ fn auth_token(role: &str, user_id: &str) -> String {
         .expect("generate route token")
 }
 
+fn service_token(scope: &str) -> String {
+    let config = platform_auth::AuthConfig::from_env();
+    platform_auth::generate_service_token(
+        &config,
+        "realtime-test-publisher",
+        "universus",
+        &[scope],
+        3_600,
+    )
+    .expect("generate scoped service token")
+}
+
+fn refresh_token(user_id: &str) -> String {
+    platform_auth::generate_refresh_token(&platform_auth::AuthConfig::from_env(), user_id)
+        .expect("generate refresh token")
+}
+
 impl Request {
     fn builder() -> axum::http::request::Builder {
         authenticated_request("player", "11")
@@ -292,9 +309,14 @@ async fn canonical_notification_channel_delivers_only_to_its_signed_user() {
 
     let envelope =
         platform_events::build_event("notification.created", &json!({ "notificationId": 42 }));
-    let status = platform_events::publish_http(&server.http_url, &channel, &envelope)
-        .await
-        .expect("canonical notification publish");
+    let status = platform_events::publish_http_with_token(
+        &server.http_url,
+        &channel,
+        &envelope,
+        &service_token("realtime.publish"),
+    )
+    .await
+    .expect("canonical notification publish");
     assert_eq!(status, StatusCode::OK.as_u16());
 
     let event = next_ws_json(&mut owner).await;
@@ -307,6 +329,85 @@ async fn canonical_notification_channel_delivers_only_to_its_signed_user() {
     assert!(timeout(Duration::from_millis(150), other.next())
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn scoped_service_can_publish_but_cannot_read_admin_events_or_cross_scopes() {
+    let app = build_router();
+    let payload = json!({"channel": "ops.test", "event": "service-event"}).to_string();
+
+    let allowed = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .method(Method::POST)
+                .uri("/api/realtime/publish")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", service_token("realtime.publish")),
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(payload.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::OK);
+
+    let wrong_scope = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .method(Method::POST)
+                .uri("/api/realtime/publish")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", service_token("bot.process")),
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(wrong_scope.status(), StatusCode::FORBIDDEN);
+
+    let admin_read = app
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/realtime/events/recent")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", service_token("realtime.publish")),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(admin_read.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn refresh_token_is_never_accepted_by_realtime_http_authorization() {
+    let response = build_router()
+        .oneshot(
+            HttpRequest::builder()
+                .method(Method::POST)
+                .uri("/api/realtime/publish")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", refresh_token("realtime-user")),
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"channel": "ops.test", "event": "invalid"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

@@ -2941,6 +2941,14 @@ async fn notifications_preferences_can_block_low_priority_notifications() {
 #[tokio::test]
 async fn notifications_high_volume_create_flow_stays_consistent() {
     let app = build_router(TEST_SERVICE_NAME);
+    // The in-memory fallback store is process-global, so use a dedicated
+    // subject instead of racing other notification tests that mark the shared
+    // development user's entries read.
+    let token = role_token(
+        "notification-load-test-user",
+        "Notification Load Test",
+        "superadmin",
+    );
 
     let before = app
         .clone()
@@ -2948,7 +2956,7 @@ async fn notifications_high_volume_create_flow_stays_consistent() {
             Request::builder()
                 .uri("/api/notifications/unread-count")
                 .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2971,7 +2979,7 @@ async fn notifications_high_volume_create_flow_stays_consistent() {
                 Request::builder()
                     .uri("/api/notifications")
                     .method("POST")
-                    .header("authorization", format!("Bearer {}", dev_token()))
+                    .header("authorization", format!("Bearer {token}"))
                     .header("content-type", "application/json")
                     .body(Body::from(payload.to_string()))
                     .unwrap(),
@@ -2986,7 +2994,7 @@ async fn notifications_high_volume_create_flow_stays_consistent() {
             Request::builder()
                 .uri("/api/notifications/unread-count")
                 .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )

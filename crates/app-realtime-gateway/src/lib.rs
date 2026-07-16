@@ -638,9 +638,12 @@ fn app_with_state(state: AppState) -> Router {
             "/api/realtime/chat/messages/:message_id/pin",
             post(rest_pin_chat_message),
         )
-        .route("/api/realtime/publish", post(publish))
         .route("/api/realtime/events/recent", get(recent_events))
         .route_layer(middleware::from_fn(require_admin_auth));
+
+    let publish_router = Router::new()
+        .route("/api/realtime/publish", post(publish))
+        .route_layer(middleware::from_fn(require_publish_auth));
 
     Router::new()
         .route("/health", get(health))
@@ -649,6 +652,7 @@ fn app_with_state(state: AppState) -> Router {
         .route("/ws-info", get(ws_info))
         .merge(player_router)
         .merge(admin_router)
+        .merge(publish_router)
         .with_state(state)
 }
 
@@ -664,6 +668,33 @@ async fn require_admin_auth(
     next: Next<axum::body::Body>,
 ) -> Response {
     require_auth_role(request, next, platform_auth::UserRole::Admin).await
+}
+
+async fn require_publish_auth(
+    mut request: Request<axum::body::Body>,
+    next: Next<axum::body::Body>,
+) -> Response {
+    let Some(authorization) = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized");
+    };
+
+    let config = platform_auth::AuthConfig::from_env();
+    let user = match platform_auth::authenticate_request(&config, authorization) {
+        Ok(user) => user,
+        Err(_) => return auth_failure(StatusCode::UNAUTHORIZED, "Unauthorized"),
+    };
+    let human_admin = platform_auth::require_role(&user, platform_auth::UserRole::Admin).is_ok();
+    let scoped_service = platform_auth::require_service_scope(&user, "realtime.publish").is_ok();
+    if !human_admin && !scoped_service {
+        return auth_failure(StatusCode::FORBIDDEN, "Forbidden");
+    }
+
+    request.extensions_mut().insert(user);
+    next.run(request).await
 }
 
 async fn require_auth_role(

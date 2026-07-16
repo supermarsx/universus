@@ -14,8 +14,8 @@ pub enum ActorPolicy {
     Player,
     Admin,
     SuperAdmin,
-    Service,
-    AdminOrService,
+    Service { scope: &'static str },
+    AdminOrService { scope: &'static str },
     SelfOrAdminPath { parameter: &'static str },
 }
 
@@ -347,38 +347,58 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
     rule!(
         "POST",
         "/api/achievements/user/:user_id/achievements/:achievement_id",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "achievements.write"
+        }
     ),
     rule!(
         "POST",
         "/api/achievements/user/:user_id/badges/:badge_id",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "achievements.write"
+        }
     ),
     rule!(
         "POST",
         "/api/achievements/user/:user_id/rewards/:reward_id",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "achievements.write"
+        }
     ),
-    rule!("POST", "/api/notifications", ActorPolicy::AdminOrService),
+    rule!(
+        "POST",
+        "/api/notifications",
+        ActorPolicy::AdminOrService {
+            scope: "notifications.write"
+        }
+    ),
     rule!(
         "POST",
         "/api/shards/messages/broadcast",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "shards.messages.write"
+        }
     ),
     rule!(
         "POST",
         "/api/shards/messages/enqueue",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "shards.messages.write"
+        }
     ),
     rule!(
         "POST",
         "/api/shards/messages/requeue-failed",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "shards.messages.write"
+        }
     ),
     rule!(
         "POST",
         "/api/shards/servers/register",
-        ActorPolicy::AdminOrService
+        ActorPolicy::AdminOrService {
+            scope: "shards.servers.register"
+        }
     ),
 ];
 
@@ -455,17 +475,23 @@ pub async fn enforce_route_authorization(mut request: Request<Body>, next: Next<
 
     let allowed = match rule.policy {
         ActorPolicy::Public => true,
-        ActorPolicy::Player => role.is_human(),
-        ActorPolicy::Admin => role.is_admin(),
-        ActorPolicy::SuperAdmin => role == ActorRole::SuperAdmin,
-        ActorPolicy::Service => role == ActorRole::Service,
-        ActorPolicy::AdminOrService => role.is_admin() || role == ActorRole::Service,
+        ActorPolicy::Player => claims.is_access_token() && role.is_human(),
+        ActorPolicy::Admin => claims.is_access_token() && role.is_admin(),
+        ActorPolicy::SuperAdmin => claims.is_access_token() && role == ActorRole::SuperAdmin,
+        ActorPolicy::Service { scope } => claims.is_service_token() && claims.has_scope(scope),
+        ActorPolicy::AdminOrService { scope } => {
+            (claims.is_access_token() && role.is_admin())
+                || (claims.is_service_token() && claims.has_scope(scope))
+        }
         ActorPolicy::SelfOrAdminPath { parameter } => {
-            role.is_admin()
-                || (role.is_human()
-                    && path_parameter(&matched_path, request.uri().path(), parameter)
-                        .and_then(|value| value.parse::<i64>().ok())
-                        .is_some_and(|requested| subject_matches_numeric(&claims.sub, requested)))
+            claims.is_access_token()
+                && (role.is_admin()
+                    || (role.is_human()
+                        && path_parameter(&matched_path, request.uri().path(), parameter)
+                            .and_then(|value| value.parse::<i64>().ok())
+                            .is_some_and(|requested| {
+                                subject_matches_numeric(&claims.sub, requested)
+                            })))
         }
     };
 
@@ -520,7 +546,9 @@ pub fn effective_numeric_user_id(
     let own_user_id = numeric_subject(&user.user_id);
     let selected = requested.unwrap_or(own_user_id);
 
-    if role.is_admin() || (role.is_human() && selected == own_user_id) {
+    if user.token_purpose == platform_auth::TOKEN_PURPOSE_ACCESS
+        && (role.is_admin() || (role.is_human() && selected == own_user_id))
+    {
         Ok(selected)
     } else {
         Err(authorization_response(StatusCode::FORBIDDEN, "Forbidden"))

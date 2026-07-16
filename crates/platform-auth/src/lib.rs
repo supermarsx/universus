@@ -6,11 +6,13 @@
 
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+use subtle::ConstantTimeEq;
 
 // ---------------------------------------------------------------------------
 // AuthError
@@ -28,20 +30,52 @@ pub enum AuthError {
     SessionExpired,
     SessionRevoked,
     TooManySessions,
+    SigningUnavailable,
 }
 
 /// Invalid authentication configuration detected before a service starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthConfigError {
-    InsecureProductionSecret,
+    LegacySymmetricSigningForbidden,
+    MissingVerificationKeys,
+    InvalidVerificationKey,
+    MissingSigningKey,
+    PrivateKeyOnVerifier,
+    SigningKeyMismatch,
+    MissingIssuer,
+    MissingAudience,
 }
 
 impl fmt::Display for AuthConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InsecureProductionSecret => write!(
+            Self::LegacySymmetricSigningForbidden => write!(
                 f,
-                "JWT_SECRET must be explicitly configured with at least 32 bytes in production"
+                "legacy JWT_SECRET/HS256 signing is forbidden in production-like environments"
+            ),
+            Self::MissingVerificationKeys => write!(
+                f,
+                "AUTH_JWT_VERIFICATION_KEYS must contain at least one kid:base64url Ed25519 public key"
+            ),
+            Self::InvalidVerificationKey => {
+                write!(f, "AUTH_JWT_VERIFICATION_KEYS contains invalid Ed25519 key material")
+            }
+            Self::MissingSigningKey => write!(
+                f,
+                "the configured token issuer requires AUTH_JWT_SIGNING_KEY_ID and AUTH_JWT_PRIVATE_KEY_BASE64"
+            ),
+            Self::PrivateKeyOnVerifier => write!(
+                f,
+                "verification-only services must not receive AUTH_JWT_PRIVATE_KEY_BASE64"
+            ),
+            Self::SigningKeyMismatch => write!(
+                f,
+                "the signing private key does not match its public verification key"
+            ),
+            Self::MissingIssuer => write!(f, "AUTH_JWT_ISSUER must be configured"),
+            Self::MissingAudience => write!(
+                f,
+                "AUTH_EXPECTED_AUDIENCE and issuer AUTH_TOKEN_AUDIENCES must be configured"
             ),
         }
     }
@@ -61,6 +95,7 @@ impl fmt::Display for AuthError {
             Self::SessionExpired => write!(f, "session expired"),
             Self::SessionRevoked => write!(f, "session revoked"),
             Self::TooManySessions => write!(f, "too many sessions"),
+            Self::SigningUnavailable => write!(f, "token signing is unavailable"),
         }
     }
 }
@@ -70,19 +105,63 @@ impl fmt::Display for AuthError {
 // ---------------------------------------------------------------------------
 
 /// Configuration for authentication behaviour.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
+    /// Development/test-only symmetric secret. Production rejects any value.
+    #[serde(skip_serializing)]
     pub jwt_secret: String,
+    pub legacy_hmac_enabled: bool,
+    pub issuer: String,
+    pub expected_audience: String,
+    pub token_audiences: Vec<String>,
+    pub signing_key_id: Option<String>,
+    #[serde(skip_serializing)]
+    pub signing_private_key_base64: Option<String>,
+    pub verification_keys: HashMap<String, String>,
+    pub token_issuer: bool,
     pub jwt_expiry_seconds: i64,
     pub refresh_expiry_seconds: i64,
     pub bcrypt_cost: u32,
     pub max_sessions_per_user: usize,
 }
 
+/// Authentication configuration may be included in startup diagnostics, but
+/// signing material must never be emitted to logs or serialized snapshots.
+impl fmt::Debug for AuthConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthConfig")
+            .field("jwt_secret", &"[REDACTED]")
+            .field("legacy_hmac_enabled", &self.legacy_hmac_enabled)
+            .field("issuer", &self.issuer)
+            .field("expected_audience", &self.expected_audience)
+            .field("token_audiences", &self.token_audiences)
+            .field("signing_key_id", &self.signing_key_id)
+            .field("signing_private_key_base64", &"[REDACTED]")
+            .field(
+                "verification_key_ids",
+                &self.verification_keys.keys().collect::<Vec<_>>(),
+            )
+            .field("token_issuer", &self.token_issuer)
+            .field("jwt_expiry_seconds", &self.jwt_expiry_seconds)
+            .field("refresh_expiry_seconds", &self.refresh_expiry_seconds)
+            .field("bcrypt_cost", &self.bcrypt_cost)
+            .field("max_sessions_per_user", &self.max_sessions_per_user)
+            .finish()
+    }
+}
+
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            jwt_secret: String::new(),
+            jwt_secret: "default-secret".to_string(),
+            legacy_hmac_enabled: true,
+            issuer: "universus-dev".to_string(),
+            expected_audience: "universus".to_string(),
+            token_audiences: vec!["universus".to_string()],
+            signing_key_id: None,
+            signing_private_key_base64: None,
+            verification_keys: HashMap::new(),
+            token_issuer: false,
             jwt_expiry_seconds: 86_400,
             refresh_expiry_seconds: 604_800,
             bcrypt_cost: 12,
@@ -95,8 +174,38 @@ impl AuthConfig {
     /// Build an [`AuthConfig`] by reading environment variables, falling back
     /// to sensible defaults.
     pub fn from_env() -> Self {
-        let jwt_secret =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "default-secret".to_string());
+        let environment = runtime_environment();
+        let production_like = production_like_environment(&environment);
+        let configured_secret = std::env::var("JWT_SECRET").ok();
+        let jwt_secret = configured_secret.clone().unwrap_or_else(|| {
+            if production_like {
+                String::new()
+            } else {
+                "default-secret".to_string()
+            }
+        });
+        let legacy_hmac_enabled = parse_env_bool("AUTH_ALLOW_LEGACY_HS256")
+            .unwrap_or(!production_like || configured_secret.is_some());
+        let issuer =
+            std::env::var("AUTH_JWT_ISSUER").unwrap_or_else(|_| "universus-dev".to_string());
+        let expected_audience =
+            std::env::var("AUTH_EXPECTED_AUDIENCE").unwrap_or_else(|_| "universus".to_string());
+        let token_audiences = std::env::var("AUTH_TOKEN_AUDIENCES")
+            .ok()
+            .map(|value| split_csv(&value))
+            .filter(|values| !values.is_empty())
+            .unwrap_or_else(|| vec![expected_audience.clone()]);
+        let signing_key_id = std::env::var("AUTH_JWT_SIGNING_KEY_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let signing_private_key_base64 = std::env::var("AUTH_JWT_PRIVATE_KEY_BASE64")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let verification_keys = std::env::var("AUTH_JWT_VERIFICATION_KEYS")
+            .ok()
+            .map(|value| parse_verification_keys(&value))
+            .unwrap_or_default();
+        let token_issuer = parse_env_bool("AUTH_TOKEN_ISSUER").unwrap_or(false);
         let jwt_expiry_seconds = std::env::var("JWT_EXPIRY_SECONDS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -115,6 +224,14 @@ impl AuthConfig {
             .unwrap_or(5);
         Self {
             jwt_secret,
+            legacy_hmac_enabled,
+            issuer,
+            expected_audience,
+            token_audiences,
+            signing_key_id,
+            signing_private_key_base64,
+            verification_keys,
+            token_issuer,
             jwt_expiry_seconds,
             refresh_expiry_seconds,
             bcrypt_cost,
@@ -128,37 +245,116 @@ impl AuthConfig {
     /// one-command development remain compatible. Deployments identify themselves
     /// with `UNIVERSUS_ENV`, `APP_ENV`, `ENVIRONMENT`, or `RUST_ENV`.
     pub fn validate_runtime(&self) -> Result<(), AuthConfigError> {
-        let environment = ["UNIVERSUS_ENV", "APP_ENV", "ENVIRONMENT", "RUST_ENV"]
-            .into_iter()
-            .find_map(|name| std::env::var(name).ok())
-            .unwrap_or_else(|| "development".to_string());
-        self.validate_for_environment(&environment)
+        self.validate_for_environment(&runtime_environment())
     }
 
     /// Validate a configuration for an explicit deployment environment.
     pub fn validate_for_environment(&self, environment: &str) -> Result<(), AuthConfigError> {
-        let production_like = matches!(
-            environment.trim().to_ascii_lowercase().as_str(),
-            "production" | "prod" | "staging" | "stage"
-        );
+        let production_like = production_like_environment(environment);
         if !production_like {
             return Ok(());
         }
 
-        let secret = self.jwt_secret.trim();
-        let known_default = matches!(
-            secret.to_ascii_lowercase().as_str(),
-            "default-secret"
-                | "change-me"
-                | "change-me-in-production"
-                | "replace-with-a-random-secret-at-least-32-bytes"
-        );
-        if known_default || secret.len() < 32 {
-            return Err(AuthConfigError::InsecureProductionSecret);
+        if self.legacy_hmac_enabled || !self.jwt_secret.trim().is_empty() {
+            return Err(AuthConfigError::LegacySymmetricSigningForbidden);
+        }
+        if self.issuer.trim().is_empty() {
+            return Err(AuthConfigError::MissingIssuer);
+        }
+        if self.expected_audience.trim().is_empty()
+            || (self.token_issuer
+                && (self.token_audiences.is_empty()
+                    || self
+                        .token_audiences
+                        .iter()
+                        .any(|audience| audience.trim().is_empty())))
+        {
+            return Err(AuthConfigError::MissingAudience);
+        }
+        if self.verification_keys.is_empty() {
+            return Err(AuthConfigError::MissingVerificationKeys);
+        }
+        for (key_id, encoded_key) in &self.verification_keys {
+            if key_id.trim().is_empty() || decode_verifying_key(encoded_key).is_err() {
+                return Err(AuthConfigError::InvalidVerificationKey);
+            }
+        }
+
+        if self.token_issuer {
+            let key_id = self
+                .signing_key_id
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+                .ok_or(AuthConfigError::MissingSigningKey)?;
+            let private = self
+                .signing_private_key_base64
+                .as_deref()
+                .ok_or(AuthConfigError::MissingSigningKey)?;
+            let signing_key =
+                decode_signing_key(private).map_err(|_| AuthConfigError::MissingSigningKey)?;
+            let expected_public = self
+                .verification_keys
+                .get(key_id)
+                .ok_or(AuthConfigError::MissingSigningKey)
+                .and_then(|value| {
+                    decode_verifying_key(value).map_err(|_| AuthConfigError::InvalidVerificationKey)
+                })?;
+            if signing_key.verifying_key() != expected_public {
+                return Err(AuthConfigError::SigningKeyMismatch);
+            }
+        } else if self.signing_private_key_base64.is_some() || self.signing_key_id.is_some() {
+            return Err(AuthConfigError::PrivateKeyOnVerifier);
         }
 
         Ok(())
     }
+}
+
+fn runtime_environment() -> String {
+    ["UNIVERSUS_ENV", "APP_ENV", "ENVIRONMENT", "RUST_ENV"]
+        .into_iter()
+        .find_map(|name| std::env::var(name).ok())
+        .unwrap_or_else(|| "development".to_string())
+}
+
+fn production_like_environment(environment: &str) -> bool {
+    matches!(
+        environment.trim().to_ascii_lowercase().as_str(),
+        "production" | "prod" | "staging" | "stage"
+    )
+}
+
+fn parse_env_bool(name: &str) -> Option<bool> {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        })
+}
+
+fn split_csv(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn parse_verification_keys(value: &str) -> HashMap<String, String> {
+    value
+        .split(',')
+        .map(|entry| {
+            let Some((key_id, key)) = entry.trim().split_once(':') else {
+                // Preserve malformed entries so production validation fails
+                // closed instead of silently dropping a rotation key typo.
+                return (String::new(), entry.trim().to_string());
+            };
+            (key_id.trim().to_string(), key.trim().to_string())
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -425,9 +621,15 @@ fn now_timestamp() -> i64 {
 // JWT Claims
 // ---------------------------------------------------------------------------
 
-/// JWT claims embedded in access and refresh tokens.
+pub const TOKEN_PURPOSE_ACCESS: &str = "access";
+pub const TOKEN_PURPOSE_REFRESH: &str = "refresh";
+pub const TOKEN_PURPOSE_SERVICE: &str = "service";
+
+/// JWT claims embedded in access, refresh, and scoped service tokens.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Claims {
+    pub iss: String,
+    pub aud: Vec<String>,
     pub sub: String,
     pub username: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -437,41 +639,189 @@ pub struct Claims {
     pub exp: i64,
     pub iat: i64,
     pub jti: String,
+    pub purpose: String,
+    pub scopes: Vec<String>,
 }
 
-/// Produces the canonical JWT header (always HS256 / JWT).
-fn jwt_header() -> String {
-    base64url_encode(b"{\"alg\":\"HS256\",\"typ\":\"JWT\"}")
+impl Claims {
+    pub fn is_access_token(&self) -> bool {
+        self.purpose == TOKEN_PURPOSE_ACCESS
+    }
+
+    pub fn is_service_token(&self) -> bool {
+        self.purpose == TOKEN_PURPOSE_SERVICE && self.role == "service"
+    }
+
+    pub fn has_scope(&self, required: &str) -> bool {
+        self.scopes.iter().any(|scope| scope == required)
+    }
 }
 
-/// Create a signed JWT from the given [`Claims`].
+#[derive(Debug, Serialize, Deserialize)]
+struct JwtHeader {
+    alg: String,
+    typ: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kid: Option<String>,
+}
+
+fn encoded_jwt_header(alg: &str, kid: Option<&str>) -> Result<String, AuthError> {
+    let header = JwtHeader {
+        alg: alg.to_string(),
+        typ: "JWT".to_string(),
+        kid: kid.map(str::to_string),
+    };
+    serde_json::to_vec(&header)
+        .map(|bytes| base64url_encode(&bytes))
+        .map_err(|_| AuthError::TokenInvalid)
+}
+
+fn decode_signing_key(encoded: &str) -> Result<SigningKey, AuthError> {
+    let bytes = base64url_decode(encoded.trim()).map_err(|_| AuthError::TokenInvalid)?;
+    let seed: [u8; 32] = bytes.try_into().map_err(|_| AuthError::TokenInvalid)?;
+    Ok(SigningKey::from_bytes(&seed))
+}
+
+fn decode_verifying_key(encoded: &str) -> Result<VerifyingKey, AuthError> {
+    let bytes = base64url_decode(encoded.trim()).map_err(|_| AuthError::TokenInvalid)?;
+    let public: [u8; 32] = bytes.try_into().map_err(|_| AuthError::TokenInvalid)?;
+    VerifyingKey::from_bytes(&public).map_err(|_| AuthError::TokenInvalid)
+}
+
+/// Create a signed JWT from the given [`Claims`]. Production issuers use
+/// Ed25519; HS256 is retained only for explicit development/test compatibility.
 fn encode_jwt(config: &AuthConfig, claims: &Claims) -> Result<String, AuthError> {
-    let header = jwt_header();
     let payload_json = serde_json::to_string(claims).map_err(|_| AuthError::TokenInvalid)?;
     let payload = base64url_encode(payload_json.as_bytes());
-    let signing_input = format!("{header}.{payload}");
-    let signature = hmac_sha256(config.jwt_secret.as_bytes(), signing_input.as_bytes());
-    let sig_b64 = base64url_encode(&signature);
-    Ok(format!("{signing_input}.{sig_b64}"))
+
+    if config.token_issuer {
+        let key_id = config
+            .signing_key_id
+            .as_deref()
+            .ok_or(AuthError::SigningUnavailable)?;
+        let private_key = config
+            .signing_private_key_base64
+            .as_deref()
+            .ok_or(AuthError::SigningUnavailable)?;
+        let signing_key =
+            decode_signing_key(private_key).map_err(|_| AuthError::SigningUnavailable)?;
+        let header = encoded_jwt_header("EdDSA", Some(key_id))?;
+        let signing_input = format!("{header}.{payload}");
+        let signature = signing_key.sign(signing_input.as_bytes());
+        return Ok(format!(
+            "{signing_input}.{}",
+            base64url_encode(&signature.to_bytes())
+        ));
+    }
+
+    if config.legacy_hmac_enabled && !config.jwt_secret.is_empty() {
+        let header = encoded_jwt_header("HS256", None)?;
+        let signing_input = format!("{header}.{payload}");
+        let signature = hmac_sha256(config.jwt_secret.as_bytes(), signing_input.as_bytes());
+        return Ok(format!("{signing_input}.{}", base64url_encode(&signature)));
+    }
+
+    Err(AuthError::SigningUnavailable)
 }
 
 /// Decode and verify a JWT, returning the embedded [`Claims`].
 fn decode_jwt(config: &AuthConfig, token: &str) -> Result<Claims, AuthError> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
+    let mut parts = token.split('.');
+    let Some(encoded_header) = parts.next() else {
         return Err(AuthError::TokenInvalid);
-    }
-    let signing_input = format!("{}.{}", parts[0], parts[1]);
-    let expected_sig = hmac_sha256(config.jwt_secret.as_bytes(), signing_input.as_bytes());
-    let provided_sig = base64url_decode(parts[2])?;
-    if expected_sig.as_slice() != provided_sig.as_slice() {
+    };
+    let Some(encoded_payload) = parts.next() else {
+        return Err(AuthError::TokenInvalid);
+    };
+    let Some(encoded_signature) = parts.next() else {
+        return Err(AuthError::TokenInvalid);
+    };
+    if parts.next().is_some() {
         return Err(AuthError::TokenInvalid);
     }
 
-    let payload_bytes = base64url_decode(parts[1])?;
+    let header_bytes = base64url_decode(encoded_header)?;
+    let header: JwtHeader =
+        serde_json::from_slice(&header_bytes).map_err(|_| AuthError::TokenInvalid)?;
+    if header.typ != "JWT" {
+        return Err(AuthError::TokenInvalid);
+    }
+    let signing_input = format!("{encoded_header}.{encoded_payload}");
+    let provided_signature = base64url_decode(encoded_signature)?;
+
+    match header.alg.as_str() {
+        "EdDSA" => {
+            let key_id = header.kid.as_deref().ok_or(AuthError::TokenInvalid)?;
+            let encoded_key = config
+                .verification_keys
+                .get(key_id)
+                .ok_or(AuthError::TokenInvalid)?;
+            let verifying_key = decode_verifying_key(encoded_key)?;
+            let signature =
+                Signature::from_slice(&provided_signature).map_err(|_| AuthError::TokenInvalid)?;
+            verifying_key
+                .verify(signing_input.as_bytes(), &signature)
+                .map_err(|_| AuthError::TokenInvalid)?;
+        }
+        "HS256" => {
+            if !config.legacy_hmac_enabled || config.jwt_secret.is_empty() || header.kid.is_some() {
+                return Err(AuthError::TokenInvalid);
+            }
+            let expected = hmac_sha256(config.jwt_secret.as_bytes(), signing_input.as_bytes());
+            if expected.len() != provided_signature.len()
+                || expected.ct_eq(&provided_signature).unwrap_u8() != 1
+            {
+                return Err(AuthError::TokenInvalid);
+            }
+        }
+        _ => return Err(AuthError::TokenInvalid),
+    }
+
+    let payload_bytes = base64url_decode(encoded_payload)?;
     let claims: Claims =
         serde_json::from_slice(&payload_bytes).map_err(|_| AuthError::TokenInvalid)?;
     Ok(claims)
+}
+
+fn validate_registered_claims(
+    config: &AuthConfig,
+    claims: &Claims,
+    accepted_purposes: &[&str],
+) -> Result<(), AuthError> {
+    let now = now_timestamp();
+    if claims.exp <= now {
+        return Err(AuthError::TokenExpired);
+    }
+    if claims.iat <= 0
+        || claims.iat > now.saturating_add(60)
+        || claims.exp <= claims.iat
+        || claims.jti.trim().is_empty()
+        || claims.iss != config.issuer
+        || !claims
+            .aud
+            .iter()
+            .any(|audience| audience == &config.expected_audience)
+        || !accepted_purposes.contains(&claims.purpose.as_str())
+    {
+        return Err(AuthError::TokenInvalid);
+    }
+
+    match claims.purpose.as_str() {
+        TOKEN_PURPOSE_ACCESS if matches!(claims.role.as_str(), "service" | "refresh") => {
+            Err(AuthError::TokenInvalid)
+        }
+        TOKEN_PURPOSE_SERVICE
+            if claims.role != "service"
+                || claims.scopes.is_empty()
+                || claims.scopes.iter().any(|scope| scope.trim().is_empty()) =>
+        {
+            Err(AuthError::TokenInvalid)
+        }
+        TOKEN_PURPOSE_REFRESH if claims.role != "refresh" || !claims.scopes.is_empty() => {
+            Err(AuthError::TokenInvalid)
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Generate a signed access token (JWT) for the given user.
@@ -510,8 +860,13 @@ pub fn generate_token_with_email(
     role: &str,
     universe_id: Option<i64>,
 ) -> Result<String, AuthError> {
+    if matches!(role, "service" | "refresh") {
+        return Err(AuthError::InvalidCredentials);
+    }
     let now = now_timestamp();
     let claims = Claims {
+        iss: config.issuer.clone(),
+        aud: config.token_audiences.clone(),
         sub: user_id.to_string(),
         username: username.to_string(),
         email: email.map(str::to_owned),
@@ -520,8 +875,47 @@ pub fn generate_token_with_email(
         iat: now,
         exp: now + config.jwt_expiry_seconds,
         jti: generate_id(),
+        purpose: TOKEN_PURPOSE_ACCESS.to_string(),
+        scopes: Vec::new(),
     };
     encode_jwt(config, &claims)
+}
+
+/// Issue a least-privilege service credential. Production callers must be the
+/// dedicated issuer and should provision the resulting token out-of-band.
+pub fn generate_service_token(
+    config: &AuthConfig,
+    service_id: &str,
+    audience: &str,
+    scopes: &[&str],
+    expiry_seconds: i64,
+) -> Result<String, AuthError> {
+    if service_id.trim().is_empty()
+        || audience.trim().is_empty()
+        || scopes.is_empty()
+        || scopes.iter().any(|scope| scope.trim().is_empty())
+        || expiry_seconds <= 0
+    {
+        return Err(AuthError::InvalidCredentials);
+    }
+    let now = now_timestamp();
+    encode_jwt(
+        config,
+        &Claims {
+            iss: config.issuer.clone(),
+            aud: vec![audience.to_string()],
+            sub: format!("service:{service_id}"),
+            username: service_id.to_string(),
+            email: None,
+            role: "service".to_string(),
+            universe_id: None,
+            exp: now.saturating_add(expiry_seconds),
+            iat: now,
+            jti: generate_id(),
+            purpose: TOKEN_PURPOSE_SERVICE.to_string(),
+            scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
+        },
+    )
 }
 
 /// Validate and decode an access token, returning the [`Claims`].
@@ -530,9 +924,11 @@ pub fn generate_token_with_email(
 /// or [`AuthError::TokenInvalid`] if the signature / structure is wrong.
 pub fn validate_token(config: &AuthConfig, token: &str) -> Result<Claims, AuthError> {
     let claims = decode_jwt(config, token)?;
-    if claims.exp < now_timestamp() {
-        return Err(AuthError::TokenExpired);
-    }
+    validate_registered_claims(
+        config,
+        &claims,
+        &[TOKEN_PURPOSE_ACCESS, TOKEN_PURPOSE_SERVICE],
+    )?;
     Ok(claims)
 }
 
@@ -543,6 +939,8 @@ pub fn validate_token(config: &AuthConfig, token: &str) -> Result<Claims, AuthEr
 pub fn generate_refresh_token(config: &AuthConfig, user_id: &str) -> Result<String, AuthError> {
     let now = now_timestamp();
     let claims = Claims {
+        iss: config.issuer.clone(),
+        aud: config.token_audiences.clone(),
         sub: user_id.to_string(),
         username: String::new(),
         email: None,
@@ -551,6 +949,8 @@ pub fn generate_refresh_token(config: &AuthConfig, user_id: &str) -> Result<Stri
         iat: now,
         exp: now + config.refresh_expiry_seconds,
         jti: generate_id(),
+        purpose: TOKEN_PURPOSE_REFRESH.to_string(),
+        scopes: Vec::new(),
     };
     encode_jwt(config, &claims)
 }
@@ -563,12 +963,7 @@ pub fn refresh_access_token(
     role: &str,
 ) -> Result<String, AuthError> {
     let claims = decode_jwt(config, refresh_token)?;
-    if claims.exp < now_timestamp() {
-        return Err(AuthError::TokenExpired);
-    }
-    if claims.role != "refresh" {
-        return Err(AuthError::TokenInvalid);
-    }
+    validate_registered_claims(config, &claims, &[TOKEN_PURPOSE_REFRESH])?;
     generate_token_with_email(
         config,
         &claims.sub,
@@ -799,6 +1194,8 @@ pub struct AuthUser {
     pub email: Option<String>,
     pub role: String,
     pub universe_id: Option<i64>,
+    pub token_purpose: String,
+    pub scopes: Vec<String>,
 }
 
 /// Validate the `Authorization` header and return an [`AuthUser`] on success.
@@ -814,6 +1211,8 @@ pub fn authenticate_request(
         email: claims.email,
         role: claims.role,
         universe_id: claims.universe_id,
+        token_purpose: claims.purpose,
+        scopes: claims.scopes,
     })
 }
 
@@ -876,8 +1275,23 @@ pub fn has_permission(role: &UserRole, required: &UserRole) -> bool {
 /// Returns `Ok(())` if the user holds a role at or above `required`, otherwise
 /// returns [`AuthError::InvalidCredentials`].
 pub fn require_role(user: &AuthUser, required: UserRole) -> Result<(), AuthError> {
+    if user.token_purpose != TOKEN_PURPOSE_ACCESS {
+        return Err(AuthError::InvalidCredentials);
+    }
     let user_role = UserRole::from_str(&user.role)?;
     if has_permission(&user_role, &required) {
+        Ok(())
+    } else {
+        Err(AuthError::InvalidCredentials)
+    }
+}
+
+/// Require a non-human service identity with one exact endpoint scope.
+pub fn require_service_scope(user: &AuthUser, required_scope: &str) -> Result<(), AuthError> {
+    if user.token_purpose == TOKEN_PURPOSE_SERVICE
+        && user.role == "service"
+        && user.scopes.iter().any(|scope| scope == required_scope)
+    {
         Ok(())
     } else {
         Err(AuthError::InvalidCredentials)
@@ -899,33 +1313,138 @@ mod tests {
             refresh_expiry_seconds: 86_400,
             bcrypt_cost: 4, // low cost for fast tests
             max_sessions_per_user: 3,
+            ..AuthConfig::default()
+        }
+    }
+
+    fn ed25519_issuer_config(seed: [u8; 32], key_id: &str) -> AuthConfig {
+        let signing_key = SigningKey::from_bytes(&seed);
+        AuthConfig {
+            jwt_secret: String::new(),
+            legacy_hmac_enabled: false,
+            issuer: "https://auth.universus.test".to_string(),
+            expected_audience: "app-api-gateway".to_string(),
+            token_audiences: vec![
+                "app-api-gateway".to_string(),
+                "app-web-frontend".to_string(),
+                "app-realtime-gateway".to_string(),
+            ],
+            signing_key_id: Some(key_id.to_string()),
+            signing_private_key_base64: Some(base64url_encode(&seed)),
+            verification_keys: HashMap::from([(
+                key_id.to_string(),
+                base64url_encode(&signing_key.verifying_key().to_bytes()),
+            )]),
+            token_issuer: true,
+            jwt_expiry_seconds: 3_600,
+            refresh_expiry_seconds: 86_400,
+            bcrypt_cost: 4,
+            max_sessions_per_user: 3,
+        }
+    }
+
+    fn verifier_config(issuer: &AuthConfig, audience: &str) -> AuthConfig {
+        AuthConfig {
+            expected_audience: audience.to_string(),
+            signing_key_id: None,
+            signing_private_key_base64: None,
+            token_issuer: false,
+            ..issuer.clone()
         }
     }
 
     #[test]
-    fn production_rejects_default_and_short_jwt_secrets() {
+    fn production_rejects_all_legacy_symmetric_signing() {
         let mut config = test_config();
         config.jwt_secret = "default-secret".to_string();
         assert_eq!(
             config.validate_for_environment("production"),
-            Err(AuthConfigError::InsecureProductionSecret)
+            Err(AuthConfigError::LegacySymmetricSigningForbidden)
         );
 
-        config.jwt_secret = "still-too-short".to_string();
+        config.jwt_secret = "0123456789abcdef0123456789abcdef".to_string();
         assert_eq!(
             config.validate_for_environment("staging"),
-            Err(AuthConfigError::InsecureProductionSecret)
+            Err(AuthConfigError::LegacySymmetricSigningForbidden)
         );
     }
 
     #[test]
-    fn production_accepts_strong_secret_and_development_keeps_compatibility() {
-        let mut config = test_config();
-        config.jwt_secret = "0123456789abcdef0123456789abcdef".to_string();
-        assert_eq!(config.validate_for_environment("prod"), Ok(()));
-
-        config.jwt_secret = "default-secret".to_string();
+    fn development_keeps_explicit_legacy_compatibility() {
+        let config = test_config();
         assert_eq!(config.validate_for_environment("development"), Ok(()));
+    }
+
+    #[test]
+    fn production_enforces_private_public_key_separation() {
+        let issuer = ed25519_issuer_config([7; 32], "primary-2026-07");
+        assert_eq!(issuer.validate_for_environment("production"), Ok(()));
+
+        let verifier = verifier_config(&issuer, "app-realtime-gateway");
+        assert_eq!(verifier.validate_for_environment("production"), Ok(()));
+
+        let leaked_private = AuthConfig {
+            signing_private_key_base64: issuer.signing_private_key_base64.clone(),
+            ..verifier.clone()
+        };
+        assert_eq!(
+            leaked_private.validate_for_environment("production"),
+            Err(AuthConfigError::PrivateKeyOnVerifier)
+        );
+
+        let no_public_keys = AuthConfig {
+            verification_keys: HashMap::new(),
+            ..verifier
+        };
+        assert_eq!(
+            no_public_keys.validate_for_environment("production"),
+            Err(AuthConfigError::MissingVerificationKeys)
+        );
+    }
+
+    #[test]
+    fn production_rejects_malformed_rotation_maps_and_mismatched_signers() {
+        let issuer = ed25519_issuer_config([7; 32], "primary");
+        let public = issuer.verification_keys.get("primary").expect("public key");
+        let malformed = AuthConfig {
+            verification_keys: parse_verification_keys(&format!(
+                "primary:{public},entry-without-a-colon"
+            )),
+            signing_key_id: None,
+            signing_private_key_base64: None,
+            token_issuer: false,
+            ..issuer.clone()
+        };
+        assert_eq!(
+            malformed.validate_for_environment("production"),
+            Err(AuthConfigError::InvalidVerificationKey)
+        );
+
+        let mismatched = AuthConfig {
+            signing_private_key_base64: Some(base64url_encode(&[8; 32])),
+            ..issuer
+        };
+        assert_eq!(
+            mismatched.validate_for_environment("production"),
+            Err(AuthConfigError::SigningKeyMismatch)
+        );
+    }
+
+    #[test]
+    fn auth_config_debug_and_serialization_redact_signing_material() {
+        let config = AuthConfig {
+            jwt_secret: "legacy-secret-marker".to_string(),
+            signing_private_key_base64: Some("private-seed-marker".to_string()),
+            ..AuthConfig::default()
+        };
+
+        let debug = format!("{config:?}");
+        let serialized = serde_json::to_string(&config).expect("serialize config");
+        for secret in ["legacy-secret-marker", "private-seed-marker"] {
+            assert!(!debug.contains(secret));
+            assert!(!serialized.contains(secret));
+        }
+        assert!(debug.contains("[REDACTED]"));
     }
 
     // -- SHA-256 sanity ---------------------------------------------------
@@ -1049,6 +1568,138 @@ mod tests {
         assert!(verify_password("Str0ngP@ss", &hash));
         assert!(!verify_password("wrongpassword", &hash));
         assert!(!verify_password("Str0ngP@ss", "$iter$4$salt$legacy"));
+    }
+
+    #[test]
+    fn ed25519_access_token_supports_intentional_multi_audience_validation() {
+        let issuer = ed25519_issuer_config([11; 32], "primary");
+        let token = generate_token(&issuer, "user-42", "alice", "player", Some(7)).unwrap();
+
+        for audience in [
+            "app-api-gateway",
+            "app-web-frontend",
+            "app-realtime-gateway",
+        ] {
+            let verifier = verifier_config(&issuer, audience);
+            let claims = validate_token(&verifier, &token).unwrap();
+            assert_eq!(claims.purpose, TOKEN_PURPOSE_ACCESS);
+            assert!(claims.aud.iter().any(|candidate| candidate == audience));
+            assert!(!claims.jti.is_empty());
+            assert!(claims.iat > 0);
+        }
+
+        let wrong_audience = verifier_config(&issuer, "app-admin-api");
+        assert_eq!(
+            validate_token(&wrong_audience, &token),
+            Err(AuthError::TokenInvalid)
+        );
+        let wrong_issuer = AuthConfig {
+            issuer: "https://attacker.invalid".to_string(),
+            ..verifier_config(&issuer, "app-api-gateway")
+        };
+        assert_eq!(
+            validate_token(&wrong_issuer, &token),
+            Err(AuthError::TokenInvalid)
+        );
+    }
+
+    #[test]
+    fn ed25519_verification_rejects_forgery_and_algorithm_confusion() {
+        let issuer = ed25519_issuer_config([13; 32], "primary");
+        let verifier = verifier_config(&issuer, "app-api-gateway");
+        let token = generate_token(&issuer, "u1", "alice", "admin", None).unwrap();
+        let mut parts = token.split('.').map(str::to_string).collect::<Vec<_>>();
+        let mut payload = base64url_decode(&parts[1]).unwrap();
+        payload[0] ^= 1;
+        parts[1] = base64url_encode(&payload);
+        assert_eq!(
+            validate_token(&verifier, &parts.join(".")),
+            Err(AuthError::TokenInvalid)
+        );
+
+        let mut parts = token.split('.').collect::<Vec<_>>();
+        let confused_header = encoded_jwt_header("HS256", None).unwrap();
+        parts[0] = &confused_header;
+        assert_eq!(
+            validate_token(&verifier, &parts.join(".")),
+            Err(AuthError::TokenInvalid)
+        );
+    }
+
+    #[test]
+    fn overlapping_verification_keys_support_rotation_without_signing_key_leakage() {
+        let old_issuer = ed25519_issuer_config([17; 32], "old");
+        let new_issuer = ed25519_issuer_config([19; 32], "new");
+        let mut verifier = verifier_config(&new_issuer, "app-api-gateway");
+        verifier
+            .verification_keys
+            .extend(old_issuer.verification_keys.clone());
+
+        let old_token = generate_token(&old_issuer, "old-user", "old", "player", None).unwrap();
+        let new_token = generate_token(&new_issuer, "new-user", "new", "player", None).unwrap();
+        assert_eq!(
+            validate_token(&verifier, &old_token).unwrap().sub,
+            "old-user"
+        );
+        assert_eq!(
+            validate_token(&verifier, &new_token).unwrap().sub,
+            "new-user"
+        );
+        assert!(verifier.signing_private_key_base64.is_none());
+    }
+
+    #[test]
+    fn service_credentials_are_scoped_and_cannot_escalate_to_human_admin() {
+        let issuer = ed25519_issuer_config([23; 32], "primary");
+        let verifier = verifier_config(&issuer, "app-realtime-gateway");
+        let token = generate_service_token(
+            &issuer,
+            "notifications-worker",
+            "app-realtime-gateway",
+            &["realtime.publish"],
+            600,
+        )
+        .unwrap();
+        let user = authenticate_request(&verifier, &format!("Bearer {token}")).unwrap();
+        assert!(require_service_scope(&user, "realtime.publish").is_ok());
+        assert!(require_service_scope(&user, "bot.process").is_err());
+        assert!(require_role(&user, UserRole::Admin).is_err());
+        assert_eq!(
+            generate_token(&issuer, "service:forged", "forged", "service", None),
+            Err(AuthError::InvalidCredentials)
+        );
+    }
+
+    #[test]
+    fn refresh_and_future_issued_tokens_are_never_api_credentials() {
+        let issuer = ed25519_issuer_config([29; 32], "primary");
+        let verifier = verifier_config(&issuer, "app-api-gateway");
+        let refresh = generate_refresh_token(&issuer, "u1").unwrap();
+        assert_eq!(
+            validate_token(&verifier, &refresh),
+            Err(AuthError::TokenInvalid)
+        );
+
+        let now = now_timestamp();
+        let future = Claims {
+            iss: issuer.issuer.clone(),
+            aud: issuer.token_audiences.clone(),
+            sub: "u1".to_string(),
+            username: "future".to_string(),
+            email: None,
+            role: "player".to_string(),
+            universe_id: None,
+            exp: now + 7_200,
+            iat: now + 3_600,
+            jti: "future-jti".to_string(),
+            purpose: TOKEN_PURPOSE_ACCESS.to_string(),
+            scopes: Vec::new(),
+        };
+        let token = encode_jwt(&issuer, &future).unwrap();
+        assert_eq!(
+            validate_token(&verifier, &token),
+            Err(AuthError::TokenInvalid)
+        );
     }
 
     #[test]
@@ -1220,6 +1871,8 @@ mod tests {
             email: None,
             role: "admin".into(),
             universe_id: None,
+            token_purpose: TOKEN_PURPOSE_ACCESS.into(),
+            scopes: Vec::new(),
         };
         assert!(require_role(&admin_user, UserRole::Moderator).is_ok());
         assert!(require_role(&admin_user, UserRole::Admin).is_ok());
@@ -1231,6 +1884,8 @@ mod tests {
             email: None,
             role: "player".into(),
             universe_id: None,
+            token_purpose: TOKEN_PURPOSE_ACCESS.into(),
+            scopes: Vec::new(),
         };
         assert!(require_role(&player_user, UserRole::Player).is_ok());
         assert!(require_role(&player_user, UserRole::Moderator).is_err());

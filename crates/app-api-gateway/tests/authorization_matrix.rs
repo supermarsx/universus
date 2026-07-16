@@ -54,12 +54,23 @@ fn app() -> axum::Router {
     build_router_with_dependencies("app-api-gateway", None, AccountRepository::in_memory())
 }
 
-fn token(actor: TestActor) -> Option<String> {
+fn token(actor: TestActor, service_scope: Option<&str>) -> Option<String> {
     let (Some(subject), Some(role)) = (actor.subject(), actor.role()) else {
         return None;
     };
+    let config = platform_auth::AuthConfig::from_env();
+    if matches!(actor, TestActor::Service) {
+        return platform_auth::generate_service_token(
+            &config,
+            subject,
+            "universus",
+            &[service_scope.unwrap_or("test.unscoped")],
+            3_600,
+        )
+        .ok();
+    }
     platform_auth::generate_token(
-        &platform_auth::AuthConfig::from_env(),
+        &config,
         subject,
         &format!("{role}-{subject}"),
         role,
@@ -102,8 +113,8 @@ fn actor_is_allowed(policy: ActorPolicy, actor: TestActor) -> bool {
         ),
         ActorPolicy::Admin => matches!(actor, TestActor::Admin | TestActor::SuperAdmin),
         ActorPolicy::SuperAdmin => matches!(actor, TestActor::SuperAdmin),
-        ActorPolicy::Service => matches!(actor, TestActor::Service),
-        ActorPolicy::AdminOrService => matches!(
+        ActorPolicy::Service { .. } => matches!(actor, TestActor::Service),
+        ActorPolicy::AdminOrService { .. } => matches!(
             actor,
             TestActor::Admin | TestActor::SuperAdmin | TestActor::Service
         ),
@@ -119,7 +130,11 @@ async fn call(app: &axum::Router, rule: &RouteAuthorization, actor: TestActor) -
         .method(rule.method)
         .uri(concrete_path(rule.path))
         .header("content-type", "application/json");
-    if let Some(token) = token(actor) {
+    let service_scope = match rule.policy {
+        ActorPolicy::Service { scope } | ActorPolicy::AdminOrService { scope } => Some(scope),
+        _ => None,
+    };
+    if let Some(token) = token(actor, service_scope) {
         builder = builder.header("authorization", format!("Bearer {token}"));
     }
     app.clone()
@@ -195,11 +210,38 @@ async fn direct_request(method: &str, uri: &str, actor: TestActor, body: &str) -
         .method(method)
         .uri(uri)
         .header("content-type", "application/json");
-    if let Some(token) = token(actor) {
+    let service_scope = if uri.contains("/api/achievements/user/") {
+        Some("achievements.write")
+    } else if uri == "/api/notifications" && method == "POST" {
+        Some("notifications.write")
+    } else if uri.contains("/api/shards/messages/") {
+        Some("shards.messages.write")
+    } else if uri == "/api/shards/servers/register" {
+        Some("shards.servers.register")
+    } else {
+        None
+    };
+    if let Some(token) = token(actor, service_scope) {
         builder = builder.header("authorization", format!("Bearer {token}"));
     }
     app()
         .oneshot(builder.body(Body::from(body.to_string())).expect("request"))
+        .await
+        .expect("gateway response")
+        .status()
+}
+
+async fn request_with_token(method: &str, uri: &str, token: &str, body: &str) -> StatusCode {
+    app()
+        .oneshot(
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(body.to_string()))
+                .expect("request"),
+        )
         .await
         .expect("gateway response")
         .status()
@@ -355,6 +397,57 @@ async fn grants_and_internal_writes_accept_only_admin_superadmin_or_service() {
 }
 
 #[tokio::test]
+async fn service_scope_does_not_cross_internal_writers_or_inherit_player_access() {
+    let config = platform_auth::AuthConfig::from_env();
+    let token = platform_auth::generate_service_token(
+        &config,
+        "notifications-worker",
+        "universus",
+        &["notifications.write"],
+        3_600,
+    )
+    .expect("scoped service token");
+
+    let own_writer = request_with_token(
+        "POST",
+        "/api/notifications",
+        &token,
+        r#"{"userId":101,"category":"system","title":"test","message":"test"}"#,
+    )
+    .await;
+    assert_ne!(own_writer, StatusCode::UNAUTHORIZED);
+    assert_ne!(own_writer, StatusCode::FORBIDDEN);
+
+    assert_eq!(
+        request_with_token(
+            "POST",
+            "/api/achievements/user/101/achievements/1",
+            &token,
+            "{}",
+        )
+        .await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request_with_token("GET", "/api/users/me", &token, "").await,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn refresh_token_is_never_accepted_by_gateway_api_authorization() {
+    let refresh = platform_auth::generate_refresh_token(
+        &platform_auth::AuthConfig::from_env(),
+        "gateway-user",
+    )
+    .expect("refresh token");
+    assert_eq!(
+        request_with_token("GET", "/api/users/me", &refresh, "").await,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
 async fn users_me_is_derived_from_signed_claims() {
     let response = app()
         .oneshot(
@@ -363,7 +456,10 @@ async fn users_me_is_derived_from_signed_claims() {
                 .uri("/api/users/me")
                 .header(
                     "authorization",
-                    format!("Bearer {}", token(TestActor::Admin).expect("admin token")),
+                    format!(
+                        "Bearer {}",
+                        token(TestActor::Admin, None).expect("admin token")
+                    ),
                 )
                 .body(Body::empty())
                 .expect("request"),

@@ -466,23 +466,32 @@ pub async fn publish_http(
     channel: &str,
     event: &EventEnvelope,
 ) -> Result<u16, String> {
+    let service_token = std::env::var("PLATFORM_EVENTS_SERVICE_TOKEN")
+        .ok()
+        .filter(|token| !token.trim().is_empty())
+        .ok_or_else(|| {
+            "PLATFORM_EVENTS_SERVICE_TOKEN is required for realtime publishing".to_string()
+        })?;
+    publish_http_with_token(base_url, channel, event, &service_token).await
+}
+
+/// Publish with an externally provisioned `role=service` credential. This
+/// entry point supports dependency injection in tests without ever minting or
+/// logging a privileged token inside a worker.
+pub async fn publish_http_with_token(
+    base_url: &str,
+    channel: &str,
+    event: &EventEnvelope,
+    service_token: &str,
+) -> Result<u16, String> {
+    if service_token.trim().is_empty() {
+        return Err("realtime service credential is empty".to_string());
+    }
     let url = format!("{}/api/realtime/publish", base_url.trim_end_matches('/'));
     let body = build_publish_payload(channel, event);
-    let auth_config = platform_auth::AuthConfig::from_env();
-    auth_config
-        .validate_runtime()
-        .map_err(|error| error.to_string())?;
-    let token = platform_auth::generate_token(
-        &auth_config,
-        "service:platform-events",
-        "platform-events",
-        "admin",
-        None,
-    )
-    .map_err(|error| error.to_string())?;
     let response = reqwest::Client::new()
         .post(url)
-        .bearer_auth(token)
+        .bearer_auth(service_token)
         .json(&body)
         .send()
         .await

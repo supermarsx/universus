@@ -11,6 +11,8 @@
 2. **Start the application**:
    ```bash
    cd /workspace/universus-rpg
+   cp .env.example .env
+   # Provision the Ed25519 keys and scoped service credentials described below.
    docker compose up --build -d
    ```
 
@@ -90,6 +92,66 @@ never use it on a shared network or deployment. Development and test processes
 default to non-Secure cookies so direct `http://localhost` workflows continue
 to work. Production traffic must terminate TLS before reaching the frontend.
 
+### Signing keys, audiences, and service identities
+
+Production and staging use Ed25519 (`alg=EdDSA`) JWTs. The API gateway is the
+only online issuer and the only container that receives the private seed.
+Frontend, admin, bot, realtime, and gateway request validation receives only
+the public verification-key map and its own `AUTH_EXPECTED_AUDIENCE`.
+`JWT_SECRET`/HS256 is rejected in production-like environments.
+
+Generate a key pair on a trusted provisioning host:
+
+```bash
+cargo run -p platform-auth --bin auth-keygen -- primary-2026-07
+```
+
+The command intentionally prints the private seed once. Send it directly to a
+secret manager, do not paste it into tickets or logs, and do not provision it
+to workers or verifier-only services. Configure:
+
+```env
+AUTH_JWT_ISSUER=https://auth.universus.internal
+AUTH_JWT_SIGNING_KEY_ID=primary-2026-07
+AUTH_JWT_PRIVATE_KEY_BASE64=<private-seed> # API gateway only
+AUTH_JWT_VERIFICATION_KEYS=primary-2026-07:<public-key>
+```
+
+User access tokens carry all intentional user-facing audiences
+(`app-api-gateway`, `app-web-frontend`, `app-admin-api`, `app-bot-api`, and
+`app-realtime-gateway`). Every verifier still requires its own audience.
+Refresh tokens have `purpose=refresh` and are accepted only by the refresh
+flow; API, admin, bot, and realtime authorization reject them.
+
+Workers do not mint tokens. Provision a distinct `role=service`,
+`purpose=service` credential for each worker with one target audience and the
+minimum scope. With the issuer variables loaded into the provisioning shell,
+set `AUTH_TOKEN_ISSUER=true`, `AUTH_EXPECTED_AUDIENCE=app-api-gateway`, and run:
+
+```bash
+cargo run -p platform-auth --bin issue-service-token -- app-bot-worker app-bot-api bot.process 86400
+cargo run -p platform-auth --bin issue-service-token -- app-bot-worker-events app-realtime-gateway realtime.publish 86400
+```
+
+Store each output directly in the corresponding secret named in
+`.env.example`. Generate separate `realtime.publish` credentials for the API
+gateway and the email, analytics, core-engine, notifications, chat, scheduler,
+and sharding workers. A realtime publisher cannot call realtime moderation or
+read recent events; the bot worker's `bot.process` credential cannot manage
+bot accounts.
+
+For zero-downtime key rotation:
+
+1. Generate a new key with a new `kid`.
+2. Deploy `AUTH_JWT_VERIFICATION_KEYS=old:<old-public>,new:<new-public>` to all verifiers.
+3. Switch only the gateway's signing key ID/private seed and reissue service credentials.
+4. After every access, refresh, and service token signed by the old key has expired, remove the old public key.
+
+For direct local `cargo` development only, explicit HS256 compatibility remains
+available with `UNIVERSUS_ENV=development`, `AUTH_ALLOW_LEGACY_HS256=true`, and
+a local-only `JWT_SECRET`. Never reuse that secret or mode in staging or
+production.
+
 ## Production Deployment
 
 ### Cloud Deployment (AWS/GCP/Azure)
@@ -104,8 +166,9 @@ to work. Production traffic must terminate TLS before reaching the frontend.
 
 3. **Configure production environment**:
    ```bash
-   # Edit docker-compose.yml with production settings
-   # Update JWT_SECRET, database passwords, etc.
+   cp .env.example .env
+   # Provision Ed25519 keys, per-worker scoped service tokens, database
+   # passwords, trusted realtime origins, and the remaining production values.
    ```
 
 4. **Deploy**:
@@ -236,7 +299,9 @@ To scale the Rust API gateway:
 ## Security Checklist
 
 - [ ] Change default passwords
-- [ ] Use strong JWT secret
+- [ ] Keep the Ed25519 private seed only on the API gateway issuer
+- [ ] Give every worker a distinct, short-lived, audience-bound service token
+- [ ] Keep old and new public `kid` entries during key rotation
 - [ ] Enable HTTPS
 - [ ] Set up firewall rules
 - [ ] Regular database backups

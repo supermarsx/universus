@@ -17,6 +17,17 @@ impl Request {
     }
 }
 
+fn service_token(scope: &str) -> String {
+    platform_auth::generate_service_token(
+        &platform_auth::AuthConfig::from_env(),
+        "app-bot-worker-test",
+        "universus",
+        &[scope],
+        3_600,
+    )
+    .expect("generate scoped service token")
+}
+
 async fn response_json(response: axum::response::Response) -> Value {
     let body = to_bytes(response.into_body()).await.unwrap();
     serde_json::from_slice(&body).unwrap()
@@ -220,6 +231,76 @@ async fn process_all_returns_trigger_message() {
     let body = response_json(response).await;
     assert_eq!(body["success"], true);
     assert_eq!(body["message"], "Bot processing triggered");
+}
+
+#[tokio::test]
+async fn bot_worker_scope_processes_bots_without_inheriting_admin_management() {
+    let app = build_router();
+    let process_token = service_token("bot.process");
+
+    let process = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/admin/bots/process/all")
+                .method("POST")
+                .header("authorization", format!("Bearer {process_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(process.status(), StatusCode::OK);
+
+    let management = app
+        .clone()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/admin/bots")
+                .header("authorization", format!("Bearer {process_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(management.status(), StatusCode::FORBIDDEN);
+
+    let wrong_scope = app
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/admin/bots/process/all")
+                .method("POST")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", service_token("realtime.publish")),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(wrong_scope.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn refresh_token_is_never_accepted_by_bot_authorization() {
+    let refresh = platform_auth::generate_refresh_token(
+        &platform_auth::AuthConfig::from_env(),
+        "bot-admin-test",
+    )
+    .expect("generate refresh token");
+    let response = build_router()
+        .oneshot(
+            HttpRequest::builder()
+                .uri("/api/admin/bots/process/all")
+                .method("POST")
+                .header("authorization", format!("Bearer {refresh}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

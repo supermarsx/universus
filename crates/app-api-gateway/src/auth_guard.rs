@@ -82,6 +82,8 @@ where
             email: claims.email.clone(),
             role: claims.role.clone(),
             universe_id: claims.universe_id,
+            token_purpose: claims.purpose.clone(),
+            scopes: claims.scopes.clone(),
         }))
     }
 }

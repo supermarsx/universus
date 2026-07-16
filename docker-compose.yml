@@ -1,6 +1,11 @@
-x-auth-environment: &auth-environment
+x-runtime-environment: &runtime-environment
   UNIVERSUS_ENV: production
-  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set to a unique value of at least 32 bytes}
+
+x-auth-verifier-environment: &auth-verifier-environment
+  <<: *runtime-environment
+  AUTH_ALLOW_LEGACY_HS256: "false"
+  AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-https://auth.universus.internal}
+  AUTH_JWT_VERIFICATION_KEYS: ${AUTH_JWT_VERIFICATION_KEYS:?AUTH_JWT_VERIFICATION_KEYS must contain kid:base64url-public-key entries}
 
 services:
   database:
@@ -71,7 +76,13 @@ services:
       rust-core-engine:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-api-gateway
+      AUTH_TOKEN_ISSUER: "true"
+      AUTH_TOKEN_AUDIENCES: app-api-gateway,app-web-frontend,app-admin-api,app-bot-api,app-realtime-gateway
+      AUTH_JWT_SIGNING_KEY_ID: ${AUTH_JWT_SIGNING_KEY_ID:?AUTH_JWT_SIGNING_KEY_ID must select the active signing key}
+      AUTH_JWT_PRIVATE_KEY_BASE64: ${AUTH_JWT_PRIVATE_KEY_BASE64:?AUTH_JWT_PRIVATE_KEY_BASE64 must be provisioned only to rust-api-gateway}
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${API_GATEWAY_REALTIME_PUBLISH_TOKEN:?API_GATEWAY_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -90,7 +101,8 @@ services:
       rust-api-gateway:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-web-frontend
       PORT: 3005
       API_GATEWAY_URL: http://rust-api-gateway:3000
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
@@ -110,7 +122,8 @@ services:
       database:
         condition: service_healthy
     environment:
-      <<: *auth-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-admin-api
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
@@ -132,7 +145,8 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      <<: *auth-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-bot-api
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
@@ -150,9 +164,12 @@ services:
       rust-bot-api:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
       RUST_LOG: info
       BOT_API_URL: http://rust-bot-api:4001
+      BOT_WORKER_SERVICE_TOKEN: ${BOT_WORKER_SERVICE_TOKEN:?BOT_WORKER_SERVICE_TOKEN requires aud=app-bot-api and scope=bot.process}
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${BOT_WORKER_REALTIME_PUBLISH_TOKEN:?BOT_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       BOT_WORKER_INTERVAL_MS: 60000
     restart: unless-stopped
 
@@ -171,7 +188,7 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
     ports:
@@ -191,7 +208,9 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${EMAIL_WORKER_REALTIME_PUBLISH_TOKEN:?EMAIL_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       RUST_LOG: info
       REDIS_URL: redis://redis:6379
       WORKER_INTERVAL_SECONDS: 10
@@ -212,7 +231,9 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${ANALYTICS_WORKER_REALTIME_PUBLISH_TOKEN:?ANALYTICS_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
+      REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       RABBITMQ_URL: amqp://universus:universus@rabbitmq:5672
@@ -235,7 +256,8 @@ services:
       rust-core-engine:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *auth-verifier-environment
+      AUTH_EXPECTED_AUDIENCE: app-realtime-gateway
       RUST_LOG: info
       PORT: 4004
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
@@ -258,7 +280,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
       CORE_BIND_ADDR: 0.0.0.0:50051
     ports:
       - "50051:50051"
@@ -277,7 +299,8 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${CORE_ENGINE_REALTIME_PUBLISH_TOKEN:?CORE_ENGINE_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -298,7 +321,8 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${NOTIFICATIONS_WORKER_REALTIME_PUBLISH_TOKEN:?NOTIFICATIONS_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -320,7 +344,8 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${CHAT_WORKER_REALTIME_PUBLISH_TOKEN:?CHAT_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -340,7 +365,8 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${SCHEDULER_WORKER_REALTIME_PUBLISH_TOKEN:?SCHEDULER_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
@@ -366,7 +392,8 @@ services:
       rust-realtime-gateway:
         condition: service_started
     environment:
-      <<: *auth-environment
+      <<: *runtime-environment
+      PLATFORM_EVENTS_SERVICE_TOKEN: ${SHARDING_WORKER_REALTIME_PUBLISH_TOKEN:?SHARDING_WORKER_REALTIME_PUBLISH_TOKEN requires aud=app-realtime-gateway and scope=realtime.publish}
       RUST_LOG: info
       DATABASE_URL: postgres://postgres:postgres@database:5432/universus_rpg
       REALTIME_GATEWAY_URL: http://rust-realtime-gateway:4004
