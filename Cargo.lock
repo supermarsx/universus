@@ -3655,7 +3655,10 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "deadpool-postgres",
+ "game-combat",
  "game-economy",
+ "game-fleet",
+ "game-moon",
  "hmac",
  "rand 0.8.5",
  "serde_json",

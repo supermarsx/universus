@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 // ---------------------------------------------------------------------------
 // Domain-crate re-exports used as internal stores
 // ---------------------------------------------------------------------------
-use game_acs::{AcsMissionType, AcsStore, CreateAcsGroupInput as AcsCreateInput};
 use game_economy::{
     building_cost as economy_building_cost, research_cost as economy_research_cost,
     ship_cost as economy_ship_cost,
@@ -27,7 +26,6 @@ pub struct AppState {
     shard_inner: Arc<Mutex<ShardState>>,
     analytics_inner: Arc<Mutex<AnalyticsState>>,
     universe_inner: Arc<Mutex<UniverseManager>>,
-    acs_inner: Arc<Mutex<AcsStore>>,
     marketplace_inner: Arc<Mutex<MarketplaceStore>>,
     config_inner: Arc<Mutex<ConfigStore>>,
     galaxy_inner: Arc<Mutex<GalaxyStore>>,
@@ -70,21 +68,12 @@ struct ShardServerRecord {
 
 struct PlayerState {
     resources: PlayerResources,
-    fleet_log: Vec<FleetMissionRecord>,
     research_queues: HashMap<String, Vec<ResearchQueueRecord>>,
     shipyard_queues: HashMap<String, Vec<ShipyardQueueRecord>>,
     building_queues: HashMap<String, Vec<BuildingQueueRecord>>,
     player_blocks: Vec<PlayerBlockRecord>,
     theme_preferences: ThemePreferencesRecord,
     custom_css: String,
-}
-
-#[allow(dead_code)]
-struct FleetMissionRecord {
-    command_id: String,
-    mission: String,
-    target: String,
-    total_ships: i64,
 }
 
 #[allow(dead_code)]
@@ -168,11 +157,6 @@ pub struct ConfigHistorySnapshot {
     pub old_value: String,
     pub new_value: String,
     pub reason: String,
-}
-
-#[derive(Clone)]
-pub struct FleetMission {
-    pub command_id: String,
 }
 
 #[derive(Clone)]
@@ -263,19 +247,6 @@ pub struct UniverseSnapshot {
     pub registration_open: bool,
 }
 
-#[derive(Clone)]
-pub struct AcsGroupSnapshot {
-    pub id: i64,
-    pub mission_type: String,
-    pub target_galaxy: i32,
-    pub target_system: i32,
-    pub target_position: i32,
-    pub member_count: i32,
-    pub departure_window_start: String,
-    pub departure_window_end: String,
-    pub notes: Option<String>,
-}
-
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct MarketplaceListingSnapshot {
     pub id: i64,
@@ -340,17 +311,6 @@ pub struct MarketplaceListingInput {
     pub fleet_quantity: Option<i64>,
     pub wanted_type: String,
     pub wanted_amount: i64,
-}
-
-#[derive(Clone)]
-pub struct CreateAcsGroupInput {
-    pub mission_type: String,
-    pub target_galaxy: i32,
-    pub target_system: i32,
-    pub target_position: i32,
-    pub departure_window_start: Option<String>,
-    pub departure_window_end: Option<String>,
-    pub notes: Option<String>,
 }
 
 #[derive(Clone)]
@@ -480,52 +440,6 @@ impl AppState {
             let _ = marketplace_store.accept_listing(listing_3.id, 504, 26, "2026-02-13T20:20:00Z");
         }
 
-        // Build ACS store with seed group at ID 101 and next_id=102,
-        // matching legacy behavior (tests assert created_group_id >= 102).
-        let mut acs_store = AcsStore::empty_with_starting_id(102);
-        acs_store.insert(game_acs::AcsGroup {
-            id: 101,
-            mission_type: AcsMissionType::Attack,
-            target_galaxy: 1,
-            target_system: 223,
-            target_position: 9,
-            participants: vec![
-                game_acs::AcsParticipant {
-                    player_id: 1,
-                    planet_id: 1,
-                    fleet_id: None,
-                    ship_count: 0,
-                    joined_at: "2026-02-13T19:50:00Z".to_string(),
-                    is_initiator: true,
-                },
-                game_acs::AcsParticipant {
-                    player_id: 2,
-                    planet_id: 2,
-                    fleet_id: None,
-                    ship_count: 0,
-                    joined_at: "2026-02-13T19:51:00Z".to_string(),
-                    is_initiator: false,
-                },
-                game_acs::AcsParticipant {
-                    player_id: 3,
-                    planet_id: 3,
-                    fleet_id: None,
-                    ship_count: 0,
-                    joined_at: "2026-02-13T19:52:00Z".to_string(),
-                    is_initiator: false,
-                },
-            ],
-            max_participants: 5,
-            departure_window_start: "2026-02-13T20:00:00Z".to_string(),
-            departure_window_end: "2026-02-13T20:10:00Z".to_string(),
-            status: game_acs::AcsGroupStatus::Forming,
-            created_at: "2026-02-13T19:50:00Z".to_string(),
-            launched_at: None,
-            completed_at: None,
-            notes: Some("Synchronized strike".to_string()),
-            alliance_id: None,
-        });
-
         // Build the galaxy store with seed NPC planets for immersion.
         let mut galaxy_store = GalaxyStore::new(GalaxyConfig::default());
         // Place a few known player planets
@@ -540,7 +454,6 @@ impl AppState {
             shard_inner: Arc::new(Mutex::new(ShardState::default())),
             analytics_inner: Arc::new(Mutex::new(AnalyticsState::default())),
             universe_inner: Arc::new(Mutex::new(universe_mgr)),
-            acs_inner: Arc::new(Mutex::new(acs_store)),
             marketplace_inner: Arc::new(Mutex::new(marketplace_store)),
             config_inner: Arc::new(Mutex::new(config_store)),
             galaxy_inner: Arc::new(Mutex::new(galaxy_store)),
@@ -555,29 +468,6 @@ impl AppState {
         let mut game_state = self.inner.lock().expect("app state poisoned");
         let player = player_mut(&mut game_state, player_key);
         player.resources.clone()
-    }
-
-    // -----------------------------------------------------------------------
-    // Fleet mission (inline — no domain crate)
-    // -----------------------------------------------------------------------
-
-    pub fn enqueue_fleet_mission(
-        &self,
-        player_key: &str,
-        mission: String,
-        target: String,
-        total_ships: i64,
-    ) -> FleetMission {
-        let mut game_state = self.inner.lock().expect("app state poisoned");
-        let player = player_mut(&mut game_state, player_key);
-        let command_id = format!("cmd-fleet-{:03}", player.fleet_log.len() + 1);
-        player.fleet_log.push(FleetMissionRecord {
-            command_id: command_id.clone(),
-            mission,
-            target,
-            total_ships,
-        });
-        FleetMission { command_id }
     }
 
     // -----------------------------------------------------------------------
@@ -1114,107 +1004,6 @@ impl AppState {
         let _ = registration_open; // The domain crate doesn't track this separately;
                                    // registration is implied by Online status.
         universe_to_snapshot(&universe)
-    }
-
-    // -----------------------------------------------------------------------
-    // ACS groups — delegated to game_acs::AcsStore
-    // -----------------------------------------------------------------------
-
-    pub fn list_acs_groups(&self) -> Vec<AcsGroupSnapshot> {
-        let acs_store = self.acs_inner.lock().expect("app state poisoned");
-        let mut groups = acs_store
-            .list_groups(None)
-            .into_iter()
-            .map(|summary| AcsGroupSnapshot {
-                id: summary.id,
-                mission_type: format!("{:?}", summary.mission_type).to_lowercase(),
-                target_galaxy: summary.target_galaxy,
-                target_system: summary.target_system,
-                target_position: summary.target_position,
-                member_count: summary.participant_count as i32,
-                departure_window_start: summary.departure_window_start,
-                departure_window_end: summary.departure_window_end,
-                notes: None, // summary doesn't include notes
-            })
-            .collect::<Vec<_>>();
-        // Enrich with notes from full group data
-        for group_snapshot in &mut groups {
-            if let Some(full) = acs_store.get_group(group_snapshot.id) {
-                group_snapshot.notes = full.notes;
-            }
-        }
-        groups.sort_by(|left, right| left.id.cmp(&right.id));
-        groups
-    }
-
-    pub fn create_acs_group(&self, input: CreateAcsGroupInput) -> AcsGroupSnapshot {
-        let mut acs_store = self.acs_inner.lock().expect("app state poisoned");
-        let mission_type = match input.mission_type.as_str() {
-            "defend" => AcsMissionType::Defend,
-            _ => AcsMissionType::Attack,
-        };
-        let now = iso_now();
-        let group = acs_store
-            .create_group(
-                AcsCreateInput {
-                    mission_type,
-                    target_galaxy: input.target_galaxy,
-                    target_system: input.target_system,
-                    target_position: input.target_position,
-                    max_participants: None,
-                    departure_window_start: input.departure_window_start.clone(),
-                    departure_window_end: input.departure_window_end.clone(),
-                    notes: input.notes.clone(),
-                    alliance_id: None,
-                },
-                1, // initiator player id (default)
-                1, // initiator planet id (default)
-                &now,
-            )
-            .expect("create_group should succeed for valid input");
-
-        AcsGroupSnapshot {
-            id: group.id,
-            mission_type: format!("{:?}", group.mission_type).to_lowercase(),
-            target_galaxy: group.target_galaxy,
-            target_system: group.target_system,
-            target_position: group.target_position,
-            member_count: group.participants.len() as i32,
-            departure_window_start: group.departure_window_start,
-            departure_window_end: group.departure_window_end,
-            notes: group.notes,
-        }
-    }
-
-    pub fn join_acs_group(&self, id: i64, planet_id: i64) -> Result<(), &'static str> {
-        let mut acs_store = self.acs_inner.lock().expect("app state poisoned");
-        let now = iso_now();
-        // Use planet_id as both player_id and planet_id for backward compat
-        match acs_store.join_group(id, planet_id, planet_id, 1, &now) {
-            Ok(_) => Ok(()),
-            Err(_) => Err("ACS group not found"),
-        }
-    }
-
-    pub fn leave_acs_group(&self, id: i64) -> Result<(), &'static str> {
-        let mut acs_store = self.acs_inner.lock().expect("app state poisoned");
-        // The old implementation just popped the last member.
-        // With the domain crate, we need to find a non-initiator participant to remove.
-        let group = match acs_store.get_group(id) {
-            Some(g) => g,
-            None => return Err("ACS group not found"),
-        };
-        // Find the last non-initiator participant (or the last participant)
-        if group.participants.len() <= 1 {
-            return Ok(()); // Keep at least one member
-        }
-        // Remove the last participant (matches old pop() behavior)
-        let last_participant = group.participants.last().unwrap();
-        let player_id = last_participant.player_id;
-        match acs_store.leave_group(id, player_id) {
-            Ok(_) => Ok(()),
-            Err(_) => Err("ACS group not found"),
-        }
     }
 
     // -----------------------------------------------------------------------
@@ -1774,7 +1563,6 @@ impl Default for PlayerState {
                 deuterium: 40_250,
                 dark_matter: 1_500,
             },
-            fleet_log: Vec::new(),
             research_queues: HashMap::new(),
             shipyard_queues: HashMap::new(),
             building_queues: HashMap::new(),

@@ -179,9 +179,71 @@ impl Mulberry32 {
         t = t.wrapping_add(t.wrapping_mul(t ^ (t >> 7)));
         t ^ (t >> 14)
     }
+}
+
+trait CombatRandom {
+    fn next_u32(&mut self) -> u32;
 
     fn next_f64(&mut self) -> f64 {
         (self.next_u32() as f64) / (u32::MAX as f64 + 1.0)
+    }
+}
+
+impl CombatRandom for Mulberry32 {
+    fn next_u32(&mut self) -> u32 {
+        Self::next_u32(self)
+    }
+}
+
+/// Full-width deterministic generator for authoritative combat replays.
+///
+/// The state is initialized directly from all 32 seed bytes. The generator is
+/// xoshiro256**, which keeps 256 bits of evolving state and needs no external
+/// dependency. The seed is deliberately supplied out-of-band so it can never
+/// appear in serialized combat inputs or reports.
+#[derive(Clone, Copy)]
+struct SeededRng256 {
+    state: [u64; 4],
+}
+
+impl SeededRng256 {
+    fn from_seed(seed: &[u8; 32]) -> Self {
+        let mut state = [0_u64; 4];
+        for (slot, chunk) in state.iter_mut().zip(seed.chunks_exact(8)) {
+            let mut bytes = [0_u8; 8];
+            bytes.copy_from_slice(chunk);
+            *slot = u64::from_le_bytes(bytes);
+        }
+        if state == [0; 4] {
+            // xoshiro's only invalid state. This constant is fixed so replay
+            // remains deterministic even for an all-zero test seed.
+            state = [
+                0x9e37_79b9_7f4a_7c15,
+                0xbf58_476d_1ce4_e5b9,
+                0x94d0_49bb_1331_11eb,
+                0xd2b7_4407_b1ce_6e93,
+            ];
+        }
+        Self { state }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let result = self.state[1].wrapping_mul(5).rotate_left(7).wrapping_mul(9);
+        let temporary = self.state[1] << 17;
+
+        self.state[2] ^= self.state[0];
+        self.state[3] ^= self.state[1];
+        self.state[1] ^= self.state[2];
+        self.state[0] ^= self.state[3];
+        self.state[2] ^= temporary;
+        self.state[3] = self.state[3].rotate_left(45);
+        result
+    }
+}
+
+impl CombatRandom for SeededRng256 {
+    fn next_u32(&mut self) -> u32 {
+        (self.next_u64() >> 32) as u32
     }
 }
 
@@ -206,26 +268,36 @@ pub fn simulate_combat(req: &CombatInput) -> CombatResult {
 }
 
 /// Extended combat simulation configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CombatConfig {
     pub debris: DebrisConfig,
     pub defense_rebuild: DefenseRebuildConfig,
-}
-
-impl Default for CombatConfig {
-    fn default() -> Self {
-        Self {
-            debris: DebrisConfig::default(),
-            defense_rebuild: DefenseRebuildConfig::default(),
-        }
-    }
 }
 
 /// Run combat with custom configuration for debris and defense rebuild.
 pub fn simulate_combat_with_config(req: &CombatInput, config: &CombatConfig) -> CombatResult {
     let seed = calc_seed(&req.seed);
     let mut rng = Mulberry32::new(seed);
+    simulate_combat_with_rng(req, config, &mut rng)
+}
 
+/// Run authoritative combat from a full 256-bit seed supplied out-of-band.
+/// Reconstructing the same request, configuration, and seed produces the same
+/// result across worker restarts.
+pub fn simulate_combat_with_seed_256(
+    req: &CombatInput,
+    config: &CombatConfig,
+    seed: &[u8; 32],
+) -> CombatResult {
+    let mut rng = SeededRng256::from_seed(seed);
+    simulate_combat_with_rng(req, config, &mut rng)
+}
+
+fn simulate_combat_with_rng(
+    req: &CombatInput,
+    config: &CombatConfig,
+    rng: &mut dyn CombatRandom,
+) -> CombatResult {
     let universe = if req.universe.trim().is_empty() {
         "default"
     } else {
@@ -261,7 +333,7 @@ pub fn simulate_combat_with_config(req: &CombatInput, config: &CombatConfig) -> 
         }
 
         let (atk_shots, def_shots, def_destroyed, atk_destroyed) =
-            simulate_round(&mut attacker_units, &mut defender_units, &mut rng);
+            simulate_round(&mut attacker_units, &mut defender_units, rng);
 
         rounds.push(RoundResult {
             round_number: round_num,
@@ -281,10 +353,8 @@ pub fn simulate_combat_with_config(req: &CombatInput, config: &CombatConfig) -> 
     // Determine winner
     let winner = if defender_units.is_empty() && !attacker_units.is_empty() {
         "attacker"
-    } else if attacker_units.is_empty() && !defender_units.is_empty() {
-        "defender"
-    } else if attacker_units.is_empty() && defender_units.is_empty() {
-        // Both wiped out — defender wins (they defended successfully)
+    } else if attacker_units.is_empty() {
+        // A mutual wipe still counts as a successful defense.
         "defender"
     } else {
         // Both sides have survivors after max rounds — draw
@@ -326,7 +396,24 @@ pub fn simulate_combat_with_config(req: &CombatInput, config: &CombatConfig) -> 
 pub fn generate_combat_report(req: &CombatInput, config: &CombatConfig) -> CombatReport {
     let seed = calc_seed(&req.seed);
     let mut rng = Mulberry32::new(seed);
+    generate_combat_report_with_rng(req, config, &mut rng)
+}
 
+/// Generate an authoritative report from a full 256-bit out-of-band seed.
+pub fn generate_combat_report_with_seed_256(
+    req: &CombatInput,
+    config: &CombatConfig,
+    seed: &[u8; 32],
+) -> CombatReport {
+    let mut rng = SeededRng256::from_seed(seed);
+    generate_combat_report_with_rng(req, config, &mut rng)
+}
+
+fn generate_combat_report_with_rng(
+    req: &CombatInput,
+    config: &CombatConfig,
+    rng: &mut dyn CombatRandom,
+) -> CombatReport {
     let universe = if req.universe.trim().is_empty() {
         "default"
     } else {
@@ -372,7 +459,7 @@ pub fn generate_combat_report(req: &CombatInput, config: &CombatConfig) -> Comba
         });
 
         let (atk_shots, def_shots, def_destroyed, atk_destroyed) =
-            simulate_round(&mut attacker_units, &mut defender_units, &mut rng);
+            simulate_round(&mut attacker_units, &mut defender_units, rng);
 
         round_results.push(RoundResult {
             round_number: round_num,
@@ -390,9 +477,7 @@ pub fn generate_combat_report(req: &CombatInput, config: &CombatConfig) -> Comba
 
     let winner = if defender_units.is_empty() && !attacker_units.is_empty() {
         "attacker"
-    } else if attacker_units.is_empty() && !defender_units.is_empty() {
-        "defender"
-    } else if attacker_units.is_empty() && defender_units.is_empty() {
+    } else if attacker_units.is_empty() {
         "defender"
     } else {
         "draw"
@@ -421,7 +506,7 @@ pub fn generate_combat_report(req: &CombatInput, config: &CombatConfig) -> Comba
 
     // Calculate defense rebuild
     let defense_rebuilt =
-        calculate_defense_rebuild(&req.defender_defenses, &defender_units, &mut rng, config);
+        calculate_defense_rebuild(&req.defender_defenses, &defender_units, rng, config);
 
     let result = CombatResult {
         winner: winner.to_string(),
@@ -447,7 +532,7 @@ pub fn generate_combat_report(req: &CombatInput, config: &CombatConfig) -> Comba
 fn calculate_defense_rebuild(
     initial_defenses: &HashMap<String, i32>,
     remaining_units: &[CombatUnit],
-    rng: &mut Mulberry32,
+    rng: &mut dyn CombatRandom,
     config: &CombatConfig,
 ) -> HashMap<String, i32> {
     let mut remaining_defense_counts: HashMap<String, i32> = HashMap::new();
@@ -621,20 +706,19 @@ fn prepare_combat_units_split(
 fn simulate_round(
     attacker: &mut Vec<CombatUnit>,
     defender: &mut Vec<CombatUnit>,
-    rng: &mut Mulberry32,
+    rng: &mut dyn CombatRandom,
 ) -> (usize, usize, usize, usize) {
     let mut attacker_shots = 0usize;
     let mut defender_shots = 0usize;
 
     // Attackers fire at defenders
     let atk_count = attacker.len();
-    for i in 0..atk_count {
+    for shooter in attacker.iter().take(atk_count) {
         if defender.is_empty() {
             break;
         }
-        let shooter = attacker[i].clone();
         let target_idx = (rng.next_u32() as usize) % defender.len();
-        attacker_shots += shoot_with_rapid(&shooter, target_idx, defender, rng);
+        attacker_shots += shoot_with_rapid(shooter, target_idx, defender, rng);
         // Remove any destroyed during rapid fire within this unit's turn
         remove_destroyed(defender);
     }
@@ -643,13 +727,12 @@ fn simulate_round(
 
     // Defenders fire at attackers
     let def_count = defender.len();
-    for i in 0..def_count {
+    for shooter in defender.iter().take(def_count) {
         if attacker.is_empty() {
             break;
         }
-        let shooter = defender[i].clone();
         let target_idx = (rng.next_u32() as usize) % attacker.len();
-        defender_shots += shoot_with_rapid(&shooter, target_idx, attacker, rng);
+        defender_shots += shoot_with_rapid(shooter, target_idx, attacker, rng);
         remove_destroyed(attacker);
     }
 
@@ -663,7 +746,7 @@ fn simulate_round(
     )
 }
 
-fn shoot(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mulberry32) {
+fn shoot(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut dyn CombatRandom) {
     let damage = shooter.weapon;
 
     // Bounce rule: if weapon < 1% of shield, shot bounces harmlessly
@@ -701,8 +784,8 @@ fn shoot(shooter: &CombatUnit, target: &mut CombatUnit, rng: &mut Mulberry32) {
 fn shoot_with_rapid(
     shooter: &CombatUnit,
     initial_target: usize,
-    targets: &mut Vec<CombatUnit>,
-    rng: &mut Mulberry32,
+    targets: &mut [CombatUnit],
+    rng: &mut dyn CombatRandom,
 ) -> usize {
     if targets.is_empty() {
         return 0;
@@ -1204,10 +1287,10 @@ mod tests {
     #[test]
     fn losses_non_negative() {
         let r = simulate_combat(&make_req("loss-check"));
-        for (_, count) in &r.attacker_losses {
+        for count in r.attacker_losses.values() {
             assert!(*count > 0, "loss entries should be positive");
         }
-        for (_, count) in &r.defender_losses {
+        for count in r.defender_losses.values() {
             assert!(*count > 0, "loss entries should be positive");
         }
     }
@@ -1414,7 +1497,11 @@ mod tests {
         let mut rng = Mulberry32::new(12345);
         for _ in 0..1000 {
             let v = rng.next_f64();
-            assert!(v >= 0.0 && v < 1.0, "f64 should be in [0, 1), got {}", v);
+            assert!(
+                (0.0..1.0).contains(&v),
+                "f64 should be in [0, 1), got {}",
+                v
+            );
         }
     }
 
@@ -1432,6 +1519,49 @@ mod tests {
             same_count < 50,
             "different seeds should produce different sequences"
         );
+    }
+
+    #[test]
+    fn full_seed_rng_uses_all_256_bits_and_restarts_deterministically() {
+        let mut seed = [0_u8; 32];
+        seed[0] = 7;
+        let mut high_bit_seed = seed;
+        high_bit_seed[31] = 9;
+        let mut first = SeededRng256::from_seed(&seed);
+        let mut restarted = SeededRng256::from_seed(&seed);
+        let mut changed_high_bits = SeededRng256::from_seed(&high_bit_seed);
+
+        let sequence = (0..16).map(|_| first.next_u32()).collect::<Vec<_>>();
+        let replay = (0..16).map(|_| restarted.next_u32()).collect::<Vec<_>>();
+        let changed = (0..16)
+            .map(|_| changed_high_bits.next_u32())
+            .collect::<Vec<_>>();
+        assert_eq!(sequence, replay);
+        assert_ne!(sequence, changed);
+    }
+
+    #[test]
+    fn full_seed_all_zero_guard_is_deterministic_and_live() {
+        let mut first = SeededRng256::from_seed(&[0; 32]);
+        let mut second = SeededRng256::from_seed(&[0; 32]);
+        let output = (0..8).map(|_| first.next_u32()).collect::<Vec<_>>();
+        let replay = (0..8).map(|_| second.next_u32()).collect::<Vec<_>>();
+        assert_eq!(output, replay);
+        assert!(output.iter().any(|value| *value != 0));
+    }
+
+    #[test]
+    fn full_seed_report_replays_without_disclosing_seed() {
+        let req = make_simple_req(40, 35, "legacy-field-is-not-authoritative");
+        let config = CombatConfig::default();
+        let seed = [0xa5; 32];
+        let first = generate_combat_report_with_seed_256(&req, &config, &seed);
+        let replay = generate_combat_report_with_seed_256(&req, &config, &seed);
+        assert_eq!(first, replay);
+
+        let serialized = serde_json::to_string(&first).unwrap();
+        assert!(!serialized.contains(&"a5".repeat(32)));
+        assert!(!serialized.contains("legacy-field-is-not-authoritative"));
     }
 
     // -----------------------------------------------------------------------

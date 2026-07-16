@@ -8,6 +8,9 @@ deadpool-postgres = "0.14"
 tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 serde_json = "1"
 game-economy = { path = "../game-economy" }
+game-combat = { path = "../game-combat" }
+game-fleet = { path = "../game-fleet" }
+game-moon = { path = "../game-moon" }
 base64 = "0.22"
 hmac = "0.12"
 rand = "0.8"

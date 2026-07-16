@@ -13,6 +13,7 @@ use tokio::time::{sleep, Duration};
 
 const SERVICE_NAME: &str = "app-scheduler-worker";
 const GAMEPLAY_QUEUE_LIMIT_PER_KIND: usize = 100;
+const FLEET_PROCESS_LIMIT: usize = 100;
 const SCHEDULER_JOB_TYPES: [&str; 4] = [
     "scheduler.game_loop",
     "scheduler.fleet",
@@ -472,6 +473,7 @@ async fn enqueue_and_process_tick(
             &task,
             &processing.worker_id,
             processing.realtime_url.as_deref(),
+            processing.lease_secs,
             processing.retry_delay_secs,
             processing.max_attempts,
         )
@@ -492,6 +494,8 @@ async fn process_task(
     database: &Database,
     task_type: &str,
     payload: &serde_json::Value,
+    fleet_worker_id: &str,
+    fleet_lease_seconds: i64,
 ) -> Result<ProcessedTask, String> {
     match task_type {
         "scheduler.game_loop" => {
@@ -508,30 +512,38 @@ async fn process_task(
                 completions: result.completions,
             })
         }
-        // Audit: fleet movement completion is still synthetic and has no
-        // durable repository processor in this worker's current contract.
-        "scheduler.fleet" => Ok(ProcessedTask {
-            result: serde_json::json!({
-                "kind": "fleet_tick",
-                "applied": false,
-                "status": "awaiting_authoritative_processor",
-                "auditedPlaceholder": true,
-                "payload": payload
-            }),
-            completions: Vec::new(),
-        }),
-        // Audit: moon-destruction resolution remains a placeholder pending a
-        // repository-owned, exactly-once completion API.
-        "scheduler.moon_destroy" => Ok(ProcessedTask {
-            result: serde_json::json!({
-                "kind": "moon_destroy_tick",
-                "applied": false,
-                "status": "awaiting_authoritative_processor",
-                "auditedPlaceholder": true,
-                "payload": payload
-            }),
-            completions: Vec::new(),
-        }),
+        "scheduler.fleet" | "scheduler.moon_destroy" => {
+            // Moon-destruction missions are ordinary durable fleet missions.
+            // Both cadences may therefore wake the same exact-once resolver;
+            // row leases and phase CAS make concurrent ticks safe.
+            let result = database
+                .process_due_fleet_missions(
+                    fleet_worker_id,
+                    FLEET_PROCESS_LIMIT,
+                    fleet_lease_seconds,
+                )
+                .await
+                .map_err(|error| format!("authoritative fleet processing failed: {error}"))?;
+            Ok(ProcessedTask {
+                result: serde_json::json!({
+                    "kind": if task_type == "scheduler.fleet" {
+                        "fleet_tick"
+                    } else {
+                        "moon_destroy_tick"
+                    },
+                    "applied": true,
+                    "counts": {
+                        "arrivals": result.arrivals,
+                        "returns": result.returns,
+                        "skipped": result.skipped,
+                        "failed": result.failed
+                    },
+                    "fleetIds": result.fleet_ids,
+                    "payload": payload
+                }),
+                completions: Vec::new(),
+            })
+        }
         "scheduler.shard_health" => Ok(ProcessedTask {
             result: serde_json::json!({
                 "kind": "shard_health_tick",
@@ -549,10 +561,19 @@ async fn process_claimed_task(
     task: &ScheduledTaskRow,
     lease_owner: &str,
     realtime_url: Option<&str>,
+    fleet_lease_seconds: i64,
     retry_delay_secs: i64,
     max_attempts: i32,
 ) -> Result<serde_json::Value, String> {
-    let processed = match process_task(database, &task.task_type, &task.payload).await {
+    let processed = match process_task(
+        database,
+        &task.task_type,
+        &task.payload,
+        lease_owner,
+        fleet_lease_seconds,
+    )
+    .await
+    {
         Ok(processed) => processed,
         Err(process_error) => {
             let lifecycle_error = record_task_failure(
@@ -973,19 +994,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn audited_fleet_and_moon_placeholders_never_claim_application() {
+    async fn authoritative_fleet_and_moon_processing_propagate_repository_failure() {
         let database = disconnected_database();
         for task_type in ["scheduler.fleet", "scheduler.moon_destroy"] {
-            let processed = process_task(&database, task_type, &serde_json::json!({"tick": 1}))
-                .await
-                .expect("audited placeholder result");
-            assert_eq!(processed.result["applied"], false, "{task_type}");
-            assert_eq!(
-                processed.result["status"], "awaiting_authoritative_processor",
-                "{task_type}"
+            let error = process_task(
+                &database,
+                task_type,
+                &serde_json::json!({"tick": 1}),
+                "scheduler-unit-worker",
+                30,
+            )
+            .await
+            .expect_err("unreachable repository must fail processing");
+            assert!(
+                error.contains("authoritative fleet processing failed"),
+                "{task_type}: {error}"
             );
-            assert_eq!(processed.result["auditedPlaceholder"], true);
-            assert!(processed.completions.is_empty());
         }
     }
 
@@ -995,6 +1019,8 @@ mod tests {
             &disconnected_database(),
             "scheduler.game_loop",
             &serde_json::json!({}),
+            "scheduler-unit-worker",
+            30,
         )
         .await
         .expect_err("unreachable repository must fail processing");
@@ -1053,7 +1079,7 @@ mod tests {
             .into_iter()
             .find(|task| task.id == scheduled.id)
             .expect("claimed exact scheduled game-loop task");
-        let result = process_claimed_task(&database, &task, "scheduler-pg-worker", None, 1, 3)
+        let result = process_claimed_task(&database, &task, "scheduler-pg-worker", None, 30, 1, 3)
             .await
             .expect("authoritative scheduler completion");
         assert_eq!(result["counts"]["buildings"], 1);
@@ -1093,10 +1119,22 @@ mod tests {
             .expect("second due building queue");
         tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
         let worker_a_payload = serde_json::json!({"worker": "a"});
-        let concurrent_a = process_task(&database, "scheduler.game_loop", &worker_a_payload);
+        let concurrent_a = process_task(
+            &database,
+            "scheduler.game_loop",
+            &worker_a_payload,
+            "scheduler-pg-worker-a",
+            30,
+        );
         let restarted = Database::from_database_url(&database_url).expect("restarted pool");
         let worker_b_payload = serde_json::json!({"worker": "b"});
-        let concurrent_b = process_task(&restarted, "scheduler.game_loop", &worker_b_payload);
+        let concurrent_b = process_task(
+            &restarted,
+            "scheduler.game_loop",
+            &worker_b_payload,
+            "scheduler-pg-worker-b",
+            30,
+        );
         let (first, second) = tokio::join!(concurrent_a, concurrent_b);
         let first = first.expect("first concurrent processing pass");
         let second = second.expect("second concurrent processing pass");
@@ -1109,9 +1147,15 @@ mod tests {
         let second_restart =
             Database::from_database_url(&database_url).expect("second restarted pool");
         let restart_payload = serde_json::json!({"worker": "restart"});
-        let replay = process_task(&second_restart, "scheduler.game_loop", &restart_payload)
-            .await
-            .expect("restart replay");
+        let replay = process_task(
+            &second_restart,
+            "scheduler.game_loop",
+            &restart_payload,
+            "scheduler-pg-worker-restart",
+            30,
+        )
+        .await
+        .expect("restart replay");
         assert_eq!(replay.result["counts"]["completed"], 0);
         assert!(replay.completions.is_empty());
 
@@ -1131,9 +1175,10 @@ mod tests {
             .into_iter()
             .find(|task| task.id == unsupported.id)
             .expect("claimed unsupported task");
-        let error = process_claimed_task(&database, &failed, "scheduler-pg-failure", None, 1, 3)
-            .await
-            .expect_err("processing failure must propagate");
+        let error =
+            process_claimed_task(&database, &failed, "scheduler-pg-failure", None, 30, 1, 3)
+                .await
+                .expect_err("processing failure must propagate");
         assert!(error.contains("unsupported task type"));
         tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
         let retry = database

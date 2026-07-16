@@ -117,10 +117,6 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
         "/api/privacy/communications/:channel/:category",
         ActorPolicy::Player
     ),
-    rule!("GET", "/api/acs", ActorPolicy::Player),
-    rule!("POST", "/api/acs", ActorPolicy::Player),
-    rule!("POST", "/api/acs/:id/join", ActorPolicy::Player),
-    rule!("DELETE", "/api/acs/:id/leave", ActorPolicy::Player),
     rule!("POST", "/api/analytics/events", ActorPolicy::Player),
     rule!("POST", "/api/combat/simulate", ActorPolicy::Player),
     rule!("GET", "/api/debris", ActorPolicy::Player),
@@ -136,6 +132,8 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
     rule!("GET", "/api/debris/system/stats", ActorPolicy::Player),
     rule!("GET", "/api/fleet", ActorPolicy::Player),
     rule!("GET", "/api/fleet/:fleet_id", ActorPolicy::Player),
+    rule!("GET", "/api/fleet/:fleet_id/events", ActorPolicy::Player),
+    rule!("POST", "/api/fleet/:fleet_id/recall", ActorPolicy::Player),
     rule!(
         "POST",
         "/api/fleet/helpers/combat/attacker-distribution",

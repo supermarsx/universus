@@ -1954,127 +1954,28 @@ async fn shards_register_list_health_and_routing_stats_are_stateful() {
 }
 
 #[tokio::test]
-async fn acs_routes_require_authentication() {
+async fn public_acs_routes_are_disabled_until_group_atomic_resolution_exists() {
     let app = build_router(TEST_SERVICE_NAME);
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/acs")
-                .method("GET")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let body = response_json(response).await;
-    assert_eq!(body["success"], false);
-    assert_eq!(body["error"], "Unauthorized");
-}
-
-#[tokio::test]
-async fn acs_create_join_and_leave_return_success_envelopes() {
-    let app = build_router(TEST_SERVICE_NAME);
-
-    let list_before = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/acs")
-                .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(list_before.status(), StatusCode::OK);
-    let list_before_body = response_json(list_before).await;
-    let initial_count = list_before_body["data"].as_array().unwrap().len();
-
-    let create_payload = json!({
-        "missionType": "attack",
-        "targetGalaxy": 2,
-        "targetSystem": 155,
-        "targetPosition": 8
-    });
-    let create_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/acs")
-                .method("POST")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .header("content-type", "application/json")
-                .body(Body::from(create_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(create_response.status(), StatusCode::OK);
-    let create_body = response_json(create_response).await;
-    assert_eq!(create_body["success"], true);
-    assert_eq!(create_body["data"]["targetGalaxy"], 2);
-    let created_group_id = create_body["data"]["id"].as_i64().unwrap();
-    assert!(created_group_id >= 102);
-
-    let join_payload = json!({ "planetId": 9 });
-    let join_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/api/acs/{created_group_id}/join"))
-                .method("POST")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .header("content-type", "application/json")
-                .body(Body::from(join_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(join_response.status(), StatusCode::OK);
-    let join_body = response_json(join_response).await;
-    assert_eq!(join_body["success"], true);
-    assert_eq!(join_body["data"]["joined"], true);
-
-    let leave_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/api/acs/{created_group_id}/leave"))
-                .method("DELETE")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(leave_response.status(), StatusCode::OK);
-    let leave_body = response_json(leave_response).await;
-    assert_eq!(leave_body["success"], true);
-    assert_eq!(leave_body["data"]["left"], true);
-
-    let list_after = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/acs")
-                .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(list_after.status(), StatusCode::OK);
-    let list_after_body = response_json(list_after).await;
-    let groups = list_after_body["data"].as_array().unwrap();
-    assert_eq!(groups.len(), initial_count + 1);
-    let created_group = groups
-        .iter()
-        .find(|group| group["id"] == created_group_id)
-        .unwrap();
-    assert_eq!(created_group["memberCount"], 1);
+    for (method, path) in [
+        ("GET", "/api/acs"),
+        ("POST", "/api/acs"),
+        ("POST", "/api/acs/101/join"),
+        ("DELETE", "/api/acs/101/leave"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .method(method)
+                    .header("authorization", format!("Bearer {}", dev_token()))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method} {path}");
+    }
 }
 
 #[tokio::test]

@@ -1,10 +1,12 @@
 mod auth;
 mod communication;
+mod fleet;
 mod gameplay;
 mod privacy;
 
 pub use auth::*;
 pub use communication::*;
+pub use fleet::*;
 pub use gameplay::*;
 pub use privacy::*;
 

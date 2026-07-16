@@ -189,6 +189,52 @@ pub struct Resources {
     pub deuterium: i64,
 }
 
+/// The authoritative kind of a fleet destination. Coordinates alone are not
+/// enough to distinguish a planet from its moon, an unoccupied colonization
+/// slot, a debris field, or the expedition position.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum FleetTargetKind {
+    Planet,
+    Moon,
+    Debris,
+    EmptyCoordinate,
+    ExpeditionSlot,
+}
+
+impl FleetTargetKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Planet => "planet",
+            Self::Moon => "moon",
+            Self::Debris => "debris",
+            Self::EmptyCoordinate => "empty_coordinate",
+            Self::ExpeditionSlot => "expedition_slot",
+        }
+    }
+}
+
+impl fmt::Display for FleetTargetKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for FleetTargetKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "planet" => Ok(Self::Planet),
+            "moon" => Ok(Self::Moon),
+            "debris" | "debris_field" => Ok(Self::Debris),
+            "empty" | "empty_coordinate" => Ok(Self::EmptyCoordinate),
+            "expedition" | "expedition_slot" => Ok(Self::ExpeditionSlot),
+            other => Err(format!("unknown fleet target kind: {other}")),
+        }
+    }
+}
+
 impl Resources {
     pub fn new(metal: i64, crystal: i64, deuterium: i64) -> Self {
         Self {
@@ -227,6 +273,40 @@ pub enum FleetMissionType {
     Destroy,
     AcsAttack,
     AcsDefend,
+    AcsJoin,
+}
+
+impl FleetMissionType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Attack => "attack",
+            Self::Transport => "transport",
+            Self::Deploy => "deploy",
+            Self::Espionage => "espionage",
+            Self::Colonize => "colonize",
+            Self::Harvest => "harvest",
+            Self::Expedition => "expedition",
+            Self::Destroy => "destroy",
+            Self::AcsAttack => "acs_attack",
+            Self::AcsDefend => "acs_defend",
+            Self::AcsJoin => "acs_join",
+        }
+    }
+
+    pub const fn target_kind_allowed(self, kind: FleetTargetKind) -> bool {
+        match self {
+            Self::Attack | Self::Espionage | Self::AcsAttack | Self::AcsDefend | Self::AcsJoin => {
+                matches!(kind, FleetTargetKind::Planet | FleetTargetKind::Moon)
+            }
+            Self::Transport | Self::Deploy => {
+                matches!(kind, FleetTargetKind::Planet | FleetTargetKind::Moon)
+            }
+            Self::Colonize => matches!(kind, FleetTargetKind::EmptyCoordinate),
+            Self::Harvest => matches!(kind, FleetTargetKind::Debris),
+            Self::Expedition => matches!(kind, FleetTargetKind::ExpeditionSlot),
+            Self::Destroy => matches!(kind, FleetTargetKind::Moon),
+        }
+    }
 }
 
 impl fmt::Display for FleetMissionType {
@@ -242,6 +322,7 @@ impl fmt::Display for FleetMissionType {
             FleetMissionType::Destroy => "Destroy",
             FleetMissionType::AcsAttack => "AcsAttack",
             FleetMissionType::AcsDefend => "AcsDefend",
+            FleetMissionType::AcsJoin => "AcsJoin",
         };
         write!(f, "{}", s)
     }
@@ -262,6 +343,7 @@ impl FromStr for FleetMissionType {
             "destroy" | "moon_destroy" | "moondestroy" => Ok(FleetMissionType::Destroy),
             "acsattack" | "acs_attack" => Ok(FleetMissionType::AcsAttack),
             "acsdefend" | "acs_defend" => Ok(FleetMissionType::AcsDefend),
+            "acsjoin" | "acs_join" => Ok(FleetMissionType::AcsJoin),
             _ => Err(format!("unknown mission type: {}", s)),
         }
     }
@@ -611,6 +693,396 @@ impl FleetComposition {
     }
 }
 
+/// Hard launch bound shared by the planner, persistence layer, and combat
+/// adapter. The combat engine currently represents per-type counts as `i32`,
+/// so an accepted fleet must remain comfortably below that boundary.
+pub const MAX_AUTHORITATIVE_SHIPS_PER_TYPE: i64 = 1_000_000_000;
+pub const MAX_AUTHORITATIVE_TRAVEL_SECONDS: i64 = 10 * 365 * 24 * 60 * 60;
+
+/// Server-owned movement configuration. Multipliers use thousandths so the
+/// persisted plan can be reproduced without floating-point configuration
+/// drift. A value of 1_000 means 1.0x.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FleetPlanningConfig {
+    pub universe_speed: i32,
+    pub speed_percent: i32,
+    pub fuel_multiplier_milli: i32,
+    pub cargo_multiplier_milli: i32,
+    pub max_galaxies: i32,
+    pub max_systems: i32,
+    pub max_positions: i32,
+    /// Requested orbit duration for ACS defense/join missions. All other
+    /// missions require zero. The repository derives this from validated
+    /// server/API input and persists it as an immutable launch fact.
+    pub hold_seconds: i64,
+}
+
+impl Default for FleetPlanningConfig {
+    fn default() -> Self {
+        Self {
+            universe_speed: 1,
+            speed_percent: 100,
+            fuel_multiplier_milli: 1_000,
+            cargo_multiplier_milli: 1_000,
+            max_galaxies: 9,
+            max_systems: 499,
+            max_positions: 15,
+            hold_seconds: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthoritativeMissionPlan {
+    pub distance: i32,
+    pub fleet_speed: i64,
+    pub travel_time_seconds: i64,
+    pub fuel_required: i64,
+    pub movement_fuel_required: i64,
+    pub holding_fuel_required: i64,
+    pub cargo_capacity: i64,
+    pub usable_cargo_capacity: i64,
+    pub applied_max_galaxies: i32,
+    pub applied_max_systems: i32,
+    pub applied_max_positions: i32,
+    pub applied_universe_speed: i32,
+    pub applied_speed_percent: i32,
+    pub applied_fuel_multiplier_milli: i32,
+    pub applied_cargo_multiplier_milli: i32,
+    pub applied_hold_seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissionPlanningError(pub String);
+
+impl fmt::Display for MissionPlanningError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Produce the complete movement plan from server-owned configuration and a
+/// canonical ship composition. Clients never supply speed, fuel, distance,
+/// duration, or cargo capacity.
+pub fn plan_authoritative_mission(
+    mission_type: FleetMissionType,
+    target_kind: FleetTargetKind,
+    origin: &Coordinates,
+    target: &Coordinates,
+    composition: &FleetComposition,
+    resources: &Resources,
+    config: FleetPlanningConfig,
+) -> Result<AuthoritativeMissionPlan, MissionPlanningError> {
+    if !mission_type.target_kind_allowed(target_kind) {
+        return Err(MissionPlanningError(format!(
+            "{} missions cannot target {}",
+            mission_type.as_str(),
+            target_kind.as_str()
+        )));
+    }
+    if !(1..=1_000).contains(&config.universe_speed)
+        || !(10..=100).contains(&config.speed_percent)
+        || !(1..=100_000).contains(&config.fuel_multiplier_milli)
+        || !(1..=100_000).contains(&config.cargo_multiplier_milli)
+        || !(1..=1_000).contains(&config.max_galaxies)
+        || !(1..=100_000).contains(&config.max_systems)
+        || !(1..=10_000).contains(&config.max_positions)
+    {
+        return Err(MissionPlanningError(
+            "fleet planning configuration is outside supported bounds".to_string(),
+        ));
+    }
+    match mission_type {
+        FleetMissionType::AcsDefend if !(60..=48 * 60 * 60).contains(&config.hold_seconds) => {
+            return Err(MissionPlanningError(
+                "ACS defense hold time must be between 60 seconds and 48 hours".to_string(),
+            ));
+        }
+        FleetMissionType::AcsDefend => {}
+        _ if config.hold_seconds != 0 => {
+            return Err(MissionPlanningError(
+                "hold time is only valid for ACS defense missions".to_string(),
+            ));
+        }
+        _ => {}
+    }
+    validate_authoritative_coordinates(origin, false, config)?;
+    validate_authoritative_coordinates(
+        target,
+        matches!(target_kind, FleetTargetKind::ExpeditionSlot),
+        config,
+    )?;
+    if matches!(target_kind, FleetTargetKind::ExpeditionSlot)
+        && target.position != config.max_positions + 1
+    {
+        return Err(MissionPlanningError(
+            "expedition missions must target the configured expedition position".to_string(),
+        ));
+    }
+    if !matches!(target_kind, FleetTargetKind::ExpeditionSlot)
+        && target.position > config.max_positions
+    {
+        return Err(MissionPlanningError(
+            "only expedition missions may target the expedition position".to_string(),
+        ));
+    }
+    if resources.metal < 0 || resources.crystal < 0 || resources.deuterium < 0 {
+        return Err(MissionPlanningError(
+            "fleet cargo resources cannot be negative".to_string(),
+        ));
+    }
+    let mut total_ships = 0_i128;
+    let mut base_fuel = 0_i128;
+    let mut base_cargo = 0_i128;
+    let mut fleet_speed = i64::MAX;
+    for (ship_type, count) in &composition.ships {
+        if *count <= 0 || *count > MAX_AUTHORITATIVE_SHIPS_PER_TYPE {
+            return Err(MissionPlanningError(format!(
+                "ship count for {ship_type} is outside supported bounds"
+            )));
+        }
+        let stats = get_ship_stats(ship_type)
+            .ok_or_else(|| MissionPlanningError(format!("unknown ship type: {ship_type}")))?;
+        if !stats.speed.is_finite() || stats.speed <= 0.0 || stats.speed.fract() != 0.0 {
+            return Err(MissionPlanningError(format!(
+                "{ship_type} cannot participate in a moving fleet"
+            )));
+        }
+        if !stats.fuel_consumption.is_finite()
+            || stats.fuel_consumption < 0.0
+            || stats.fuel_consumption.fract() != 0.0
+        {
+            return Err(MissionPlanningError(format!(
+                "{ship_type} has unsupported fuel statistics"
+            )));
+        }
+        let count = i128::from(*count);
+        total_ships = total_ships
+            .checked_add(count)
+            .ok_or_else(|| MissionPlanningError("fleet size overflow".to_string()))?;
+        base_fuel = base_fuel
+            .checked_add(
+                (stats.fuel_consumption as i128)
+                    .checked_mul(count)
+                    .ok_or_else(|| MissionPlanningError("fleet fuel overflow".to_string()))?,
+            )
+            .ok_or_else(|| MissionPlanningError("fleet fuel overflow".to_string()))?;
+        base_cargo =
+            base_cargo
+                .checked_add(i128::from(stats.cargo).checked_mul(count).ok_or_else(|| {
+                    MissionPlanningError("fleet cargo capacity overflow".to_string())
+                })?)
+                .ok_or_else(|| MissionPlanningError("fleet cargo capacity overflow".to_string()))?;
+        fleet_speed = fleet_speed.min(stats.speed as i64);
+    }
+    if total_ships == 0 || fleet_speed == i64::MAX {
+        return Err(MissionPlanningError("fleet has no ships".to_string()));
+    }
+
+    require_mission_ship(mission_type, composition)?;
+    let distance = calculate_distance(
+        origin.galaxy,
+        origin.system,
+        origin.position,
+        target.galaxy,
+        target.system,
+        target.position,
+    );
+    // OGame-style speed-dependent consumption. With speed selection expressed
+    // as 10..100 percent, the exact factor is `(speed_percent + 100)^2 / 10000`:
+    // 1.21x at 10%, 2.25x at 50%, and 4.00x at 100%.
+    let speed_fuel_factor = i128::from(config.speed_percent + 100)
+        .checked_mul(i128::from(config.speed_percent + 100))
+        .ok_or_else(|| MissionPlanningError("fleet fuel overflow".to_string()))?;
+    let fuel_numerator = base_fuel
+        .checked_mul(i128::from(distance))
+        .and_then(|value| value.checked_mul(i128::from(config.fuel_multiplier_milli)))
+        .and_then(|value| value.checked_mul(speed_fuel_factor))
+        .ok_or_else(|| MissionPlanningError("fleet fuel overflow".to_string()))?;
+    let movement_fuel_required =
+        checked_i128_to_i64(ceil_div(fuel_numerator, 35_000 * 1_000 * 10_000))?;
+    // Orbit support consumes 10% of the fleet's configured base consumption
+    // per hour, rounded up. It is zero for non-holding missions.
+    let holding_fuel_required = checked_i128_to_i64(ceil_div(
+        base_fuel
+            .checked_mul(i128::from(config.fuel_multiplier_milli))
+            .and_then(|value| value.checked_mul(i128::from(config.hold_seconds)))
+            .ok_or_else(|| MissionPlanningError("fleet holding fuel overflow".to_string()))?,
+        1_000 * 10 * 3_600,
+    ))?;
+    let fuel_required = movement_fuel_required
+        .checked_add(holding_fuel_required)
+        .ok_or_else(|| MissionPlanningError("fleet fuel overflow".to_string()))?;
+    let cargo_capacity = checked_i128_to_i64(
+        base_cargo
+            .checked_mul(i128::from(config.cargo_multiplier_milli))
+            .ok_or_else(|| MissionPlanningError("fleet cargo capacity overflow".to_string()))?
+            / 1_000,
+    )?;
+    let usable_cargo_capacity = cargo_capacity.saturating_sub(fuel_required);
+    let cargo_total = resources
+        .metal
+        .checked_add(resources.crystal)
+        .and_then(|value| value.checked_add(resources.deuterium))
+        .ok_or_else(|| MissionPlanningError("fleet cargo overflow".to_string()))?;
+    if cargo_total > usable_cargo_capacity {
+        return Err(MissionPlanningError(format!(
+            "fleet cargo exceeds usable capacity of {usable_cargo_capacity}"
+        )));
+    }
+
+    // Fixed-point form of:
+    // (10 + 3_500_000/speed_percent * sqrt(distance*10/fleet_speed))
+    // / universe_speed. The square root is rounded upward at one-millionth
+    // precision so the server never schedules an arrival earlier than the
+    // mathematical result and every platform produces the same second.
+    const SQRT_SCALE: i128 = 1_000_000;
+    let scaled_radicand = i128::from(distance)
+        .checked_mul(10)
+        .and_then(|value| value.checked_mul(SQRT_SCALE))
+        .and_then(|value| value.checked_mul(SQRT_SCALE))
+        .ok_or_else(|| MissionPlanningError("fleet duration overflow".to_string()))?;
+    let scaled_radicand = ceil_div(scaled_radicand, i128::from(fleet_speed));
+    let sqrt_scaled = integer_sqrt_ceil(
+        u128::try_from(scaled_radicand)
+            .map_err(|_| MissionPlanningError("fleet duration overflow".to_string()))?,
+    );
+    let duration_denominator = i128::from(config.speed_percent)
+        .checked_mul(SQRT_SCALE)
+        .ok_or_else(|| MissionPlanningError("fleet duration overflow".to_string()))?;
+    let duration_numerator = i128::from(10)
+        .checked_mul(duration_denominator)
+        .and_then(|value| {
+            i128::try_from(sqrt_scaled)
+                .ok()
+                .and_then(|root| root.checked_mul(3_500_000))
+                .and_then(|term| value.checked_add(term))
+        })
+        .ok_or_else(|| MissionPlanningError("fleet duration overflow".to_string()))?;
+    let travel_time_seconds = checked_i128_to_i64(ceil_div(
+        duration_numerator,
+        duration_denominator
+            .checked_mul(i128::from(config.universe_speed))
+            .ok_or_else(|| MissionPlanningError("fleet duration overflow".to_string()))?,
+    ))?;
+    if travel_time_seconds <= 0 || travel_time_seconds > MAX_AUTHORITATIVE_TRAVEL_SECONDS {
+        return Err(MissionPlanningError(
+            "fleet travel duration is outside supported bounds".to_string(),
+        ));
+    }
+
+    Ok(AuthoritativeMissionPlan {
+        distance,
+        fleet_speed,
+        travel_time_seconds,
+        fuel_required,
+        movement_fuel_required,
+        holding_fuel_required,
+        cargo_capacity,
+        usable_cargo_capacity,
+        applied_max_galaxies: config.max_galaxies,
+        applied_max_systems: config.max_systems,
+        applied_max_positions: config.max_positions,
+        applied_universe_speed: config.universe_speed,
+        applied_speed_percent: config.speed_percent,
+        applied_fuel_multiplier_milli: config.fuel_multiplier_milli,
+        applied_cargo_multiplier_milli: config.cargo_multiplier_milli,
+        applied_hold_seconds: config.hold_seconds,
+    })
+}
+
+/// Return-flight duration for a recall. The fleet returns for exactly the time
+/// it has already travelled. A recall at or after arrival is rejected because
+/// arrival resolution and recall must serialize on the persisted mission.
+pub fn recall_return_duration_seconds(
+    departed_at_unix: i64,
+    arrives_at_unix: i64,
+    recalled_at_unix: i64,
+) -> Result<i64, MissionPlanningError> {
+    if arrives_at_unix <= departed_at_unix
+        || recalled_at_unix < departed_at_unix
+        || recalled_at_unix >= arrives_at_unix
+    {
+        return Err(MissionPlanningError(
+            "invalid mission timestamps for recall".to_string(),
+        ));
+    }
+    Ok(recalled_at_unix - departed_at_unix)
+}
+
+fn validate_authoritative_coordinates(
+    coordinates: &Coordinates,
+    expedition: bool,
+    config: FleetPlanningConfig,
+) -> Result<(), MissionPlanningError> {
+    let maximum_position = config.max_positions + i32::from(expedition);
+    if !(1..=config.max_galaxies).contains(&coordinates.galaxy)
+        || !(1..=config.max_systems).contains(&coordinates.system)
+        || !(1..=maximum_position).contains(&coordinates.position)
+    {
+        return Err(MissionPlanningError(
+            "fleet coordinates are outside universe bounds".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn require_mission_ship(
+    mission_type: FleetMissionType,
+    composition: &FleetComposition,
+) -> Result<(), MissionPlanningError> {
+    let required = match mission_type {
+        FleetMissionType::Espionage => Some(("espionage_probe", "espionage probe")),
+        FleetMissionType::Colonize => Some(("colony_ship", "colony ship")),
+        FleetMissionType::Harvest => Some(("recycler", "recycler")),
+        FleetMissionType::Destroy => Some(("deathstar", "deathstar")),
+        _ => None,
+    };
+    if let Some((ship_type, description)) = required {
+        if composition.ships.get(ship_type).copied().unwrap_or(0) <= 0 {
+            return Err(MissionPlanningError(format!(
+                "{} missions require at least one {description}",
+                mission_type.as_str()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn ceil_div(value: i128, divisor: i128) -> i128 {
+    if value == 0 {
+        0
+    } else {
+        (value - 1) / divisor + 1
+    }
+}
+
+fn integer_sqrt_ceil(value: u128) -> u128 {
+    if value <= 1 {
+        return value;
+    }
+    let mut low = 1_u128;
+    let mut high = value.min(u128::from(u64::MAX));
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if middle > value / middle {
+            high = middle;
+        } else if middle * middle == value {
+            return middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+fn checked_i128_to_i64(value: i128) -> Result<i64, MissionPlanningError> {
+    i64::try_from(value)
+        .map_err(|_| MissionPlanningError("fleet calculation exceeds i64".to_string()))
+}
+
 impl Default for FleetComposition {
     fn default() -> Self {
         Self::new()
@@ -920,10 +1392,9 @@ impl FleetDispatcher {
         Ok(())
     }
 
-    /// Calculate fuel for a fleet over a distance using OGame-inspired formula:
-    /// `total_consumption * distance / 35000 * total_ship_count`
-    ///
-    /// The speed factor reduces fuel proportionally.
+    /// Legacy compatibility estimate. Authoritative launches use
+    /// `plan_authoritative_mission`, whose checked fixed-point formula includes
+    /// selected speed, configured multipliers, cargo occupancy, and hold fuel.
     pub fn calculate_fuel(&self, composition: &FleetComposition, distance: i32) -> f64 {
         let base_consumption = composition.fuel_consumption();
         // OGame-inspired: fuel = base_consumption * distance / 35000
@@ -947,6 +1418,9 @@ impl FleetDispatcher {
     }
 
     /// Dispatch a fleet mission. Returns a `FleetMission` with computed times.
+    // Compatibility entry point retained for existing callers. New durable
+    // launches use `plan_authoritative_mission` plus repository-owned input.
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch(
         &self,
         id: u64,
@@ -1007,13 +1481,16 @@ impl Default for FleetDispatcher {
 // Mission Processing
 // ---------------------------------------------------------------------------
 
-/// Process a fleet arrival and produce an outcome.
-/// This is a deterministic "stub" processor. Real game logic would consult
-/// planet data, combat engine, etc. The function demonstrates the mission
-/// lifecycle and returns a placeholder outcome for each mission type.
+/// Legacy deterministic benchmark fixture.
+///
+/// Production mission resolution is exclusively implemented by the durable
+/// `platform-db` fleet repository. This helper is compiled only for this
+/// crate's unit tests and the explicitly opted-in benchmark harness.
+#[cfg(any(test, feature = "legacy-benchmark-fixture"))]
+#[doc(hidden)]
 pub fn process_arrival(mission: &FleetMission) -> MissionOutcome {
     match mission.mission_type {
-        FleetMissionType::Attack | FleetMissionType::AcsAttack => {
+        FleetMissionType::Attack | FleetMissionType::AcsAttack | FleetMissionType::AcsJoin => {
             // Simplified: loot proportional to combat power, small debris
             let power = mission.composition.combat_power();
             let loot_factor = (power / 10.0).ceil() as i64;
@@ -1079,12 +1556,15 @@ pub fn process_arrival(mission: &FleetMission) -> MissionOutcome {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
+#[cfg(any(test, feature = "legacy-benchmark-fixture"))]
+#[doc(hidden)]
 pub struct FleetStore {
     pub fleets: HashMap<u64, FleetMission>,
     next_id: u64,
     dispatcher: FleetDispatcher,
 }
 
+#[cfg(any(test, feature = "legacy-benchmark-fixture"))]
 impl FleetStore {
     pub fn new(speed_factor: f64) -> Self {
         Self {
@@ -1095,6 +1575,8 @@ impl FleetStore {
     }
 
     /// Dispatch a fleet and store it. Returns the assigned fleet id.
+    // Compatibility wrapper around the legacy in-memory store.
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch_fleet(
         &mut self,
         owner_id: &str,
@@ -1169,9 +1651,7 @@ impl FleetStore {
 
             // Update status
             let fleet_mut = self.fleets.get_mut(&id).unwrap();
-            if fleet_mut.mission_type == FleetMissionType::Deploy {
-                fleet_mut.status = MissionStatus::Completed;
-            } else if fleet_mut.is_returned(now) {
+            if fleet_mut.mission_type == FleetMissionType::Deploy || fleet_mut.is_returned(now) {
                 fleet_mut.status = MissionStatus::Completed;
             } else {
                 fleet_mut.status = MissionStatus::Returning;
@@ -1227,6 +1707,7 @@ impl FleetStore {
     }
 }
 
+#[cfg(any(test, feature = "legacy-benchmark-fixture"))]
 impl Default for FleetStore {
     fn default() -> Self {
         Self::new(1.0)
@@ -2254,5 +2735,292 @@ mod tests {
             t_fast < t_slow,
             "higher speed factor should reduce travel time"
         );
+    }
+
+    #[test]
+    fn authoritative_plan_derives_integer_fuel_cargo_and_duration() {
+        let mut composition = FleetComposition::new();
+        composition.add("small_cargo", 10);
+        let plan = plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &composition,
+            &Resources::new(20_000, 10_000, 5_000),
+            FleetPlanningConfig::default(),
+        )
+        .unwrap();
+
+        assert_eq!(plan.distance, 1005);
+        assert_eq!(plan.fleet_speed, 5_000);
+        assert_eq!(plan.fuel_required, 12);
+        assert_eq!(plan.movement_fuel_required, 12);
+        assert_eq!(plan.holding_fuel_required, 0);
+        assert_eq!(plan.cargo_capacity, 50_000);
+        assert_eq!(plan.usable_cargo_capacity, 49_988);
+        assert_eq!(plan.travel_time_seconds, 49_632);
+        assert_eq!(plan.applied_max_galaxies, 9);
+        assert_eq!(plan.applied_max_systems, 499);
+        assert_eq!(plan.applied_max_positions, 15);
+        assert_eq!(plan.applied_speed_percent, 100);
+        assert_eq!(plan.applied_fuel_multiplier_milli, 1_000);
+    }
+
+    #[test]
+    fn authoritative_plan_enforces_target_and_required_ship_contracts() {
+        let mut cargo = FleetComposition::new();
+        cargo.add("small_cargo", 1);
+        let invalid_target = plan_authoritative_mission(
+            FleetMissionType::Harvest,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &cargo,
+            &Resources::zero(),
+            FleetPlanningConfig::default(),
+        )
+        .unwrap_err();
+        assert!(invalid_target.0.contains("cannot target"));
+
+        let missing_recycler = plan_authoritative_mission(
+            FleetMissionType::Harvest,
+            FleetTargetKind::Debris,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &cargo,
+            &Resources::zero(),
+            FleetPlanningConfig::default(),
+        )
+        .unwrap_err();
+        assert!(missing_recycler.0.contains("recycler"));
+    }
+
+    #[test]
+    fn authoritative_plan_rejects_client_impossible_compositions_and_cargo() {
+        let mut immobile = FleetComposition::new();
+        immobile.add("solar_satellite", 1);
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &immobile,
+            &Resources::zero(),
+            FleetPlanningConfig::default(),
+        )
+        .unwrap_err()
+        .0
+        .contains("cannot participate"));
+
+        let mut cargo = FleetComposition::new();
+        cargo.add("small_cargo", 1);
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &cargo,
+            &Resources::new(5_000, 0, 0),
+            FleetPlanningConfig::default(),
+        )
+        .unwrap_err()
+        .0
+        .contains("usable capacity"));
+    }
+
+    #[test]
+    fn authoritative_plan_requires_expedition_position_sixteen() {
+        let mut fleet = FleetComposition::new();
+        fleet.add("small_cargo", 1);
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Expedition,
+            FleetTargetKind::ExpeditionSlot,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 15),
+            &fleet,
+            &Resources::zero(),
+            FleetPlanningConfig::default(),
+        )
+        .is_err());
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Expedition,
+            FleetTargetKind::ExpeditionSlot,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 16),
+            &fleet,
+            &Resources::zero(),
+            FleetPlanningConfig::default(),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn recall_duration_is_symmetric_and_rejects_arrived_missions() {
+        assert_eq!(recall_return_duration_seconds(100, 200, 140).unwrap(), 40);
+        assert!(recall_return_duration_seconds(100, 200, 200).is_err());
+        assert!(recall_return_duration_seconds(100, 200, 250).is_err());
+        assert!(recall_return_duration_seconds(200, 100, 150).is_err());
+    }
+
+    #[test]
+    fn authoritative_bounds_come_from_server_configuration() {
+        let mut fleet = FleetComposition::new();
+        fleet.add("small_cargo", 1);
+        let config = FleetPlanningConfig {
+            max_galaxies: 2,
+            max_systems: 20,
+            max_positions: 12,
+            ..FleetPlanningConfig::default()
+        };
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(2, 20, 12),
+            &Coordinates::new(1, 1, 1),
+            &fleet,
+            &Resources::zero(),
+            config,
+        )
+        .is_ok());
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(3, 20, 12),
+            &Coordinates::new(1, 1, 1),
+            &fleet,
+            &Resources::zero(),
+            config,
+        )
+        .is_err());
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Expedition,
+            FleetTargetKind::ExpeditionSlot,
+            &Coordinates::new(2, 20, 12),
+            &Coordinates::new(2, 20, 13),
+            &fleet,
+            &Resources::zero(),
+            config,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn integer_square_root_rounds_up_at_boundaries() {
+        assert_eq!(integer_sqrt_ceil(0), 0);
+        assert_eq!(integer_sqrt_ceil(1), 1);
+        assert_eq!(integer_sqrt_ceil(2), 2);
+        assert_eq!(integer_sqrt_ceil(4), 2);
+        assert_eq!(integer_sqrt_ceil(15), 4);
+        assert_eq!(integer_sqrt_ceil(16), 4);
+        assert_eq!(integer_sqrt_ceil(17), 5);
+        assert_eq!(
+            integer_sqrt_ceil(u128::from(u64::MAX).pow(2)),
+            u128::from(u64::MAX)
+        );
+    }
+
+    #[test]
+    fn selected_speed_has_golden_integer_fuel_costs() {
+        let mut fleet = FleetComposition::new();
+        fleet.add("small_cargo", 10);
+        let fuel_at = |speed_percent| {
+            plan_authoritative_mission(
+                FleetMissionType::Transport,
+                FleetTargetKind::Planet,
+                &Coordinates::new(1, 1, 1),
+                &Coordinates::new(1, 1, 2),
+                &fleet,
+                &Resources::zero(),
+                FleetPlanningConfig {
+                    speed_percent,
+                    ..FleetPlanningConfig::default()
+                },
+            )
+            .unwrap()
+            .fuel_required
+        };
+        assert_eq!(fuel_at(10), 4);
+        assert_eq!(fuel_at(50), 7);
+        assert_eq!(fuel_at(100), 12);
+    }
+
+    #[test]
+    fn cargo_boundary_accounts_for_exact_speed_dependent_fuel() {
+        let mut fleet = FleetComposition::new();
+        fleet.add("small_cargo", 1);
+        let config = FleetPlanningConfig::default();
+        let accepted = plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &fleet,
+            &Resources::new(4_998, 0, 0),
+            config,
+        )
+        .unwrap();
+        assert_eq!(accepted.fuel_required, 2);
+        assert_eq!(accepted.usable_cargo_capacity, 4_998);
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Transport,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &fleet,
+            &Resources::new(4_999, 0, 0),
+            config,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn acs_defense_plan_persists_bounded_hold_and_fuel() {
+        let mut fleet = FleetComposition::new();
+        fleet.add("small_cargo", 10);
+        let plan = plan_authoritative_mission(
+            FleetMissionType::AcsDefend,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &fleet,
+            &Resources::zero(),
+            FleetPlanningConfig {
+                hold_seconds: 3_600,
+                ..FleetPlanningConfig::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.movement_fuel_required, 12);
+        assert_eq!(plan.holding_fuel_required, 10);
+        assert_eq!(plan.fuel_required, 22);
+        assert_eq!(plan.applied_hold_seconds, 3_600);
+
+        assert!(plan_authoritative_mission(
+            FleetMissionType::Attack,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &fleet,
+            &Resources::zero(),
+            FleetPlanningConfig {
+                hold_seconds: 60,
+                ..FleetPlanningConfig::default()
+            },
+        )
+        .is_err());
+        assert!(plan_authoritative_mission(
+            FleetMissionType::AcsJoin,
+            FleetTargetKind::Planet,
+            &Coordinates::new(1, 1, 1),
+            &Coordinates::new(1, 1, 2),
+            &fleet,
+            &Resources::zero(),
+            FleetPlanningConfig {
+                hold_seconds: 60,
+                ..FleetPlanningConfig::default()
+            },
+        )
+        .is_err());
     }
 }

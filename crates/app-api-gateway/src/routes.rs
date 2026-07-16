@@ -1,6 +1,5 @@
 mod account;
 mod achievements;
-mod acs;
 mod alliance;
 mod analytics;
 mod auth;
@@ -59,7 +58,6 @@ pub fn build_router_with_dependencies(
 ) -> Router {
     let protected_routes = Router::new()
         .merge(account::router())
-        .merge(acs::router())
         .merge(achievements::protected_router())
         .merge(debris::router())
         .merge(config::router())

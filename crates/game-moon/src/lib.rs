@@ -33,25 +33,13 @@ impl Mulberry32 {
 // Core structs
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MoonBuildings {
     pub lunar_base_level: i32,
     pub sensor_phalanx_level: i32,
     pub jump_gate_level: i32,
     pub robotics_factory_level: i32,
     pub shipyard_level: i32,
-}
-
-impl Default for MoonBuildings {
-    fn default() -> Self {
-        Self {
-            lunar_base_level: 0,
-            sensor_phalanx_level: 0,
-            jump_gate_level: 0,
-            robotics_factory_level: 0,
-            shipyard_level: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,7 +67,7 @@ pub struct Moon {
 pub fn calculate_moon_chance(debris_metal: i64, debris_crystal: i64) -> f64 {
     let total = debris_metal.saturating_add(debris_crystal);
     let raw = total / 100_000;
-    (raw as f64).min(20.0).max(0.0)
+    (raw as f64).clamp(0.0, 20.0)
 }
 
 /// Deterministic check whether a moon should be created given a chance
