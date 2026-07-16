@@ -1,668 +1,587 @@
 #![forbid(unsafe_code)]
 
-//! SMS provider adapter.
+//! Privacy-minimized SMS provider adapter.
 //!
-//! Defines the `SmsProvider` trait and supporting types for dispatching
-//! SMS messages. Includes:
-//! - `CircuitBreaker` — per-channel failure tracking with auto-open/close
-//! - `HistoryStore` — SQLite-backed SMS history with idempotency
-//! - `LoggingSmsProvider` — writes dispatches to stdout (for dev/test)
-//! - `FailingSmsProvider` — always fails (for testing error paths)
-//! - Phone number validation (basic E.164)
-//! - Rate limiting via history store
-//! - Game-specific SMS templates
+//! The public dispatch shape has no arbitrary body. A verified destination is
+//! borrowed only for the provider call, while content remains a registered
+//! provider template plus an authoritative event identity.
 
-pub mod circuit_breaker;
-pub mod history_store;
-pub mod models;
-
-pub use circuit_breaker::{
-    ChannelCircuitState, CircuitBreaker, DEFAULT_CHANNEL_COOLDOWN_MS,
-    DEFAULT_CHANNEL_FAILURE_THRESHOLD,
-};
-pub use history_store::{
-    HistoryStore, HistoryStoreError, InsertHistoryError, DEFAULT_HISTORY_DB_PATH,
-};
-pub use models::{HistoryRecord, HistoryRecordInput, HistoryStatsItem};
-
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::fmt::{Debug, Display, Formatter};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use url::{Host, Url};
+use zeroize::Zeroizing;
 
-// ---------------------------------------------------------------------------
-// Core types
-// ---------------------------------------------------------------------------
-
-/// An SMS dispatch job.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SmsJob {
-    pub job_id: String,
-    pub to: String,
-    pub body: String,
-    pub from: Option<String>,
-    /// Channel identifier (e.g. "twilio", "vonage", "mock").
-    pub channel: Option<String>,
-    /// Idempotency key for deduplication.
-    pub idempotency_key: Option<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderEnvironment {
+    Production,
+    Staging,
+    Development,
+    Test,
 }
 
-/// Result of a successful SMS dispatch.
+impl ProviderEnvironment {
+    fn from_env() -> Result<Self, SmsProviderError> {
+        let value = ["UNIVERSUS_ENV", "APP_ENV", "ENVIRONMENT", "RUST_ENV"]
+            .into_iter()
+            .find_map(|name| std::env::var(name).ok())
+            .unwrap_or_else(|| "production".to_string());
+        Self::parse(&value)
+    }
+
+    fn parse(value: &str) -> Result<Self, SmsProviderError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "production" | "prod" => Ok(Self::Production),
+            "staging" | "stage" => Ok(Self::Staging),
+            "development" | "dev" | "local" => Ok(Self::Development),
+            "test" | "testing" => Ok(Self::Test),
+            _ => Err(SmsProviderError::Configuration(
+                "runtime environment is invalid",
+            )),
+        }
+    }
+
+    const fn permits_loopback_http(self) -> bool {
+        matches!(self, Self::Development | Self::Test)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct SmsDispatch<'a> {
+    pub job_id: i64,
+    pub destination: &'a str,
+    pub provider_template_key: &'a str,
+    pub payload_identity: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+impl Debug for SmsDispatch<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SmsDispatch")
+            .field("job_id", &self.job_id)
+            .field("destination", &"[REDACTED]")
+            .field("provider_template_key", &self.provider_template_key)
+            .field("payload_identity", &self.payload_identity)
+            .field("idempotency_key", &self.idempotency_key)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SmsDispatchResult {
-    pub provider: String,
-    pub job_id: String,
-    pub message_id: String,
+    pub provider_key: String,
+    pub provider_message_id: String,
 }
 
-/// Trait for SMS dispatch providers.
 pub trait SmsProvider: Send + Sync {
-    fn name(&self) -> &str;
-    fn dispatch(&self, job: &SmsJob) -> Result<SmsDispatchResult, SmsProviderError>;
+    fn provider_key(&self) -> &str;
+    fn dispatch(&self, request: SmsDispatch<'_>) -> Result<SmsDispatchResult, SmsProviderError>;
 }
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SmsProviderError {
-    InvalidJob {
-        field: &'static str,
-        reason: String,
-    },
-    RateLimited {
-        contact: String,
-        limit: usize,
-        window_seconds: u64,
-    },
-    CircuitOpen {
-        channel: String,
-    },
-    DispatchFailed(String),
+    Configuration(&'static str),
+    InvalidDispatch(&'static str),
+    DispatchFailed { code: &'static str, retryable: bool },
+}
+
+impl SmsProviderError {
+    pub const fn reason_code(&self) -> &'static str {
+        match self {
+            Self::Configuration(_) => "provider_configuration_invalid",
+            Self::InvalidDispatch(_) => "provider_dispatch_invalid",
+            Self::DispatchFailed { code, .. } => code,
+        }
+    }
+
+    pub const fn retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::DispatchFailed {
+                retryable: true,
+                ..
+            }
+        )
+    }
 }
 
 impl Display for SmsProviderError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidJob { field, reason } => {
-                write!(f, "invalid SMS job field '{field}': {reason}")
+            Self::Configuration(reason) => write!(f, "SMS provider configuration: {reason}"),
+            Self::InvalidDispatch(reason) => write!(f, "SMS dispatch contract: {reason}"),
+            Self::DispatchFailed { code, retryable } => {
+                write!(f, "SMS provider failed: code={code} retryable={retryable}")
             }
-            Self::RateLimited {
-                contact,
-                limit,
-                window_seconds,
-            } => {
-                write!(
-                    f,
-                    "rate limited: {contact} exceeded {limit} messages in {window_seconds}s"
-                )
-            }
-            Self::CircuitOpen { channel } => {
-                write!(f, "circuit open for channel '{channel}'")
-            }
-            Self::DispatchFailed(message) => write!(f, "dispatch failed: {message}"),
         }
     }
 }
 
-impl Error for SmsProviderError {}
+impl std::error::Error for SmsProviderError {}
 
-// ---------------------------------------------------------------------------
-// Phone number validation
-// ---------------------------------------------------------------------------
+#[derive(Clone)]
+pub struct HttpSmsProvider {
+    provider_key: String,
+    endpoint: String,
+    bearer_token: Zeroizing<String>,
+    request_timeout: Duration,
+    agent: ureq::Agent,
+}
 
-/// Basic E.164 phone number validation.
-/// Accepts numbers starting with `+` followed by 7-15 digits.
-pub fn validate_phone_number(number: &str) -> Result<(), String> {
-    let trimmed = number.trim();
-    if trimmed.is_empty() {
-        return Err("phone number must not be empty".to_string());
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SmsProviderRequest<'a> {
+    channel: &'static str,
+    job_id: i64,
+    destination: &'a str,
+    template_id: &'a str,
+    payload_identity: &'a str,
+    idempotency_key: &'a str,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderResponse {
+    message_id: String,
+}
+
+impl Debug for HttpSmsProvider {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpSmsProvider")
+            .field("provider_key", &self.provider_key)
+            .field("endpoint", &"[REDACTED]")
+            .field("bearer_token", &"[REDACTED]")
+            .field("request_timeout", &self.request_timeout)
+            .finish()
     }
-    if !trimmed.starts_with('+') {
-        return Err("phone number must start with '+' (E.164 format)".to_string());
+}
+
+impl HttpSmsProvider {
+    pub fn new(
+        provider_key: impl Into<String>,
+        endpoint: impl Into<String>,
+        bearer_token: impl Into<String>,
+        timeout: Duration,
+    ) -> Result<Self, SmsProviderError> {
+        Self::new_for_environment(
+            provider_key,
+            endpoint,
+            bearer_token,
+            timeout,
+            ProviderEnvironment::Production,
+        )
     }
-    let digits: String = trimmed[1..]
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect();
-    if digits.len() < 7 || digits.len() > 15 {
-        return Err(format!(
-            "phone number must have 7-15 digits after '+', got {}",
-            digits.len()
+
+    pub fn new_for_environment(
+        provider_key: impl Into<String>,
+        endpoint: impl Into<String>,
+        bearer_token: impl Into<String>,
+        timeout: Duration,
+        environment: ProviderEnvironment,
+    ) -> Result<Self, SmsProviderError> {
+        let provider_key = provider_key.into();
+        let endpoint = endpoint.into();
+        let bearer_token = Zeroizing::new(bearer_token.into());
+        validate_tokenish(&provider_key, 2, 64, "provider key is invalid")?;
+        validate_endpoint(&endpoint, environment)?;
+        if bearer_token.trim().len() < 16 || bearer_token.len() > 4096 {
+            return Err(SmsProviderError::Configuration(
+                "SMS_PROVIDER_BEARER_TOKEN is missing or too short",
+            ));
+        }
+        if timeout.is_zero() || timeout > Duration::from_secs(120) {
+            return Err(SmsProviderError::Configuration(
+                "SMS provider timeout is invalid",
+            ));
+        }
+        Ok(Self {
+            provider_key,
+            endpoint,
+            bearer_token,
+            request_timeout: timeout,
+            agent: ureq::AgentBuilder::new().timeout(timeout).build(),
+        })
+    }
+
+    pub fn from_env() -> Result<Self, SmsProviderError> {
+        let endpoint = std::env::var("SMS_PROVIDER_URL")
+            .map_err(|_| SmsProviderError::Configuration("SMS_PROVIDER_URL is required"))?;
+        let token = std::env::var("SMS_PROVIDER_BEARER_TOKEN").map_err(|_| {
+            SmsProviderError::Configuration("SMS_PROVIDER_BEARER_TOKEN is required")
+        })?;
+        let provider_key =
+            std::env::var("SMS_PROVIDER_KEY").unwrap_or_else(|_| "sms_http".to_string());
+        let timeout_seconds = std::env::var("SMS_PROVIDER_TIMEOUT_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(15);
+        Self::new_for_environment(
+            provider_key,
+            endpoint,
+            token,
+            Duration::from_secs(timeout_seconds),
+            ProviderEnvironment::from_env()?,
+        )
+    }
+
+    pub const fn request_timeout(&self) -> Duration {
+        self.request_timeout
+    }
+}
+
+fn validate_endpoint(
+    endpoint: &str,
+    environment: ProviderEnvironment,
+) -> Result<(), SmsProviderError> {
+    if endpoint.len() > 2048 {
+        return Err(SmsProviderError::Configuration(
+            "SMS_PROVIDER_URL is invalid",
         ));
     }
-    // Ensure no non-digit characters besides the leading '+'
-    let non_digit_count = trimmed[1..].chars().filter(|c| !c.is_ascii_digit()).count();
-    if non_digit_count > 0 {
-        return Err("phone number must contain only digits after '+'".to_string());
+    let parsed = Url::parse(endpoint)
+        .map_err(|_| SmsProviderError::Configuration("SMS_PROVIDER_URL is invalid"))?;
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || parsed.host().is_none()
+    {
+        return Err(SmsProviderError::Configuration(
+            "SMS_PROVIDER_URL must not contain credentials, query, or fragment",
+        ));
     }
-    Ok(())
+    match parsed.scheme() {
+        "https" => Ok(()),
+        "http" if environment.permits_loopback_http() && is_loopback(parsed.host()) => Ok(()),
+        _ => Err(SmsProviderError::Configuration(
+            "SMS_PROVIDER_URL requires HTTPS outside explicit loopback development or test mode",
+        )),
+    }
 }
 
-fn validate_sms_job(job: &SmsJob) -> Result<(), SmsProviderError> {
-    if job.job_id.trim().is_empty() {
-        return Err(SmsProviderError::InvalidJob {
-            field: "job_id",
-            reason: "must not be empty".to_string(),
-        });
+fn is_loopback(host: Option<Host<&str>>) -> bool {
+    match host {
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
+        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        None => false,
     }
-    if let Err(reason) = validate_phone_number(&job.to) {
-        return Err(SmsProviderError::InvalidJob {
-            field: "to",
-            reason,
-        });
+}
+
+impl SmsProvider for HttpSmsProvider {
+    fn provider_key(&self) -> &str {
+        &self.provider_key
     }
-    if job.body.trim().is_empty() {
-        return Err(SmsProviderError::InvalidJob {
-            field: "body",
-            reason: "must not be empty".to_string(),
-        });
-    }
-    if job.body.len() > 1600 {
-        return Err(SmsProviderError::InvalidJob {
-            field: "body",
-            reason: format!(
-                "must not exceed 1600 characters (concatenated SMS limit), got {}",
-                job.body.len()
-            ),
-        });
-    }
-    if let Some(ref from) = job.from {
-        if let Err(reason) = validate_phone_number(from) {
-            return Err(SmsProviderError::InvalidJob {
-                field: "from",
-                reason,
+
+    fn dispatch(&self, request: SmsDispatch<'_>) -> Result<SmsDispatchResult, SmsProviderError> {
+        validate_dispatch(request)?;
+        let authorization = Zeroizing::new(format!("Bearer {}", self.bearer_token.as_str()));
+        let body = Zeroizing::new(
+            serde_json::to_vec(&SmsProviderRequest {
+                channel: "sms",
+                job_id: request.job_id,
+                destination: request.destination,
+                template_id: request.provider_template_key,
+                payload_identity: request.payload_identity,
+                idempotency_key: request.idempotency_key,
+            })
+            .map_err(|_| SmsProviderError::InvalidDispatch("provider request is invalid"))?,
+        );
+        let response = self
+            .agent
+            .post(&self.endpoint)
+            .set("authorization", authorization.as_str())
+            .set("content-type", "application/json")
+            .send_bytes(body.as_slice());
+
+        let response = match response {
+            Ok(response) => response,
+            Err(ureq::Error::Status(status, _)) => {
+                return Err(SmsProviderError::DispatchFailed {
+                    code: if status == 429 {
+                        "provider_rate_limited"
+                    } else if status >= 500 {
+                        "provider_server_error"
+                    } else {
+                        "provider_rejected"
+                    },
+                    retryable: status == 429 || status >= 500,
+                });
+            }
+            Err(ureq::Error::Transport(_)) => {
+                return Err(SmsProviderError::DispatchFailed {
+                    code: "provider_unreachable",
+                    retryable: true,
+                });
+            }
+        };
+        let body: ProviderResponse =
+            response
+                .into_json()
+                .map_err(|_| SmsProviderError::DispatchFailed {
+                    code: "provider_response_invalid",
+                    retryable: false,
+                })?;
+        let message_id = body.message_id;
+        if message_id.trim().is_empty() || message_id.len() > 256 {
+            return Err(SmsProviderError::DispatchFailed {
+                code: "provider_response_invalid",
+                retryable: false,
             });
         }
-    }
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// LoggingSmsProvider
-// ---------------------------------------------------------------------------
-
-/// A provider that logs dispatches to stdout. Useful for development and testing.
-#[derive(Debug)]
-pub struct LoggingSmsProvider {
-    name: String,
-    sequence: AtomicU64,
-}
-
-impl LoggingSmsProvider {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            sequence: AtomicU64::new(0),
-        }
-    }
-
-    pub fn dispatch_count(&self) -> u64 {
-        self.sequence.load(Ordering::Relaxed)
-    }
-}
-
-impl Default for LoggingSmsProvider {
-    fn default() -> Self {
-        Self::new("logging-sms")
-    }
-}
-
-impl SmsProvider for LoggingSmsProvider {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn dispatch(&self, job: &SmsJob) -> Result<SmsDispatchResult, SmsProviderError> {
-        validate_sms_job(job)?;
-
-        let next = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
-        let message_id = format!("{}-{next}", self.name);
-
-        println!(
-            "sms-dispatch provider={} job_id={} to={} body_len={}",
-            self.name,
-            job.job_id,
-            job.to,
-            job.body.len()
-        );
-
         Ok(SmsDispatchResult {
-            provider: self.name.clone(),
-            job_id: job.job_id.clone(),
-            message_id,
+            provider_key: self.provider_key.clone(),
+            provider_message_id: message_id,
         })
     }
 }
 
-// ---------------------------------------------------------------------------
-// FailingSmsProvider
-// ---------------------------------------------------------------------------
-
-/// A provider that always fails. Useful for testing error handling paths.
-#[derive(Debug, Clone)]
-pub struct FailingSmsProvider {
-    name: String,
-    error_message: String,
+pub fn validate_phone_number(number: &str) -> Result<(), SmsProviderError> {
+    let bytes = number.as_bytes();
+    if !(8..=16).contains(&bytes.len())
+        || bytes.first() != Some(&b'+')
+        || bytes.get(1) == Some(&b'0')
+        || !bytes[1..].iter().all(u8::is_ascii_digit)
+    {
+        return Err(SmsProviderError::InvalidDispatch(
+            "resolved destination is not E.164",
+        ));
+    }
+    Ok(())
 }
 
-impl FailingSmsProvider {
-    pub fn new(name: impl Into<String>, error_message: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            error_message: error_message.into(),
-        }
+fn validate_dispatch(request: SmsDispatch<'_>) -> Result<(), SmsProviderError> {
+    if request.job_id <= 0 {
+        return Err(SmsProviderError::InvalidDispatch("job id is invalid"));
     }
+    validate_phone_number(request.destination)?;
+    validate_tokenish(
+        request.provider_template_key,
+        2,
+        128,
+        "provider template identity is invalid",
+    )?;
+    validate_tokenish(
+        request.payload_identity,
+        3,
+        96,
+        "payload identity is invalid",
+    )?;
+    validate_tokenish(
+        request.idempotency_key,
+        8,
+        128,
+        "idempotency key is invalid",
+    )?;
+    Ok(())
 }
 
-impl Default for FailingSmsProvider {
-    fn default() -> Self {
-        Self::new("failing-sms", "simulated SMS dispatch failure")
+fn validate_tokenish(
+    value: &str,
+    minimum: usize,
+    maximum: usize,
+    message: &'static str,
+) -> Result<(), SmsProviderError> {
+    if !(minimum..=maximum).contains(&value.len())
+        || value.trim() != value
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+    {
+        return Err(SmsProviderError::InvalidDispatch(message));
     }
+    Ok(())
 }
-
-impl SmsProvider for FailingSmsProvider {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn dispatch(&self, job: &SmsJob) -> Result<SmsDispatchResult, SmsProviderError> {
-        validate_sms_job(job)?;
-        Err(SmsProviderError::DispatchFailed(format!(
-            "{}: {}",
-            self.error_message, job.job_id
-        )))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Rate limiter
-// ---------------------------------------------------------------------------
-
-/// Rate limiter configuration for SMS dispatch.
-#[derive(Debug, Clone)]
-pub struct SmsRateLimiter {
-    pub max_per_window: usize,
-    pub window_seconds: u64,
-}
-
-impl Default for SmsRateLimiter {
-    fn default() -> Self {
-        Self {
-            max_per_window: 5,
-            window_seconds: 3600,
-        }
-    }
-}
-
-impl SmsRateLimiter {
-    pub fn new(max_per_window: usize, window_seconds: u64) -> Self {
-        Self {
-            max_per_window,
-            window_seconds,
-        }
-    }
-
-    /// Check whether a contact has exceeded the rate limit.
-    /// Returns `Ok(current_count)` if under limit, or `Err` if over.
-    pub fn check(
-        &self,
-        store: &HistoryStore,
-        contact: &str,
-        now_ms: u128,
-    ) -> Result<usize, SmsProviderError> {
-        let count = store
-            .count_recent_for_contact(contact, self.window_seconds, now_ms)
-            .map_err(|e| SmsProviderError::DispatchFailed(e.to_string()))?;
-
-        if count >= self.max_per_window {
-            return Err(SmsProviderError::RateLimited {
-                contact: contact.to_string(),
-                limit: self.max_per_window,
-                window_seconds: self.window_seconds,
-            });
-        }
-
-        Ok(count)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SMS templates
-// ---------------------------------------------------------------------------
-
-/// Common game SMS templates.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SmsTemplate {
-    VerificationCode { code: String },
-    AttackWarning { attacker: String, planet: String },
-    FleetArrived { destination: String },
-    AllianceInvite { alliance_name: String },
-    AccountLocked { reason: String },
-}
-
-impl SmsTemplate {
-    /// Render the template to message body text.
-    pub fn render(&self) -> String {
-        match self {
-            Self::VerificationCode { code } => {
-                format!("Your Universus verification code is: {code}. Do not share this code.")
-            }
-            Self::AttackWarning { attacker, planet } => {
-                format!("ALERT: {attacker} is attacking your planet {planet}! Defend now!")
-            }
-            Self::FleetArrived { destination } => {
-                format!("Your fleet has arrived at {destination}.")
-            }
-            Self::AllianceInvite { alliance_name } => {
-                format!(
-                    "You've been invited to join alliance '{alliance_name}'. Log in to respond."
-                )
-            }
-            Self::AccountLocked { reason } => {
-                format!("Your Universus account has been locked: {reason}. Contact support.")
-            }
-        }
-    }
-
-    /// Build an `SmsJob` from a template.
-    pub fn to_job(
-        &self,
-        job_id: impl Into<String>,
-        to: impl Into<String>,
-        from: Option<String>,
-    ) -> SmsJob {
-        SmsJob {
-            job_id: job_id.into(),
-            to: to.into(),
-            body: self.render(),
-            from,
-            channel: None,
-            idempotency_key: None,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
     use super::*;
 
-    fn fixture_job() -> SmsJob {
-        SmsJob {
-            job_id: "sms-1".to_string(),
-            to: "+12065550123".to_string(),
-            body: "Hello world".to_string(),
-            from: Some("+12065550199".to_string()),
-            channel: Some("twilio".to_string()),
-            idempotency_key: None,
+    fn request<'a>(destination: &'a str) -> SmsDispatch<'a> {
+        SmsDispatch {
+            job_id: 72,
+            destination,
+            provider_template_key: "universus.sms.security.v1",
+            payload_identity: "security_event:def-456",
+            idempotency_key: "sms:test:0001",
         }
     }
 
-    // --- Phone validation ---
-
-    #[test]
-    fn validate_phone_number_accepts_valid() {
-        assert!(validate_phone_number("+12065550123").is_ok());
-        assert!(validate_phone_number("+1234567").is_ok()); // 7 digits
-        assert!(validate_phone_number("+123456789012345").is_ok()); // 15 digits
+    fn mock_server(status: &str, body: &str) -> (String, thread::JoinHandle<String>) {
+        mock_server_with_delay(status, body, Duration::ZERO)
     }
 
-    #[test]
-    fn validate_phone_number_rejects_invalid() {
-        assert!(validate_phone_number("").is_err());
-        assert!(validate_phone_number("12065550123").is_err()); // no +
-        assert!(validate_phone_number("+123").is_err()); // too short
-        assert!(validate_phone_number("+1234567890123456").is_err()); // too long (16)
-        assert!(validate_phone_number("+1234abc567").is_err()); // letters
-        assert!(validate_phone_number("+").is_err()); // just +
-    }
-
-    // --- Job validation ---
-
-    #[test]
-    fn validate_sms_job_valid() {
-        assert!(validate_sms_job(&fixture_job()).is_ok());
-    }
-
-    #[test]
-    fn validate_sms_job_empty_job_id() {
-        let mut job = fixture_job();
-        job.job_id = "".to_string();
-        let err = validate_sms_job(&job).unwrap_err();
-        assert!(matches!(
-            err,
-            SmsProviderError::InvalidJob {
-                field: "job_id",
-                ..
+    fn mock_server_with_delay(
+        status: &str,
+        body: &str,
+        delay: Duration,
+    ) -> (String, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let status = status.to_string();
+        let body = body.to_string();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut bytes = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(header_end) = bytes.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length: ")
+                                .map(str::to_string)
+                        })
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if bytes.len() >= header_end + 4 + content_length {
+                        break;
+                    }
+                }
             }
-        ));
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            thread::sleep(delay);
+            let _ = stream.write_all(response.as_bytes());
+            String::from_utf8(bytes).unwrap()
+        });
+        (format!("http://{address}/send"), handle)
     }
 
     #[test]
-    fn validate_sms_job_invalid_to() {
-        let mut job = fixture_job();
-        job.to = "not-a-number".to_string();
-        let err = validate_sms_job(&job).unwrap_err();
-        assert!(matches!(
-            err,
-            SmsProviderError::InvalidJob { field: "to", .. }
-        ));
+    fn http_provider_dispatches_to_local_mock() {
+        let (url, server) = mock_server("200 OK", r#"{"messageId":"provider-72"}"#);
+        let provider = HttpSmsProvider::new_for_environment(
+            "sms_http",
+            url,
+            "test-bearer-token-long-enough",
+            Duration::from_secs(2),
+            ProviderEnvironment::Test,
+        )
+        .unwrap();
+        let result = provider.dispatch(request("+12065550123")).unwrap();
+        assert_eq!(result.provider_message_id, "provider-72");
+        let received = server.join().unwrap();
+        assert!(received.contains("+12065550123"));
+        assert!(received.contains("universus.sms.security.v1"));
+        assert!(received.contains("security_event:def-456"));
     }
 
     #[test]
-    fn validate_sms_job_empty_body() {
-        let mut job = fixture_job();
-        job.body = "  ".to_string();
-        let err = validate_sms_job(&job).unwrap_err();
-        assert!(matches!(
-            err,
-            SmsProviderError::InvalidJob { field: "body", .. }
-        ));
+    fn errors_and_debug_never_expose_destination_or_secret() {
+        let (url, server) = mock_server("429 Too Many Requests", r#"{"error":"+12065550123"}"#);
+        let provider = HttpSmsProvider::new_for_environment(
+            "sms_http",
+            url,
+            "secret-bearer-token-long-enough",
+            Duration::from_secs(2),
+            ProviderEnvironment::Test,
+        )
+        .unwrap();
+        let error = provider.dispatch(request("+12065550123")).unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.reason_code(), "provider_rate_limited");
+        assert!(error.retryable());
+        assert!(!error.to_string().contains("+12065550123"));
+        assert!(!format!("{provider:?}").contains("secret-bearer-token-long-enough"));
+        assert!(!format!("{provider:?}").contains("127.0.0.1"));
+        assert!(!format!("{:?}", request("+12065550123")).contains("+12065550123"));
     }
 
     #[test]
-    fn validate_sms_job_body_too_long() {
-        let mut job = fixture_job();
-        job.body = "x".repeat(1601);
-        let err = validate_sms_job(&job).unwrap_err();
-        assert!(matches!(
-            err,
-            SmsProviderError::InvalidJob { field: "body", .. }
-        ));
+    fn phone_validation_is_strict_e164() {
+        assert!(validate_phone_number("+12065550123").is_ok());
+        assert!(validate_phone_number("12065550123").is_err());
+        assert!(validate_phone_number("+01234567").is_err());
+        assert!(validate_phone_number("+123").is_err());
+        assert!(validate_phone_number("+1206-555-0123").is_err());
     }
 
     #[test]
-    fn validate_sms_job_invalid_from() {
-        let mut job = fixture_job();
-        job.from = Some("bad".to_string());
-        let err = validate_sms_job(&job).unwrap_err();
-        assert!(matches!(
-            err,
-            SmsProviderError::InvalidJob { field: "from", .. }
-        ));
-    }
-
-    // --- Logging provider ---
-
-    #[test]
-    fn logging_provider_dispatches() {
-        let provider = LoggingSmsProvider::new("test-sms");
-        let job = fixture_job();
-
-        let result = provider.dispatch(&job).unwrap();
-        assert_eq!(result.provider, "test-sms");
-        assert_eq!(result.job_id, "sms-1");
-        assert_eq!(result.message_id, "test-sms-1");
-        assert_eq!(provider.dispatch_count(), 1);
-
-        let result2 = provider.dispatch(&job).unwrap();
-        assert_eq!(result2.message_id, "test-sms-2");
-        assert_eq!(provider.dispatch_count(), 2);
-    }
-
-    #[test]
-    fn logging_provider_validates() {
-        let provider = LoggingSmsProvider::default();
-        let mut job = fixture_job();
-        job.to = "invalid".to_string();
-        assert!(provider.dispatch(&job).is_err());
-        assert_eq!(provider.dispatch_count(), 0);
-    }
-
-    // --- Failing provider ---
-
-    #[test]
-    fn failing_provider_always_fails() {
-        let provider = FailingSmsProvider::default();
-        let job = fixture_job();
-        let err = provider.dispatch(&job).unwrap_err();
-        assert!(matches!(err, SmsProviderError::DispatchFailed(_)));
-        assert!(err.to_string().contains("simulated"));
-    }
-
-    #[test]
-    fn failing_provider_still_validates() {
-        let provider = FailingSmsProvider::new("test", "boom");
-        let mut job = fixture_job();
-        job.to = "".to_string();
-        let err = provider.dispatch(&job).unwrap_err();
-        assert!(matches!(err, SmsProviderError::InvalidJob { .. }));
-    }
-
-    // --- Templates ---
-
-    #[test]
-    fn template_verification_code() {
-        let tpl = SmsTemplate::VerificationCode {
-            code: "123456".to_string(),
+    fn endpoint_security_is_fail_closed() {
+        let make = |endpoint, environment| {
+            HttpSmsProvider::new_for_environment(
+                "sms_http",
+                endpoint,
+                "test-bearer-token-long-enough",
+                Duration::from_secs(2),
+                environment,
+            )
         };
-        let body = tpl.render();
-        assert!(body.contains("123456"));
-        assert!(body.contains("verification code"));
+        assert!(make(
+            "https://provider.example/send",
+            ProviderEnvironment::Staging
+        )
+        .is_ok());
+        assert!(make("http://127.0.0.1:9999/send", ProviderEnvironment::Staging).is_err());
+        assert!(make(
+            "http://provider.example/send",
+            ProviderEnvironment::Development
+        )
+        .is_err());
+        assert!(make("http://[::1]:9999/send", ProviderEnvironment::Development).is_ok());
+        assert!(make(
+            "https://user:secret@provider.example/send",
+            ProviderEnvironment::Production
+        )
+        .is_err());
+        assert!(make(
+            "https://provider.example/send?token=secret",
+            ProviderEnvironment::Production
+        )
+        .is_err());
+        assert!(make(
+            "https://provider.example/send#secret",
+            ProviderEnvironment::Production
+        )
+        .is_err());
+        assert_eq!(
+            ProviderEnvironment::parse("  PRODUCTION ").unwrap(),
+            ProviderEnvironment::Production
+        );
+        assert_eq!(
+            ProviderEnvironment::parse("TeStInG").unwrap(),
+            ProviderEnvironment::Test
+        );
+        assert!(ProviderEnvironment::parse("preview").is_err());
+        assert!(ProviderEnvironment::parse(" ").is_err());
     }
 
     #[test]
-    fn template_attack_warning() {
-        let tpl = SmsTemplate::AttackWarning {
-            attacker: "EvilPlayer".to_string(),
-            planet: "4:56:7".to_string(),
-        };
-        let body = tpl.render();
-        assert!(body.contains("EvilPlayer"));
-        assert!(body.contains("4:56:7"));
-    }
-
-    #[test]
-    fn template_to_job() {
-        let tpl = SmsTemplate::FleetArrived {
-            destination: "1:200:3".to_string(),
-        };
-        let job = tpl.to_job("sms-fleet-1", "+12065550123", None);
-        assert_eq!(job.job_id, "sms-fleet-1");
-        assert_eq!(job.to, "+12065550123");
-        assert!(job.body.contains("1:200:3"));
-        assert!(job.channel.is_none());
-    }
-
-    // --- Error display ---
-
-    #[test]
-    fn error_display_messages() {
-        let e1 = SmsProviderError::InvalidJob {
-            field: "to",
-            reason: "bad number".to_string(),
-        };
-        assert!(e1.to_string().contains("to"));
-
-        let e2 = SmsProviderError::RateLimited {
-            contact: "+1234567890".to_string(),
-            limit: 5,
-            window_seconds: 3600,
-        };
-        assert!(e2.to_string().contains("rate limited"));
-
-        let e3 = SmsProviderError::CircuitOpen {
-            channel: "twilio".to_string(),
-        };
-        assert!(e3.to_string().contains("circuit open"));
-
-        let e4 = SmsProviderError::DispatchFailed("timeout".to_string());
-        assert!(e4.to_string().contains("timeout"));
-    }
-
-    // --- Serde round-trip ---
-
-    #[test]
-    fn sms_job_serde_roundtrip() {
-        let job = fixture_job();
-        let json = serde_json::to_string(&job).unwrap();
-        let deserialized: SmsJob = serde_json::from_str(&json).unwrap();
-        assert_eq!(job, deserialized);
-    }
-
-    // --- Rate limiter ---
-
-    #[test]
-    fn rate_limiter_allows_under_limit() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let store = HistoryStore::new(tmp.path()).unwrap();
-        let limiter = SmsRateLimiter::new(3, 60);
-
-        // Insert 2 records within window
-        for i in 0..2 {
-            store
-                .insert_history(&HistoryRecordInput {
-                    request_id: format!("req-{i}"),
-                    idempotency_key: None,
-                    contact: "+12065550123".to_string(),
-                    destination: "+12065550123".to_string(),
-                    channel: "twilio".to_string(),
-                    status: "success".to_string(),
-                    error: None,
-                    metadata: None,
-                    created_at_ms: 50_000 + (i as u128 * 1000),
-                })
-                .unwrap();
-        }
-
-        let result = limiter.check(&store, "+12065550123", 55_000);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 2);
-    }
-
-    #[test]
-    fn rate_limiter_blocks_over_limit() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let store = HistoryStore::new(tmp.path()).unwrap();
-        let limiter = SmsRateLimiter::new(2, 60);
-
-        for i in 0..2 {
-            store
-                .insert_history(&HistoryRecordInput {
-                    request_id: format!("req-{i}"),
-                    idempotency_key: None,
-                    contact: "+12065550123".to_string(),
-                    destination: "+12065550123".to_string(),
-                    channel: "twilio".to_string(),
-                    status: "success".to_string(),
-                    error: None,
-                    metadata: None,
-                    created_at_ms: 50_000 + (i as u128 * 1000),
-                })
-                .unwrap();
-        }
-
-        let result = limiter.check(&store, "+12065550123", 55_000);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            SmsProviderError::RateLimited { .. }
-        ));
+    fn timeout_is_retryable_and_uncertain_request_carries_durable_idempotency() {
+        let (url, server) = mock_server_with_delay(
+            "200 OK",
+            r#"{"messageId":"late-provider-72"}"#,
+            Duration::from_millis(150),
+        );
+        let provider = HttpSmsProvider::new_for_environment(
+            "sms_http",
+            url,
+            "test-bearer-token-long-enough",
+            Duration::from_millis(30),
+            ProviderEnvironment::Test,
+        )
+        .unwrap();
+        let error = provider.dispatch(request("+12065550123")).unwrap_err();
+        assert_eq!(error.reason_code(), "provider_unreachable");
+        assert!(error.retryable());
+        let received = server.join().unwrap();
+        assert!(received.contains(r#""idempotencyKey":"sms:test:0001""#));
+        assert!(!error.to_string().contains("+12065550123"));
     }
 }

@@ -8,9 +8,7 @@ adapter-provider-email = { path = "../adapter-provider-email" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
-platform-worker-runtime = { path = "../platform-worker-runtime" }
-platform-tenancy = { path = "../platform-tenancy" }
-platform-events = { path = "../platform-events" }
 platform-observability = { path = "../platform-observability" }
-serde_json = "1.0"
+platform-auth = { path = "../platform-auth" }
+platform-db = { path = "../platform-db" }
+zeroize = "1.8"

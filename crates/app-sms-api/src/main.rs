@@ -1,1079 +1,950 @@
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+//! Durable SMS enqueue, dispatch, and aggregate-audit service.
+//!
+//! Public requests contain no destination or message body. Scoped service JWTs
+//! authorize every operation, while PostgreSQL owns leases, retries, dedupe,
+//! verified-contact evidence, and append-only delivery history.
 
-use adapter_provider_sms::{
-    CircuitBreaker, HistoryRecord, HistoryRecordInput,
-    HistoryStatsItem as ProviderHistoryStatsItem, HistoryStore, InsertHistoryError,
-};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use adapter_provider_sms::{HttpSmsProvider, SmsDispatch, SmsProvider};
 use axum::extract::{Query, State};
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::IntoResponse;
+use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use platform_auth::{authenticate_request, require_service_scope, AuthConfig, AuthUser};
+use platform_db::{
+    CommunicationActor, CommunicationCategory, CommunicationChannel, CommunicationEnqueueInput,
+    CommunicationEvidenceKey, CommunicationJob, CommunicationState, Database,
+    COMMUNICATION_SCOPE_AUDIT_READ, COMMUNICATION_SCOPE_DISPATCH, COMMUNICATION_SCOPE_ENQUEUE,
+    COMMUNICATION_SCOPE_GLOBAL,
+};
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::watch;
+use zeroize::Zeroizing;
 
-const SERVICE_NAME: &str = "sms";
+const SERVICE_NAME: &str = "app-sms-api";
 const DEFAULT_PORT: u16 = 3003;
-const HISTORY_DEFAULT_LIMIT: usize = 50;
-const HISTORY_MAX_LIMIT: usize = 200;
 
-const SUPPORTED_CHANNELS: [&str; 7] = [
-    "sms_twilio",
-    "sms_http",
-    "whatsapp_twilio",
-    "whatsapp_baileys",
-    "telegram",
-    "discord",
-    "custom_http",
-];
+#[derive(Clone)]
+struct AppState {
+    database: Database,
+    evidence_key: CommunicationEvidenceKey,
+    provider: HttpSmsProvider,
+    worker_id: String,
+    lease_seconds: i64,
+    token_file: PathBuf,
+    last_db_success_unix: Arc<AtomicI64>,
+    background_running: Arc<AtomicBool>,
+    readiness_max_staleness_seconds: i64,
+}
 
-#[derive(Serialize)]
-struct ServiceStatus {
-    status: &'static str,
-    service: &'static str,
+#[derive(Debug, Clone)]
+struct BackgroundConfig {
+    universe_ids: Vec<i64>,
+    claim_limit: i64,
+    poll_interval: Duration,
+}
+
+#[derive(Debug)]
+struct ApiError {
+    status: StatusCode,
+    code: &'static str,
+}
+
+impl ApiError {
+    const fn unauthorized() -> Self {
+        Self {
+            status: StatusCode::UNAUTHORIZED,
+            code: "service_authorization_required",
+        }
+    }
+
+    const fn invalid(code: &'static str) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code,
+        }
+    }
+
+    const fn internal(code: &'static str) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code,
+        }
+    }
 }
 
 #[derive(Serialize)]
-struct BasicErrorResponse {
+struct ErrorBody {
     success: bool,
-    error: String,
+    code: &'static str,
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        (
+            self.status,
+            Json(ErrorBody {
+                success: false,
+                code: self.code,
+            }),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EnqueueRequest {
+    universe_id: i64,
+    user_id: i32,
+    category: String,
+    template_key: String,
+    payload_identity: String,
+    idempotency_key: String,
+    #[serde(default = "default_max_attempts")]
+    max_attempts: i32,
+}
+
+const fn default_max_attempts() -> i32 {
+    5
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EnqueueResponse {
+    success: bool,
+    job_id: i64,
+    state: &'static str,
+    idempotent_replay: bool,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DispatchRequest {
+    universe_id: i64,
+    #[serde(default = "default_dispatch_limit")]
+    limit: i64,
+}
+
+const fn default_dispatch_limit() -> i64 {
+    20
+}
+
+#[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SendRequest {
-    contact: String,
-    message: String,
-    channels: Option<Vec<String>>,
-    metadata: Option<serde_json::Value>,
-    idempotency_key: Option<String>,
-}
-
-#[derive(Serialize)]
-struct SendResponse {
+struct DispatchResponse {
     success: bool,
-    channel: String,
-    destination: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    idempotent: Option<bool>,
+    claimed: u64,
+    sent: u64,
+    suppressed: u64,
+    retry: u64,
+    dead: u64,
+    lease_deferred: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchOutcome {
+    Sent,
+    Suppressed,
+    Retry,
+    Dead,
+    LeaseDeferred,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TenantQuery {
+    universe_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AuditQuery {
+    universe_id: i64,
+    #[serde(default = "default_audit_limit")]
+    limit: i64,
+}
+
+const fn default_audit_limit() -> i64 {
+    100
 }
 
 #[derive(Serialize)]
-struct HistoryEntryPayload {
-    id: u64,
-    request_id: String,
-    idempotency_key: Option<String>,
-    contact: String,
-    destination: String,
-    channel: String,
-    status: String,
-    error: Option<String>,
-    metadata: Option<serde_json::Value>,
-    created_at: String,
+#[serde(rename_all = "camelCase")]
+struct StatusItem {
+    universe_id: i64,
+    channel: &'static str,
+    category: &'static str,
+    state: &'static str,
+    job_count: i64,
+    oldest_created_at_unix: i64,
+    newest_updated_at_unix: i64,
 }
 
 #[derive(Serialize)]
-struct HistoryResponse {
+struct StatusResponse {
     success: bool,
-    entries: Vec<HistoryEntryPayload>,
+    items: Vec<StatusItem>,
 }
 
 #[derive(Serialize)]
-struct MetricsSnapshot {
-    requests: u64,
-    successes: u64,
-    failures: u64,
-    #[serde(rename = "perChannelSuccess")]
-    per_channel_success: HashMap<String, u64>,
-    #[serde(rename = "perChannelFailure")]
-    per_channel_failure: HashMap<String, u64>,
-    #[serde(rename = "avgResponseMs")]
-    avg_response_ms: f64,
-}
-
-#[derive(Clone, Serialize)]
-struct HistoryStatsItem {
-    channel: String,
-    status: String,
-    count: u64,
+#[serde(rename_all = "camelCase")]
+struct DeliveryAuditItem {
+    event_id: i64,
+    job_id: i64,
+    channel: &'static str,
+    category: &'static str,
+    event_type: String,
+    state: &'static str,
+    reason_code: Option<String>,
+    attempt: i32,
+    created_at_unix: i64,
 }
 
 #[derive(Serialize)]
-struct MetricsResponse {
+#[serde(rename_all = "camelCase")]
+struct ControlAuditItem {
+    event_id: i64,
+    control_type: String,
+    channel: &'static str,
+    category: Option<&'static str>,
+    action: String,
+    reason_code: String,
+    control_version: i64,
+    created_at_unix: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuditResponse {
     success: bool,
-    metrics: MetricsSnapshot,
-    history: Vec<HistoryStatsItem>,
+    delivery_events: Vec<DeliveryAuditItem>,
+    control_events: Vec<ControlAuditItem>,
 }
 
-#[derive(Deserialize)]
-struct HistoryQuery {
-    limit: Option<usize>,
+#[derive(Serialize)]
+struct HealthResponse {
+    status: &'static str,
+    service: &'static str,
+    durable_repository: bool,
+    background_dispatch_running: bool,
+    last_database_success_unix: i64,
 }
 
-struct SmsApiState {
-    started_at: Instant,
-    request_count: u64,
-    success_count: u64,
-    failure_count: u64,
-    per_channel_success: HashMap<String, u64>,
-    per_channel_failure: HashMap<String, u64>,
-    response_times_ms: Vec<u128>,
-    next_request_sequence: u64,
-    history_store: HistoryStore,
-    circuit_breaker: CircuitBreaker,
-}
-
-impl SmsApiState {
-    fn new() -> Result<Self, String> {
-        let history_store = HistoryStore::from_env().map_err(|error| error.to_string())?;
-        Ok(Self {
-            started_at: Instant::now(),
-            request_count: 0,
-            success_count: 0,
-            failure_count: 0,
-            per_channel_success: HashMap::new(),
-            per_channel_failure: HashMap::new(),
-            response_times_ms: Vec::new(),
-            next_request_sequence: 0,
-            history_store,
-            circuit_breaker: CircuitBreaker::from_env(),
-        })
-    }
-
-    fn next_request_id(&mut self) -> String {
-        self.next_request_sequence += 1;
-        format!("sms-req-{:016}", self.next_request_sequence)
-    }
-
-    fn record_request(&mut self) {
-        self.request_count += 1;
-    }
-
-    fn record_success(&mut self, channel: &str, duration_ms: u128) {
-        self.success_count += 1;
-        *self
-            .per_channel_success
-            .entry(channel.to_string())
-            .or_insert(0) += 1;
-        self.response_times_ms.push(duration_ms);
-        if self.response_times_ms.len() > 1000 {
-            self.response_times_ms.remove(0);
-        }
-        self.reset_channel_circuit(channel);
-    }
-
-    fn record_failure(&mut self) {
-        self.failure_count += 1;
-    }
-
-    fn record_channel_failure_attempt(&mut self, channel: &str) {
-        *self
-            .per_channel_failure
-            .entry(channel.to_string())
-            .or_insert(0) += 1;
-        self.circuit_breaker
-            .record_failure(channel, now_unix_epoch_ms());
-    }
-
-    fn reset_channel_circuit(&mut self, channel: &str) {
-        self.circuit_breaker.record_success(channel);
-    }
-
-    fn is_channel_open(&mut self, channel: &str, now_ms: u128) -> bool {
-        self.circuit_breaker.is_open(channel, now_ms)
-    }
-
-    fn find_history_by_idempotency(&self, key: &str) -> Result<Option<HistoryRecord>, String> {
-        self.history_store
-            .find_success_by_idempotency(key)
-            .map_err(|error| error.to_string())
-    }
-
-    fn count_recent_for_contact(
-        &self,
-        contact: &str,
-        window_seconds: u64,
-    ) -> Result<usize, String> {
-        self.history_store
-            .count_recent_for_contact(contact, window_seconds, now_unix_epoch_ms())
-            .map_err(|error| error.to_string())
-    }
-
-    fn insert_history(&self, entry: &HistoryRecordInput) -> Result<u64, InsertHistoryError> {
-        self.history_store.insert_history(entry)
-    }
-
-    fn load_recent_history(&self, limit: usize) -> Result<Vec<HistoryRecord>, String> {
-        self.history_store
-            .load_recent_history(limit)
-            .map_err(|error| error.to_string())
-    }
-
-    fn history_stats(&self) -> Result<Vec<ProviderHistoryStatsItem>, String> {
-        self.history_store
-            .history_stats()
-            .map_err(|error| error.to_string())
-    }
-
-    fn metrics_snapshot(&self) -> MetricsSnapshot {
-        let avg = if self.response_times_ms.is_empty() {
-            0.0
-        } else {
-            self.response_times_ms.iter().sum::<u128>() as f64 / self.response_times_ms.len() as f64
-        };
-
-        MetricsSnapshot {
-            requests: self.request_count,
-            successes: self.success_count,
-            failures: self.failure_count,
-            per_channel_success: self.per_channel_success.clone(),
-            per_channel_failure: self.per_channel_failure.clone(),
-            avg_response_ms: avg,
-        }
-    }
-}
-
-fn now_unix_epoch_ms() -> u128 {
+fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
+        .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
 }
 
-fn created_at_iso_ms(unix_ms: u128) -> String {
-    let seconds = (unix_ms / 1000) as i64;
-    let nanos = ((unix_ms % 1000) * 1_000_000) as u32;
-    chrono::DateTime::from_timestamp(seconds, nanos)
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| "1970-01-01T00:00:00+00:00".to_string())
-}
-
-fn service_api_key() -> Option<String> {
-    std::env::var("SMS_SERVICE_API_KEY")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-fn unauthorized_response() -> (StatusCode, Json<BasicErrorResponse>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(BasicErrorResponse {
-            success: false,
-            error: "Unauthorized".to_string(),
-        }),
-    )
-}
-
-fn is_authorized(headers: &HeaderMap) -> bool {
-    let Some(required_key) = service_api_key() else {
-        return true;
-    };
-
-    headers
-        .get("x-api-key")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value == required_key)
-        .unwrap_or(false)
-}
-
-fn canonicalize_channel(value: &str) -> Result<String, String> {
-    let normalized = value.trim().to_lowercase();
-    let mapped = match normalized.as_str() {
-        "sms" => "sms_twilio",
-        "whatsapp" => "whatsapp_twilio",
-        "custom" => "custom_http",
-        _ => normalized.as_str(),
-    };
-
-    if SUPPORTED_CHANNELS.contains(&mapped) {
-        Ok(mapped.to_string())
+fn communication_actor(user: AuthUser) -> Result<CommunicationActor, ApiError> {
+    if let Some(universe_id) = user.universe_id {
+        CommunicationActor::authenticated_service(user.user_id, universe_id, user.scopes)
+            .map_err(|_| ApiError::unauthorized())
     } else {
-        Err(format!("Unsupported SMS verification channel: {value}"))
-    }
-}
-
-fn build_default_sequence() -> Result<Vec<String>, String> {
-    let primary = std::env::var("SMS_DEFAULT_CHANNEL").unwrap_or_else(|_| "sms_twilio".to_string());
-    let fallback = std::env::var("SMS_FALLBACK_CHANNELS")
-        .unwrap_or_default()
-        .split(',')
-        .map(|item| item.trim().to_string())
-        .filter(|item| !item.is_empty())
-        .collect::<Vec<_>>();
-
-    let mut sequence = vec![primary];
-    sequence.extend(fallback);
-
-    build_sequence(sequence)
-}
-
-fn build_sequence(channels: Vec<String>) -> Result<Vec<String>, String> {
-    let mut sequence = Vec::new();
-
-    for channel in channels {
-        let canonical = canonicalize_channel(&channel)?;
-        if !sequence.contains(&canonical) {
-            sequence.push(canonical);
+        if !user
+            .scopes
+            .iter()
+            .any(|scope| scope == COMMUNICATION_SCOPE_GLOBAL)
+        {
+            return Err(ApiError::unauthorized());
         }
+        CommunicationActor::authenticated_global_service(user.user_id, user.scopes)
+            .map_err(|_| ApiError::unauthorized())
     }
-
-    if sequence.is_empty() {
-        let default = canonicalize_channel("sms_twilio")?;
-        sequence.push(default);
-    }
-
-    Ok(sequence)
 }
 
-fn normalize_phone_number(phone: &str) -> Result<String, String> {
-    let sanitized: String = phone
-        .chars()
-        .filter(|ch| ch.is_ascii_digit() || *ch == '+')
-        .collect();
-    if sanitized.is_empty() {
-        return Err("Invalid phone number".to_string());
-    }
-
-    if sanitized.starts_with('+') {
-        return Ok(sanitized);
-    }
-
-    let default_country = std::env::var("SMS_DEFAULT_COUNTRY_CODE")
-        .ok()
-        .map(|value| value.trim().trim_start_matches('+').to_string())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            "SMS_DEFAULT_COUNTRY_CODE is required when sending to bare phone numbers".to_string()
-        })?;
-
-    Ok(format!("+{default_country}{sanitized}"))
+fn authenticated_actor(
+    headers: &HeaderMap,
+    required_scope: &str,
+    universe_id: i64,
+) -> Result<CommunicationActor, ApiError> {
+    let auth = AuthConfig::from_env();
+    auth.validate_runtime()
+        .map_err(|_| ApiError::internal("authentication_configuration_unavailable"))?;
+    let authorization = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(ApiError::unauthorized)?;
+    let user = authenticate_request(&auth, authorization).map_err(|_| ApiError::unauthorized())?;
+    require_service_scope(&user, required_scope).map_err(|_| ApiError::unauthorized())?;
+    let actor = communication_actor(user)?;
+    actor
+        .require_universe(universe_id)
+        .map_err(|_| ApiError::unauthorized())?;
+    Ok(actor)
 }
 
-fn normalize_destination(channel: &str, contact: &str) -> Result<String, String> {
-    let contact = contact.trim();
-    if contact.is_empty() {
-        return Err("Contact value is required".to_string());
-    }
-
-    let phone_based = matches!(
-        channel,
-        "sms_twilio" | "sms_http" | "whatsapp_twilio" | "whatsapp_baileys"
+fn authenticated_file_actor(
+    token_file: &Path,
+    required_scope: &str,
+    universe_id: i64,
+) -> Result<CommunicationActor, ApiError> {
+    let auth = AuthConfig::from_env();
+    auth.validate_runtime()
+        .map_err(|_| ApiError::internal("authentication_configuration_unavailable"))?;
+    let token = Zeroizing::new(
+        std::fs::read_to_string(token_file)
+            .map_err(|_| ApiError::internal("service_token_unavailable"))?,
     );
+    let authorization = Zeroizing::new(format!("Bearer {}", token.trim()));
+    let user = authenticate_request(&auth, authorization.as_str())
+        .map_err(|_| ApiError::internal("service_token_invalid"))?;
+    require_service_scope(&user, required_scope)
+        .map_err(|_| ApiError::internal("service_scope_unavailable"))?;
+    let actor = communication_actor(user)?;
+    actor
+        .require_universe(universe_id)
+        .map_err(|_| ApiError::internal("service_tenant_authority_unavailable"))?;
+    Ok(actor)
+}
 
-    if phone_based {
-        normalize_phone_number(contact)
-    } else {
-        Ok(contact.to_string())
+enum AuthorizationSource<'a> {
+    Request(&'a HeaderMap),
+    TokenFile(&'a Path),
+}
+
+impl AuthorizationSource<'_> {
+    fn actor(
+        &self,
+        required_scope: &str,
+        universe_id: i64,
+    ) -> Result<CommunicationActor, ApiError> {
+        match self {
+            Self::Request(headers) => authenticated_actor(headers, required_scope, universe_id),
+            Self::TokenFile(path) => authenticated_file_actor(path, required_scope, universe_id),
+        }
     }
 }
 
-fn rate_limit_window_seconds() -> u64 {
-    std::env::var("SMS_RATE_LIMIT_WINDOW_SECONDS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(300)
-}
-
-fn rate_limit_max_per_contact() -> u64 {
-    std::env::var("SMS_RATE_LIMIT_MAX_PER_CONTACT")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(5)
-}
-
-async fn health() -> Json<ServiceStatus> {
-    Json(ServiceStatus {
-        status: "ok",
-        service: SERVICE_NAME,
-    })
-}
-
-async fn ready() -> Json<ServiceStatus> {
-    Json(ServiceStatus {
-        status: "ok",
-        service: SERVICE_NAME,
-    })
-}
-
-fn db_error_response(error: String) -> axum::response::Response {
+async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let database_ready = state.database.ping().await.is_ok()
+        && state
+            .database
+            .communication_repository_ready()
+            .await
+            .is_ok();
+    if database_ready {
+        state
+            .last_db_success_unix
+            .store(unix_now(), Ordering::Relaxed);
+    }
+    let last_database_success_unix = state.last_db_success_unix.load(Ordering::Relaxed);
+    let fresh = unix_now().saturating_sub(last_database_success_unix)
+        <= state.readiness_max_staleness_seconds;
+    let background_dispatch_running = state.background_running.load(Ordering::Relaxed);
+    let ready = database_ready && fresh && background_dispatch_running;
+    let status = if ready {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
     (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(BasicErrorResponse {
-            success: false,
-            error,
+        status,
+        Json(HealthResponse {
+            status: if ready { "ok" } else { "unavailable" },
+            service: SERVICE_NAME,
+            durable_repository: database_ready,
+            background_dispatch_running,
+            last_database_success_unix,
         }),
     )
-        .into_response()
 }
 
-async fn send_sms(
-    State(state): State<Arc<Mutex<SmsApiState>>>,
+async fn enqueue(
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-    Json(payload): Json<SendRequest>,
-) -> impl IntoResponse {
-    if !is_authorized(&headers) {
-        return unauthorized_response().into_response();
-    }
-
-    if payload.contact.trim().is_empty() || payload.message.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(BasicErrorResponse {
-                success: false,
-                error: "contact and message are required".to_string(),
-            }),
+    Json(request): Json<EnqueueRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let actor = authenticated_actor(&headers, COMMUNICATION_SCOPE_ENQUEUE, request.universe_id)?;
+    let category = CommunicationCategory::parse(&request.category)
+        .map_err(|_| ApiError::invalid("communication_category_invalid"))?;
+    let result = state
+        .database
+        .enqueue_communication(
+            CommunicationEnqueueInput {
+                universe_id: request.universe_id,
+                user_id: request.user_id,
+                channel: CommunicationChannel::Sms,
+                category,
+                template_key: request.template_key,
+                payload_identity: request.payload_identity,
+                idempotency_key: request.idempotency_key,
+                max_attempts: request.max_attempts,
+            },
+            &actor,
+            &state.evidence_key,
         )
-            .into_response();
-    }
+        .await
+        .map_err(|_| ApiError::invalid("communication_enqueue_rejected"))?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(EnqueueResponse {
+            success: true,
+            job_id: result.job.id,
+            state: result.job.state.as_str(),
+            idempotent_replay: result.idempotent_replay,
+        }),
+    ))
+}
 
-    let idempotency_header = headers
-        .get("idempotency-key")
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
-    let idempotency_key = payload
-        .idempotency_key
-        .as_ref()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or(idempotency_header);
-
-    if idempotency_key
-        .as_ref()
-        .map(|value| value.len() > 128)
-        .unwrap_or(false)
+async fn suppress_job(
+    state: &AppState,
+    job: &CommunicationJob,
+    reason: &'static str,
+    actor: &CommunicationActor,
+) -> DispatchOutcome {
+    match state
+        .database
+        .suppress_communication(job, &state.worker_id, reason, actor, &state.evidence_key)
+        .await
     {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(BasicErrorResponse {
-                success: false,
-                error: "Idempotency key too long".to_string(),
-            }),
+        Ok(_) => DispatchOutcome::Suppressed,
+        Err(_) => DispatchOutcome::LeaseDeferred,
+    }
+}
+
+async fn dispatch_job(
+    state: &AppState,
+    authorization: &AuthorizationSource<'_>,
+    job: CommunicationJob,
+) -> DispatchOutcome {
+    let actor = match authorization.actor(COMMUNICATION_SCOPE_DISPATCH, job.universe_id) {
+        Ok(actor) => actor,
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    let renewed = match state
+        .database
+        .renew_communication_lease(&job, &state.worker_id, state.lease_seconds, &actor)
+        .await
+    {
+        Ok(job) => job,
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    let policy = match state
+        .database
+        .communication_delivery_policy(&renewed, &actor)
+        .await
+    {
+        Ok(Some(policy)) => policy,
+        Ok(None) => {
+            return suppress_job(state, &renewed, "channel_policy_disabled", &actor).await;
+        }
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    if policy.provider_key != state.provider.provider_key() {
+        return suppress_job(state, &renewed, "provider_policy_mismatch", &actor).await;
+    }
+    let contact = match state
+        .database
+        .resolve_verified_communication_contact(&renewed, &actor, &state.evidence_key)
+        .await
+    {
+        Ok(Some(contact)) => contact,
+        Ok(None) => {
+            return suppress_job(state, &renewed, "verified_contact_unavailable", &actor).await;
+        }
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    match state
+        .database
+        .communication_allowed(
+            renewed.universe_id,
+            renewed.user_id,
+            renewed.channel.as_str(),
+            renewed.category.as_str(),
         )
-            .into_response();
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return suppress_job(state, &renewed, "privacy_policy_denied", &actor).await;
+        }
+        Err(_) => {
+            return suppress_job(state, &renewed, "privacy_policy_unavailable", &actor).await;
+        }
     }
 
-    let mut state = state.lock().await;
-    let contact = payload.contact.clone();
+    let provider = state.provider.clone();
+    let provider_key = provider.provider_key().to_string();
+    let template_key = policy.provider_template_key;
+    let payload_identity = renewed.payload_identity.clone();
+    let idempotency_key = renewed.idempotency_key.clone();
+    let job_id = renewed.id;
+    let destination = contact.destination;
+    let destination_hmac = contact.destination_hmac;
+    let destination_masked = contact.destination_masked;
+    let provider_result = tokio::task::spawn_blocking(move || {
+        provider.dispatch(SmsDispatch {
+            job_id,
+            destination: destination.as_str(),
+            provider_template_key: &template_key,
+            payload_identity: &payload_identity,
+            idempotency_key: &idempotency_key,
+        })
+    })
+    .await;
 
-    if let Some(key) = idempotency_key.as_deref() {
-        let existing = match state.find_history_by_idempotency(key) {
-            Ok(value) => value,
-            Err(error) => return db_error_response(error),
-        };
-
-        if let Some(existing) = existing {
-            return (
-                StatusCode::OK,
-                Json(SendResponse {
-                    success: true,
-                    channel: existing.channel,
-                    destination: existing.destination,
-                    idempotent: Some(true),
-                }),
+    let final_actor = match authorization.actor(COMMUNICATION_SCOPE_DISPATCH, renewed.universe_id) {
+        Ok(actor) => actor,
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    match provider_result {
+        Ok(Ok(result)) => match state
+            .database
+            .mark_communication_sent(
+                &renewed,
+                &state.worker_id,
+                &result.provider_key,
+                &result.provider_message_id,
+                destination_hmac,
+                &destination_masked,
+                &final_actor,
+                &state.evidence_key,
             )
-                .into_response();
-        }
-    }
-
-    let max_per_contact = rate_limit_max_per_contact();
-    if max_per_contact > 0 {
-        let recent = match state.count_recent_for_contact(&contact, rate_limit_window_seconds()) {
-            Ok(value) => value,
-            Err(error) => return db_error_response(error),
-        };
-
-        if recent >= max_per_contact as usize {
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(BasicErrorResponse {
-                    success: false,
-                    error: "Rate limit exceeded for this contact".to_string(),
-                }),
+            .await
+        {
+            Ok(_) => DispatchOutcome::Sent,
+            Err(_) => DispatchOutcome::LeaseDeferred,
+        },
+        Ok(Err(error)) => match state
+            .database
+            .fail_communication_attempt(
+                &renewed,
+                &state.worker_id,
+                &provider_key,
+                error.reason_code(),
+                retry_delay_seconds(renewed.attempts, error.retryable()),
+                &final_actor,
+                &state.evidence_key,
             )
-                .into_response();
-        }
+            .await
+        {
+            Ok(job) if job.state == CommunicationState::Dead => DispatchOutcome::Dead,
+            Ok(_) => DispatchOutcome::Retry,
+            Err(_) => DispatchOutcome::LeaseDeferred,
+        },
+        Err(_) => match state
+            .database
+            .fail_communication_attempt(
+                &renewed,
+                &state.worker_id,
+                &provider_key,
+                "provider_task_failed",
+                retry_delay_seconds(renewed.attempts, true),
+                &final_actor,
+                &state.evidence_key,
+            )
+            .await
+        {
+            Ok(job) if job.state == CommunicationState::Dead => DispatchOutcome::Dead,
+            Ok(_) => DispatchOutcome::Retry,
+            Err(_) => DispatchOutcome::LeaseDeferred,
+        },
     }
+}
 
-    state.record_request();
-    let request_id = state.next_request_id();
-    let started_at_ms = now_unix_epoch_ms();
-
-    let channels_result = if let Some(channels) = payload.channels.clone() {
-        if channels.is_empty() {
-            build_default_sequence()
-        } else {
-            build_sequence(channels)
-        }
+fn retry_delay_seconds(attempts: i32, retryable: bool) -> i64 {
+    let delay =
+        15_i64.saturating_mul(2_i64.saturating_pow(attempts.saturating_sub(1).clamp(0, 10) as u32));
+    if retryable {
+        delay.min(3_600)
     } else {
-        build_default_sequence()
-    };
-
-    let channels = match channels_result {
-        Ok(channels) => channels,
-        Err(error) => {
-            state.record_failure();
-            state.record_channel_failure_attempt("unknown");
-            let insert_result = state.insert_history(&HistoryRecordInput {
-                request_id,
-                idempotency_key,
-                contact,
-                destination: "unknown".to_string(),
-                channel: "unknown".to_string(),
-                status: "failed".to_string(),
-                error: Some(error.clone()),
-                metadata: payload.metadata,
-                created_at_ms: now_unix_epoch_ms(),
-            });
-            if let Err(InsertHistoryError::Store(err)) = insert_result {
-                return db_error_response(err.to_string());
-            }
-
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(BasicErrorResponse {
-                    success: false,
-                    error,
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let now_ms = now_unix_epoch_ms();
-    let available_channels = channels
-        .into_iter()
-        .filter(|channel| !state.is_channel_open(channel, now_ms))
-        .collect::<Vec<_>>();
-
-    if available_channels.is_empty() {
-        state.record_failure();
-        state.record_channel_failure_attempt("unknown");
-        let error = "All configured channels are in cooldown".to_string();
-        let insert_result = state.insert_history(&HistoryRecordInput {
-            request_id,
-            idempotency_key,
-            contact: contact.clone(),
-            destination: contact,
-            channel: "unknown".to_string(),
-            status: "failed".to_string(),
-            error: Some(error.clone()),
-            metadata: payload.metadata,
-            created_at_ms: now_unix_epoch_ms(),
-        });
-        if let Err(InsertHistoryError::Store(err)) = insert_result {
-            return db_error_response(err.to_string());
-        }
-
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(BasicErrorResponse {
-                success: false,
-                error,
-            }),
-        )
-            .into_response();
+        delay.clamp(300, 86_400)
     }
-
-    let mut last_channel = "unknown".to_string();
-    let mut last_error = None::<String>;
-
-    for channel in available_channels {
-        last_channel = channel.clone();
-        match normalize_destination(&channel, &contact) {
-            Ok(destination) => {
-                let duration_ms = now_unix_epoch_ms().saturating_sub(started_at_ms);
-                state.record_success(&channel, duration_ms);
-
-                let entry = HistoryRecordInput {
-                    request_id: request_id.clone(),
-                    idempotency_key: idempotency_key.clone(),
-                    contact: contact.clone(),
-                    destination: destination.clone(),
-                    channel: channel.clone(),
-                    status: "success".to_string(),
-                    error: None,
-                    metadata: payload.metadata.clone(),
-                    created_at_ms: now_unix_epoch_ms(),
-                };
-
-                match state.insert_history(&entry) {
-                    Ok(_) => {}
-                    Err(InsertHistoryError::DuplicateIdempotency) => {
-                        if let Some(key) = idempotency_key.as_deref() {
-                            let existing = match state.find_history_by_idempotency(key) {
-                                Ok(value) => value,
-                                Err(error) => return db_error_response(error),
-                            };
-                            if let Some(existing) = existing {
-                                return (
-                                    StatusCode::OK,
-                                    Json(SendResponse {
-                                        success: true,
-                                        channel: existing.channel,
-                                        destination: existing.destination,
-                                        idempotent: Some(true),
-                                    }),
-                                )
-                                    .into_response();
-                            }
-                        }
-                        return db_error_response(
-                            "Idempotency conflict but no prior record found".to_string(),
-                        );
-                    }
-                    Err(InsertHistoryError::Store(err)) => {
-                        return db_error_response(err.to_string())
-                    }
-                }
-
-                return (
-                    StatusCode::OK,
-                    Json(SendResponse {
-                        success: true,
-                        channel,
-                        destination,
-                        idempotent: None,
-                    }),
-                )
-                    .into_response();
-            }
-            Err(error) => {
-                state.record_channel_failure_attempt(&channel);
-                last_error = Some(error);
-            }
-        }
-    }
-
-    state.record_failure();
-    let error = last_error.unwrap_or_else(|| "No channel could process this request".to_string());
-    let insert_result = state.insert_history(&HistoryRecordInput {
-        request_id,
-        idempotency_key,
-        contact: contact.clone(),
-        destination: contact,
-        channel: last_channel,
-        status: "failed".to_string(),
-        error: Some(error.clone()),
-        metadata: payload.metadata,
-        created_at_ms: now_unix_epoch_ms(),
-    });
-    if let Err(InsertHistoryError::Store(err)) = insert_result {
-        return db_error_response(err.to_string());
-    }
-
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(BasicErrorResponse {
-            success: false,
-            error,
-        }),
-    )
-        .into_response()
 }
 
-async fn metrics(
-    State(state): State<Arc<Mutex<SmsApiState>>>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    if !is_authorized(&headers) {
-        return unauthorized_response().into_response();
-    }
-
-    let state = state.lock().await;
-    let _ = state.started_at.elapsed();
-    let history_raw = match state.history_stats() {
-        Ok(value) => value,
-        Err(error) => return db_error_response(error),
-    };
-    let history = history_raw
-        .into_iter()
-        .map(|item| HistoryStatsItem {
-            channel: item.channel,
-            status: item.status,
-            count: item.count,
-        })
-        .collect::<Vec<_>>();
-
-    (
-        StatusCode::OK,
-        Json(MetricsResponse {
-            success: true,
-            metrics: state.metrics_snapshot(),
-            history,
-        }),
-    )
-        .into_response()
-}
-
-async fn history(
-    State(state): State<Arc<Mutex<SmsApiState>>>,
-    headers: HeaderMap,
-    Query(query): Query<HistoryQuery>,
-) -> impl IntoResponse {
-    if !is_authorized(&headers) {
-        return unauthorized_response().into_response();
-    }
-
-    let state = state.lock().await;
-    let limit = query
-        .limit
-        .unwrap_or(HISTORY_DEFAULT_LIMIT)
-        .min(HISTORY_MAX_LIMIT)
-        .max(1);
-
-    let entries_raw = match state.load_recent_history(limit) {
-        Ok(entries) => entries,
-        Err(error) => return db_error_response(error),
-    };
-
-    let entries = entries_raw
-        .into_iter()
-        .map(|entry| HistoryEntryPayload {
-            id: entry.id,
-            request_id: entry.request_id,
-            idempotency_key: entry.idempotency_key,
-            contact: entry.contact,
-            destination: entry.destination,
-            channel: entry.channel,
-            status: entry.status,
-            error: entry.error,
-            metadata: entry.metadata,
-            created_at: created_at_iso_ms(entry.created_at_ms),
-        })
-        .collect::<Vec<_>>();
-
-    (
-        StatusCode::OK,
-        Json(HistoryResponse {
-            success: true,
-            entries,
-        }),
-    )
-        .into_response()
-}
-
-fn listen_port(default_port: u16) -> u16 {
-    std::env::var("PORT")
+fn background_config_from_env() -> Result<BackgroundConfig, &'static str> {
+    let raw_universes = std::env::var("SMS_WORKER_UNIVERSE_IDS")
         .ok()
-        .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(default_port)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| std::env::var("SMS_WORKER_UNIVERSE_ID").ok())
+        .ok_or("SMS_WORKER_UNIVERSE_IDS is required")?;
+    let mut universe_ids = raw_universes
+        .split(',')
+        .map(str::trim)
+        .map(|value| {
+            value
+                .parse::<i64>()
+                .ok()
+                .filter(|value| *value > 0)
+                .ok_or("SMS worker universe identifier is invalid")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    universe_ids.sort_unstable();
+    universe_ids.dedup();
+    if universe_ids.is_empty() || universe_ids.len() > 1_000 {
+        return Err("SMS worker universe list is invalid");
+    }
+    let claim_limit = parse_positive_i64("SMS_WORKER_CLAIM_LIMIT", Some(20))?;
+    let poll_millis = parse_positive_i64("SMS_WORKER_POLL_MILLIS", Some(1_000))?;
+    if claim_limit > 100 || !(50..=60_000).contains(&poll_millis) {
+        return Err("SMS background dispatch configuration is invalid");
+    }
+    Ok(BackgroundConfig {
+        universe_ids,
+        claim_limit,
+        poll_interval: Duration::from_millis(poll_millis as u64),
+    })
 }
 
-fn build_router(state: Arc<Mutex<SmsApiState>>) -> Router {
+async fn background_dispatch_loop(
+    state: Arc<AppState>,
+    config: BackgroundConfig,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    state.background_running.store(true, Ordering::Relaxed);
+    tracing::info!(
+        service = SERVICE_NAME,
+        tenant_count = config.universe_ids.len(),
+        "background SMS dispatcher started"
+    );
+    loop {
+        if *shutdown.borrow() {
+            break;
+        }
+        for universe_id in &config.universe_ids {
+            let actor = match authenticated_file_actor(
+                &state.token_file,
+                COMMUNICATION_SCOPE_DISPATCH,
+                *universe_id,
+            ) {
+                Ok(actor) => actor,
+                Err(_) => {
+                    tracing::error!(
+                        service = SERVICE_NAME,
+                        universe_id,
+                        "background SMS authorization unavailable"
+                    );
+                    continue;
+                }
+            };
+            let jobs = match state
+                .database
+                .claim_communications(
+                    *universe_id,
+                    CommunicationChannel::Sms,
+                    &state.worker_id,
+                    config.claim_limit,
+                    state.lease_seconds,
+                    &actor,
+                    &state.evidence_key,
+                )
+                .await
+            {
+                Ok(jobs) => {
+                    state
+                        .last_db_success_unix
+                        .store(unix_now(), Ordering::Relaxed);
+                    jobs
+                }
+                Err(_) => {
+                    tracing::error!(
+                        service = SERVICE_NAME,
+                        universe_id,
+                        "background SMS durable claim failed"
+                    );
+                    continue;
+                }
+            };
+            let authorization = AuthorizationSource::TokenFile(&state.token_file);
+            for job in jobs {
+                let job_id = job.id;
+                let outcome = dispatch_job(state.as_ref(), &authorization, job).await;
+                tracing::info!(
+                    service = SERVICE_NAME,
+                    job_id,
+                    ?outcome,
+                    "background SMS job completed"
+                );
+            }
+        }
+        tokio::select! {
+            changed = shutdown.changed() => {
+                if changed.is_err() || *shutdown.borrow() {
+                    break;
+                }
+            }
+            _ = tokio::time::sleep(config.poll_interval) => {}
+        }
+    }
+    state.background_running.store(false, Ordering::Relaxed);
+    tracing::info!(service = SERVICE_NAME, "background SMS dispatcher stopped");
+}
+
+async fn dispatch(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(request): Json<DispatchRequest>,
+) -> Result<Json<DispatchResponse>, ApiError> {
+    let actor = authenticated_actor(&headers, COMMUNICATION_SCOPE_DISPATCH, request.universe_id)?;
+    let jobs = state
+        .database
+        .claim_communications(
+            request.universe_id,
+            CommunicationChannel::Sms,
+            &state.worker_id,
+            request.limit,
+            state.lease_seconds,
+            &actor,
+            &state.evidence_key,
+        )
+        .await
+        .map_err(|_| ApiError::invalid("communication_dispatch_rejected"))?;
+    state
+        .last_db_success_unix
+        .store(unix_now(), Ordering::Relaxed);
+    let mut response = DispatchResponse {
+        success: true,
+        claimed: jobs.len() as u64,
+        ..DispatchResponse::default()
+    };
+    let authorization = AuthorizationSource::Request(&headers);
+    for job in jobs {
+        match dispatch_job(state.as_ref(), &authorization, job).await {
+            DispatchOutcome::Sent => response.sent += 1,
+            DispatchOutcome::Suppressed => response.suppressed += 1,
+            DispatchOutcome::Retry => response.retry += 1,
+            DispatchOutcome::Dead => response.dead += 1,
+            DispatchOutcome::LeaseDeferred => response.lease_deferred += 1,
+        }
+    }
+    Ok(Json(response))
+}
+
+async fn status(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<TenantQuery>,
+) -> Result<Json<StatusResponse>, ApiError> {
+    let actor = authenticated_actor(&headers, COMMUNICATION_SCOPE_AUDIT_READ, query.universe_id)?;
+    let items = state
+        .database
+        .communication_status_aggregates(query.universe_id, &actor)
+        .await
+        .map_err(|_| ApiError::internal("communication_status_unavailable"))?
+        .into_iter()
+        .map(|item| StatusItem {
+            universe_id: item.universe_id,
+            channel: item.channel.as_str(),
+            category: item.category.as_str(),
+            state: item.state.as_str(),
+            job_count: item.job_count,
+            oldest_created_at_unix: item.oldest_created_at_unix,
+            newest_updated_at_unix: item.newest_updated_at_unix,
+        })
+        .collect();
+    Ok(Json(StatusResponse {
+        success: true,
+        items,
+    }))
+}
+
+async fn audit(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<AuditResponse>, ApiError> {
+    let actor = authenticated_actor(&headers, COMMUNICATION_SCOPE_AUDIT_READ, query.universe_id)?;
+    let delivery_events = state
+        .database
+        .communication_audit_events(query.universe_id, query.limit, &actor)
+        .await
+        .map_err(|_| ApiError::internal("communication_audit_unavailable"))?
+        .into_iter()
+        .map(|event| DeliveryAuditItem {
+            event_id: event.id,
+            job_id: event.outbox_id,
+            channel: event.channel.as_str(),
+            category: event.category.as_str(),
+            event_type: event.event_type,
+            state: event.state.as_str(),
+            reason_code: event.reason_code,
+            attempt: event.attempt,
+            created_at_unix: event.created_at_unix,
+        })
+        .collect();
+    let control_events = state
+        .database
+        .communication_control_audit_events(query.universe_id, query.limit, &actor)
+        .await
+        .map_err(|_| ApiError::internal("communication_audit_unavailable"))?
+        .into_iter()
+        .map(|event| ControlAuditItem {
+            event_id: event.id,
+            control_type: event.control_type,
+            channel: event.channel.as_str(),
+            category: event.category.map(CommunicationCategory::as_str),
+            action: event.action,
+            reason_code: event.reason_code,
+            control_version: event.control_version,
+            created_at_unix: event.created_at_unix,
+        })
+        .collect();
+    Ok(Json(AuditResponse {
+        success: true,
+        delivery_events,
+        control_events,
+    }))
+}
+
+fn router(state: Arc<AppState>) -> Router {
     Router::new()
-        .route("/api/send", post(send_sms))
-        .route("/metrics", get(metrics))
-        .route("/history", get(history))
         .route("/health", get(health))
-        .route("/ready", get(ready))
-        .route("/api/ready", get(ready))
+        .route("/api/send", post(enqueue))
+        .route("/api/dispatch", post(dispatch))
+        .route("/api/status", get(status))
+        .route("/api/audit", get(audit))
         .with_state(state)
+}
+
+fn parse_positive_i64(name: &str, default: Option<i64>) -> Result<i64, &'static str> {
+    match std::env::var(name) {
+        Ok(value) => value
+            .parse::<i64>()
+            .ok()
+            .filter(|value| *value > 0)
+            .ok_or("positive integer configuration is invalid"),
+        Err(_) => default.ok_or("required positive integer configuration is missing"),
+    }
 }
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
-
-    let state = SmsApiState::new().expect("sms api state should initialize");
-    let app = build_router(Arc::new(Mutex::new(state)));
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], listen_port(DEFAULT_PORT)));
-    tracing::info!(service = SERVICE_NAME, %addr, "startup");
-
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+    AuthConfig::from_env()
+        .validate_runtime()
+        .expect("invalid authentication configuration");
+    let database = Database::try_from_env()
+        .expect("invalid DATABASE_URL")
+        .expect("DATABASE_URL is required");
+    database.ping().await.expect("PostgreSQL is unavailable");
+    database
+        .communication_repository_ready()
         .await
-        .expect("server failed");
+        .expect("durable communication schema is unavailable");
+    let evidence_key = CommunicationEvidenceKey::from_env()
+        .expect("COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64 is invalid");
+    let provider = HttpSmsProvider::from_env().expect("invalid SMS provider configuration");
+    let background_config =
+        background_config_from_env().expect("invalid SMS background worker configuration");
+    let token_file = std::env::var("COMMUNICATION_SERVICE_TOKEN_FILE")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .expect("COMMUNICATION_SERVICE_TOKEN_FILE is required");
+    let worker_id = std::env::var("SMS_DISPATCH_WORKER_ID")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "sms-api-dispatcher-1".to_string());
+    let lease_seconds = parse_positive_i64("SMS_DISPATCH_LEASE_SECONDS", Some(90))
+        .expect("invalid SMS dispatch lease");
+    assert!(
+        lease_seconds <= 900,
+        "SMS_DISPATCH_LEASE_SECONDS exceeds the durable lease limit"
+    );
+    assert!(
+        lease_seconds
+            >= i64::try_from(provider.request_timeout().as_secs())
+                .unwrap_or(i64::MAX)
+                .saturating_add(5),
+        "SMS_DISPATCH_LEASE_SECONDS must exceed SMS_PROVIDER_TIMEOUT_SECONDS by at least 5 seconds"
+    );
+    let readiness_max_staleness_seconds =
+        parse_positive_i64("SMS_READINESS_MAX_STALENESS_SECONDS", Some(30))
+            .expect("invalid SMS readiness threshold");
+    let port = parse_positive_i64("PORT", Some(DEFAULT_PORT.into()))
+        .ok()
+        .and_then(|value| u16::try_from(value).ok())
+        .expect("PORT is invalid");
+    let provider_key = provider.provider_key().to_string();
+    let state = Arc::new(AppState {
+        database,
+        evidence_key,
+        provider,
+        worker_id,
+        lease_seconds,
+        token_file,
+        last_db_success_unix: Arc::new(AtomicI64::new(unix_now())),
+        background_running: Arc::new(AtomicBool::new(false)),
+        readiness_max_staleness_seconds,
+    });
+    let address = SocketAddr::from(([0, 0, 0, 0], port));
+    tracing::info!(service = SERVICE_NAME, %address, %provider_key, "durable SMS API started");
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let background = tokio::spawn(background_dispatch_loop(
+        Arc::clone(&state),
+        background_config,
+        shutdown_rx,
+    ));
+    let shutdown_signal = async move {
+        if tokio::signal::ctrl_c().await.is_err() {
+            tracing::error!(service = SERVICE_NAME, "shutdown signal handler failed");
+        }
+        let _ = shutdown_tx.send(true);
+    };
+    axum::Server::bind(&address)
+        .serve(router(state).into_make_service())
+        .with_graceful_shutdown(shutdown_signal)
+        .await
+        .expect("SMS API server failed");
+    background
+        .await
+        .expect("background SMS dispatcher task failed");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
-    use axum::http::{Method, Request};
-    use hyper::body::to_bytes;
-    use serde_json::{json, Value};
-    use serial_test::serial;
-    use tempfile::NamedTempFile;
-    use tower::ServiceExt;
 
-    fn unique_db_path() -> String {
-        let file = NamedTempFile::new().expect("temp file should create");
-        let path = file.path().to_path_buf();
-        drop(file);
-        let _ = std::fs::remove_file(&path);
-        path.to_string_lossy().to_string()
+    #[test]
+    fn enqueue_contract_rejects_destination_body_and_arbitrary_variables() {
+        let unsafe_request = serde_json::json!({
+            "universeId": 1,
+            "userId": 7,
+            "category": "security",
+            "templateKey": "password_reset",
+            "payloadIdentity": "security_event:dead-beef",
+            "idempotencyKey": "sms:test:0001",
+            "contact": "+12065550123",
+            "message": "secret body"
+        });
+        assert!(serde_json::from_value::<EnqueueRequest>(unsafe_request).is_err());
     }
 
-    fn reset_test_env() {
-        std::env::remove_var("SMS_SERVICE_API_KEY");
-        std::env::remove_var("SMS_DEFAULT_COUNTRY_CODE");
-        std::env::remove_var("SMS_CHANNEL_FAILURE_THRESHOLD");
-        std::env::remove_var("SMS_CHANNEL_COOLDOWN_MS");
-        std::env::remove_var("SMS_RATE_LIMIT_MAX_PER_CONTACT");
-        std::env::remove_var("SMS_RATE_LIMIT_WINDOW_SECONDS");
-        std::env::remove_var("SMS_DEFAULT_CHANNEL");
-        std::env::remove_var("SMS_FALLBACK_CHANNELS");
-        std::env::remove_var("SMS_HISTORY_DB_PATH");
-    }
-
-    fn test_app(db_path: &str) -> Router {
-        std::env::set_var("SMS_HISTORY_DB_PATH", db_path);
-        build_router(Arc::new(Mutex::new(
-            SmsApiState::new().expect("state should initialize"),
-        )))
-    }
-
-    async fn request(app: &Router, method: Method, uri: &str, body: Value) -> (StatusCode, Value) {
-        let request = Request::builder()
-            .method(method)
-            .uri(uri)
-            .header("content-type", "application/json")
-            .body(Body::from(body.to_string()))
-            .expect("request should build");
-
-        let response = app
-            .clone()
-            .oneshot(request)
-            .await
-            .expect("request should execute");
-        let status = response.status();
-        let bytes = to_bytes(response.into_body())
-            .await
-            .expect("body should read");
-        let payload = serde_json::from_slice::<Value>(&bytes).expect("json should parse");
-        (status, payload)
-    }
-
-    async fn get(app: &Router, uri: &str) -> (StatusCode, Value) {
-        let request = Request::builder()
-            .method(Method::GET)
-            .uri(uri)
-            .body(Body::empty())
-            .expect("request should build");
-
-        let response = app
-            .clone()
-            .oneshot(request)
-            .await
-            .expect("request should execute");
-        let status = response.status();
-        let bytes = to_bytes(response.into_body())
-            .await
-            .expect("body should read");
-        let payload = serde_json::from_slice::<Value>(&bytes).expect("json should parse");
-        (status, payload)
-    }
-
-    fn sample_payload(contact: &str, idempotency_key: Option<&str>) -> Value {
-        json!({
-            "contact": contact,
-            "message": "Your Universus code is 123456",
-            "channels": ["sms", "telegram"],
-            "metadata": { "userId": 42 },
-            "idempotencyKey": idempotency_key
+    #[test]
+    fn enqueue_response_contains_no_contact_or_message_material() {
+        let body = serde_json::to_string(&EnqueueResponse {
+            success: true,
+            job_id: 4,
+            state: "pending",
+            idempotent_replay: false,
         })
+        .unwrap();
+        assert!(!body.contains("destination"));
+        assert!(!body.contains("contact"));
+        assert!(!body.contains("message"));
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn send_accepts_legacy_payload_shape() {
-        reset_test_env();
-        let db = unique_db_path();
-        std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
-        let app = test_app(&db);
-
-        let (status, payload) = request(
-            &app,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", None),
-        )
-        .await;
-
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload["success"], true);
-        assert_eq!(payload["channel"], "sms_twilio");
-        assert_eq!(payload["destination"], "+12065550123");
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn send_replays_idempotent_success() {
-        reset_test_env();
-        let db = unique_db_path();
-        std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
-        let app = test_app(&db);
-
-        let _ = request(
-            &app,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", Some("idem-1")),
-        )
-        .await;
-
-        let (status, replay) = request(
-            &app,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", Some("idem-1")),
-        )
-        .await;
-
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(replay["success"], true);
-        assert_eq!(replay["idempotent"], true);
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn idempotency_persists_across_app_restarts() {
-        reset_test_env();
-        let db = unique_db_path();
-        std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
-
-        let app_a = test_app(&db);
-        let (first_status, _) = request(
-            &app_a,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", Some("idem-persist-1")),
-        )
-        .await;
-        assert_eq!(first_status, StatusCode::OK);
-
-        let app_b = test_app(&db);
-        let (second_status, replay) = request(
-            &app_b,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", Some("idem-persist-1")),
-        )
-        .await;
-        assert_eq!(second_status, StatusCode::OK);
-        assert_eq!(replay["idempotent"], true);
-
-        let (history_status, history_payload) = get(&app_b, "/history?limit=10").await;
-        assert_eq!(history_status, StatusCode::OK);
-        assert_eq!(history_payload["entries"].as_array().unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn circuit_opens_after_threshold_and_blocks_channel() {
-        reset_test_env();
-        let db = unique_db_path();
-        std::env::set_var("SMS_CHANNEL_FAILURE_THRESHOLD", "1");
-        std::env::set_var("SMS_CHANNEL_COOLDOWN_MS", "60000");
-        let app = test_app(&db);
-
-        let first_payload = json!({
-            "contact": "2065550123",
-            "message": "Code",
-            "channels": ["sms"]
-        });
-        let (first_status, _) = request(&app, Method::POST, "/api/send", first_payload).await;
-        assert_eq!(first_status, StatusCode::INTERNAL_SERVER_ERROR);
-
-        let second_payload = json!({
-            "contact": "2065550123",
-            "message": "Code",
-            "channels": ["sms"]
-        });
-        let (second_status, second_response) =
-            request(&app, Method::POST, "/api/send", second_payload).await;
-        assert_eq!(second_status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(
-            second_response["error"],
-            "All configured channels are in cooldown"
-        );
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn metrics_and_history_match_legacy_shape() {
-        reset_test_env();
-        let db = unique_db_path();
-        std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
-        let app = test_app(&db);
-
-        let _ = request(
-            &app,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", None),
-        )
-        .await;
-
-        let (metrics_status, metrics_payload) = get(&app, "/metrics").await;
-        assert_eq!(metrics_status, StatusCode::OK);
-        assert_eq!(metrics_payload["success"], true);
-        assert_eq!(metrics_payload["metrics"]["requests"], 1);
-        assert!(metrics_payload["history"].is_array());
-
-        let (history_status, history_payload) = get(&app, "/history?limit=1").await;
-        assert_eq!(history_status, StatusCode::OK);
-        assert_eq!(history_payload["success"], true);
-        assert_eq!(history_payload["entries"].as_array().unwrap().len(), 1);
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn health_reports_legacy_service_name() {
-        reset_test_env();
-        let db = unique_db_path();
-        let app = test_app(&db);
-
-        let (status, payload) = get(&app, "/health").await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(payload["status"], "ok");
-        assert_eq!(payload["service"], "sms");
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn ready_routes_report_legacy_service_name() {
-        reset_test_env();
-        let db = unique_db_path();
-        let app = test_app(&db);
-
-        let (ready_status, ready_payload) = get(&app, "/ready").await;
-        assert_eq!(ready_status, StatusCode::OK);
-        assert_eq!(ready_payload["status"], "ok");
-        assert_eq!(ready_payload["service"], "sms");
-
-        let (api_ready_status, api_ready_payload) = get(&app, "/api/ready").await;
-        assert_eq!(api_ready_status, StatusCode::OK);
-        assert_eq!(api_ready_payload["status"], "ok");
-        assert_eq!(api_ready_payload["service"], "sms");
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn send_requires_api_key_when_configured() {
-        reset_test_env();
-        let db = unique_db_path();
-        std::env::set_var("SMS_SERVICE_API_KEY", "secret");
-        std::env::set_var("SMS_DEFAULT_COUNTRY_CODE", "1");
-        let app = test_app(&db);
-
-        let (status, payload) = request(
-            &app,
-            Method::POST,
-            "/api/send",
-            sample_payload("+12065550123", None),
-        )
-        .await;
-
-        assert_eq!(status, StatusCode::UNAUTHORIZED);
-        assert_eq!(payload["success"], false);
-        assert_eq!(payload["error"], "Unauthorized");
+    #[test]
+    fn provider_backoff_is_bounded() {
+        assert_eq!(retry_delay_seconds(1, true), 15);
+        assert_eq!(retry_delay_seconds(4, true), 120);
+        assert_eq!(retry_delay_seconds(20, true), 3_600);
+        assert_eq!(retry_delay_seconds(1, false), 300);
     }
 }

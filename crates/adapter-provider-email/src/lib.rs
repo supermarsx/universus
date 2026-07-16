@@ -1,977 +1,604 @@
 #![forbid(unsafe_code)]
 
-//! Email provider adapter.
+//! Privacy-minimized email provider adapter.
 //!
-//! Defines the `EmailProvider` trait and supporting types for dispatching
-//! transactional emails. Includes:
-//! - `LoggingEmailProvider` — writes dispatches to stdout (for dev/test)
-//! - `FailingEmailProvider` — always fails (for testing error paths)
-//! - `EmailJobBuilder` — builder pattern for constructing `EmailJob` instances
-//! - `EmailTemplate` — common transactional email templates
-//! - Payload parsing from JSON (string or bytes)
+//! The provider accepts only an internally resolved destination, a registered
+//! provider template identity, and an authoritative event reference. Arbitrary
+//! subject/body input is not part of the dispatch contract.
 
-use std::error::Error;
-use std::fmt::{Display, Formatter};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::fmt::{Debug, Display, Formatter};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use url::{Host, Url};
+use zeroize::Zeroizing;
 
-// ---------------------------------------------------------------------------
-// Core types
-// ---------------------------------------------------------------------------
-
-/// An email dispatch job.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EmailJob {
-    pub job_id: String,
-    pub to: String,
-    pub subject: String,
-    pub body: String,
-    pub from: Option<String>,
-    pub reply_to: Option<String>,
-    /// Optional content type hint ("text/plain" or "text/html").
-    #[serde(default)]
-    pub content_type: Option<String>,
-    /// Optional tags for analytics/filtering.
-    #[serde(default)]
-    pub tags: Vec<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderEnvironment {
+    Production,
+    Staging,
+    Development,
+    Test,
 }
 
-/// Result of a successful email dispatch.
+impl ProviderEnvironment {
+    fn from_env() -> Result<Self, EmailProviderError> {
+        let value = ["UNIVERSUS_ENV", "APP_ENV", "ENVIRONMENT", "RUST_ENV"]
+            .into_iter()
+            .find_map(|name| std::env::var(name).ok())
+            .unwrap_or_else(|| "production".to_string());
+        Self::parse(&value)
+    }
+
+    fn parse(value: &str) -> Result<Self, EmailProviderError> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "production" | "prod" => Ok(Self::Production),
+            "staging" | "stage" => Ok(Self::Staging),
+            "development" | "dev" | "local" => Ok(Self::Development),
+            "test" | "testing" => Ok(Self::Test),
+            _ => Err(EmailProviderError::Configuration(
+                "runtime environment is invalid",
+            )),
+        }
+    }
+
+    const fn permits_loopback_http(self) -> bool {
+        matches!(self, Self::Development | Self::Test)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct EmailDispatch<'a> {
+    pub job_id: i64,
+    pub destination: &'a str,
+    pub provider_template_key: &'a str,
+    pub payload_identity: &'a str,
+    pub idempotency_key: &'a str,
+}
+
+impl Debug for EmailDispatch<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmailDispatch")
+            .field("job_id", &self.job_id)
+            .field("destination", &"[REDACTED]")
+            .field("provider_template_key", &self.provider_template_key)
+            .field("payload_identity", &self.payload_identity)
+            .field("idempotency_key", &self.idempotency_key)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmailDispatchResult {
-    pub provider: String,
-    pub job_id: String,
-    pub message_id: String,
+    pub provider_key: String,
+    pub provider_message_id: String,
 }
 
-/// Trait for email dispatch providers.
 pub trait EmailProvider: Send + Sync {
-    fn name(&self) -> &str;
-    fn dispatch(&self, job: &EmailJob) -> Result<EmailDispatchResult, EmailProviderError>;
+    fn provider_key(&self) -> &str;
+    fn dispatch(
+        &self,
+        request: EmailDispatch<'_>,
+    ) -> Result<EmailDispatchResult, EmailProviderError>;
 }
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmailProviderError {
-    InvalidJob {
-        field: &'static str,
-        reason: &'static str,
-    },
-    DispatchFailed(String),
+    Configuration(&'static str),
+    InvalidDispatch(&'static str),
+    DispatchFailed { code: &'static str, retryable: bool },
+}
+
+impl EmailProviderError {
+    pub const fn reason_code(&self) -> &'static str {
+        match self {
+            Self::Configuration(_) => "provider_configuration_invalid",
+            Self::InvalidDispatch(_) => "provider_dispatch_invalid",
+            Self::DispatchFailed { code, .. } => code,
+        }
+    }
+
+    pub const fn retryable(&self) -> bool {
+        matches!(
+            self,
+            Self::DispatchFailed {
+                retryable: true,
+                ..
+            }
+        )
+    }
 }
 
 impl Display for EmailProviderError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidJob { field, reason } => {
-                write!(f, "invalid email job field '{field}': {reason}")
+            Self::Configuration(reason) => write!(f, "email provider configuration: {reason}"),
+            Self::InvalidDispatch(reason) => write!(f, "email dispatch contract: {reason}"),
+            Self::DispatchFailed { code, retryable } => {
+                write!(
+                    f,
+                    "email provider failed: code={code} retryable={retryable}"
+                )
             }
-            Self::DispatchFailed(message) => write!(f, "dispatch failed: {message}"),
         }
     }
 }
 
-impl Error for EmailProviderError {}
+impl std::error::Error for EmailProviderError {}
 
-// ---------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------
-
-fn validate_non_empty(value: &str, field: &'static str) -> Result<(), EmailProviderError> {
-    if value.trim().is_empty() {
-        return Err(EmailProviderError::InvalidJob {
-            field,
-            reason: "must not be empty",
-        });
-    }
-    Ok(())
+#[derive(Clone)]
+pub struct HttpEmailProvider {
+    provider_key: String,
+    endpoint: String,
+    bearer_token: Zeroizing<String>,
+    request_timeout: Duration,
+    agent: ureq::Agent,
 }
 
-/// Basic email address validation: non-empty, contains `@`, has parts
-/// on both sides.
-fn validate_email_address(value: &str, field: &'static str) -> Result<(), EmailProviderError> {
-    validate_non_empty(value, field)?;
-    let trimmed = value.trim();
-    let at_pos = trimmed.find('@');
-    match at_pos {
-        Some(pos) if pos > 0 && pos < trimmed.len() - 1 => Ok(()),
-        _ => Err(EmailProviderError::InvalidJob {
-            field,
-            reason: "must be a valid email address (user@domain)",
-        }),
-    }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmailProviderRequest<'a> {
+    channel: &'static str,
+    job_id: i64,
+    destination: &'a str,
+    template_id: &'a str,
+    payload_identity: &'a str,
+    idempotency_key: &'a str,
 }
 
-fn validate_job(job: &EmailJob) -> Result<(), EmailProviderError> {
-    validate_non_empty(&job.job_id, "job_id")?;
-    validate_email_address(&job.to, "to")?;
-    validate_non_empty(&job.subject, "subject")?;
-    validate_non_empty(&job.body, "body")?;
-    if let Some(ref from) = job.from {
-        validate_email_address(from, "from")?;
-    }
-    if let Some(ref reply_to) = job.reply_to {
-        validate_email_address(reply_to, "reply_to")?;
-    }
-    Ok(())
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderResponse {
+    message_id: String,
 }
 
-// ---------------------------------------------------------------------------
-// LoggingEmailProvider
-// ---------------------------------------------------------------------------
-
-/// A provider that logs dispatches to stdout. Useful for development and testing.
-#[derive(Debug)]
-pub struct LoggingEmailProvider {
-    name: String,
-    sequence: AtomicU64,
-}
-
-impl LoggingEmailProvider {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            sequence: AtomicU64::new(0),
-        }
-    }
-
-    pub fn dispatch_count(&self) -> u64 {
-        self.sequence.load(Ordering::Relaxed)
-    }
-}
-
-impl Default for LoggingEmailProvider {
-    fn default() -> Self {
-        Self::new("logging")
-    }
-}
-
-impl EmailProvider for LoggingEmailProvider {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn dispatch(&self, job: &EmailJob) -> Result<EmailDispatchResult, EmailProviderError> {
-        validate_job(job)?;
-
-        let next = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
-        let message_id = format!("{}-{next}", self.name);
-
-        println!(
-            "email-dispatch provider={} job_id={} to={} subject={}",
-            self.name, job.job_id, job.to, job.subject
-        );
-
-        Ok(EmailDispatchResult {
-            provider: self.name.clone(),
-            job_id: job.job_id.clone(),
-            message_id,
-        })
-    }
-}
-
-// ---------------------------------------------------------------------------
-// FailingEmailProvider
-// ---------------------------------------------------------------------------
-
-/// A provider that always fails. Useful for testing error handling paths.
-#[derive(Debug, Clone)]
-pub struct FailingEmailProvider {
-    name: String,
-    error_message: String,
-}
-
-impl FailingEmailProvider {
-    pub fn new(name: impl Into<String>, error_message: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            error_message: error_message.into(),
-        }
-    }
-}
-
-impl Default for FailingEmailProvider {
-    fn default() -> Self {
-        Self::new("failing", "simulated dispatch failure")
-    }
-}
-
-impl EmailProvider for FailingEmailProvider {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn dispatch(&self, job: &EmailJob) -> Result<EmailDispatchResult, EmailProviderError> {
-        validate_job(job)?;
-        Err(EmailProviderError::DispatchFailed(format!(
-            "{}: {}",
-            self.error_message, job.job_id
-        )))
-    }
-}
-
-// ---------------------------------------------------------------------------
-// EmailJobBuilder
-// ---------------------------------------------------------------------------
-
-/// Builder for constructing `EmailJob` instances.
-#[derive(Debug, Default)]
-pub struct EmailJobBuilder {
-    job_id: Option<String>,
-    to: Option<String>,
-    subject: Option<String>,
-    body: Option<String>,
-    from: Option<String>,
-    reply_to: Option<String>,
-    content_type: Option<String>,
-    tags: Vec<String>,
-}
-
-impl EmailJobBuilder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn job_id(mut self, id: impl Into<String>) -> Self {
-        self.job_id = Some(id.into());
-        self
-    }
-
-    pub fn to(mut self, to: impl Into<String>) -> Self {
-        self.to = Some(to.into());
-        self
-    }
-
-    pub fn subject(mut self, subject: impl Into<String>) -> Self {
-        self.subject = Some(subject.into());
-        self
-    }
-
-    pub fn body(mut self, body: impl Into<String>) -> Self {
-        self.body = Some(body.into());
-        self
-    }
-
-    pub fn from(mut self, from: impl Into<String>) -> Self {
-        self.from = Some(from.into());
-        self
-    }
-
-    pub fn reply_to(mut self, reply_to: impl Into<String>) -> Self {
-        self.reply_to = Some(reply_to.into());
-        self
-    }
-
-    pub fn content_type(mut self, ct: impl Into<String>) -> Self {
-        self.content_type = Some(ct.into());
-        self
-    }
-
-    pub fn tag(mut self, tag: impl Into<String>) -> Self {
-        self.tags.push(tag.into());
-        self
-    }
-
-    pub fn build(self) -> Result<EmailJob, &'static str> {
-        Ok(EmailJob {
-            job_id: self.job_id.ok_or("job_id is required")?,
-            to: self.to.ok_or("to is required")?,
-            subject: self.subject.ok_or("subject is required")?,
-            body: self.body.ok_or("body is required")?,
-            from: self.from,
-            reply_to: self.reply_to,
-            content_type: self.content_type,
-            tags: self.tags,
-        })
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Email templates
-// ---------------------------------------------------------------------------
-
-/// Common transactional email templates.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EmailTemplate {
-    Welcome {
-        username: String,
-    },
-    PasswordReset {
-        reset_link: String,
-        expires_minutes: u32,
-    },
-    AccountVerification {
-        verify_link: String,
-    },
-    FleetArrival {
-        fleet_id: String,
-        destination: String,
-    },
-    AttackIncoming {
-        attacker: String,
-        arrival_time: String,
-    },
-    AllianceInvite {
-        alliance_name: String,
-        inviter: String,
-    },
-}
-
-impl EmailTemplate {
-    /// Render the template to a subject and body pair.
-    pub fn render(&self) -> (String, String) {
-        match self {
-            Self::Welcome { username } => (
-                "Welcome to Universus!".to_string(),
-                format!(
-                    "Hello {username},\n\n\
-                     Welcome to Universus! Your galactic empire awaits.\n\n\
-                     Start building your first planet and explore the universe.\n\n\
-                     Good luck, Commander!"
-                ),
-            ),
-            Self::PasswordReset {
-                reset_link,
-                expires_minutes,
-            } => (
-                "Password Reset Request".to_string(),
-                format!(
-                    "You requested a password reset.\n\n\
-                     Click the link below to reset your password:\n\
-                     {reset_link}\n\n\
-                     This link expires in {expires_minutes} minutes.\n\n\
-                     If you did not request this, please ignore this email."
-                ),
-            ),
-            Self::AccountVerification { verify_link } => (
-                "Verify Your Account".to_string(),
-                format!(
-                    "Please verify your account by clicking the link below:\n\
-                     {verify_link}\n\n\
-                     If you did not create an account, please ignore this email."
-                ),
-            ),
-            Self::FleetArrival {
-                fleet_id,
-                destination,
-            } => (
-                format!("Fleet {fleet_id} has arrived"),
-                format!(
-                    "Your fleet {fleet_id} has arrived at {destination}.\n\n\
-                     Check your fleet overview for details."
-                ),
-            ),
-            Self::AttackIncoming {
-                attacker,
-                arrival_time,
-            } => (
-                "Incoming Attack!".to_string(),
-                format!(
-                    "WARNING: An attack from {attacker} is incoming!\n\n\
-                     Estimated arrival: {arrival_time}\n\n\
-                     Prepare your defenses immediately."
-                ),
-            ),
-            Self::AllianceInvite {
-                alliance_name,
-                inviter,
-            } => (
-                format!("Alliance Invitation: {alliance_name}"),
-                format!(
-                    "You have been invited to join the alliance '{alliance_name}' \
-                     by {inviter}.\n\n\
-                     Log in to accept or decline the invitation."
-                ),
-            ),
-        }
-    }
-
-    /// Build an `EmailJob` from a template.
-    pub fn to_job(
-        &self,
-        job_id: impl Into<String>,
-        to: impl Into<String>,
-        from: Option<String>,
-    ) -> EmailJob {
-        let (subject, body) = self.render();
-        EmailJob {
-            job_id: job_id.into(),
-            to: to.into(),
-            subject,
-            body,
-            from,
-            reply_to: None,
-            content_type: Some("text/plain".to_string()),
-            tags: vec![self.template_tag().to_string()],
-        }
-    }
-
-    /// Tag name for analytics/filtering.
-    fn template_tag(&self) -> &'static str {
-        match self {
-            Self::Welcome { .. } => "welcome",
-            Self::PasswordReset { .. } => "password_reset",
-            Self::AccountVerification { .. } => "account_verification",
-            Self::FleetArrival { .. } => "fleet_arrival",
-            Self::AttackIncoming { .. } => "attack_incoming",
-            Self::AllianceInvite { .. } => "alliance_invite",
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Payload parsing
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EmailPayloadParseError {
-    EmptyPayload,
-    InvalidUtf8,
-    InvalidJson(String),
-    MissingField(&'static str),
-    InvalidFieldType {
-        field: &'static str,
-        expected: &'static str,
-    },
-    InvalidFieldValue {
-        field: &'static str,
-        reason: &'static str,
-    },
-}
-
-impl Display for EmailPayloadParseError {
+impl Debug for HttpEmailProvider {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EmptyPayload => write!(f, "payload is empty"),
-            Self::InvalidUtf8 => write!(f, "payload is not valid UTF-8"),
-            Self::InvalidJson(err) => write!(f, "payload is not valid JSON: {err}"),
-            Self::MissingField(field) => write!(f, "payload is missing required field '{field}'"),
-            Self::InvalidFieldType { field, expected } => {
-                write!(f, "payload field '{field}' must be {expected}")
-            }
-            Self::InvalidFieldValue { field, reason } => {
-                write!(f, "payload field '{field}' is invalid: {reason}")
-            }
+        f.debug_struct("HttpEmailProvider")
+            .field("provider_key", &self.provider_key)
+            .field("endpoint", &"[REDACTED]")
+            .field("bearer_token", &"[REDACTED]")
+            .field("request_timeout", &self.request_timeout)
+            .finish()
+    }
+}
+
+impl HttpEmailProvider {
+    pub fn new(
+        provider_key: impl Into<String>,
+        endpoint: impl Into<String>,
+        bearer_token: impl Into<String>,
+        timeout: Duration,
+    ) -> Result<Self, EmailProviderError> {
+        Self::new_for_environment(
+            provider_key,
+            endpoint,
+            bearer_token,
+            timeout,
+            ProviderEnvironment::Production,
+        )
+    }
+
+    pub fn new_for_environment(
+        provider_key: impl Into<String>,
+        endpoint: impl Into<String>,
+        bearer_token: impl Into<String>,
+        timeout: Duration,
+        environment: ProviderEnvironment,
+    ) -> Result<Self, EmailProviderError> {
+        let provider_key = provider_key.into();
+        let endpoint = endpoint.into();
+        let bearer_token = Zeroizing::new(bearer_token.into());
+        validate_tokenish(&provider_key, 2, 64, "provider key is invalid")?;
+        validate_endpoint(&endpoint, environment)?;
+        if bearer_token.trim().len() < 16 || bearer_token.len() > 4096 {
+            return Err(EmailProviderError::Configuration(
+                "EMAIL_PROVIDER_BEARER_TOKEN is missing or too short",
+            ));
         }
-    }
-}
-
-impl Error for EmailPayloadParseError {}
-
-pub fn parse_email_job_payload(payload: &str) -> Result<EmailJob, EmailPayloadParseError> {
-    if payload.trim().is_empty() {
-        return Err(EmailPayloadParseError::EmptyPayload);
-    }
-
-    let root: Value = serde_json::from_str(payload)
-        .map_err(|err| EmailPayloadParseError::InvalidJson(err.to_string()))?;
-    let object = root
-        .as_object()
-        .ok_or(EmailPayloadParseError::InvalidFieldType {
-            field: "root",
-            expected: "a JSON object",
-        })?;
-
-    let job_id = parse_required_string(object, "job_id")?;
-    let to = parse_required_string(object, "to")?;
-    let subject = parse_required_string(object, "subject")?;
-    let body = parse_required_string(object, "body")?;
-    let from = parse_optional_string(object, "from")?;
-    let reply_to = parse_optional_string(object, "reply_to")?;
-    let content_type = parse_optional_string(object, "content_type")?;
-    let tags = parse_string_array(object, "tags");
-
-    Ok(EmailJob {
-        job_id,
-        to,
-        subject,
-        body,
-        from,
-        reply_to,
-        content_type,
-        tags,
-    })
-}
-
-pub fn parse_email_job_payload_bytes(payload: &[u8]) -> Result<EmailJob, EmailPayloadParseError> {
-    let body = std::str::from_utf8(payload).map_err(|_| EmailPayloadParseError::InvalidUtf8)?;
-    parse_email_job_payload(body)
-}
-
-fn parse_required_string(
-    object: &serde_json::Map<String, Value>,
-    field: &'static str,
-) -> Result<String, EmailPayloadParseError> {
-    let value = object
-        .get(field)
-        .ok_or(EmailPayloadParseError::MissingField(field))?;
-    let parsed = value
-        .as_str()
-        .ok_or(EmailPayloadParseError::InvalidFieldType {
-            field,
-            expected: "a string",
-        })?
-        .trim();
-
-    if parsed.is_empty() {
-        return Err(EmailPayloadParseError::InvalidFieldValue {
-            field,
-            reason: "must not be empty",
-        });
-    }
-
-    Ok(parsed.to_owned())
-}
-
-fn parse_optional_string(
-    object: &serde_json::Map<String, Value>,
-    field: &'static str,
-) -> Result<Option<String>, EmailPayloadParseError> {
-    let Some(value) = object.get(field) else {
-        return Ok(None);
-    };
-
-    if value.is_null() {
-        return Ok(None);
-    }
-
-    let parsed = value
-        .as_str()
-        .ok_or(EmailPayloadParseError::InvalidFieldType {
-            field,
-            expected: "a string or null",
-        })?
-        .trim();
-
-    if parsed.is_empty() {
-        return Err(EmailPayloadParseError::InvalidFieldValue {
-            field,
-            reason: "must not be empty when present",
-        });
-    }
-
-    Ok(Some(parsed.to_owned()))
-}
-
-fn parse_string_array(object: &serde_json::Map<String, Value>, field: &str) -> Vec<String> {
-    object
-        .get(field)
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str())
-                .map(|s| s.to_string())
-                .collect()
+        if timeout.is_zero() || timeout > Duration::from_secs(120) {
+            return Err(EmailProviderError::Configuration(
+                "email provider timeout is invalid",
+            ));
+        }
+        Ok(Self {
+            provider_key,
+            endpoint,
+            bearer_token,
+            request_timeout: timeout,
+            agent: ureq::AgentBuilder::new().timeout(timeout).build(),
         })
-        .unwrap_or_default()
+    }
+
+    pub fn from_env() -> Result<Self, EmailProviderError> {
+        let endpoint = std::env::var("EMAIL_PROVIDER_URL")
+            .map_err(|_| EmailProviderError::Configuration("EMAIL_PROVIDER_URL is required"))?;
+        let token = std::env::var("EMAIL_PROVIDER_BEARER_TOKEN").map_err(|_| {
+            EmailProviderError::Configuration("EMAIL_PROVIDER_BEARER_TOKEN is required")
+        })?;
+        let provider_key =
+            std::env::var("EMAIL_PROVIDER_KEY").unwrap_or_else(|_| "email_http".to_string());
+        let timeout_seconds = std::env::var("EMAIL_PROVIDER_TIMEOUT_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(15);
+        Self::new_for_environment(
+            provider_key,
+            endpoint,
+            token,
+            Duration::from_secs(timeout_seconds),
+            ProviderEnvironment::from_env()?,
+        )
+    }
+
+    pub const fn request_timeout(&self) -> Duration {
+        self.request_timeout
+    }
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+fn validate_endpoint(
+    endpoint: &str,
+    environment: ProviderEnvironment,
+) -> Result<(), EmailProviderError> {
+    if endpoint.len() > 2048 {
+        return Err(EmailProviderError::Configuration(
+            "EMAIL_PROVIDER_URL is invalid",
+        ));
+    }
+    let parsed = Url::parse(endpoint)
+        .map_err(|_| EmailProviderError::Configuration("EMAIL_PROVIDER_URL is invalid"))?;
+    if !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || parsed.host().is_none()
+    {
+        return Err(EmailProviderError::Configuration(
+            "EMAIL_PROVIDER_URL must not contain credentials, query, or fragment",
+        ));
+    }
+    match parsed.scheme() {
+        "https" => Ok(()),
+        "http" if environment.permits_loopback_http() && is_loopback(parsed.host()) => Ok(()),
+        _ => Err(EmailProviderError::Configuration(
+            "EMAIL_PROVIDER_URL requires HTTPS outside explicit loopback development or test mode",
+        )),
+    }
+}
+
+fn is_loopback(host: Option<Host<&str>>) -> bool {
+    match host {
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
+        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        None => false,
+    }
+}
+
+impl EmailProvider for HttpEmailProvider {
+    fn provider_key(&self) -> &str {
+        &self.provider_key
+    }
+
+    fn dispatch(
+        &self,
+        request: EmailDispatch<'_>,
+    ) -> Result<EmailDispatchResult, EmailProviderError> {
+        validate_dispatch(request)?;
+        let authorization = Zeroizing::new(format!("Bearer {}", self.bearer_token.as_str()));
+        let body = Zeroizing::new(
+            serde_json::to_vec(&EmailProviderRequest {
+                channel: "email",
+                job_id: request.job_id,
+                destination: request.destination,
+                template_id: request.provider_template_key,
+                payload_identity: request.payload_identity,
+                idempotency_key: request.idempotency_key,
+            })
+            .map_err(|_| EmailProviderError::InvalidDispatch("provider request is invalid"))?,
+        );
+        let response = self
+            .agent
+            .post(&self.endpoint)
+            .set("authorization", authorization.as_str())
+            .set("content-type", "application/json")
+            .send_bytes(body.as_slice());
+
+        let response = match response {
+            Ok(response) => response,
+            Err(ureq::Error::Status(status, _)) => {
+                return Err(EmailProviderError::DispatchFailed {
+                    code: if status == 429 {
+                        "provider_rate_limited"
+                    } else if status >= 500 {
+                        "provider_server_error"
+                    } else {
+                        "provider_rejected"
+                    },
+                    retryable: status == 429 || status >= 500,
+                });
+            }
+            Err(ureq::Error::Transport(_)) => {
+                return Err(EmailProviderError::DispatchFailed {
+                    code: "provider_unreachable",
+                    retryable: true,
+                });
+            }
+        };
+        let body: ProviderResponse =
+            response
+                .into_json()
+                .map_err(|_| EmailProviderError::DispatchFailed {
+                    code: "provider_response_invalid",
+                    retryable: false,
+                })?;
+        let message_id = body.message_id;
+        if message_id.trim().is_empty() || message_id.len() > 256 {
+            return Err(EmailProviderError::DispatchFailed {
+                code: "provider_response_invalid",
+                retryable: false,
+            });
+        }
+        Ok(EmailDispatchResult {
+            provider_key: self.provider_key.clone(),
+            provider_message_id: message_id,
+        })
+    }
+}
+
+fn validate_dispatch(request: EmailDispatch<'_>) -> Result<(), EmailProviderError> {
+    if request.job_id <= 0 {
+        return Err(EmailProviderError::InvalidDispatch("job id is invalid"));
+    }
+    let Some((local, domain)) = request.destination.split_once('@') else {
+        return Err(EmailProviderError::InvalidDispatch(
+            "resolved destination is invalid",
+        ));
+    };
+    if local.is_empty()
+        || domain.len() < 3
+        || request.destination.len() > 320
+        || request.destination.chars().any(char::is_whitespace)
+    {
+        return Err(EmailProviderError::InvalidDispatch(
+            "resolved destination is invalid",
+        ));
+    }
+    validate_tokenish(
+        request.provider_template_key,
+        2,
+        128,
+        "provider template identity is invalid",
+    )?;
+    validate_tokenish(
+        request.payload_identity,
+        3,
+        96,
+        "payload identity is invalid",
+    )?;
+    validate_tokenish(
+        request.idempotency_key,
+        8,
+        128,
+        "idempotency key is invalid",
+    )?;
+    Ok(())
+}
+
+fn validate_tokenish(
+    value: &str,
+    minimum: usize,
+    maximum: usize,
+    message: &'static str,
+) -> Result<(), EmailProviderError> {
+    if !(minimum..=maximum).contains(&value.len())
+        || value.trim() != value
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+    {
+        return Err(EmailProviderError::InvalidDispatch(message));
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
     use super::*;
 
-    fn fixture_job() -> EmailJob {
-        EmailJob {
-            job_id: "job-1".to_owned(),
-            to: "to@example.com".to_owned(),
-            subject: "Welcome".to_owned(),
-            body: "Hello".to_owned(),
-            from: Some("from@example.com".to_owned()),
-            reply_to: Some("reply@example.com".to_owned()),
-            content_type: None,
-            tags: vec![],
+    fn request<'a>(destination: &'a str) -> EmailDispatch<'a> {
+        EmailDispatch {
+            job_id: 41,
+            destination,
+            provider_template_key: "universus.email.security.v1",
+            payload_identity: "security_event:abc-123",
+            idempotency_key: "email:test:0001",
         }
     }
 
-    // --- Payload parsing ---
-
-    #[test]
-    fn parse_email_job_payload_parses_valid_json() {
-        let payload = r#"{
-            "job_id": "job-123",
-            "to": "user@example.com",
-            "subject": "Subject",
-            "body": "Body",
-            "from": "sender@example.com",
-            "reply_to": "noreply@example.com"
-        }"#;
-
-        let parsed = parse_email_job_payload(payload).expect("payload should parse");
-
-        assert_eq!(parsed.job_id, "job-123");
-        assert_eq!(parsed.to, "user@example.com");
-        assert_eq!(parsed.subject, "Subject");
-        assert_eq!(parsed.body, "Body");
-        assert_eq!(parsed.from.as_deref(), Some("sender@example.com"));
-        assert_eq!(parsed.reply_to.as_deref(), Some("noreply@example.com"));
-        assert!(parsed.tags.is_empty());
+    fn mock_server(status: &str, body: &str) -> (String, thread::JoinHandle<String>) {
+        mock_server_with_delay(status, body, Duration::ZERO)
     }
 
-    #[test]
-    fn parse_email_job_payload_with_tags() {
-        let payload = r#"{
-            "job_id": "job-t",
-            "to": "user@example.com",
-            "subject": "Sub",
-            "body": "Body",
-            "tags": ["welcome", "onboarding"]
-        }"#;
-        let parsed = parse_email_job_payload(payload).unwrap();
-        assert_eq!(parsed.tags, vec!["welcome", "onboarding"]);
-    }
-
-    #[test]
-    fn parse_email_job_payload_with_content_type() {
-        let payload = r#"{
-            "job_id": "job-ct",
-            "to": "user@example.com",
-            "subject": "Sub",
-            "body": "<h1>Hello</h1>",
-            "content_type": "text/html"
-        }"#;
-        let parsed = parse_email_job_payload(payload).unwrap();
-        assert_eq!(parsed.content_type.as_deref(), Some("text/html"));
-    }
-
-    #[test]
-    fn parse_email_job_payload_returns_missing_field_error() {
-        let payload = r#"{
-            "job_id": "job-123",
-            "subject": "Subject",
-            "body": "Body"
-        }"#;
-
-        let error = parse_email_job_payload(payload).expect_err("payload should fail");
-        assert_eq!(error, EmailPayloadParseError::MissingField("to"));
-    }
-
-    #[test]
-    fn parse_email_job_payload_rejects_empty_strings() {
-        let payload = r#"{
-            "job_id": "job-123",
-            "to": "user@example.com",
-            "subject": "  ",
-            "body": "Body"
-        }"#;
-
-        let error = parse_email_job_payload(payload).expect_err("payload should fail");
-        assert_eq!(
-            error,
-            EmailPayloadParseError::InvalidFieldValue {
-                field: "subject",
-                reason: "must not be empty",
+    fn mock_server_with_delay(
+        status: &str,
+        body: &str,
+        delay: Duration,
+    ) -> (String, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let status = status.to_string();
+        let body = body.to_string();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut bytes = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(header_end) = bytes.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    let headers = String::from_utf8_lossy(&bytes[..header_end]);
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length: ")
+                                .map(str::to_string)
+                        })
+                        .and_then(|value| value.parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if bytes.len() >= header_end + 4 + content_length {
+                        break;
+                    }
+                }
             }
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            thread::sleep(delay);
+            let _ = stream.write_all(response.as_bytes());
+            String::from_utf8(bytes).unwrap()
+        });
+        (format!("http://{address}/send"), handle)
+    }
+
+    #[test]
+    fn http_provider_dispatches_registered_identity_to_local_mock() {
+        let (url, server) = mock_server("200 OK", r#"{"messageId":"provider-41"}"#);
+        let provider = HttpEmailProvider::new_for_environment(
+            "email_http",
+            url,
+            "test-bearer-token-long-enough",
+            Duration::from_secs(2),
+            ProviderEnvironment::Test,
+        )
+        .unwrap();
+        let result = provider.dispatch(request("verified@example.test")).unwrap();
+        assert_eq!(result.provider_message_id, "provider-41");
+        let received = server.join().unwrap();
+        assert!(received.contains("verified@example.test"));
+        assert!(received.contains("universus.email.security.v1"));
+        assert!(received.contains("security_event:abc-123"));
+        assert!(received.contains("authorization: Bearer test-bearer-token-long-enough"));
+    }
+
+    #[test]
+    fn provider_errors_and_debug_output_never_expose_destination_or_secret() {
+        let (url, server) = mock_server("500 Server Error", r#"{"error":"verified@example.test"}"#);
+        let provider = HttpEmailProvider::new_for_environment(
+            "email_http",
+            url,
+            "secret-bearer-token-long-enough",
+            Duration::from_secs(2),
+            ProviderEnvironment::Test,
+        )
+        .unwrap();
+        let error = provider
+            .dispatch(request("verified@example.test"))
+            .unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error.reason_code(), "provider_server_error");
+        assert!(!error.to_string().contains("verified@example.test"));
+        let debug = format!("{provider:?}");
+        assert!(!debug.contains("secret-bearer-token-long-enough"));
+        assert!(!debug.contains("127.0.0.1"));
+    }
+
+    #[test]
+    fn arbitrary_message_fields_are_absent_from_dispatch_contract() {
+        let serialized = serde_json::to_value(serde_json::json!({
+            "jobId": request("verified@example.test").job_id,
+            "template": request("verified@example.test").provider_template_key,
+        }))
+        .unwrap();
+        assert!(serialized.get("subject").is_none());
+        assert!(serialized.get("body").is_none());
+        assert!(
+            !format!("{:?}", request("verified@example.test")).contains("verified@example.test")
         );
     }
 
     #[test]
-    fn parse_email_job_payload_rejects_empty_payload() {
-        assert_eq!(
-            parse_email_job_payload("").unwrap_err(),
-            EmailPayloadParseError::EmptyPayload
-        );
-        assert_eq!(
-            parse_email_job_payload("   ").unwrap_err(),
-            EmailPayloadParseError::EmptyPayload
-        );
-    }
-
-    #[test]
-    fn parse_email_job_payload_rejects_invalid_json() {
-        let error = parse_email_job_payload("{invalid").unwrap_err();
-        matches!(error, EmailPayloadParseError::InvalidJson(_));
-    }
-
-    #[test]
-    fn parse_email_job_payload_rejects_non_object() {
-        let error = parse_email_job_payload("[1,2,3]").unwrap_err();
-        assert_eq!(
-            error,
-            EmailPayloadParseError::InvalidFieldType {
-                field: "root",
-                expected: "a JSON object",
-            }
-        );
-    }
-
-    #[test]
-    fn parse_email_job_payload_null_optional_fields() {
-        let payload = r#"{
-            "job_id": "job-n",
-            "to": "user@example.com",
-            "subject": "Sub",
-            "body": "Body",
-            "from": null,
-            "reply_to": null
-        }"#;
-        let parsed = parse_email_job_payload(payload).unwrap();
-        assert_eq!(parsed.from, None);
-        assert_eq!(parsed.reply_to, None);
-    }
-
-    #[test]
-    fn parse_email_job_payload_bytes_rejects_non_utf8() {
-        let payload = vec![0, 159, 146, 150];
-        let error = parse_email_job_payload_bytes(&payload).expect_err("payload should fail");
-        assert_eq!(error, EmailPayloadParseError::InvalidUtf8);
-    }
-
-    // --- Logging provider ---
-
-    #[test]
-    fn logging_provider_dispatches_and_increments_sequence() {
-        let provider = LoggingEmailProvider::new("worker-log");
-        let job = fixture_job();
-
-        let first = provider.dispatch(&job).expect("dispatch should pass");
-        let second = provider.dispatch(&job).expect("dispatch should pass");
-
-        assert_eq!(first.provider, "worker-log");
-        assert_eq!(first.job_id, "job-1");
-        assert_eq!(first.message_id, "worker-log-1");
-        assert_eq!(second.message_id, "worker-log-2");
-        assert_eq!(provider.dispatch_count(), 2);
-    }
-
-    #[test]
-    fn logging_provider_rejects_empty_job_id() {
-        let provider = LoggingEmailProvider::default();
-        let mut job = fixture_job();
-        job.job_id = "".to_owned();
-
-        let error = provider.dispatch(&job).unwrap_err();
-        assert_eq!(
-            error,
-            EmailProviderError::InvalidJob {
-                field: "job_id",
-                reason: "must not be empty",
-            }
-        );
-    }
-
-    #[test]
-    fn logging_provider_rejects_invalid_email() {
-        let provider = LoggingEmailProvider::default();
-        let mut job = fixture_job();
-        job.to = "no-at-sign".to_owned();
-
-        let error = provider.dispatch(&job).unwrap_err();
-        assert_eq!(
-            error,
-            EmailProviderError::InvalidJob {
-                field: "to",
-                reason: "must be a valid email address (user@domain)",
-            }
-        );
-    }
-
-    #[test]
-    fn logging_provider_rejects_invalid_from_email() {
-        let provider = LoggingEmailProvider::default();
-        let mut job = fixture_job();
-        job.from = Some("bad-email".to_owned());
-
-        let error = provider.dispatch(&job).unwrap_err();
-        assert_eq!(
-            error,
-            EmailProviderError::InvalidJob {
-                field: "from",
-                reason: "must be a valid email address (user@domain)",
-            }
-        );
-    }
-
-    // --- Failing provider ---
-
-    #[test]
-    fn failing_provider_rejects_valid_job() {
-        let provider = FailingEmailProvider::default();
-        let job = fixture_job();
-        let error = provider.dispatch(&job).unwrap_err();
-        assert!(matches!(error, EmailProviderError::DispatchFailed(_)));
-        let msg = error.to_string();
-        assert!(msg.contains("simulated dispatch failure"));
-        assert!(msg.contains("job-1"));
-    }
-
-    #[test]
-    fn failing_provider_still_validates() {
-        let provider = FailingEmailProvider::new("test", "boom");
-        let mut job = fixture_job();
-        job.to = "".to_owned();
-        let error = provider.dispatch(&job).unwrap_err();
-        assert!(matches!(error, EmailProviderError::InvalidJob { .. }));
-    }
-
-    // --- Email validation ---
-
-    #[test]
-    fn validate_email_address_accepts_valid() {
-        assert!(validate_email_address("user@example.com", "to").is_ok());
-        assert!(validate_email_address("a@b", "to").is_ok());
-        assert!(validate_email_address("user+tag@domain.co.uk", "to").is_ok());
-    }
-
-    #[test]
-    fn validate_email_address_rejects_invalid() {
-        assert!(validate_email_address("", "to").is_err());
-        assert!(validate_email_address("no-at", "to").is_err());
-        assert!(validate_email_address("@domain", "to").is_err());
-        assert!(validate_email_address("user@", "to").is_err());
-    }
-
-    // --- Builder ---
-
-    #[test]
-    fn builder_creates_job() {
-        let job = EmailJobBuilder::new()
-            .job_id("j-1")
-            .to("user@example.com")
-            .subject("Hello")
-            .body("World")
-            .from("noreply@example.com")
-            .content_type("text/html")
-            .tag("welcome")
-            .tag("v2")
-            .build()
-            .unwrap();
-
-        assert_eq!(job.job_id, "j-1");
-        assert_eq!(job.to, "user@example.com");
-        assert_eq!(job.from.as_deref(), Some("noreply@example.com"));
-        assert_eq!(job.content_type.as_deref(), Some("text/html"));
-        assert_eq!(job.tags, vec!["welcome", "v2"]);
-    }
-
-    #[test]
-    fn builder_requires_fields() {
-        assert!(EmailJobBuilder::new().build().is_err());
-        assert!(EmailJobBuilder::new().job_id("j-1").build().is_err());
-        assert!(EmailJobBuilder::new()
-            .job_id("j-1")
-            .to("x")
-            .build()
-            .is_err());
-        assert!(EmailJobBuilder::new()
-            .job_id("j-1")
-            .to("x")
-            .subject("s")
-            .build()
-            .is_err());
-    }
-
-    // --- Templates ---
-
-    #[test]
-    fn template_welcome_render() {
-        let tpl = EmailTemplate::Welcome {
-            username: "Player1".to_string(),
+    fn endpoint_security_is_fail_closed() {
+        let make = |endpoint, environment| {
+            HttpEmailProvider::new_for_environment(
+                "email_http",
+                endpoint,
+                "test-bearer-token-long-enough",
+                Duration::from_secs(2),
+                environment,
+            )
         };
-        let (subject, body) = tpl.render();
-        assert_eq!(subject, "Welcome to Universus!");
-        assert!(body.contains("Player1"));
-        assert!(body.contains("galactic empire"));
-    }
-
-    #[test]
-    fn template_password_reset_render() {
-        let tpl = EmailTemplate::PasswordReset {
-            reset_link: "https://example.com/reset/abc".to_string(),
-            expires_minutes: 30,
-        };
-        let (subject, body) = tpl.render();
-        assert!(subject.contains("Password Reset"));
-        assert!(body.contains("https://example.com/reset/abc"));
-        assert!(body.contains("30 minutes"));
-    }
-
-    #[test]
-    fn template_attack_incoming_render() {
-        let tpl = EmailTemplate::AttackIncoming {
-            attacker: "EvilPlayer".to_string(),
-            arrival_time: "2026-03-08T12:00:00Z".to_string(),
-        };
-        let (subject, body) = tpl.render();
-        assert!(subject.contains("Incoming Attack"));
-        assert!(body.contains("EvilPlayer"));
-        assert!(body.contains("2026-03-08T12:00:00Z"));
-    }
-
-    #[test]
-    fn template_to_job() {
-        let tpl = EmailTemplate::Welcome {
-            username: "TestUser".to_string(),
-        };
-        let job = tpl.to_job("job-w1", "test@example.com", None);
-        assert_eq!(job.job_id, "job-w1");
-        assert_eq!(job.to, "test@example.com");
-        assert_eq!(job.subject, "Welcome to Universus!");
-        assert_eq!(job.content_type.as_deref(), Some("text/plain"));
-        assert_eq!(job.tags, vec!["welcome"]);
-    }
-
-    #[test]
-    fn template_alliance_invite_render() {
-        let tpl = EmailTemplate::AllianceInvite {
-            alliance_name: "StarForce".to_string(),
-            inviter: "LeaderX".to_string(),
-        };
-        let (subject, body) = tpl.render();
-        assert!(subject.contains("StarForce"));
-        assert!(body.contains("LeaderX"));
-    }
-
-    // --- Display impls ---
-
-    #[test]
-    fn error_display_messages() {
-        let e1 = EmailProviderError::InvalidJob {
-            field: "to",
-            reason: "must not be empty",
-        };
+        assert!(make(
+            "https://provider.example/send",
+            ProviderEnvironment::Production
+        )
+        .is_ok());
+        assert!(make(
+            "http://127.0.0.1:9999/send",
+            ProviderEnvironment::Production
+        )
+        .is_err());
+        assert!(make("http://provider.example/send", ProviderEnvironment::Test).is_err());
+        assert!(make("http://localhost:9999/send", ProviderEnvironment::Test).is_ok());
+        assert!(make(
+            "https://user:secret@provider.example/send",
+            ProviderEnvironment::Production
+        )
+        .is_err());
+        assert!(make(
+            "https://provider.example/send?token=secret",
+            ProviderEnvironment::Production
+        )
+        .is_err());
+        assert!(make(
+            "https://provider.example/send#secret",
+            ProviderEnvironment::Production
+        )
+        .is_err());
         assert_eq!(
-            e1.to_string(),
-            "invalid email job field 'to': must not be empty"
+            ProviderEnvironment::parse("  PRODUCTION ").unwrap(),
+            ProviderEnvironment::Production
         );
-
-        let e2 = EmailProviderError::DispatchFailed("timeout".to_string());
-        assert_eq!(e2.to_string(), "dispatch failed: timeout");
-
-        let e3 = EmailPayloadParseError::EmptyPayload;
-        assert_eq!(e3.to_string(), "payload is empty");
-
-        let e4 = EmailPayloadParseError::InvalidUtf8;
-        assert_eq!(e4.to_string(), "payload is not valid UTF-8");
-
-        let e5 = EmailPayloadParseError::MissingField("body");
-        assert_eq!(e5.to_string(), "payload is missing required field 'body'");
+        assert_eq!(
+            ProviderEnvironment::parse("StAgE").unwrap(),
+            ProviderEnvironment::Staging
+        );
+        assert!(ProviderEnvironment::parse("preview").is_err());
+        assert!(ProviderEnvironment::parse(" ").is_err());
     }
 
-    // --- Serialization round-trip ---
-
     #[test]
-    fn email_job_serde_roundtrip() {
-        let job = EmailJobBuilder::new()
-            .job_id("rt-1")
-            .to("a@b.com")
-            .subject("Subj")
-            .body("Body text")
-            .from("c@d.com")
-            .tag("test")
-            .build()
-            .unwrap();
-
-        let json = serde_json::to_string(&job).unwrap();
-        let deserialized: EmailJob = serde_json::from_str(&json).unwrap();
-        assert_eq!(job, deserialized);
+    fn timeout_is_retryable_and_uncertain_request_carries_durable_idempotency() {
+        let (url, server) = mock_server_with_delay(
+            "200 OK",
+            r#"{"messageId":"late-provider-41"}"#,
+            Duration::from_millis(150),
+        );
+        let provider = HttpEmailProvider::new_for_environment(
+            "email_http",
+            url,
+            "test-bearer-token-long-enough",
+            Duration::from_millis(30),
+            ProviderEnvironment::Test,
+        )
+        .unwrap();
+        let error = provider
+            .dispatch(request("verified@example.test"))
+            .unwrap_err();
+        assert_eq!(error.reason_code(), "provider_unreachable");
+        assert!(error.retryable());
+        let received = server.join().unwrap();
+        assert!(received.contains(r#""idempotencyKey":"email:test:0001""#));
+        assert!(!error.to_string().contains("verified@example.test"));
     }
 }

@@ -1,390 +1,469 @@
-//! Email dispatch worker.
+//! Durable, privacy-enforced email dispatch worker.
 //!
-//! Consumes email jobs from a Redis queue (BLPOP), dispatches them via the
-//! configured `EmailProvider`, and routes failures to a dead-letter queue.
-//!
-//! Configuration via environment variables:
-//! - `REDIS_URL` — Redis connection URL (required; worker exits if unset)
-//! - `WORKER_POLL_TIMEOUT_SECONDS` — BLPOP timeout (default: 5)
-//! - `EMAIL_WORKER_MAX_INFLIGHT` — max concurrent dispatch tasks (default: 16)
-//! - `EMAIL_QUEUE_KEY` / `EMAIL_QUEUE_NAME` — Redis key for inbound jobs (default: "email.outbound")
-//! - `EMAIL_DEAD_LETTER_KEY` / `EMAIL_DLQ_NAME` — Redis key for failed jobs (default: "email.dead-letter")
-//! - `EMAIL_WORKER_TENANT_ID` — tenant ID for worker context
-//! - `EMAIL_WORKER_TENANT_NAME` — tenant display name
-//! - `REALTIME_GATEWAY_URL` — URL for publishing operational events
-//! - `EMAIL_STATS_INTERVAL_JOBS` — log stats every N jobs (default: 50)
+//! PostgreSQL leases make claims restart-safe. The worker resolves verified
+//! contact data only at the dispatch boundary and never logs or persists raw
+//! destinations or message content.
 
-use std::env;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use adapter_provider_email::{parse_email_job_payload_bytes, EmailProvider, LoggingEmailProvider};
-use platform_tenancy::{TenantAccessLevel, TenantContext};
-use platform_worker_runtime::WorkerRuntime;
-use redis::aio::MultiplexedConnection;
-use redis::{cmd, Client};
+use adapter_provider_email::{EmailDispatch, EmailProvider, HttpEmailProvider};
+use platform_auth::{authenticate_request, require_service_scope, AuthConfig, AuthUser};
+use platform_db::{
+    CommunicationActor, CommunicationChannel, CommunicationEvidenceKey, CommunicationJob,
+    CommunicationState, Database, COMMUNICATION_SCOPE_DISPATCH, COMMUNICATION_SCOPE_GLOBAL,
+};
 use tokio::signal;
-use tokio::sync::oneshot;
+use zeroize::Zeroizing;
 
 const SERVICE_NAME: &str = "app-email-worker";
-const DEFAULT_POLL_TIMEOUT_SECS: u64 = 5;
-const DEFAULT_EMAIL_QUEUE_NAME: &str = "email.outbound";
-const DEFAULT_EMAIL_DLQ_NAME: &str = "email.dead-letter";
 
-/// Cumulative counters for monitoring.
-struct WorkerMetrics {
-    jobs_processed: AtomicU64,
-    jobs_failed: AtomicU64,
-    jobs_dlq: AtomicU64,
-    bytes_processed: AtomicU64,
+#[derive(Debug, Clone)]
+struct WorkerConfig {
+    universe_id: i64,
+    worker_id: String,
+    claim_limit: i64,
+    lease_seconds: i64,
+    poll_interval: Duration,
+    retry_base_seconds: i64,
+    token_file: PathBuf,
 }
 
-impl WorkerMetrics {
-    fn new() -> Self {
-        Self {
-            jobs_processed: AtomicU64::new(0),
-            jobs_failed: AtomicU64::new(0),
-            jobs_dlq: AtomicU64::new(0),
-            bytes_processed: AtomicU64::new(0),
+impl WorkerConfig {
+    fn from_env() -> Result<Self, &'static str> {
+        let universe_id = required_i64("EMAIL_WORKER_UNIVERSE_ID")?;
+        let worker_id = std::env::var("EMAIL_WORKER_ID")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "email-worker-1".to_string());
+        let claim_limit = optional_i64("EMAIL_WORKER_CLAIM_LIMIT", 20)?;
+        let lease_seconds = optional_i64("EMAIL_WORKER_LEASE_SECONDS", 90)?;
+        let poll_millis = optional_u64("EMAIL_WORKER_POLL_MILLIS", 1_000)?;
+        let retry_base_seconds = optional_i64("EMAIL_WORKER_RETRY_BASE_SECONDS", 15)?;
+        let token_file = std::env::var("COMMUNICATION_SERVICE_TOKEN_FILE")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .ok_or("COMMUNICATION_SERVICE_TOKEN_FILE is required")?;
+        if universe_id <= 0
+            || !(1..=100).contains(&claim_limit)
+            || !(5..=900).contains(&lease_seconds)
+            || !(50..=60_000).contains(&poll_millis)
+            || !(1..=86_400).contains(&retry_base_seconds)
+        {
+            return Err("email worker numeric configuration is invalid");
         }
-    }
-
-    fn record_success(&self, payload_size: u64) {
-        self.jobs_processed.fetch_add(1, Ordering::Relaxed);
-        self.bytes_processed
-            .fetch_add(payload_size, Ordering::Relaxed);
-    }
-
-    fn record_failure(&self) {
-        self.jobs_failed.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn record_dlq(&self) {
-        self.jobs_dlq.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn total_jobs(&self) -> u64 {
-        self.jobs_processed.load(Ordering::Relaxed) + self.jobs_failed.load(Ordering::Relaxed)
-    }
-
-    fn snapshot(&self) -> MetricsSnapshot {
-        MetricsSnapshot {
-            processed: self.jobs_processed.load(Ordering::Relaxed),
-            failed: self.jobs_failed.load(Ordering::Relaxed),
-            dlq: self.jobs_dlq.load(Ordering::Relaxed),
-            bytes: self.bytes_processed.load(Ordering::Relaxed),
-        }
+        Ok(Self {
+            universe_id,
+            worker_id,
+            claim_limit,
+            lease_seconds,
+            poll_interval: Duration::from_millis(poll_millis),
+            retry_base_seconds,
+            token_file,
+        })
     }
 }
 
-struct MetricsSnapshot {
-    processed: u64,
-    failed: u64,
-    dlq: u64,
-    bytes: u64,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DispatchOutcome {
+    Sent,
+    Suppressed,
+    Retry,
+    Dead,
+    LeaseDeferred,
 }
 
-struct EmailDispatcher {
-    provider: Box<dyn EmailProvider>,
-}
-
-impl EmailDispatcher {
-    fn new(provider: impl EmailProvider + 'static) -> Self {
-        Self {
-            provider: Box::new(provider),
-        }
-    }
-
-    fn dispatch(&self, payload: &[u8]) -> Result<(), String> {
-        let job = parse_email_job_payload_bytes(payload).map_err(|error| error.to_string())?;
-        self.provider
-            .dispatch(&job)
-            .map(|_| ())
-            .map_err(|error| error.to_string())
-    }
-}
-
-fn parse_poll_timeout_seconds(raw: Option<&str>) -> u64 {
-    raw.and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(DEFAULT_POLL_TIMEOUT_SECS)
-}
-
-fn parse_key_name(raw: Option<&str>, default_name: &str) -> String {
-    raw.map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(default_name)
-        .to_string()
-}
-
-fn read_redis_key(primary_env: &str, fallback_env: &str, default_name: &str) -> String {
-    let fallback = parse_key_name(env::var(fallback_env).ok().as_deref(), default_name);
-    parse_key_name(env::var(primary_env).ok().as_deref(), fallback.as_str())
-}
-
-fn parse_env<T: std::str::FromStr>(key: &str, default: T) -> T {
-    env::var(key)
+fn required_i64(name: &str) -> Result<i64, &'static str> {
+    std::env::var(name)
         .ok()
-        .and_then(|v| v.parse::<T>().ok())
-        .unwrap_or(default)
+        .and_then(|value| value.parse::<i64>().ok())
+        .ok_or("required integer configuration is missing or invalid")
 }
 
-async fn pop_job(
-    conn: &mut MultiplexedConnection,
-    queue_key: &str,
-    timeout_seconds: u64,
-) -> redis::RedisResult<Option<Vec<u8>>> {
-    let popped: Option<(String, Vec<u8>)> = cmd("BLPOP")
-        .arg(queue_key)
-        .arg(timeout_seconds)
-        .query_async(conn)
-        .await?;
-
-    Ok(popped.map(|(_, payload)| payload))
+fn optional_i64(name: &str, default: i64) -> Result<i64, &'static str> {
+    match std::env::var(name) {
+        Ok(value) => value
+            .parse::<i64>()
+            .map_err(|_| "integer configuration is invalid"),
+        Err(_) => Ok(default),
+    }
 }
 
-fn process_job(dispatcher: &EmailDispatcher, payload: &[u8]) -> Result<(), String> {
-    dispatcher.dispatch(payload)
+fn optional_u64(name: &str, default: u64) -> Result<u64, &'static str> {
+    match std::env::var(name) {
+        Ok(value) => value
+            .parse::<u64>()
+            .map_err(|_| "integer configuration is invalid"),
+        Err(_) => Ok(default),
+    }
+}
+
+fn communication_actor(user: AuthUser) -> Result<CommunicationActor, &'static str> {
+    if let Some(universe_id) = user.universe_id {
+        CommunicationActor::authenticated_service(user.user_id, universe_id, user.scopes)
+            .map_err(|_| "service token tenant authority is invalid")
+    } else {
+        if !user
+            .scopes
+            .iter()
+            .any(|scope| scope == COMMUNICATION_SCOPE_GLOBAL)
+        {
+            return Err("global communication scope is required");
+        }
+        CommunicationActor::authenticated_global_service(user.user_id, user.scopes)
+            .map_err(|_| "global service token authority is invalid")
+    }
+}
+
+fn authenticate_dispatch_actor(
+    token_file: &Path,
+    universe_id: i64,
+) -> Result<CommunicationActor, &'static str> {
+    // Reload both verifier configuration and the rotatable token for every
+    // claim/finalization operation. Stale credentials therefore fail closed.
+    let auth = AuthConfig::from_env();
+    auth.validate_runtime()
+        .map_err(|_| "authentication configuration is invalid")?;
+    let token = Zeroizing::new(
+        std::fs::read_to_string(token_file)
+            .map_err(|_| "communication service token cannot be read")?,
+    );
+    let authorization = Zeroizing::new(format!("Bearer {}", token.trim()));
+    let user = authenticate_request(&auth, authorization.as_str())
+        .map_err(|_| "communication service token is invalid")?;
+    require_service_scope(&user, COMMUNICATION_SCOPE_DISPATCH)
+        .map_err(|_| "communication dispatch scope is required")?;
+    let actor = communication_actor(user)?;
+    actor
+        .require_universe(universe_id)
+        .map_err(|_| "communication tenant authority is required")?;
+    Ok(actor)
+}
+
+fn retry_delay_seconds(base: i64, attempts: i32, retryable: bool) -> i64 {
+    let exponent = attempts.saturating_sub(1).clamp(0, 10) as u32;
+    let delay = base.saturating_mul(2_i64.saturating_pow(exponent));
+    if retryable {
+        delay.min(3_600)
+    } else {
+        delay.clamp(300, 86_400)
+    }
+}
+
+async fn suppress(
+    database: &Database,
+    job: &CommunicationJob,
+    worker_id: &str,
+    reason: &'static str,
+    actor: &CommunicationActor,
+    evidence_key: &CommunicationEvidenceKey,
+) -> DispatchOutcome {
+    match database
+        .suppress_communication(job, worker_id, reason, actor, evidence_key)
+        .await
+    {
+        Ok(_) => DispatchOutcome::Suppressed,
+        Err(_) => DispatchOutcome::LeaseDeferred,
+    }
+}
+
+async fn dispatch_one(
+    database: &Database,
+    provider: &HttpEmailProvider,
+    job: CommunicationJob,
+    config: &WorkerConfig,
+    evidence_key: &CommunicationEvidenceKey,
+) -> DispatchOutcome {
+    let Some(worker_id) = job.lease_owner.as_deref() else {
+        return DispatchOutcome::LeaseDeferred;
+    };
+    let Ok(actor) = authenticate_dispatch_actor(&config.token_file, job.universe_id) else {
+        return DispatchOutcome::LeaseDeferred;
+    };
+    let renewed = match database
+        .renew_communication_lease(&job, worker_id, config.lease_seconds, &actor)
+        .await
+    {
+        Ok(job) => job,
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    let policy = match database
+        .communication_delivery_policy(&renewed, &actor)
+        .await
+    {
+        Ok(Some(policy)) => policy,
+        Ok(None) => {
+            return suppress(
+                database,
+                &renewed,
+                worker_id,
+                "channel_policy_disabled",
+                &actor,
+                evidence_key,
+            )
+            .await;
+        }
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+    if policy.provider_key != provider.provider_key() {
+        return suppress(
+            database,
+            &renewed,
+            worker_id,
+            "provider_policy_mismatch",
+            &actor,
+            evidence_key,
+        )
+        .await;
+    }
+    let contact = match database
+        .resolve_verified_communication_contact(&renewed, &actor, evidence_key)
+        .await
+    {
+        Ok(Some(contact)) => contact,
+        Ok(None) => {
+            return suppress(
+                database,
+                &renewed,
+                worker_id,
+                "verified_contact_unavailable",
+                &actor,
+                evidence_key,
+            )
+            .await;
+        }
+        Err(_) => return DispatchOutcome::LeaseDeferred,
+    };
+
+    // This is deliberately the final database decision before the provider
+    // call. Essential categories bypass opt-out only inside the canonical
+    // privacy policy; channel/provider policy and verified evidence still ran.
+    match database
+        .communication_allowed(
+            renewed.universe_id,
+            renewed.user_id,
+            renewed.channel.as_str(),
+            renewed.category.as_str(),
+        )
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            return suppress(
+                database,
+                &renewed,
+                worker_id,
+                "privacy_policy_denied",
+                &actor,
+                evidence_key,
+            )
+            .await;
+        }
+        Err(_) => {
+            return suppress(
+                database,
+                &renewed,
+                worker_id,
+                "privacy_policy_unavailable",
+                &actor,
+                evidence_key,
+            )
+            .await;
+        }
+    }
+
+    let provider = provider.clone();
+    let provider_key = provider.provider_key().to_string();
+    let provider_template_key = policy.provider_template_key;
+    let payload_identity = renewed.payload_identity.clone();
+    let idempotency_key = renewed.idempotency_key.clone();
+    let job_id = renewed.id;
+    let destination = contact.destination;
+    let destination_hmac = contact.destination_hmac;
+    let destination_masked = contact.destination_masked;
+    let provider_result = tokio::task::spawn_blocking(move || {
+        provider.dispatch(EmailDispatch {
+            job_id,
+            destination: destination.as_str(),
+            provider_template_key: &provider_template_key,
+            payload_identity: &payload_identity,
+            idempotency_key: &idempotency_key,
+        })
+    })
+    .await;
+
+    let Ok(final_actor) = authenticate_dispatch_actor(&config.token_file, renewed.universe_id)
+    else {
+        return DispatchOutcome::LeaseDeferred;
+    };
+    match provider_result {
+        Ok(Ok(result)) => match database
+            .mark_communication_sent(
+                &renewed,
+                worker_id,
+                &result.provider_key,
+                &result.provider_message_id,
+                destination_hmac,
+                &destination_masked,
+                &final_actor,
+                evidence_key,
+            )
+            .await
+        {
+            Ok(_) => DispatchOutcome::Sent,
+            Err(_) => DispatchOutcome::LeaseDeferred,
+        },
+        Ok(Err(error)) => {
+            let retryable = error.retryable();
+            let reason = error.reason_code();
+            let delay = retry_delay_seconds(config.retry_base_seconds, renewed.attempts, retryable);
+            match database
+                .fail_communication_attempt(
+                    &renewed,
+                    worker_id,
+                    &provider_key,
+                    reason,
+                    delay,
+                    &final_actor,
+                    evidence_key,
+                )
+                .await
+            {
+                Ok(job) if job.state == CommunicationState::Dead => DispatchOutcome::Dead,
+                Ok(_) => DispatchOutcome::Retry,
+                Err(_) => DispatchOutcome::LeaseDeferred,
+            }
+        }
+        Err(_) => match database
+            .fail_communication_attempt(
+                &renewed,
+                worker_id,
+                &provider_key,
+                "provider_task_failed",
+                retry_delay_seconds(config.retry_base_seconds, renewed.attempts, true),
+                &final_actor,
+                evidence_key,
+            )
+            .await
+        {
+            Ok(job) if job.state == CommunicationState::Dead => DispatchOutcome::Dead,
+            Ok(_) => DispatchOutcome::Retry,
+            Err(_) => DispatchOutcome::LeaseDeferred,
+        },
+    }
 }
 
 #[tokio::main]
 async fn main() {
     platform_observability::init(SERVICE_NAME);
-
-    let redis_url = env::var("REDIS_URL")
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-
-    let Some(redis_url) = redis_url else {
-        tracing::info!(service = SERVICE_NAME, "REDIS_URL not set; worker disabled");
-        return;
-    };
-
-    let poll_timeout_seconds =
-        parse_poll_timeout_seconds(env::var("WORKER_POLL_TIMEOUT_SECONDS").ok().as_deref());
-    let max_inflight: usize = parse_env("EMAIL_WORKER_MAX_INFLIGHT", 16);
-    let stats_interval: u64 = parse_env("EMAIL_STATS_INTERVAL_JOBS", 50);
-    let realtime_url: Option<String> = env::var("REALTIME_GATEWAY_URL")
-        .ok()
-        .filter(|v| !v.trim().is_empty());
-
-    let email_queue_key = read_redis_key(
-        "EMAIL_QUEUE_KEY",
-        "EMAIL_QUEUE_NAME",
-        DEFAULT_EMAIL_QUEUE_NAME,
+    let config = WorkerConfig::from_env().expect("invalid email worker configuration");
+    let database = Database::try_from_env()
+        .expect("invalid DATABASE_URL")
+        .expect("DATABASE_URL is required");
+    database.ping().await.expect("PostgreSQL is unavailable");
+    database
+        .communication_repository_ready()
+        .await
+        .expect("durable communication schema is unavailable");
+    AuthConfig::from_env()
+        .validate_runtime()
+        .expect("invalid authentication configuration");
+    let evidence_key = CommunicationEvidenceKey::from_env()
+        .expect("COMMUNICATION_EVIDENCE_HMAC_KEY_BASE64 is invalid");
+    let provider = HttpEmailProvider::from_env().expect("invalid email provider configuration");
+    assert!(
+        config.lease_seconds
+            >= i64::try_from(provider.request_timeout().as_secs())
+                .unwrap_or(i64::MAX)
+                .saturating_add(5),
+        "EMAIL_WORKER_LEASE_SECONDS must exceed EMAIL_PROVIDER_TIMEOUT_SECONDS by at least 5 seconds"
     );
-    let email_dlq_key = read_redis_key(
-        "EMAIL_DEAD_LETTER_KEY",
-        "EMAIL_DLQ_NAME",
-        DEFAULT_EMAIL_DLQ_NAME,
-    );
-
-    let client = match Client::open(redis_url.as_str()) {
-        Ok(client) => client,
-        Err(error) => {
-            tracing::error!(
-                service = SERVICE_NAME,
-                error = %error,
-                "failed to create Redis client"
-            );
-            return;
-        }
-    };
-
-    let mut conn = match client.get_multiplexed_async_connection().await {
-        Ok(conn) => conn,
-        Err(error) => {
-            tracing::error!(
-                service = SERVICE_NAME,
-                error = %error,
-                "failed to connect to Redis"
-            );
-            return;
-        }
-    };
 
     tracing::info!(
         service = SERVICE_NAME,
-        poll_timeout_seconds,
-        max_inflight,
-        stats_interval,
-        email_queue_key = %email_queue_key,
-        email_dlq_key = %email_dlq_key,
-        has_realtime_url = realtime_url.is_some(),
-        "worker startup"
+        universe_id = config.universe_id,
+        worker_id = %config.worker_id,
+        provider_key = provider.provider_key(),
+        "durable email worker started"
     );
-
-    let dispatcher = Arc::new(EmailDispatcher::new(LoggingEmailProvider::default()));
-    let tenant_context = tenant_context_from_env();
-    let runtime = WorkerRuntime::current(max_inflight);
-    let metrics = Arc::new(WorkerMetrics::new());
 
     loop {
+        let actor = match authenticate_dispatch_actor(&config.token_file, config.universe_id) {
+            Ok(actor) => actor,
+            Err(reason) => {
+                tracing::error!(
+                    service = SERVICE_NAME,
+                    reason,
+                    "claim authorization unavailable"
+                );
+                tokio::time::sleep(config.poll_interval).await;
+                continue;
+            }
+        };
+        let jobs = match database
+            .claim_communications(
+                config.universe_id,
+                CommunicationChannel::Email,
+                &config.worker_id,
+                config.claim_limit,
+                config.lease_seconds,
+                &actor,
+                &evidence_key,
+            )
+            .await
+        {
+            Ok(jobs) => jobs,
+            Err(_) => {
+                tracing::error!(service = SERVICE_NAME, "durable email claim failed");
+                Vec::new()
+            }
+        };
+        for job in jobs {
+            let job_id = job.id;
+            let outcome = dispatch_one(&database, &provider, job, &config, &evidence_key).await;
+            tracing::info!(
+                service = SERVICE_NAME,
+                job_id,
+                ?outcome,
+                "email job completed"
+            );
+        }
         tokio::select! {
             _ = signal::ctrl_c() => {
-                tracing::info!(service = SERVICE_NAME, "shutdown signal received");
+                tracing::info!(service = SERVICE_NAME, "shutdown requested");
                 break;
             }
-            pop_result = pop_job(&mut conn, &email_queue_key, poll_timeout_seconds) => {
-                match pop_result {
-                    Ok(Some(payload)) => {
-                        let dispatcher_ref = Arc::clone(&dispatcher);
-                        let context = tenant_context.clone();
-                        let payload_for_task = payload.clone();
-                        let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
-                        let spawn_result = runtime.spawn_tenant_task(context, async move {
-                            let result = process_job(dispatcher_ref.as_ref(), &payload_for_task);
-                            let _ = done_tx.send(result);
-                            Ok(())
-                        });
-                        let process_result = match spawn_result {
-                            Ok(_job_id) => match done_rx.await {
-                                Ok(result) => result,
-                                Err(_) => Err("email runtime task ended before reporting result".to_string()),
-                            },
-                            Err(error) => Err(format!("failed to schedule email job: {error}")),
-                        };
-
-                        match process_result {
-                            Ok(()) => {
-                                metrics.record_success(payload.len() as u64);
-                                tracing::info!(
-                                    service = SERVICE_NAME,
-                                    email_queue_key = %email_queue_key,
-                                    payload_size = payload.len(),
-                                    "processed email job"
-                                );
-                            }
-                            Err(error) => {
-                                metrics.record_failure();
-
-                                let dlq_push_result: redis::RedisResult<usize> = cmd("RPUSH")
-                                    .arg(&email_dlq_key)
-                                    .arg(&payload)
-                                    .query_async(&mut conn)
-                                    .await;
-
-                                match dlq_push_result {
-                                    Ok(dlq_size) => {
-                                        metrics.record_dlq();
-                                        tracing::warn!(
-                                            service = SERVICE_NAME,
-                                            email_queue_key = %email_queue_key,
-                                            email_dlq_key = %email_dlq_key,
-                                            payload_size = payload.len(),
-                                            dlq_size,
-                                            error,
-                                            "job failed and moved to dead letter queue"
-                                        );
-                                    }
-                                    Err(dlq_error) => {
-                                        tracing::error!(
-                                            service = SERVICE_NAME,
-                                            email_queue_key = %email_queue_key,
-                                            email_dlq_key = %email_dlq_key,
-                                            payload_size = payload.len(),
-                                            error,
-                                            dlq_error = %dlq_error,
-                                            "job failed and dead letter enqueue failed"
-                                        );
-                                    }
-                                }
-
-                                // Publish failure event for alerting
-                                if let Some(url) = &realtime_url {
-                                    publish_ops_event(
-                                        url,
-                                        "email.dispatch.failed",
-                                        &serde_json::json!({
-                                            "error": error,
-                                            "payloadSize": payload.len(),
-                                            "queueKey": email_queue_key
-                                        }),
-                                    )
-                                    .await;
-                                }
-                            }
-                        }
-
-                        // Periodic stats logging
-                        let total = metrics.total_jobs();
-                        if stats_interval > 0 && total > 0 && total % stats_interval == 0 {
-                            let snap = metrics.snapshot();
-                            let rt_stats = runtime.stats().await;
-                            tracing::info!(
-                                service = SERVICE_NAME,
-                                jobs_processed = snap.processed,
-                                jobs_failed = snap.failed,
-                                jobs_dlq = snap.dlq,
-                                bytes_processed = snap.bytes,
-                                runtime_inflight = rt_stats.total_inflight,
-                                runtime_completed = rt_stats.total_completed,
-                                runtime_failed = rt_stats.total_failed,
-                                "periodic stats"
-                            );
-                        }
-                    }
-                    Ok(None) => {
-                        tracing::debug!(
-                            service = SERVICE_NAME,
-                            email_queue_key = %email_queue_key,
-                            poll_timeout_seconds,
-                            "poll timed out with no job"
-                        );
-                    }
-                    Err(error) => {
-                        tracing::error!(
-                            service = SERVICE_NAME,
-                            email_queue_key = %email_queue_key,
-                            error = %error,
-                            "redis pop failed; worker shutting down"
-                        );
-                        break;
-                    }
-                }
-            }
+            _ = tokio::time::sleep(config.poll_interval) => {}
         }
     }
-
-    // Log final metrics on shutdown
-    let snap = metrics.snapshot();
-    tracing::info!(
-        service = SERVICE_NAME,
-        jobs_processed = snap.processed,
-        jobs_failed = snap.failed,
-        jobs_dlq = snap.dlq,
-        bytes_processed = snap.bytes,
-        "final metrics at shutdown"
-    );
-
-    runtime.shutdown(std::time::Duration::from_secs(5)).await;
-    tracing::info!(service = SERVICE_NAME, "worker shutdown complete");
 }
 
-fn tenant_context_from_env() -> TenantContext {
-    let tenant_id = env::var("EMAIL_WORKER_TENANT_ID")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "tenant-default".to_string());
-    let tenant_name = env::var("EMAIL_WORKER_TENANT_NAME")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    TenantContext {
-        tenant_id,
-        tenant_name,
-        access_level: TenantAccessLevel::Worker,
+    #[test]
+    fn retry_backoff_is_bounded_and_nonretryable_is_not_hot_looped() {
+        assert_eq!(retry_delay_seconds(15, 1, true), 15);
+        assert_eq!(retry_delay_seconds(15, 4, true), 120);
+        assert_eq!(retry_delay_seconds(15, 20, true), 3_600);
+        assert_eq!(retry_delay_seconds(15, 1, false), 300);
     }
-}
 
-async fn publish_ops_event(base_url: &str, event_type: &str, payload: &serde_json::Value) {
-    let event = platform_events::build_event(event_type, payload);
-    if let Err(error) = platform_events::publish_http(base_url, "ops.email", &event).await {
-        tracing::warn!(
-            service = SERVICE_NAME,
-            event_type,
-            %error,
-            "failed to publish ops event"
-        );
+    #[test]
+    fn global_actor_requires_explicit_global_scope() {
+        let user = AuthUser {
+            user_id: "service:mailer".to_string(),
+            username: "mailer".to_string(),
+            email: None,
+            role: "service".to_string(),
+            universe_id: None,
+            token_purpose: "service".to_string(),
+            scopes: vec![COMMUNICATION_SCOPE_DISPATCH.to_string()],
+        };
+        assert!(communication_actor(user).is_err());
     }
 }
