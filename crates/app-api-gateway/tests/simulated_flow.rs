@@ -37,7 +37,7 @@ fn dev_token() -> String {
 }
 
 #[tokio::test]
-async fn simulated_player_flow_happy_path() {
+async fn simulated_player_flow_respects_durable_gameplay_boundary() {
     let app = build_router("simulation-flow");
 
     let health = app
@@ -65,12 +65,10 @@ async fn simulated_player_flow_happy_path() {
         )
         .await
         .unwrap();
-    assert_eq!(planets.status(), StatusCode::OK);
+    assert_eq!(planets.status(), StatusCode::SERVICE_UNAVAILABLE);
     let planets_body = json_body(planets).await;
-    let planets_array = planets_body["data"]
-        .as_array()
-        .expect("returned planets array");
-    assert_eq!(planets_array.len(), 2);
+    assert_eq!(planets_body["success"], false);
+    assert_eq!(planets_body["error"], "Gameplay repository is unavailable");
 
     let fleet = app
         .clone()
@@ -113,10 +111,10 @@ async fn simulated_player_flow_happy_path() {
         )
         .await
         .unwrap();
-    assert_eq!(build_response.status(), StatusCode::OK);
+    assert_eq!(build_response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let build_body = json_body(build_response).await;
-    assert!(build_body["success"].as_bool().unwrap());
-    assert_eq!(build_body["data"]["planetId"], "p-001");
+    assert_eq!(build_body["success"], false);
+    assert_eq!(build_body["error"], "Gameplay repository is unavailable");
 
     let movement_payload = json!({
         "origin": { "galaxy": 1, "system": 1, "position": 1 },

@@ -76,15 +76,13 @@ impl AccountRepository {
 
     pub async fn create(&self, input: AccountCreateInput) -> Result<AccountRow, RepositoryError> {
         match &self.backend {
-            AccountBackend::Postgres(database) => {
-                database
-                    .create_account(input)
-                    .await
-                    .map_err(|error| match error {
-                        AccountCreateError::Duplicate => RepositoryError::Duplicate,
-                        AccountCreateError::Database(message) => RepositoryError::Storage(message),
-                    })
-            }
+            AccountBackend::Postgres(database) => database
+                .register_account_with_starting_state(input)
+                .await
+                .map_err(|error| match error {
+                    AccountCreateError::Duplicate => RepositoryError::Duplicate,
+                    AccountCreateError::Database(message) => RepositoryError::Storage(message),
+                }),
             AccountBackend::Memory(memory) => {
                 let input = input.normalized();
                 let normalized_username = input.username.to_ascii_lowercase();
@@ -177,7 +175,7 @@ impl AccountRepository {
     pub async fn ready(&self) -> Result<(), RepositoryError> {
         match &self.backend {
             AccountBackend::Postgres(database) => database
-                .account_repository_ready()
+                .gameplay_repository_ready()
                 .await
                 .map_err(RepositoryError::Storage),
             AccountBackend::Memory(_) => Ok(()),
@@ -198,7 +196,7 @@ pub async fn validate_runtime_configuration() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     let environment = runtime_environment();
     match Database::try_from_env()? {
-        Some(database) => database.account_repository_ready().await?,
+        Some(database) => database.gameplay_repository_ready().await?,
         None if development_environment(&environment) => {}
         None => {
             return Err(format!(

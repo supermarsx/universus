@@ -356,7 +356,12 @@ async fn auth_register_login_me_and_protected_route_journey() {
         )
         .await
         .unwrap();
-    assert_eq!(protected.status(), StatusCode::OK);
+    assert_eq!(protected.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let protected_body = response_json(protected).await;
+    assert_eq!(
+        protected_body["error"],
+        "Gameplay repository is unavailable"
+    );
 }
 
 #[tokio::test]
@@ -546,7 +551,7 @@ async fn fleet_move_alias_matches_movement_response_shape() {
 }
 
 #[tokio::test]
-async fn planets_list_returns_success_envelope() {
+async fn planets_list_requires_durable_gameplay_repository() {
     let app = build_router(TEST_SERVICE_NAME);
     let response = app
         .oneshot(
@@ -560,21 +565,10 @@ async fn planets_list_returns_success_envelope() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = response_json(response).await;
-    assert_eq!(body["success"], true);
-    let planets = body["data"].as_array().expect("planets array");
-    assert_eq!(planets[0]["id"], "p-001");
-    assert_eq!(
-        planets[0]["iconUrl"],
-        "/assets/planet-rust-prototype/new-terra-rust-480p-icon.png"
-    );
-    assert_eq!(
-        planets[0]["bannerUrl"],
-        "/assets/planet-rust-prototype/new-terra-rust-480p-overview-banner.png"
-    );
-    assert_eq!(planets[0]["visualSeed"], json!(0x5EED_1208_0001u64));
-    assert_eq!(planets[0]["visualVersion"], "game-planet-visuals@0.1.0");
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Gameplay repository is unavailable");
 }
 
 #[tokio::test]
@@ -729,7 +723,7 @@ async fn shop_purchase_preview_returns_calculated_total() {
 }
 
 #[tokio::test]
-async fn research_cost_for_known_tech_returns_payload() {
+async fn research_cost_requires_durable_gameplay_repository() {
     let app = build_router(TEST_SERVICE_NAME);
     let response = app
         .oneshot(
@@ -743,10 +737,10 @@ async fn research_cost_for_known_tech_returns_payload() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = response_json(response).await;
-    assert_eq!(body["success"], true);
-    assert_eq!(body["data"]["nextLevel"], 12);
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Gameplay repository is unavailable");
 }
 
 #[tokio::test]
@@ -969,11 +963,10 @@ async fn fleet_send_with_auth_returns_success_envelope() {
 }
 
 #[tokio::test]
-async fn account_resources_drop_after_research_start() {
+async fn account_resources_require_durable_gameplay_repository() {
     let app = build_router(TEST_SERVICE_NAME);
 
-    let initial_response = app
-        .clone()
+    let response = app
         .oneshot(
             Request::builder()
                 .uri("/api/account/resources")
@@ -984,57 +977,9 @@ async fn account_resources_drop_after_research_start() {
         )
         .await
         .unwrap();
-    assert_eq!(initial_response.status(), StatusCode::OK);
-    let initial_body = response_json(initial_response).await;
-
-    let start_payload = json!({
-        "planetId": "p-001",
-        "technologyType": "energy_technology"
-    });
-    let start_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/research/start")
-                .method("POST")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .header("content-type", "application/json")
-                .body(Body::from(start_payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(start_response.status(), StatusCode::OK);
-    let start_body = response_json(start_response).await;
-    assert_eq!(start_body["success"], true);
-    assert_eq!(start_body["data"]["queued"], true);
-
-    let final_response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/account/resources")
-                .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(final_response.status(), StatusCode::OK);
-    let final_body = response_json(final_response).await;
-
-    assert_eq!(
-        final_body["data"]["metal"].as_i64().unwrap(),
-        initial_body["data"]["metal"].as_i64().unwrap() - 24_000
-    );
-    assert_eq!(
-        final_body["data"]["crystal"].as_i64().unwrap(),
-        initial_body["data"]["crystal"].as_i64().unwrap() - 12_000
-    );
-    assert_eq!(
-        final_body["data"]["deuterium"].as_i64().unwrap(),
-        initial_body["data"]["deuterium"].as_i64().unwrap() - 5_000
-    );
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response_json(response).await;
+    assert_eq!(body["error"], "Gameplay repository is unavailable");
 }
 
 #[tokio::test]
@@ -1110,31 +1055,15 @@ async fn fleet_send_records_mission_sequence() {
 }
 
 #[tokio::test]
-async fn shipyard_build_queues_and_decreases_resources() {
+async fn shipyard_build_requires_durable_gameplay_repository() {
     let app = build_router(TEST_SERVICE_NAME);
-
-    let initial_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/account/resources")
-                .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(initial_response.status(), StatusCode::OK);
-    let initial_body = response_json(initial_response).await;
 
     let payload = json!({
         "planetId": "p-001",
         "shipType": "small_cargo",
         "quantity": 2
     });
-    let build_response = app
-        .clone()
+    let response = app
         .oneshot(
             Request::builder()
                 .uri("/api/shipyard/build")
@@ -1146,32 +1075,9 @@ async fn shipyard_build_queues_and_decreases_resources() {
         )
         .await
         .unwrap();
-    assert_eq!(build_response.status(), StatusCode::OK);
-    let build_body = response_json(build_response).await;
-    assert_eq!(build_body["success"], true);
-    assert_eq!(build_body["data"]["orderId"], "o-p001-001");
-
-    let final_response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/account/resources")
-                .method("GET")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(final_response.status(), StatusCode::OK);
-    let final_body = response_json(final_response).await;
-    assert_eq!(
-        final_body["data"]["metal"].as_i64().unwrap(),
-        initial_body["data"]["metal"].as_i64().unwrap() - 4_000
-    );
-    assert_eq!(
-        final_body["data"]["crystal"].as_i64().unwrap(),
-        initial_body["data"]["crystal"].as_i64().unwrap() - 4_000
-    );
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response_json(response).await;
+    assert_eq!(body["error"], "Gameplay repository is unavailable");
 }
 
 #[tokio::test]
@@ -1203,14 +1109,13 @@ async fn shipyard_build_rejects_non_positive_quantity() {
 }
 
 #[tokio::test]
-async fn planet_build_queues_and_increments_level_target() {
+async fn planet_build_requires_durable_gameplay_repository() {
     let app = build_router(TEST_SERVICE_NAME);
     let payload = json!({
         "buildingType": "metal_mine"
     });
 
-    let first_response = app
-        .clone()
+    let response = app
         .oneshot(
             Request::builder()
                 .uri("/api/planets/p-001/build")
@@ -1222,25 +1127,9 @@ async fn planet_build_queues_and_increments_level_target() {
         )
         .await
         .unwrap();
-    assert_eq!(first_response.status(), StatusCode::OK);
-    let first_body = response_json(first_response).await;
-    assert_eq!(first_body["data"]["levelTarget"], 1);
-
-    let second_response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/planets/p-001/build")
-                .method("POST")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .header("content-type", "application/json")
-                .body(Body::from(payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(second_response.status(), StatusCode::OK);
-    let second_body = response_json(second_response).await;
-    assert_eq!(second_body["data"]["levelTarget"], 2);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = response_json(response).await;
+    assert_eq!(body["error"], "Gameplay repository is unavailable");
 }
 
 #[tokio::test]

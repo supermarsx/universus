@@ -8,6 +8,7 @@ mod config;
 mod debris;
 mod fleet;
 mod galaxy;
+mod gameplay;
 mod leaderboard;
 mod marketplace;
 mod messages;

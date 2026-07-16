@@ -167,17 +167,17 @@ pub(crate) const CLIENT_JS: &str = r##"
     const reload = () => loadResearch(root);
     loading(root, 'Resolving research network…');
     try {
-      const [levels, queue, planets] = await Promise.all([api('/api/research'), api('/api/research/queue'), api('/api/planets')]);
+      const [levels, queue] = await Promise.all([api('/api/research'), api('/api/research/queue')]);
       root.innerHTML = `<section class="dashboard-grid wide-first"><article class="panel"><div class="panel-heading"><div><span class="eyebrow">Technology matrix</span><h2>Research levels</h2></div></div><div class="card-grid" id="research-cards">${levels.map((tech) => `<article class="tech-card"><span class="level-chip">Lv ${formatNumber(tech.level)}</span><h3>${escapeHtml(tech.name)}</h3><p>${escapeHtml(tech.techId)}</p><div class="button-row"><button type="button" class="secondary research-cost" data-tech="${escapeHtml(tech.techId)}">Inspect cost</button><button type="button" class="research-start" data-tech="${escapeHtml(tech.techId)}">Research next level</button></div><div class="inline-result" aria-live="polite"></div></article>`).join('')}</div></article><aside class="panel"><span class="eyebrow">Active queue</span><h2>In progress</h2>${queue.length ? queue.map((item) => `<div class="queue-item"><strong>${escapeHtml(pretty(item.techId))} → ${formatNumber(item.levelTarget)}</strong><span>${formatDuration(item.finishesInSeconds)}</span><progress max="${Math.max(numeric(item.finishesInSeconds), 1)}" value="1"></progress></div>`).join('') : '<div class="empty-state compact">Research queue is idle.</div>'}</aside></section>`;
       $$('.research-cost', root).forEach((button) => button.addEventListener('click', async () => {
         const result = button.closest('.tech-card').querySelector('.inline-result');
         result.textContent = 'Calculating…';
-        try { const cost = await api(`/api/research/${encodeURIComponent(button.dataset.tech)}/cost`, { method: 'POST' }); result.textContent = `Lv ${cost.nextLevel}: ${formatNumber(cost.metal)} metal · ${formatNumber(cost.crystal)} crystal · ${formatNumber(cost.deuterium)} deuterium · ${formatDuration(cost.timeSeconds)}`; } catch (error) { result.textContent = error.message; }
+        try { const cost = await api(`/api/research/${encodeURIComponent(button.dataset.tech)}/cost`, { method: 'POST' }); result.textContent = `Lab ${cost.planetId} · Lv ${cost.nextLevel}: ${formatNumber(cost.metal)} metal · ${formatNumber(cost.crystal)} crystal · ${formatNumber(cost.deuterium)} deuterium · ${formatDuration(cost.timeSeconds)}`; } catch (error) { result.textContent = error.message; }
       }));
       $$('.research-start', root).forEach((button) => button.addEventListener('click', async () => {
         const result = button.closest('.tech-card').querySelector('.inline-result');
         button.disabled = true;
-        try { const queued = await api('/api/research/start', { method: 'POST', body: jsonBody({ planetId: planets[0]?.id, technologyType: button.dataset.tech }) }); result.textContent = `Level ${queued.levelTarget} queued · ${formatDuration(queued.finishesInSeconds)}.`; } catch (error) { result.textContent = error.message; } finally { button.disabled = false; }
+        try { const queued = await api('/api/research/start', { method: 'POST', body: jsonBody({ technologyType: button.dataset.tech }) }); result.textContent = `Level ${queued.levelTarget} queued at lab ${queued.planetId} · ${formatDuration(queued.finishesInSeconds)}.`; } catch (error) { result.textContent = error.message; } finally { button.disabled = false; }
       }));
       finish(root);
     } catch (error) { failure(root, error, reload); }

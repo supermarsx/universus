@@ -1,13 +1,12 @@
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
+use platform_db::Database;
 use serde::Serialize;
 
 use crate::accounts::{AccountRepository, RepositoryError};
 use crate::auth_guard::AuthUser;
-use crate::auth_guard::BearerToken;
-use crate::response::{internal_error, success, unauthorized};
-use crate::state::AppState;
+use crate::response::{internal_error, service_unavailable, success, unauthorized};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,15 +36,28 @@ pub fn router() -> Router {
 async fn account_profile_handler(
     Extension(accounts): Extension<AccountRepository>,
     AuthUser(user): AuthUser,
+    Extension(database): Extension<Option<Database>>,
 ) -> Response {
     match accounts.find_by_id(&user.user_id).await {
-        Ok(Some(account)) if !account.is_banned => success(AccountProfile {
-            id: account.id,
-            username: account.username,
-            email: account.email,
-            rank: 42,
-            alliance_tag: "RUST".to_string(),
-        }),
+        Ok(Some(account)) if !account.is_banned => {
+            let (rank, alliance_tag) = match database {
+                Some(database) => {
+                    match database.gameplay_profile_meta_for_user(&user.user_id).await {
+                        Ok(Some(meta)) => (meta.rank, meta.alliance_tag.unwrap_or_default()),
+                        Ok(None) => return unauthorized("Authenticated account is unavailable"),
+                        Err(_) => return repository_unavailable(),
+                    }
+                }
+                None => (0, String::new()),
+            };
+            success(AccountProfile {
+                id: account.id,
+                username: account.username,
+                email: account.email,
+                rank,
+                alliance_tag,
+            })
+        }
         Ok(_) => unauthorized("Authenticated account is unavailable"),
         Err(RepositoryError::Unavailable(_) | RepositoryError::Storage(_)) => {
             internal_error("Account service is unavailable")
@@ -55,14 +67,24 @@ async fn account_profile_handler(
 }
 
 async fn account_resources_handler(
-    BearerToken(token): BearerToken,
-    Extension(app_state): Extension<AppState>,
+    AuthUser(user): AuthUser,
+    Extension(database): Extension<Option<Database>>,
 ) -> Response {
-    let resources = app_state.account_resources(&token);
-    success(AccountResources {
-        metal: resources.metal,
-        crystal: resources.crystal,
-        deuterium: resources.deuterium,
-        dark_matter: resources.dark_matter,
-    })
+    let Some(database) = database else {
+        return repository_unavailable();
+    };
+    match database.gameplay_account_resources(&user.user_id).await {
+        Ok(Some(resources)) => success(AccountResources {
+            metal: resources.metal,
+            crystal: resources.crystal,
+            deuterium: resources.deuterium,
+            dark_matter: resources.dark_matter,
+        }),
+        Ok(None) => unauthorized("Authenticated account is unavailable"),
+        Err(_) => repository_unavailable(),
+    }
+}
+
+fn repository_unavailable() -> Response {
+    service_unavailable("Gameplay repository is unavailable")
 }
