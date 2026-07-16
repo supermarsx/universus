@@ -400,9 +400,37 @@ pub struct AppState {
     pub assets_dir: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CookieSecurityError {
+    InvalidBoolean { name: &'static str },
+    InsecureProductionCookie,
+}
+
+impl std::fmt::Display for CookieSecurityError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidBoolean { name } => write!(
+                formatter,
+                "{name} must be one of true/false, 1/0, yes/no, or on/off"
+            ),
+            Self::InsecureProductionCookie => write!(
+                formatter,
+                "COOKIE_SECURE=false is forbidden in production-like environments; use TLS or set UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE=true only for an isolated local HTTP test"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for CookieSecurityError {}
+
 impl AppState {
     pub fn new(auth_config: AuthConfig) -> Self {
-        Self {
+        Self::try_new(auth_config).expect("invalid browser cookie security configuration")
+    }
+
+    pub fn try_new(auth_config: AuthConfig) -> Result<Self, CookieSecurityError> {
+        let secure_cookies = cookie_security_from_environment()?;
+        Ok(Self {
             auth_config,
             service_name: SERVICE_NAME.to_string(),
             start_time: chrono_now_iso(),
@@ -411,15 +439,66 @@ impl AppState {
                 .trim_end_matches('/')
                 .to_string(),
             http_client: reqwest::Client::new(),
-            secure_cookies: std::env::var("COOKIE_SECURE")
-                .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes"))
-                .unwrap_or(false),
+            secure_cookies,
             assets_dir: std::env::var("ASSETS_DIR").unwrap_or_else(|_| "assets".to_string()),
-        }
+        })
     }
 
     pub fn from_env() -> Self {
-        Self::new(AuthConfig::from_env())
+        Self::try_from_env().expect("invalid browser cookie security configuration")
+    }
+
+    pub fn try_from_env() -> Result<Self, CookieSecurityError> {
+        Self::try_new(AuthConfig::from_env())
+    }
+}
+
+fn cookie_security_from_environment() -> Result<bool, CookieSecurityError> {
+    let environment = ["UNIVERSUS_ENV", "APP_ENV", "ENVIRONMENT", "RUST_ENV"]
+        .into_iter()
+        .find_map(|name| std::env::var(name).ok())
+        .unwrap_or_else(|| "development".to_string());
+    let secure = std::env::var("COOKIE_SECURE").ok();
+    let local_override = std::env::var("UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE").ok();
+    resolve_cookie_security(&environment, secure.as_deref(), local_override.as_deref())
+}
+
+fn resolve_cookie_security(
+    environment: &str,
+    secure: Option<&str>,
+    local_override: Option<&str>,
+) -> Result<bool, CookieSecurityError> {
+    let configured_secure = parse_boolean("COOKIE_SECURE", secure)?;
+    let override_enabled =
+        parse_boolean("UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE", local_override)?
+            .unwrap_or(false);
+    let production_like = matches!(
+        environment.trim().to_ascii_lowercase().as_str(),
+        "production" | "prod" | "staging" | "stage"
+    );
+
+    if production_like {
+        match configured_secure {
+            None | Some(true) => Ok(true),
+            Some(false) if override_enabled => Ok(false),
+            Some(false) => Err(CookieSecurityError::InsecureProductionCookie),
+        }
+    } else {
+        Ok(configured_secure.unwrap_or(false))
+    }
+}
+
+fn parse_boolean(
+    name: &'static str,
+    value: Option<&str>,
+) -> Result<Option<bool>, CookieSecurityError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(Some(true)),
+        "0" | "false" | "no" | "off" => Ok(Some(false)),
+        _ => Err(CookieSecurityError::InvalidBoolean { name }),
     }
 }
 
@@ -547,7 +626,7 @@ pub async fn serve() {
     tracing_subscriber::fmt::init();
 
     let addr = SocketAddr::from(([0, 0, 0, 0], listen_port(DEFAULT_PORT)));
-    let state = AppState::from_env();
+    let state = AppState::try_from_env().expect("invalid browser cookie security configuration");
     state
         .auth_config
         .validate_runtime()
@@ -2043,6 +2122,45 @@ mod tests {
         assert!(cookie.contains("SameSite=Lax"));
         assert!(cookie.contains("Max-Age=7200"));
         assert!(cookie.contains("Secure"));
+    }
+
+    #[test]
+    fn production_cookie_security_defaults_to_secure() {
+        assert_eq!(resolve_cookie_security("production", None, None), Ok(true));
+        assert_eq!(
+            resolve_cookie_security("staging", Some("true"), None),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn production_rejects_insecure_cookie_without_explicit_local_override() {
+        assert_eq!(
+            resolve_cookie_security("production", Some("false"), None),
+            Err(CookieSecurityError::InsecureProductionCookie)
+        );
+        assert_eq!(
+            resolve_cookie_security("production", Some("false"), Some("true")),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn development_keeps_http_cookies_usable_and_rejects_typos() {
+        assert_eq!(
+            resolve_cookie_security("development", None, None),
+            Ok(false)
+        );
+        assert_eq!(
+            resolve_cookie_security("test", Some("false"), None),
+            Ok(false)
+        );
+        assert_eq!(
+            resolve_cookie_security("development", Some("sometimes"), None),
+            Err(CookieSecurityError::InvalidBoolean {
+                name: "COOKIE_SECURE"
+            })
+        );
     }
 
     #[test]

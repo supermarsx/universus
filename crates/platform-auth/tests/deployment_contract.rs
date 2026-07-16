@@ -80,6 +80,18 @@ fn compose_requires_one_shared_production_jwt_secret_for_rust_services() {
         realtime.contains("REALTIME_ALLOWED_ORIGINS: ${REALTIME_ALLOWED_ORIGINS:?"),
         "production WebSocket cookie authentication needs an explicit origin allowlist"
     );
+
+    let frontend = service_block(&compose, "rust-web-frontend");
+    assert!(
+        frontend.contains("COOKIE_SECURE: ${COOKIE_SECURE:-true}"),
+        "production frontend cookies must default to Secure"
+    );
+    assert!(
+        frontend.contains(
+            "UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE: ${UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE:-false}"
+        ),
+        "the dangerous local HTTP override must default to disabled"
+    );
 }
 
 #[test]
@@ -105,5 +117,16 @@ fn example_secret_is_long_but_explicitly_non_production() {
         config.validate_for_environment("production"),
         Err(platform_auth::AuthConfigError::InsecureProductionSecret),
         "the documented placeholder must never be accepted as a production secret"
+    );
+
+    assert!(
+        example.lines().any(|line| line == "COOKIE_SECURE=true"),
+        "the production environment example must enable Secure cookies"
+    );
+    assert!(
+        example
+            .lines()
+            .any(|line| line == "# UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE=true"),
+        "the local HTTP escape hatch must remain visibly opt-in"
     );
 }

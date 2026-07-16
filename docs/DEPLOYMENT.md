@@ -45,6 +45,9 @@
    ```bash
    cp .env.example .env
    # Edit DATABASE_URL, REDIS_URL, RUST_LOG, and other settings as needed
+   # For loopback-only HTTP Compose testing, also set:
+   # COOKIE_SECURE=false
+   # UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE=true
    ```
 
 5. **Build and run Rust services**:
@@ -75,7 +78,17 @@ RUST_LOG=info
 # Web/API ports
 API_PORT=3300
 WEB_PORT=8080
+
+# Browser session cookie. Production/staging defaults to true when omitted.
+COOKIE_SECURE=true
 ```
+
+The frontend rejects `COOKIE_SECURE=false` in production or staging unless
+`UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE=true` is also set. That override is
+only for an isolated loopback HTTP test of the production-mode Compose stack;
+never use it on a shared network or deployment. Development and test processes
+default to non-Secure cookies so direct `http://localhost` workflows continue
+to work. Production traffic must terminate TLS before reaching the frontend.
 
 ## Production Deployment
 

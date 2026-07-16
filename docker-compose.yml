@@ -93,6 +93,8 @@ services:
       <<: *auth-environment
       PORT: 3005
       API_GATEWAY_URL: http://rust-api-gateway:3000
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE: ${UNIVERSUS_ALLOW_INSECURE_LOCAL_HTTP_COOKIE:-false}
     ports:
       - "8080:3005"
     restart: unless-stopped
