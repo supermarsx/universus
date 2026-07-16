@@ -15,8 +15,8 @@ use axum::body::Bytes;
 use axum::extract::{Extension, OriginalUri, Path};
 use axum::http::{
     header::{
-        ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, COOKIE, HOST, ORIGIN, PRAGMA,
-        SET_COOKIE,
+        ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE, COOKIE, HOST,
+        ORIGIN, PRAGMA, SET_COOKIE,
     },
     HeaderMap, Method, StatusCode,
 };
@@ -39,6 +39,7 @@ use ui::CLIENT_JS;
 
 pub const SERVICE_NAME: &str = "app-web-frontend";
 pub const DEFAULT_PORT: u16 = 3005;
+const PRIVACY_DELIVERY_TOKEN_HEADER: &str = "x-privacy-delivery-token";
 
 // ---------------------------------------------------------------------------
 // Route definitions
@@ -735,6 +736,14 @@ async fn gateway_proxy_handler(
     {
         request = request.header(reqwest::header::CONTENT_TYPE, value);
     }
+    if path.starts_with("api/privacy/requests/") && path.ends_with("/download") {
+        if let Some(value) = headers
+            .get(PRIVACY_DELIVERY_TOKEN_HEADER)
+            .and_then(|value| value.to_str().ok())
+        {
+            request = request.header(PRIVACY_DELIVERY_TOKEN_HEADER, value);
+        }
+    }
     let bearer = bearer_value(&headers).map(str::to_string);
     if let Some(value) = bearer.as_deref() {
         request = request.bearer_auth(value);
@@ -769,6 +778,10 @@ async fn gateway_proxy_handler(
         .get(reqwest::header::CACHE_CONTROL)
         .cloned();
     let pragma = upstream.headers().get(reqwest::header::PRAGMA).cloned();
+    let content_disposition = upstream
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .cloned();
     let bytes = match upstream.bytes().await {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -796,6 +809,11 @@ async fn gateway_proxy_handler(
     if let Some(pragma) = pragma {
         if let Ok(value) = pragma.to_str().unwrap_or_default().parse() {
             response.headers_mut().insert(PRAGMA, value);
+        }
+    }
+    if let Some(content_disposition) = content_disposition {
+        if let Ok(value) = content_disposition.to_str().unwrap_or_default().parse() {
+            response.headers_mut().insert(CONTENT_DISPOSITION, value);
         }
     }
     if let Some(cookie) = session_cookie {
@@ -1235,7 +1253,7 @@ h2{font-size:1.08rem;color:#f0f5ff}h3{font-size:.95rem;color:#e8f1ff}small{color
 .galaxy-shell{display:grid;gap:1rem}.galaxy-slot-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:.65rem}.galaxy-slot{position:relative;min-height:180px;border:1px solid var(--line);background:linear-gradient(#0d1727,#080e18);padding:.65rem;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:.25rem;text-align:center}.galaxy-slot.empty{opacity:.65}.slot-number{position:absolute;left:.55rem;top:.4rem;color:#5f7089;font-size:.72rem}.planet-orbit{width:58px;height:58px;border-radius:50%;margin:.55rem;background:radial-gradient(circle at 35% 28%,#a9f6ff,#3a87b1 32%,#162b53 64%,#05080f 70%);box-shadow:0 0 18px #4ecfff55}.planet-orbit.vacant{background:transparent;border:1px dashed #31425c;box-shadow:none}.slot-status{font-size:.67rem;color:var(--warn);text-transform:uppercase}.number{text-align:right}
 .notification-row{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.85rem;border-bottom:1px solid var(--line)}.notification-row.unread{background:#10223966}.message-detail{display:grid;gap:.5rem}.contract-gap{max-width:720px}.contract-gap .button{margin-top:1rem}
 .privacy-shell{display:grid;gap:1rem}.privacy-intro{border-color:#315b78;background:radial-gradient(circle at 92% 10%,#16618a55,transparent 18rem),linear-gradient(145deg,#101d30,#0a1220)}.privacy-intro h2{font-size:1.35rem;margin-bottom:.35rem}.privacy-intro p{max-width:850px;color:#aab8cc}.privacy-global-feedback{min-height:1.5rem;color:var(--good)}.privacy-global-feedback.is-error,.row-feedback.is-error,.privacy-delivery-note.is-error{color:var(--danger)}
-.privacy-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.7rem}.privacy-action-card{display:flex;flex-direction:column;gap:.6rem;padding:.8rem;border:1px solid var(--line);border-radius:10px;background:#091321}.privacy-action-card p{color:var(--muted);font-size:.8rem}.privacy-action-card label{display:grid;gap:.25rem;color:var(--muted);font-size:.76rem}.privacy-action-card button{margin-top:auto}.privacy-action-card code,.privacy-cancel-form code{color:#fff;background:#1b2a40;border-radius:4px;padding:.08rem .28rem}.danger-zone{border-color:#713b4a;background:linear-gradient(145deg,#1b111b,#0b1220)}
+.privacy-action-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.7rem}.privacy-action-card{display:flex;flex-direction:column;gap:.6rem;padding:.8rem;border:1px solid var(--line);border-radius:10px;background:#091321}.privacy-action-card p{color:var(--muted);font-size:.8rem}.privacy-action-card label{display:grid;gap:.25rem;color:var(--muted);font-size:.76rem}.privacy-action-card button{margin-top:auto}.privacy-action-card code,.privacy-cancel-form code{color:#fff;background:#1b2a40;border-radius:4px;padding:.08rem .28rem}.privacy-correction-card{grid-column:span 2}.privacy-action-card .privacy-clear-phone{display:flex;align-items:center;gap:.45rem}.privacy-clear-phone input{width:auto}.danger-zone{border-color:#713b4a;background:linear-gradient(145deg,#1b111b,#0b1220)}
 .privacy-request-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr);gap:1rem;align-items:start}.privacy-request-layout>.panel+.panel{margin-top:0}.privacy-detail{position:sticky;top:5rem}.privacy-request-list{display:grid;gap:.65rem}.privacy-request-card{display:grid;gap:.55rem;padding:.8rem;border:1px solid var(--line);border-radius:9px;background:#091321}.privacy-request-card .panel-heading{margin:0}.privacy-request-card h3{font-size:.78rem;color:var(--muted)}.privacy-badges{display:flex;gap:.35rem;flex-wrap:wrap}.privacy-delivery-note{font-size:.78rem;color:#b9c7d9;padding:.55rem;border-left:2px solid var(--accent);background:#0d1a2b}.privacy-hold{border-color:#843745;color:#ffc0c7}.privacy-timeline{list-style:none;padding:0;margin:1rem 0;display:grid;gap:.15rem}.privacy-timeline li{position:relative;display:grid;grid-template-columns:auto 1fr;gap:.65rem;padding:.35rem 0 .75rem}.privacy-timeline li:not(:last-child)::after{content:"";position:absolute;left:.32rem;top:1rem;bottom:-.15rem;width:1px;background:#2c4664}.privacy-timeline-dot{width:.7rem;height:.7rem;margin-top:.3rem;border:2px solid var(--accent);border-radius:50%;background:#0b1626;z-index:1}.privacy-timeline small{display:block}.privacy-status-completed{color:#a8f5d9;border-color:#27745c}.privacy-status-cancelled,.privacy-status-rejected,.privacy-status-failed{color:#ffc0c7;border-color:#843745}.privacy-status-blocked_legal_hold,.privacy-status-cooling_off{color:#ffe0a8;border-color:#80622c}
 .privacy-consent-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;margin-top:.8rem}.privacy-channel-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-top:.8rem}.privacy-channel-card{border:1px solid var(--line);border-radius:10px;background:#091321;padding:.75rem}.privacy-channel-card h3{margin-bottom:.4rem}.privacy-preference-list{display:grid}.privacy-toggle-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:.55rem;align-items:center;padding:.65rem;border-bottom:1px solid #1b2b41;cursor:pointer}.privacy-toggle-row>span:first-child{display:grid}.privacy-toggle-row small{font-size:.7rem}.privacy-toggle-row input[type="checkbox"]{position:absolute;width:1px;height:1px;opacity:0}.switch-track{width:2.25rem;height:1.25rem;border-radius:999px;border:1px solid #42546c;background:#1a2638;position:relative;transition:.15s}.switch-track::after{content:"";position:absolute;width:.85rem;height:.85rem;left:.16rem;top:.14rem;border-radius:50%;background:#8795a9;transition:.15s}.privacy-toggle-row input:checked+.switch-track{background:#185b78;border-color:#52bce9}.privacy-toggle-row input:checked+.switch-track::after{transform:translateX(.95rem);background:#eaf8ff}.privacy-toggle-row input:focus-visible+.switch-track{outline:2px solid var(--accent);outline-offset:2px}.privacy-toggle-row input:disabled+.switch-track{opacity:.65;background:#253448}.privacy-toggle-row.is-essential{cursor:not-allowed;background:#101b2b}.row-feedback{grid-column:1/-1;min-height:0;color:var(--good);font-size:.7rem}
 .loading-state,.empty-state,.error-state{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:120px;color:var(--muted);padding:1rem;text-align:center}.empty-state.compact{min-height:auto}.error-state{flex-direction:column;color:#ffadb6}.spinner{width:1rem;height:1rem;border:2px solid #31445f;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
@@ -1243,7 +1261,7 @@ h2{font-size:1.08rem;color:#f0f5ff}h3{font-size:.95rem;color:#e8f1ff}small{color
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 @media(max-width:1100px){.privacy-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.privacy-request-layout{grid-template-columns:1fr}.privacy-detail{position:static}}
 @media(max-width:1000px){.galaxy-slot-grid{grid-template-columns:repeat(3,minmax(110px,1fr))}.metric-grid{grid-template-columns:repeat(2,1fr)}.progression-layout{grid-template-columns:1fr}.progression-sidebar{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}.resource-breakdown{grid-template-columns:repeat(2,minmax(0,1fr))}.privacy-consent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:760px){header{position:static}.header-user .role{display:none}.layout{display:block}nav{width:100%;max-height:none;border-right:0;border-bottom:1px solid var(--line)}nav ul{display:flex;gap:.25rem;overflow-x:auto}nav .nav-section{display:none}nav li{flex:0 0 auto}.dashboard-grid,.dashboard-grid.wide-first,.messages-layout{grid-template-columns:1fr}.galaxy-slot-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.feature-grid{grid-template-columns:1fr}.planet-banner{height:210px}.progression-sidebar,.resource-stock-grid{grid-template-columns:1fr}.progression-toolbar>*{width:100%}.resource-breakdown{grid-template-columns:1fr}.inline-form{grid-template-columns:1fr}.inline-form .form-feedback{grid-column:auto}.privacy-action-grid,.privacy-consent-grid,.privacy-channel-grid{grid-template-columns:1fr}.privacy-toggle-row{grid-template-columns:minmax(0,1fr) auto}.privacy-toggle-row .status-chip{grid-column:1/-1}}
+@media(max-width:760px){header{position:static}.header-user .role{display:none}.layout{display:block}nav{width:100%;max-height:none;border-right:0;border-bottom:1px solid var(--line)}nav ul{display:flex;gap:.25rem;overflow-x:auto}nav .nav-section{display:none}nav li{flex:0 0 auto}.dashboard-grid,.dashboard-grid.wide-first,.messages-layout{grid-template-columns:1fr}.galaxy-slot-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.feature-grid{grid-template-columns:1fr}.planet-banner{height:210px}.progression-sidebar,.resource-stock-grid{grid-template-columns:1fr}.progression-toolbar>*{width:100%}.resource-breakdown{grid-template-columns:1fr}.inline-form{grid-template-columns:1fr}.inline-form .form-feedback{grid-column:auto}.privacy-action-grid,.privacy-consent-grid,.privacy-channel-grid{grid-template-columns:1fr}.privacy-correction-card{grid-column:auto}.privacy-toggle-row{grid-template-columns:minmax(0,1fr) auto}.privacy-toggle-row .status-chip{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 "#;
 
@@ -2366,6 +2384,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gateway_bridge_preserves_private_delivery_header_and_attachment_metadata() {
+        let upstream = Router::new().route(
+            "/api/privacy/requests/77/download",
+            axum::routing::post(|headers: HeaderMap| async move {
+                assert_eq!(
+                    headers
+                        .get(PRIVACY_DELIVERY_TOKEN_HEADER)
+                        .and_then(|value| value.to_str().ok()),
+                    Some("one-time-test-token")
+                );
+                (
+                    [
+                        (CACHE_CONTROL, "no-store, max-age=0"),
+                        (PRAGMA, "no-cache"),
+                        (
+                            CONTENT_DISPOSITION,
+                            "attachment; filename=\"universus-data-export-77.json\"",
+                        ),
+                    ],
+                    [(CONTENT_TYPE, "application/json")],
+                    "{\"schemaVersion\":1}",
+                )
+            }),
+        );
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = axum::Server::from_tcp(listener)
+            .unwrap()
+            .serve(upstream.into_make_service());
+        let server = tokio::spawn(async move {
+            let _ = server.await;
+        });
+        let mut state = test_state();
+        state.api_gateway_url = format!("http://{address}");
+        let response = build_router_with_state(state)
+            .oneshot(
+                Request::post("/game-api/api/privacy/requests/77/download")
+                    .header(HOST, "universus.test")
+                    .header(ORIGIN, "http://universus.test")
+                    .header("Sec-Fetch-Site", "same-origin")
+                    .header(COOKIE, format!("universus_token={}", user_token()))
+                    .header(PRIVACY_DELIVERY_TOKEN_HEADER, "one-time-test-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(CONTENT_DISPOSITION).unwrap(),
+            "attachment; filename=\"universus-data-export-77.json\""
+        );
+        assert_eq!(
+            response.headers().get(CACHE_CONTROL).unwrap(),
+            "no-store, max-age=0"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn gateway_bridge_rejects_non_api_paths_without_network_access() {
         let app = test_router();
         let resp = app
@@ -2597,6 +2677,8 @@ mod tests {
             "/api/privacy/requests?limit=50",
             "/api/privacy/requests/${encodeURIComponent(button.dataset.requestDetail)}",
             "/api/privacy/requests/${encodeURIComponent(cancelForm.dataset.requestId)}/cancel",
+            "/api/privacy/requests/${encodeURIComponent(requestId)}/delivery",
+            "/api/privacy/requests/${encodeURIComponent(requestId)}/download",
             "/api/privacy/consents",
             "/api/privacy/consents/${encodeURIComponent(control.dataset.privacyConsent)}",
             "/api/privacy/communications",
@@ -2607,12 +2689,16 @@ mod tests {
         for contract in [
             "RESTRICT MY ACCOUNT",
             "ERASE MY ACCOUNT",
+            "APPLY MY CORRECTIONS",
             "CANCEL REQUEST",
             "expectedVersion",
             "idempotencyKey",
             "aria-live=\"polite\"",
             "role=\"switch\"",
-            "Secure delivery is not connected",
+            "x-privacy-delivery-token",
+            "Download JSON export",
+            "Remove my phone number",
+            "changes",
             "Required for account operation",
             "disabled aria-disabled=\"true\"",
             "privacy_version_conflict",
@@ -2711,6 +2797,27 @@ mod tests {
             );
         }
         assert!(!CLIENT_JS.contains("localStorage"));
+    }
+
+    #[test]
+    fn fleet_dispatch_reuses_idempotency_key_and_exposes_runtime_controls() {
+        for contract in [
+            "let pendingFleetLaunch = null",
+            "pendingFleetLaunch.fingerprint !== launchFingerprint",
+            "commandId: pendingFleetLaunch.commandId",
+            "pendingFleetLaunch = null",
+            "Retrying unchanged orders will reuse the same command",
+            "/api/fleet/${encodeURIComponent(fleetId)}/events",
+            "/api/fleet/${encodeURIComponent(fleetId)}/recall",
+            "fleet.status === 'outbound'",
+            "withButtonLock(recall",
+            "Mission timeline",
+        ] {
+            assert!(
+                CLIENT_JS.contains(contract),
+                "missing fleet UI contract {contract}"
+            );
+        }
     }
 
     #[test]

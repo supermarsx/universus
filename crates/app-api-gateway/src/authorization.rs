@@ -109,6 +109,16 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
         "/api/privacy/requests/:request_id/cancel",
         ActorPolicy::Player
     ),
+    rule!(
+        "POST",
+        "/api/privacy/requests/:request_id/delivery",
+        ActorPolicy::Player
+    ),
+    rule!(
+        "POST",
+        "/api/privacy/requests/:request_id/download",
+        ActorPolicy::Player
+    ),
     rule!("GET", "/api/privacy/consents", ActorPolicy::Player),
     rule!("PUT", "/api/privacy/consents/:channel", ActorPolicy::Player),
     rule!("GET", "/api/privacy/communications", ActorPolicy::Player),

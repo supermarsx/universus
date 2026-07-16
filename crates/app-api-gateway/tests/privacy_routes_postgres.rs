@@ -141,6 +141,9 @@ fn find_communication<'a>(matrix: &'a Value, channel: &str, category: &str) -> &
 async fn signed_privacy_routes_are_owner_scoped_durable_and_consent_gated() {
     let prior_jwt_secret = std::env::var("JWT_SECRET").ok();
     let prior_legacy_hmac = std::env::var("AUTH_ALLOW_LEGACY_HS256").ok();
+    let prior_export_key_id = std::env::var("PRIVACY_EXPORT_KEY_ID").ok();
+    let prior_export_key = std::env::var("PRIVACY_EXPORT_KEY_BASE64").ok();
+    let prior_worker_url = std::env::var("PRIVACY_WORKER_INTERNAL_URL").ok();
     std::env::set_var("JWT_SECRET", "default-secret");
     std::env::set_var("AUTH_ALLOW_LEGACY_HS256", "true");
 
@@ -228,6 +231,58 @@ async fn signed_privacy_routes_are_owner_scoped_durable_and_consent_gated() {
         "privacy-api-postgres-test-pepper-32-bytes-minimum",
     );
     std::env::set_var("PRIVACY_POLICY_VERSION", "privacy-v1");
+    std::env::set_var("PRIVACY_EXPORT_KEY_ID", "v1:privacy-route-test");
+    std::env::set_var(
+        "PRIVACY_EXPORT_KEY_BASE64",
+        "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=",
+    );
+    let delivery_mock = axum::Router::new()
+        .route(
+            "/api/privacy/exports/:request_id/delivery",
+            axum::routing::post(|| async {
+                axum::Json(json!({
+                    "token": "privacy-one-time-grant",
+                    "expiresAtUnix": 4_102_444_800_i64
+                }))
+            }),
+        )
+        .route(
+            "/api/privacy/exports/:request_id/download",
+            axum::routing::post(|headers: axum::http::HeaderMap| async move {
+                assert_eq!(
+                    headers
+                        .get("x-privacy-delivery-token")
+                        .and_then(|value| value.to_str().ok()),
+                    Some("privacy-one-time-grant")
+                );
+                assert!(headers.get(header::AUTHORIZATION).is_some());
+                (
+                    [
+                        (header::CACHE_CONTROL, "no-store, max-age=0"),
+                        (header::PRAGMA, "no-cache"),
+                        (
+                            header::CONTENT_DISPOSITION,
+                            "attachment; filename=\"universus-data-export-1.json\"",
+                        ),
+                        (header::CONTENT_TYPE, "application/json"),
+                    ],
+                    "{\"schemaVersion\":1}",
+                )
+            }),
+        );
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let delivery_address = listener.local_addr().unwrap();
+    let delivery_server = axum::Server::from_tcp(listener)
+        .unwrap()
+        .serve(delivery_mock.into_make_service());
+    let delivery_server = tokio::spawn(async move {
+        let _ = delivery_server.await;
+    });
+    std::env::set_var(
+        "PRIVACY_WORKER_INTERNAL_URL",
+        format!("http://{delivery_address}"),
+    );
     let app = build_router_with_dependencies(
         "privacy-api-test",
         Some(database.clone()),
@@ -275,7 +330,9 @@ async fn signed_privacy_routes_are_owner_scoped_durable_and_consent_gated() {
             &subject_token,
             Some(json!({
                 "requestType": "correction",
-                "idempotencyKey": "privacy-api-export-0001"
+                "idempotencyKey": "privacy-api-export-0001",
+                "confirmation": "APPLY MY CORRECTIONS",
+                "changes": {"email": "conflict@example.test"}
             })),
         ))
         .await
@@ -333,13 +390,45 @@ async fn signed_privacy_routes_are_owner_scoped_durable_and_consent_gated() {
     assert_eq!(detail["data"]["request"]["export"]["ready"], true);
     assert_eq!(
         detail["data"]["request"]["export"]["deliveryAvailable"],
-        false
+        true
     );
     assert_eq!(
         detail["data"]["request"]["export"]["deliveryStatus"],
-        "prepared_delivery_not_connected"
+        "ready"
     );
     assert!(detail["data"]["timeline"].as_array().unwrap().len() >= 2);
+
+    let grant = app
+        .clone()
+        .oneshot(request(
+            "POST",
+            &format!("/api/privacy/requests/{export_id}/delivery"),
+            &subject_token,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(grant.status(), StatusCode::OK);
+    assert_privacy_no_store(&grant);
+    assert_eq!(json_body(grant).await["token"], "privacy-one-time-grant");
+    let mut download_request = request(
+        "POST",
+        &format!("/api/privacy/requests/{export_id}/download"),
+        &subject_token,
+        None,
+    );
+    download_request.headers_mut().insert(
+        "x-privacy-delivery-token",
+        "privacy-one-time-grant".parse().unwrap(),
+    );
+    let download = app.clone().oneshot(download_request).await.unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    assert_privacy_no_store(&download);
+    assert_eq!(
+        download.headers().get(header::CONTENT_DISPOSITION).unwrap(),
+        "attachment; filename=\"universus-data-export-1.json\""
+    );
+    assert_eq!(json_body(download).await["schemaVersion"], 1);
 
     for other_token in [&same_tenant_token, &tenant_two_token] {
         let hidden = app
@@ -364,13 +453,41 @@ async fn signed_privacy_routes_are_owner_scoped_durable_and_consent_gated() {
             &subject_token,
             Some(json!({
                 "requestType": "correction",
-                "idempotencyKey": "privacy-api-correction-0001"
+                "idempotencyKey": "privacy-api-correction-0001",
+                "confirmation": "APPLY MY CORRECTIONS",
+                "changes": {
+                    "username": "PrivacyCorrected",
+                    "email": "privacy-corrected@example.test",
+                    "phoneNumber": null
+                }
             })),
         ))
         .await
         .unwrap();
     assert_eq!(correction.status(), StatusCode::OK);
-    assert_eq!(json_body(correction).await["data"]["status"], "in_review");
+    let correction = json_body(correction).await;
+    assert_eq!(correction["data"]["status"], "in_review");
+    let correction_id = correction["data"]["id"].as_i64().unwrap() as i32;
+    let encrypted = client
+        .query_one(
+            "SELECT request_payload_ciphertext, payload_key_id, payload_nonce,
+                    payload_sha256
+             FROM gdpr_requests WHERE id = $1",
+            &[&correction_id],
+        )
+        .await
+        .unwrap();
+    let ciphertext = encrypted.get::<_, Vec<u8>>("request_payload_ciphertext");
+    assert!(ciphertext.len() > 16);
+    assert!(!ciphertext
+        .windows("privacy-corrected@example.test".len())
+        .any(|window| window == b"privacy-corrected@example.test"));
+    assert_eq!(
+        encrypted.get::<_, String>("payload_key_id"),
+        "v1:privacy-route-test"
+    );
+    assert_eq!(encrypted.get::<_, Vec<u8>>("payload_nonce").len(), 12);
+    assert_eq!(encrypted.get::<_, Vec<u8>>("payload_sha256").len(), 32);
 
     let weak_restriction = app
         .clone()
@@ -866,4 +983,17 @@ async fn signed_privacy_routes_are_owner_scoped_durable_and_consent_gated() {
         Some(value) => std::env::set_var("AUTH_ALLOW_LEGACY_HS256", value),
         None => std::env::remove_var("AUTH_ALLOW_LEGACY_HS256"),
     }
+    match prior_export_key_id {
+        Some(value) => std::env::set_var("PRIVACY_EXPORT_KEY_ID", value),
+        None => std::env::remove_var("PRIVACY_EXPORT_KEY_ID"),
+    }
+    match prior_export_key {
+        Some(value) => std::env::set_var("PRIVACY_EXPORT_KEY_BASE64", value),
+        None => std::env::remove_var("PRIVACY_EXPORT_KEY_BASE64"),
+    }
+    match prior_worker_url {
+        Some(value) => std::env::set_var("PRIVACY_WORKER_INTERNAL_URL", value),
+        None => std::env::remove_var("PRIVACY_WORKER_INTERNAL_URL"),
+    }
+    delivery_server.abort();
 }

@@ -28,7 +28,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
-async fn integration_health_and_game_routes_work() {
+async fn integration_health_works_and_fleet_fails_closed_without_repository() {
     let app = build_router("integration");
 
     let health_response = app
@@ -56,31 +56,14 @@ async fn integration_health_and_game_routes_work() {
         )
         .await
         .unwrap();
-    assert_eq!(fleets_response.status(), StatusCode::OK);
+    assert_eq!(fleets_response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let fleets = json_body(fleets_response).await;
-    assert!(fleets["success"].as_bool().unwrap());
-    let data = fleets["data"].as_array().expect("data array");
-    assert!(!data.is_empty());
-    assert!(data[0]["fleetId"].as_str().is_some());
-
-    let detail_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/fleet/f-1001")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(detail_response.status(), StatusCode::OK);
-    let detail = json_body(detail_response).await;
-    assert_eq!(detail["data"]["fleetId"], "f-1001");
+    assert!(!fleets["success"].as_bool().unwrap());
+    assert_eq!(fleets["error"], "Fleet repository is unavailable");
 }
 
 #[tokio::test]
-async fn integration_handles_missing_fleet() {
+async fn integration_fleet_detail_fails_closed_without_repository() {
     let app = build_router("integration");
 
     let response = app
@@ -93,8 +76,8 @@ async fn integration_handles_missing_fleet() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = json_body(response).await;
     assert!(!body["success"].as_bool().unwrap());
-    assert!(body["error"].as_str().unwrap().contains("Fleet not found"));
+    assert_eq!(body["error"], "Fleet repository is unavailable");
 }

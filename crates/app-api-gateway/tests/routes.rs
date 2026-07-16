@@ -938,15 +938,24 @@ async fn fleet_send_without_auth_returns_401() {
 }
 
 #[tokio::test]
-async fn fleet_send_with_auth_returns_success_envelope() {
+async fn fleet_send_with_auth_requires_durable_repository() {
     let app = build_router(TEST_SERVICE_NAME);
     let payload = json!({
-        "mission": "attack",
-        "target": "[1:123:7]",
+        "commandId": "fleet-route-test-0001",
+        "mission": "transport",
+        "sourceKind": "planet",
+        "originPlanetId": "1",
+        "targetKind": "planet",
+        "targetGalaxy": 1,
+        "targetSystem": 123,
+        "targetPosition": 7,
         "ships": [
             { "shipType": "lightFighter", "count": 20 },
             { "shipType": "cruiser", "count": 5 }
-        ]
+        ],
+        "cargo": { "metal": 0, "crystal": 0, "deuterium": 0 },
+        "speedPercent": 100,
+        "holdSeconds": 0
     });
 
     let response = app
@@ -962,11 +971,10 @@ async fn fleet_send_with_auth_returns_success_envelope() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = response_json(response).await;
-    assert_eq!(body["success"], true);
-    assert_eq!(body["data"]["accepted"], true);
-    assert_eq!(body["data"]["totalShips"], 25);
+    assert_eq!(body["success"], false);
+    assert_eq!(body["error"], "Fleet repository is unavailable");
 }
 
 #[tokio::test]
@@ -1017,7 +1025,7 @@ async fn research_start_rejects_unknown_technology() {
 }
 
 #[tokio::test]
-async fn fleet_send_records_mission_sequence() {
+async fn fleet_send_rejects_the_legacy_implicit_command_contract() {
     let app = build_router(TEST_SERVICE_NAME);
     let payload = json!({
         "mission": "attack",
@@ -1027,8 +1035,7 @@ async fn fleet_send_records_mission_sequence() {
         ]
     });
 
-    let first_response = app
-        .clone()
+    let response = app
         .oneshot(
             Request::builder()
                 .uri("/api/fleet/send")
@@ -1040,25 +1047,7 @@ async fn fleet_send_records_mission_sequence() {
         )
         .await
         .unwrap();
-    assert_eq!(first_response.status(), StatusCode::OK);
-    let first_body = response_json(first_response).await;
-    assert_eq!(first_body["data"]["commandId"], "cmd-fleet-001");
-
-    let second_response = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/fleet/send")
-                .method("POST")
-                .header("authorization", format!("Bearer {}", dev_token()))
-                .header("content-type", "application/json")
-                .body(Body::from(payload.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(second_response.status(), StatusCode::OK);
-    let second_body = response_json(second_response).await;
-    assert_eq!(second_body["data"]["commandId"], "cmd-fleet-002");
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]

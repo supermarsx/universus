@@ -9,8 +9,8 @@ serde = { workspace = true }
 serde_json = "1.0"
 tokio = { workspace = true }
 tracing = { workspace = true }
+app-privacy-worker = { path = "../app-privacy-worker" }
 game-achievements = { path = "../game-achievements" }
-game-acs = { path = "../game-acs" }
 game-combat = { path = "../game-combat" }
 game-domain = { path = "../game-domain" }
 game-economy = { path = "../game-economy" }
@@ -25,6 +25,7 @@ platform-events = { path = "../platform-events" }
 platform-auth = { path = "../platform-auth" }
 platform-errors = { path = "../platform-errors" }
 platform-observability = { path = "../platform-observability" }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 serde_json = "1.0"

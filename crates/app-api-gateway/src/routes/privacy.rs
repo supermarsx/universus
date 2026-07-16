@@ -1,12 +1,13 @@
 use std::{net::SocketAddr, sync::Arc};
 
+use app_privacy_worker::{ExportEncryptor, PrivacyKeyring};
 use axum::body::Body;
 use axum::extract::{
     rejection::{JsonRejection, QueryRejection},
     ConnectInfo, Path, Query,
 };
 use axum::http::{
-    header::{CACHE_CONTROL, PRAGMA},
+    header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE, PRAGMA},
     HeaderMap, HeaderValue, Request, StatusCode,
 };
 use axum::middleware::{self, Next};
@@ -30,7 +31,10 @@ const DEFAULT_POLICY_VERSION: &str = "privacy-v1";
 const DEVELOPMENT_EVIDENCE_PEPPER: [u8; 32] = [0x44; 32];
 const RESTRICTION_CONFIRMATION: &str = "RESTRICT MY ACCOUNT";
 const ERASURE_CONFIRMATION: &str = "ERASE MY ACCOUNT";
+const CORRECTION_CONFIRMATION: &str = "APPLY MY CORRECTIONS";
 const CANCELLATION_CONFIRMATION: &str = "CANCEL REQUEST";
+const DELIVERY_TOKEN_HEADER: &str = "x-privacy-delivery-token";
+const MAX_DELIVERY_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 
 struct SecretBytes(Vec<u8>);
 
@@ -44,7 +48,15 @@ impl Drop for SecretBytes {
 struct PrivacyRouteConfig {
     policy_version: String,
     evidence_pepper: Option<Arc<SecretBytes>>,
+    correction_encryptor: Option<ExportEncryptor>,
+    delivery_bridge: Option<PrivacyDeliveryBridge>,
     available: bool,
+}
+
+#[derive(Clone)]
+struct PrivacyDeliveryBridge {
+    base_url: String,
+    client: reqwest::Client,
 }
 
 impl PrivacyRouteConfig {
@@ -78,12 +90,28 @@ impl PrivacyRouteConfig {
             None if production_like => None,
             None => Some(Arc::new(SecretBytes(DEVELOPMENT_EVIDENCE_PEPPER.to_vec()))),
         };
+        let correction_encryptor = PrivacyKeyring::from_lookup(lookup)
+            .and_then(|keyring| ExportEncryptor::from_keyring(keyring, 4096))
+            .ok();
+        let delivery_bridge = lookup("PRIVACY_WORKER_INTERNAL_URL")
+            .map(|value| value.trim().trim_end_matches('/').to_string())
+            .filter(|value| valid_internal_url(value))
+            .and_then(|base_url| {
+                reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .ok()
+                    .map(|client| PrivacyDeliveryBridge { base_url, client })
+            });
         let available = policy_valid
             && configured_pepper_valid
             && (!production_like || evidence_pepper.is_some());
         Self {
             policy_version,
             evidence_pepper,
+            correction_encryptor,
+            delivery_bridge,
             available,
         }
     }
@@ -120,6 +148,7 @@ struct CreatePrivacyRequest {
     request_type: String,
     idempotency_key: String,
     confirmation: Option<String>,
+    changes: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -252,6 +281,14 @@ fn router_with_config(config: PrivacyRouteConfig) -> Router {
             "/api/privacy/requests/:request_id/cancel",
             post(cancel_request_handler),
         )
+        .route(
+            "/api/privacy/requests/:request_id/delivery",
+            post(issue_export_delivery_handler),
+        )
+        .route(
+            "/api/privacy/requests/:request_id/download",
+            post(download_export_handler),
+        )
         .route("/api/privacy/consents", get(list_consents_handler))
         .route(
             "/api/privacy/consents/:channel",
@@ -309,7 +346,7 @@ async fn list_requests_handler(
         Ok(requests) => success(
             requests
                 .into_iter()
-                .map(request_payload)
+                .map(|request| request_payload(request, config.delivery_bridge.is_some()))
                 .collect::<Vec<_>>(),
         ),
         Err(error) => repository_error(error),
@@ -341,6 +378,27 @@ async fn create_request_handler(
     {
         return invalid_payload();
     }
+    let encrypted_payload = if request_type == PrivacyRequestType::Correction {
+        let Some(changes) = payload.changes.as_ref() else {
+            return invalid_payload();
+        };
+        let Some(encryptor) = config.correction_encryptor.as_ref() else {
+            return api_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "privacy_correction_unavailable",
+                "Correction encryption is unavailable",
+            );
+        };
+        match encryptor.prepare_correction_payload(owner.universe_id, owner.user_id, changes) {
+            Ok(payload) => Some(payload),
+            Err(_) => return invalid_payload(),
+        }
+    } else {
+        if payload.changes.is_some() {
+            return invalid_payload();
+        }
+        None
+    };
     let requester_ip_digest = canonical_request_ip(connect_info.map(|peer| peer.0), &headers)
         .map(|ip| config.digest("request-ip", &ip))
         .transpose();
@@ -356,15 +414,18 @@ async fn create_request_handler(
             idempotency_key: payload.idempotency_key.trim().to_string(),
             request_source: "user_self_service".to_string(),
             requester_ip_digest,
-            encrypted_payload: None,
+            encrypted_payload,
             erasure_cooling_off_seconds: None,
         })
         .await
     {
-        Ok(request) => success(request_payload(PrivacyRequestSummary {
-            request,
-            export: None,
-        })),
+        Ok(request) => success(request_payload(
+            PrivacyRequestSummary {
+                request,
+                export: None,
+            },
+            config.delivery_bridge.is_some(),
+        )),
         Err(error) => repository_error(error),
     }
 }
@@ -387,7 +448,7 @@ async fn request_detail_handler(
         .privacy_request_detail_for_owner(owner.universe_id, owner.user_id, request_id)
         .await
     {
-        Ok(Some(detail)) => success(detail_payload(detail)),
+        Ok(Some(detail)) => success(detail_payload(detail, config.delivery_bridge.is_some())),
         Ok(None) => not_found(),
         Err(error) => repository_error(error),
     }
@@ -425,12 +486,140 @@ async fn cancel_request_handler(
         )
         .await
     {
-        Ok(request) => success(request_payload(PrivacyRequestSummary {
-            request,
-            export: None,
-        })),
+        Ok(request) => success(request_payload(
+            PrivacyRequestSummary {
+                request,
+                export: None,
+            },
+            config.delivery_bridge.is_some(),
+        )),
         Err(error) => repository_error(error),
     }
+}
+
+async fn issue_export_delivery_handler(
+    Extension(config): Extension<PrivacyRouteConfig>,
+    Extension(database): Extension<Option<Database>>,
+    AuthUser(user): AuthUser,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let request_id = match positive_i32(&request_id) {
+        Some(request_id) => request_id,
+        None => return invalid_payload(),
+    };
+    if let Err(error) = prerequisites(&config, database, &user) {
+        return error.response();
+    }
+    forward_delivery_request(&config, request_id, "delivery", &headers, None).await
+}
+
+async fn download_export_handler(
+    Extension(config): Extension<PrivacyRouteConfig>,
+    Extension(database): Extension<Option<Database>>,
+    AuthUser(user): AuthUser,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let request_id = match positive_i32(&request_id) {
+        Some(request_id) => request_id,
+        None => return invalid_payload(),
+    };
+    if let Err(error) = prerequisites(&config, database, &user) {
+        return error.response();
+    }
+    let Some(delivery_token) = headers.get(DELIVERY_TOKEN_HEADER) else {
+        return api_error(
+            StatusCode::BAD_REQUEST,
+            "privacy_delivery_token_required",
+            "Privacy delivery token is required",
+        );
+    };
+    forward_delivery_request(
+        &config,
+        request_id,
+        "download",
+        &headers,
+        Some(delivery_token),
+    )
+    .await
+}
+
+async fn forward_delivery_request(
+    config: &PrivacyRouteConfig,
+    request_id: i32,
+    action: &'static str,
+    headers: &HeaderMap,
+    delivery_token: Option<&HeaderValue>,
+) -> Response {
+    let Some(bridge) = config.delivery_bridge.as_ref() else {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "privacy_delivery_unavailable",
+            "Privacy export delivery is unavailable",
+        );
+    };
+    let Some(authorization) = headers.get(AUTHORIZATION) else {
+        return api_error(
+            StatusCode::UNAUTHORIZED,
+            "privacy_identity_unavailable",
+            "Authenticated privacy identity is unavailable",
+        );
+    };
+    let mut request = bridge.client.post(format!(
+        "{}/api/privacy/exports/{request_id}/{action}",
+        bridge.base_url
+    ));
+    request = request.header(reqwest::header::AUTHORIZATION, authorization.as_bytes());
+    if let Some(token) = delivery_token {
+        request = request.header(DELIVERY_TOKEN_HEADER, token.as_bytes());
+    }
+    let upstream = match request.send().await {
+        Ok(response) => response,
+        Err(_) => {
+            return api_error(
+                StatusCode::BAD_GATEWAY,
+                "privacy_delivery_unavailable",
+                "Privacy export delivery is unavailable",
+            )
+        }
+    };
+    if upstream
+        .content_length()
+        .is_some_and(|length| length > MAX_DELIVERY_RESPONSE_BYTES)
+    {
+        return api_error(
+            StatusCode::BAD_GATEWAY,
+            "privacy_delivery_invalid_response",
+            "Privacy export delivery returned an invalid response",
+        );
+    }
+    let status = upstream.status();
+    let response_headers = [CONTENT_TYPE, CONTENT_DISPOSITION, CACHE_CONTROL, PRAGMA]
+        .into_iter()
+        .filter_map(|name| {
+            upstream
+                .headers()
+                .get(name.as_str())
+                .cloned()
+                .map(|value| (name, value))
+        })
+        .collect::<Vec<_>>();
+    let bytes = match upstream.bytes().await {
+        Ok(bytes) if bytes.len() as u64 <= MAX_DELIVERY_RESPONSE_BYTES => bytes,
+        _ => {
+            return api_error(
+                StatusCode::BAD_GATEWAY,
+                "privacy_delivery_invalid_response",
+                "Privacy export delivery returned an invalid response",
+            )
+        }
+    };
+    let mut response = (status, bytes).into_response();
+    for (name, value) in response_headers {
+        response.headers_mut().insert(name, value);
+    }
+    response
 }
 
 async fn list_consents_handler(
@@ -692,7 +881,10 @@ impl PrivacyPrerequisiteError {
     }
 }
 
-fn request_payload(summary: PrivacyRequestSummary) -> PrivacyRequestPayload {
+fn request_payload(
+    summary: PrivacyRequestSummary,
+    delivery_available: bool,
+) -> PrivacyRequestPayload {
     let cancellation_allowed = !summary.request.legal_hold_active
         && matches!(
             summary.request.status,
@@ -716,19 +908,28 @@ fn request_payload(summary: PrivacyRequestSummary) -> PrivacyRequestPayload {
         retention_until_unix: summary.request.retention_until_unix,
         version: summary.request.version,
         cancellation_allowed,
-        export: summary.export.map(export_payload),
+        export: summary
+            .export
+            .map(|export| export_payload(export, delivery_available)),
     }
 }
 
-fn export_payload(export: PrivacyExportAvailability) -> PrivacyExportPayload {
+fn export_payload(
+    export: PrivacyExportAvailability,
+    delivery_available: bool,
+) -> PrivacyExportPayload {
     PrivacyExportPayload {
         ready: export.ready,
         expired: export.expired,
         expires_at_unix: export.expires_at_unix,
         plaintext_size: export.plaintext_size,
-        delivery_available: false,
+        delivery_available: delivery_available && export.ready && !export.expired,
         delivery_status: if export.ready {
-            "prepared_delivery_not_connected"
+            if delivery_available && !export.expired {
+                "ready"
+            } else {
+                "prepared_delivery_not_connected"
+            }
         } else if export.expired {
             "expired"
         } else {
@@ -737,12 +938,18 @@ fn export_payload(export: PrivacyExportAvailability) -> PrivacyExportPayload {
     }
 }
 
-fn detail_payload(detail: PrivacyRequestDetail) -> PrivacyRequestDetailPayload {
+fn detail_payload(
+    detail: PrivacyRequestDetail,
+    delivery_available: bool,
+) -> PrivacyRequestDetailPayload {
     PrivacyRequestDetailPayload {
-        request: request_payload(PrivacyRequestSummary {
-            request: detail.request,
-            export: detail.export,
-        }),
+        request: request_payload(
+            PrivacyRequestSummary {
+                request: detail.request,
+                export: detail.export,
+            },
+            delivery_available,
+        ),
         timeline: detail.timeline.into_iter().map(event_payload).collect(),
     }
 }
@@ -811,8 +1018,21 @@ fn confirmation_matches(request_type: PrivacyRequestType, confirmation: Option<&
     match request_type {
         PrivacyRequestType::Restriction => confirmation == Some(RESTRICTION_CONFIRMATION),
         PrivacyRequestType::Erasure => confirmation == Some(ERASURE_CONFIRMATION),
-        PrivacyRequestType::Export | PrivacyRequestType::Correction => confirmation.is_none(),
+        PrivacyRequestType::Correction => confirmation == Some(CORRECTION_CONFIRMATION),
+        PrivacyRequestType::Export => confirmation.is_none(),
     }
+}
+
+fn valid_internal_url(value: &str) -> bool {
+    reqwest::Url::parse(value).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none()
+            && url.path() == "/"
+    })
 }
 
 fn valid_idempotency_key(value: &str) -> bool {

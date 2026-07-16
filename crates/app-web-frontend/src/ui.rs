@@ -500,17 +500,59 @@ pub(crate) const CLIENT_JS: &str = r##"
     const reload = () => loadFleet(root);
     loading(root, 'Tracking fleet telemetry…');
     try {
-      const fleets = await api('/api/fleet');
-      root.innerHTML = `<section class="dashboard-grid wide-first"><article class="panel"><div class="panel-heading"><div><span class="eyebrow">Live command telemetry</span><h2>Fleet movements</h2></div><span class="count-badge">${fleets.length}</span></div><div class="movement-list">${fleets.length ? fleets.map((fleet) => `<button type="button" class="movement-row" data-fleet="${escapeHtml(fleet.fleetId)}"><span class="mission-icon">${escapeHtml(String(fleet.mission).slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(pretty(fleet.mission))}</strong><small>${escapeHtml(fleet.origin)} → ${escapeHtml(fleet.destination)}</small></span><span><strong>${formatNumber(fleet.ships)} ships</strong><small>${formatDuration(fleet.etaSeconds)}</small></span></button>`).join('') : '<div class="empty-state">No fleets are currently in transit.</div>'}</div><div id="fleet-detail" class="inline-result" aria-live="polite">Select a movement for its ship manifest.</div></article><aside class="panel"><span class="eyebrow">Command uplink</span><h2>Dispatch fleet</h2><form id="fleet-form" class="stacked-form"><label>Mission<select name="mission"><option value="transport">Transport</option><option value="attack">Attack</option><option value="deploy">Deploy</option><option value="harvest">Harvest</option></select></label><label>Target coordinates<input name="target" value="[1:121:4]" pattern="\[[0-9]+:[0-9]+:[0-9]+\]" required></label><label>Ship class<select name="shipType"><option value="smallCargo">Small Cargo</option><option value="lightFighter">Light Fighter</option><option value="cruiser">Cruiser</option></select></label><label>Count<input type="number" name="count" min="1" value="1" required></label><button type="submit">Transmit orders</button><p class="form-feedback" role="status" aria-live="polite"></p></form></aside></section>`;
-      $$('.movement-row', root).forEach((button) => button.addEventListener('click', async () => {
-        const detail = $('#fleet-detail', root); detail.textContent = 'Decrypting manifest…';
-        try { const fleet = await api(`/api/fleet/${encodeURIComponent(button.dataset.fleet)}`); detail.innerHTML = `<strong>${escapeHtml(fleet.fleetId)} · ${escapeHtml(pretty(fleet.status))}</strong><span>${fleet.ships.map((ship) => `${formatNumber(ship.count)} × ${escapeHtml(pretty(ship.shipType))}`).join(' · ')}</span>`; } catch (error) { detail.textContent = error.message; }
+      const [fleets, planets] = await Promise.all([api('/api/fleet'), api('/api/planets')]);
+      root.innerHTML = `<section class="dashboard-grid wide-first"><article class="panel"><div class="panel-heading"><div><span class="eyebrow">Live command telemetry</span><h2>Fleet movements</h2></div><span class="count-badge">${fleets.length}</span></div><div class="movement-list">${fleets.length ? fleets.map((fleet) => `<button type="button" class="movement-row" data-fleet="${escapeHtml(fleet.fleetId)}"><span class="mission-icon">${escapeHtml(String(fleet.mission).slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(pretty(fleet.mission))}</strong><small>${escapeHtml(fleet.origin)} → ${escapeHtml(fleet.destination)}</small></span><span><strong>${formatNumber(fleet.totalShips)} ships</strong><small>${formatDuration(fleet.etaSeconds)}</small></span></button>`).join('') : '<div class="empty-state">No fleets are currently in transit.</div>'}</div><div id="fleet-detail" class="inline-result" aria-live="polite">Select a movement for its ship manifest.</div></article><aside class="panel"><span class="eyebrow">Command uplink</span><h2>Dispatch fleet</h2>${planets.length ? `<form id="fleet-form" class="stacked-form"><label>Origin colony<select name="originPlanetId">${planets.map((planet) => `<option value="${escapeHtml(planet.id)}">${escapeHtml(planet.name)} · [${planet.galaxy}:${planet.system}:${planet.position}]</option>`).join('')}</select></label><label>Mission<select name="mission"><option value="transport">Transport</option><option value="attack">Attack</option><option value="deploy">Deploy</option><option value="espionage">Espionage</option><option value="colonize">Colonize</option><option value="harvest">Harvest</option><option value="expedition">Expedition</option><option value="destroy">Moon destruction</option></select></label><label>Target type<select name="targetKind"><option value="planet">Planet</option><option value="moon">Moon</option><option value="debris">Debris field</option><option value="empty_coordinate">Empty coordinate</option><option value="expedition_slot">Expedition slot</option></select></label><label>Target coordinates<input name="target" value="[1:121:4]" pattern="\[[0-9]+:[0-9]+:[0-9]+\]" required></label><label>Ship class<select name="shipType"><option value="smallCargo">Small Cargo</option><option value="largeCargo">Large Cargo</option><option value="lightFighter">Light Fighter</option><option value="cruiser">Cruiser</option><option value="colonyShip">Colony Ship</option><option value="recycler">Recycler</option><option value="espionageProbe">Espionage Probe</option><option value="deathstar">Deathstar</option></select></label><label>Count<input type="number" name="count" min="1" value="1" required></label><label>Speed<input type="range" name="speedPercent" min="10" max="100" step="10" value="100"></label><label>Metal cargo<input type="number" name="cargoMetal" min="0" value="0"></label><label>Crystal cargo<input type="number" name="cargoCrystal" min="0" value="0"></label><label>Deuterium cargo<input type="number" name="cargoDeuterium" min="0" value="0"></label><button type="submit">Transmit orders</button><p class="form-feedback" role="status" aria-live="polite"></p></form>` : '<div class="empty-state compact">A colony is required before a fleet can launch.</div>'}</aside></section>`;
+      const renderFleetDetail = async (fleetId) => {
+        const detail = $('#fleet-detail', root);
+        if (!detail) return;
+        detail.textContent = 'Decrypting manifest and event timeline…';
+        try {
+          const [fleet, events] = await Promise.all([
+            api(`/api/fleet/${encodeURIComponent(fleetId)}`),
+            api(`/api/fleet/${encodeURIComponent(fleetId)}/events`)
+          ]);
+          const canRecall = fleet.status === 'outbound';
+          detail.innerHTML = `<div class="panel-heading"><div><strong>${escapeHtml(fleet.fleetId)} · ${escapeHtml(pretty(fleet.status))}</strong><span>${fleet.ships.map((ship) => `${formatNumber(ship.count)} × ${escapeHtml(pretty(ship.shipType))}`).join(' · ')}</span></div>${canRecall ? '<button type="button" class="secondary fleet-recall">Recall fleet</button>' : '<button type="button" class="secondary" disabled aria-disabled="true">Recall unavailable</button>'}</div><dl class="detail-list"><div><dt>Mission</dt><dd>${escapeHtml(pretty(fleet.mission))}</dd></div><div><dt>Route</dt><dd>${escapeHtml(fleet.origin)} → ${escapeHtml(fleet.destination)}</dd></div><div><dt>Fuel consumed</dt><dd>${formatNumber(fleet.fuelConsumed)}</dd></div><div><dt>Phase ETA</dt><dd>${formatDuration(fleet.etaSeconds)}</dd></div></dl><h3>Mission timeline</h3><ol class="timeline-list">${events.length ? events.map((entry) => `<li><strong>${escapeHtml(pretty(entry.eventType))}</strong><time datetime="${new Date(Number(entry.occurredAt) * 1000).toISOString()}">${escapeHtml(new Date(Number(entry.occurredAt) * 1000).toLocaleString())}</time><small>${escapeHtml(JSON.stringify(entry.payload || {}))}</small></li>`).join('') : '<li>No durable mission events have been recorded.</li>'}</ol><p class="form-feedback" role="status" aria-live="polite"></p>`;
+          const recall = $('.fleet-recall', detail);
+          recall?.addEventListener('click', () => withButtonLock(recall, async () => {
+            feedback(detail, 'Submitting recall against the current authoritative fleet phase…');
+            try {
+              const recalled = await api(`/api/fleet/${encodeURIComponent(fleetId)}/recall`, { method: 'POST' });
+              feedback(detail, `Recall accepted. Fleet is now ${pretty(recalled.status)}.`);
+              root._selectedFleetId = fleetId;
+              await reload();
+            } catch (error) { feedback(detail, error.message, true); }
+          }));
+        } catch (error) { detail.textContent = error.message; }
+      };
+      $$('.movement-row', root).forEach((button) => button.addEventListener('click', () => {
+        root._selectedFleetId = button.dataset.fleet;
+        renderFleetDetail(button.dataset.fleet);
       }));
       const form = $('#fleet-form', root);
-      form.addEventListener('submit', async (event) => {
+      let pendingFleetLaunch = null;
+      form?.addEventListener('submit', async (event) => {
         event.preventDefault(); const data = Object.fromEntries(new FormData(form));
-        try { const result = await api('/api/fleet/send', { method: 'POST', body: jsonBody({ mission: data.mission, target: data.target, ships: [{ shipType: data.shipType, count: Number(data.count) }] }) }); feedback(form, `${result.totalShips} ships accepted under command ${result.commandId}.`); } catch (error) { feedback(form, error.message, true); }
+        const coordinates = String(data.target).match(/^\[(\d+):(\d+):(\d+)\]$/);
+        if (!coordinates) return feedback(form, 'Target coordinates must use [galaxy:system:position].', true);
+        const launchFacts = { mission: data.mission, sourceKind: 'planet', originPlanetId: data.originPlanetId, targetKind: data.targetKind, targetGalaxy: Number(coordinates[1]), targetSystem: Number(coordinates[2]), targetPosition: Number(coordinates[3]), ships: [{ shipType: data.shipType, count: Number(data.count) }], cargo: { metal: Number(data.cargoMetal), crystal: Number(data.cargoCrystal), deuterium: Number(data.cargoDeuterium) }, speedPercent: Number(data.speedPercent), holdSeconds: 0 };
+        const launchFingerprint = JSON.stringify(launchFacts);
+        if (!pendingFleetLaunch || pendingFleetLaunch.fingerprint !== launchFingerprint) {
+          pendingFleetLaunch = { fingerprint: launchFingerprint, commandId: globalThis.crypto?.randomUUID?.() || `fleet-${Date.now()}-${Math.random().toString(16).slice(2)}` };
+        }
+        const submit = $('button[type="submit"]', form);
+        withButtonLock(submit, async () => {
+          feedback(form, `Transmitting command ${pendingFleetLaunch.commandId}…`);
+          try {
+            const result = await api('/api/fleet/send', { method: 'POST', body: jsonBody({ commandId: pendingFleetLaunch.commandId, ...launchFacts }) });
+            feedback(form, `${result.fleet.totalShips} ships accepted under command ${result.fleet.commandId}.`);
+            pendingFleetLaunch = null;
+            root._selectedFleetId = result.fleet.fleetId;
+            await reload();
+          } catch (error) { feedback(form, `${error.message} Retrying unchanged orders will reuse the same command.`, true); }
+        });
       });
+      if (root._selectedFleetId && fleets.some((fleet) => String(fleet.fleetId) === String(root._selectedFleetId))) renderFleetDetail(root._selectedFleetId);
       finish(root);
     } catch (error) { failure(root, error, reload); }
   }
@@ -618,6 +660,45 @@ pub(crate) const CLIENT_JS: &str = r##"
   const privacyStatus = (status) => `<span class="status-chip privacy-status privacy-status-${escapeHtml(status)}">${escapeHtml(pretty(status))}</span>`;
   const privacyVersionConflict = (error) => error?.code === 'privacy_version_conflict' || error?.status === 409;
 
+  async function privacyDownload(requestId) {
+    const grant = await api(`/api/privacy/requests/${encodeURIComponent(requestId)}/delivery`, { method: 'POST' });
+    let deliveryToken = String(grant.token || '');
+    try {
+      const response = await fetch(`${apiPrefix}/api/privacy/requests/${encodeURIComponent(requestId)}/download`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'x-privacy-delivery-token': deliveryToken }
+      });
+      if (!response.ok) {
+        const type = response.headers.get('content-type') || '';
+        const payload = type.includes('application/json') ? await response.json() : null;
+        const error = new Error(payload?.error || `Download failed with status ${response.status}`);
+        error.code = payload?.code || 'privacy_download_failed';
+        error.status = response.status;
+        throw error;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="([A-Za-z0-9._-]+)"/);
+      const filename = match?.[1] || `universus-data-export-${requestId}.json`;
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    } finally {
+      deliveryToken = '';
+      grant.token = '';
+    }
+  }
+
   function privacyIdempotencyKey(root, requestType) {
     root._privacyRequestKeys ||= {};
     if (!root._privacyRequestKeys[requestType]) {
@@ -634,7 +715,9 @@ pub(crate) const CLIENT_JS: &str = r##"
       exportState = request.export.expired
         ? '<p class="privacy-delivery-note is-error">The prepared export expired. Create a new export request if it is still needed.</p>'
         : request.export.ready
-          ? `<p class="privacy-delivery-note"><strong>Export prepared.</strong> ${formatNumber(request.export.plaintextSize)} bytes · retained until ${escapeHtml(privacyDate(request.export.expiresAtUnix))}. Secure delivery is not connected in this app, so no download is offered.</p>`
+          ? request.export.deliveryAvailable
+            ? `<div class="privacy-delivery-note"><strong>Export prepared.</strong> ${formatNumber(request.export.plaintextSize)} bytes · retained until ${escapeHtml(privacyDate(request.export.expiresAtUnix))}. <button type="button" class="secondary privacy-download-button" data-privacy-download="${escapeHtml(request.id)}">Download JSON export</button></div>`
+            : `<p class="privacy-delivery-note is-error"><strong>Export prepared.</strong> Secure delivery is temporarily unavailable.</p>`
           : '<p class="privacy-delivery-note">The export is still being prepared.</p>';
     }
     return `<article class="privacy-request-card" data-request-id="${escapeHtml(request.id)}">
@@ -659,7 +742,7 @@ pub(crate) const CLIENT_JS: &str = r##"
     return `<div class="panel-heading"><div><span class="eyebrow">Request #${escapeHtml(request.id)}</span><h2>${escapeHtml(pretty(request.requestType))} timeline</h2></div>${privacyStatus(request.status)}</div>
       ${request.legalHoldActive ? '<div class="notice-card privacy-hold" role="status"><strong>Legal hold active.</strong> Processing and cancellation are paused while the hold remains in force.</div>' : ''}
       ${request.coolingOffUntilUnix ? `<p class="contract-note">Cooling-off boundary: ${escapeHtml(privacyDate(request.coolingOffUntilUnix))}</p>` : ''}
-      ${request.export?.ready ? '<div class="notice-card"><strong>Prepared, not downloadable here.</strong><p>The encrypted artifact exists, but the delivery bridge is not connected. This page intentionally provides no placeholder download link.</p></div>' : ''}
+      ${request.export?.ready ? request.export.deliveryAvailable ? '<div class="notice-card"><strong>Prepared for one-time delivery.</strong><p>Use the download control in the request list. A short-lived grant is consumed only after the encrypted artifact passes integrity verification.</p></div>' : '<div class="notice-card"><strong>Prepared, but delivery is unavailable.</strong><p>The encrypted artifact remains protected until the delivery service recovers.</p></div>' : ''}
       <ol class="privacy-timeline">${timeline.map((event) => `<li><span class="privacy-timeline-dot" aria-hidden="true"></span><div><strong>${escapeHtml(pretty(event.eventType))}: ${escapeHtml(pretty(event.toStatus))}</strong><small>${escapeHtml(privacyDate(event.createdAtUnix))} · ${escapeHtml(pretty(event.actorType))}${event.reasonCode ? ` · ${escapeHtml(pretty(event.reasonCode))}` : ''}</small></div></li>`).join('') || '<li>No lifecycle events are available.</li>'}</ol>
       ${cancelForm}`;
   }
@@ -682,8 +765,8 @@ pub(crate) const CLIENT_JS: &str = r##"
         <p class="privacy-global-feedback ${notice?.error ? 'is-error' : ''}" role="status" aria-live="polite">${notice ? escapeHtml(notice.message) : ''}</p>
         <section class="panel" aria-labelledby="privacy-actions-heading"><div class="panel-heading"><div><span class="eyebrow">Self-service requests</span><h2 id="privacy-actions-heading">Start a privacy request</h2></div></div>
           <div class="privacy-action-grid">
-            <form class="privacy-action-card" data-privacy-request="export"><h3>Export my data</h3><p>Prepare a durable account export. Delivery is not connected yet; readiness is shown honestly in the timeline.</p><button type="submit">Request export</button><p class="form-feedback" role="status" aria-live="polite"></p></form>
-            <form class="privacy-action-card" data-privacy-request="correction"><h3>Correct my data</h3><p>Open a reviewed correction request. Support will use the request timeline for follow-up.</p><button type="submit">Request correction</button><p class="form-feedback" role="status" aria-live="polite"></p></form>
+            <form class="privacy-action-card" data-privacy-request="export"><h3>Export my data</h3><p>Prepare an encrypted account export for short-lived, one-time JSON delivery.</p><button type="submit">Request export</button><p class="form-feedback" role="status" aria-live="polite"></p></form>
+            <form class="privacy-action-card privacy-correction-card" data-privacy-request="correction"><h3>Correct my data</h3><p>Submit only the fields that need correction. Values are encrypted before the reviewed request is stored.</p><label>New username (optional)<input name="username" autocomplete="username" minlength="3" maxlength="32"></label><label>New email (optional)<input name="email" type="email" autocomplete="email" maxlength="254"></label><label>New phone in E.164 form (optional)<input name="phoneNumber" type="tel" autocomplete="tel" maxlength="16" placeholder="+441234567890"></label><label class="privacy-clear-phone"><input name="clearPhone" type="checkbox"> Remove my phone number</label><label>Type <code>APPLY MY CORRECTIONS</code><input name="confirmation" autocomplete="off" required></label><button type="submit">Submit encrypted correction</button><p class="form-feedback" role="status" aria-live="polite"></p></form>
             <form class="privacy-action-card danger-zone" data-privacy-request="restriction"><h3>Restrict my account</h3><p>Stops nonessential processing and communication and invalidates active access when applied.</p><label>Type <code>RESTRICT MY ACCOUNT</code><input name="confirmation" autocomplete="off" required></label><button type="submit" class="secondary">Request restriction</button><p class="form-feedback" role="status" aria-live="polite"></p></form>
             <form class="privacy-action-card danger-zone" data-privacy-request="erasure"><h3>Erase my account</h3><p>Starts the cooling-off, legal review, dual approval, and access-invalidation lifecycle. This is not immediate deletion.</p><label>Type <code>ERASE MY ACCOUNT</code><input name="confirmation" autocomplete="off" required></label><button type="submit" class="secondary">Request erasure</button><p class="form-feedback" role="status" aria-live="polite"></p></form>
           </div>
@@ -697,22 +780,59 @@ pub(crate) const CLIENT_JS: &str = r##"
         event.preventDefault();
         const requestType = form.dataset.privacyRequest;
         const confirmation = form.elements.confirmation?.value;
-        const expectedPhrase = requestType === 'restriction' ? 'RESTRICT MY ACCOUNT' : requestType === 'erasure' ? 'ERASE MY ACCOUNT' : null;
+        const expectedPhrase = requestType === 'restriction' ? 'RESTRICT MY ACCOUNT' : requestType === 'erasure' ? 'ERASE MY ACCOUNT' : requestType === 'correction' ? 'APPLY MY CORRECTIONS' : null;
         if (expectedPhrase && confirmation !== expectedPhrase) {
           feedback(form, `Type ${expectedPhrase} exactly to continue.`, true);
           form.elements.confirmation.focus();
           return;
         }
+        let changes;
+        if (requestType === 'correction') {
+          const username = form.elements.username.value.trim();
+          const email = form.elements.email.value.trim();
+          const phoneNumber = form.elements.phoneNumber.value.trim();
+          const clearPhone = form.elements.clearPhone.checked;
+          if (phoneNumber && clearPhone) {
+            feedback(form, 'Choose either a replacement phone number or removal, not both.', true);
+            return;
+          }
+          changes = {
+            ...(username ? { username } : {}),
+            ...(email ? { email } : {}),
+            ...(clearPhone ? { phoneNumber: null } : phoneNumber ? { phoneNumber } : {})
+          };
+          if (!Object.keys(changes).length) {
+            feedback(form, 'Enter at least one correction before submitting.', true);
+            return;
+          }
+        }
         const button = $('button[type="submit"]', form);
         withButtonLock(button, async () => {
           feedback(form, 'Recording your request…');
           try {
-            await api('/api/privacy/requests', { method: 'POST', body: jsonBody({ requestType, idempotencyKey: privacyIdempotencyKey(root, requestType), ...(confirmation ? { confirmation } : {}) }) });
+            await api('/api/privacy/requests', { method: 'POST', body: jsonBody({ requestType, idempotencyKey: privacyIdempotencyKey(root, requestType), ...(confirmation ? { confirmation } : {}), ...(changes ? { changes } : {}) }) });
             delete root._privacyRequestKeys[requestType];
             root._privacyNotice = { message: `${pretty(requestType)} request recorded.`, error: false };
             await reload();
           } catch (error) {
             feedback(form, error.code === 'privacy_request_active' ? 'An active request of this type already exists. Review its timeline before creating another.' : error.status === 409 ? 'This request conflicts with current durable state. Review the request history and retry only if needed.' : error.message, true);
+          }
+        });
+      }));
+
+      $$('.privacy-download-button', root).forEach((button) => button.addEventListener('click', () => {
+        const card = button.closest('.privacy-request-card');
+        withButtonLock(button, async () => {
+          const note = $('.privacy-delivery-note', card);
+          if (note) note.classList.remove('is-error');
+          try {
+            await privacyDownload(button.dataset.privacyDownload);
+            root._privacyNotice = { message: 'Your one-time JSON export was delivered.', error: false };
+          } catch (error) {
+            if (note) {
+              note.classList.add('is-error');
+              note.insertAdjacentHTML('beforeend', `<span class="row-feedback is-error"> ${escapeHtml(error.message)}</span>`);
+            }
           }
         });
       }));

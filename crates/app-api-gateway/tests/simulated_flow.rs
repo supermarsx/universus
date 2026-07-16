@@ -81,10 +81,10 @@ async fn simulated_player_flow_respects_durable_gameplay_boundary() {
         )
         .await
         .unwrap();
-    assert_eq!(fleet.status(), StatusCode::OK);
+    assert_eq!(fleet.status(), StatusCode::SERVICE_UNAVAILABLE);
     let fleet_body = json_body(fleet).await;
-    let fleet_array = fleet_body["data"].as_array().expect("fleet data array");
-    assert!(!fleet_array.is_empty());
+    assert_eq!(fleet_body["success"], false);
+    assert_eq!(fleet_body["error"], "Fleet repository is unavailable");
 
     let unauthorized_build = app
         .clone()
@@ -149,11 +149,20 @@ async fn simulated_player_flow_respects_durable_gameplay_boundary() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
+                        "commandId": "simulated-flow-fleet-0001",
                         "mission": "deploy",
-                        "target": "[1:121:4]",
+                        "sourceKind": "planet",
+                        "originPlanetId": "1",
+                        "targetKind": "planet",
+                        "targetGalaxy": 1,
+                        "targetSystem": 121,
+                        "targetPosition": 4,
                         "ships": [
                             { "shipType": "lightFighter", "count": 3 }
-                        ]
+                        ],
+                        "cargo": { "metal": 0, "crystal": 0, "deuterium": 0 },
+                        "speedPercent": 100,
+                        "holdSeconds": 0
                     })
                     .to_string(),
                 ))
@@ -161,11 +170,8 @@ async fn simulated_player_flow_respects_durable_gameplay_boundary() {
         )
         .await
         .unwrap();
-    assert_eq!(send_response.status(), StatusCode::OK);
+    assert_eq!(send_response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let send_body = json_body(send_response).await;
-    let command = send_body["data"]["commandId"]
-        .as_str()
-        .expect("command id present");
-    assert!(command.starts_with("cmd-fleet-"));
-    assert_eq!(send_body["data"]["accepted"], true);
+    assert_eq!(send_body["success"], false);
+    assert_eq!(send_body["error"], "Fleet repository is unavailable");
 }
