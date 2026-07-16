@@ -31,6 +31,25 @@ pub struct GameplayResourcesRow {
     pub dark_matter: i64,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct GameplayResourceProjectionRow {
+    pub metal_per_hour: i64,
+    pub crystal_per_hour: i64,
+    /// Signed net change after fusion fuel consumption.
+    pub deuterium_per_hour: i64,
+    pub deuterium_gross_per_hour: i64,
+    pub fusion_fuel_per_hour: i64,
+    pub metal_storage: i64,
+    pub crystal_storage: i64,
+    pub deuterium_storage: i64,
+    pub energy_supply: i64,
+    pub energy_demand: i64,
+    /// Signed surplus (positive) or deficit (negative).
+    pub energy_net: i64,
+    pub production_factor: f64,
+    pub fusion_online: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameplayPlanetRow {
     pub id: String,
@@ -62,6 +81,12 @@ pub struct GameplayScoreRow {
     pub economy_score: i64,
     pub research_score: i64,
     pub military_score: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameplayProfileMetaRow {
+    pub rank: i64,
+    pub alliance_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -405,6 +430,47 @@ impl Database {
         }))
     }
 
+    pub async fn gameplay_universe_speed(&self, universe_id: i64) -> DbResult<Option<i32>> {
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        client
+            .query_opt("SELECT speed FROM universes WHERE id = $1", &[&universe_id])
+            .await
+            .map(|row| row.map(|row| row.get::<_, i32>("speed")))
+            .map_err(|error| error.to_string())
+    }
+
+    pub async fn gameplay_profile_meta_for_user(
+        &self,
+        user_id: &str,
+    ) -> DbResult<Option<GameplayProfileMetaRow>> {
+        let Some(user_id) = parse_optional_id(user_id) else {
+            return Ok(None);
+        };
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        client
+            .query_opt(
+                "SELECT
+                    (1 + (
+                        SELECT COUNT(*) FROM player_scores other
+                        WHERE other.total_score > score.total_score
+                    ))::BIGINT AS rank,
+                    alliance.tag AS alliance_tag
+                 FROM users account
+                 JOIN player_scores score ON score.user_id = account.id
+                 LEFT JOIN alliances alliance ON alliance.id = account.alliance_id
+                 WHERE account.id = $1",
+                &[&user_id],
+            )
+            .await
+            .map(|row| {
+                row.map(|row| GameplayProfileMetaRow {
+                    rank: row.get("rank"),
+                    alliance_tag: row.get("alliance_tag"),
+                })
+            })
+            .map_err(|error| error.to_string())
+    }
+
     /// Trusted provisioning primitive shared by registration and future
     /// colonization orchestration. It derives the universe from the persisted
     /// owner, serializes allocation per universe, and retries only whole
@@ -505,8 +571,18 @@ impl Database {
         let Some(user_id) = parse_optional_id(user_id) else {
             return Ok(None);
         };
-        let client = self.pool.get().await.map_err(|error| error.to_string())?;
-        let row = client
+        let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|error| error.to_string())?;
+        if !materialize_owned_planets(&transaction, user_id)
+            .await
+            .map_err(read_materialization_error)?
+        {
+            return Ok(None);
+        }
+        let row = transaction
             .query_opt(
                 "SELECT COALESCE(SUM(p.metal), 0)::BIGINT AS metal,
                         COALESCE(SUM(p.crystal), 0)::BIGINT AS crystal,
@@ -521,13 +597,18 @@ impl Database {
             )
             .await
             .map_err(|error| error.to_string())?;
-        Ok(row.map(|row| GameplayResourcesRow {
+        let resources = row.map(|row| GameplayResourcesRow {
             metal: row.get("metal"),
             crystal: row.get("crystal"),
             deuterium: row.get("deuterium"),
             energy: row.get("energy"),
             dark_matter: row.get("dark_matter"),
-        }))
+        });
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(resources)
     }
 
     pub async fn gameplay_planets_for_user(
@@ -537,15 +618,30 @@ impl Database {
         let Some(user_id) = parse_optional_id(user_id) else {
             return Ok(Vec::new());
         };
-        let client = self.pool.get().await.map_err(|error| error.to_string())?;
-        let rows = client
+        let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|error| error.to_string())?;
+        if !materialize_owned_planets(&transaction, user_id)
+            .await
+            .map_err(read_materialization_error)?
+        {
+            return Ok(Vec::new());
+        }
+        let rows = transaction
             .query(
                 &format!("{} WHERE user_id = $1 ORDER BY id", planet_select_sql()),
                 &[&user_id],
             )
             .await
             .map_err(|error| error.to_string())?;
-        Ok(rows.iter().map(map_planet_row).collect())
+        let planets = rows.iter().map(map_planet_row).collect();
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(planets)
     }
 
     pub async fn gameplay_planet_for_user(
@@ -558,15 +654,60 @@ impl Database {
         else {
             return Ok(None);
         };
-        let client = self.pool.get().await.map_err(|error| error.to_string())?;
-        let row = client
+        let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|error| error.to_string())?;
+        match lock_planet(&transaction, user_id, planet_id, None).await {
+            Ok(_) => {}
+            Err(GameplayWriteError::NotFound) => return Ok(None),
+            Err(error) => return Err(read_materialization_error(error)),
+        }
+        let row = transaction
             .query_opt(
                 &format!("{} WHERE user_id = $1 AND id = $2", planet_select_sql()),
                 &[&user_id, &planet_id],
             )
             .await
             .map_err(|error| error.to_string())?;
-        Ok(row.as_ref().map(map_planet_row))
+        let planet = row.as_ref().map(map_planet_row);
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(planet)
+    }
+
+    /// Materialize an owned planet and return the same production/energy
+    /// vector used for persistence. This prevents API projections from
+    /// drifting away from affordability state or hiding fusion fuel burn.
+    pub async fn gameplay_resource_projection_for_user(
+        &self,
+        user_id: &str,
+        planet_id: &str,
+    ) -> DbResult<Option<GameplayResourceProjectionRow>> {
+        let (Some(user_id), Some(planet_id)) =
+            (parse_optional_id(user_id), parse_optional_id(planet_id))
+        else {
+            return Ok(None);
+        };
+        let mut client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let transaction = client
+            .transaction()
+            .await
+            .map_err(|error| error.to_string())?;
+        let materialized = match materialize_planet(&transaction, user_id, planet_id, None).await {
+            Ok((_, materialized)) => materialized,
+            Err(GameplayWriteError::NotFound) => return Ok(None),
+            Err(error) => return Err(read_materialization_error(error)),
+        };
+        let projection = resource_projection_row(materialized)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(Some(projection))
     }
 
     pub async fn gameplay_research_for_user(
@@ -810,30 +951,25 @@ impl Database {
             .map_err(|error| GameplayWriteError::Database(error.to_string()))?;
         let transaction = client.transaction().await.map_err(map_write_db_error)?;
         ensure_user_queue_slot(&transaction, "research_queue", user_id, true).await?;
-        let row = transaction
+        let research_row = transaction
             .query_opt(
                 &format!(
-                    "SELECT COALESCE(r.{column}, 0) AS current_level,
-                            COALESCE(p.metal, 0)::BIGINT AS metal,
-                            COALESCE(p.crystal, 0)::BIGINT AS crystal,
-                            COALESCE(p.deuterium, 0)::BIGINT AS deuterium,
-                            COALESCE(p.energy, 0)::BIGINT AS energy
+                    "SELECT COALESCE(r.{column}, 0) AS current_level
                      FROM research r
-                     JOIN planets p ON p.id = $2 AND p.user_id = r.user_id
                      WHERE r.user_id = $1
-                     FOR UPDATE OF r, p"
+                     FOR UPDATE OF r"
                 ),
-                &[&user_id, &planet_id],
+                &[&user_id],
             )
             .await
             .map_err(map_write_db_error)?
             .ok_or(GameplayWriteError::NotFound)?;
-        let current_level = row.get::<_, i32>("current_level");
+        let current_level = research_row.get::<_, i32>("current_level");
         if current_level.checked_add(1) != Some(target_level) {
             return Err(GameplayWriteError::StaleState);
         }
+        let planet = lock_planet(&transaction, user_id, planet_id, None).await?;
         ensure_user_queue_slot(&transaction, "research_queue", user_id, false).await?;
-        let planet = LockedPlanet::from_row(&row, None);
         ensure_affordable(&planet, input)?;
         deduct_resources(&transaction, planet_id, input).await?;
 
@@ -984,6 +1120,63 @@ impl Database {
 }
 
 async fn validate_gameplay_schema_definitions(client: &tokio_postgres::Client) -> DbResult<()> {
+    let resource_columns = client
+        .query(
+            "SELECT column_name, data_type, is_nullable
+             FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'planets'
+               AND column_name IN (
+                 'last_resource_update',
+                 'energy',
+                 'metal_production_remainder',
+                 'crystal_production_remainder',
+                 'deuterium_production_remainder'
+               )",
+            &[],
+        )
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<_, String>("column_name"),
+                (
+                    row.get::<_, String>("data_type"),
+                    row.get::<_, String>("is_nullable"),
+                ),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    for remainder in [
+        "metal_production_remainder",
+        "crystal_production_remainder",
+        "deuterium_production_remainder",
+    ] {
+        match resource_columns.get(remainder) {
+            Some((data_type, nullable)) if data_type == "double precision" && nullable == "NO" => {}
+            _ => {
+                return Err(format!(
+                    "required gameplay resource remainder column is missing or invalid: {remainder}"
+                ));
+            }
+        }
+    }
+    if !matches!(
+        resource_columns.get("energy"),
+        Some((data_type, nullable)) if data_type == "bigint" && nullable == "NO"
+    ) {
+        return Err("planets.energy must be a non-nullable BIGINT".to_string());
+    }
+    if !matches!(
+        resource_columns.get("last_resource_update"),
+        Some((data_type, nullable))
+            if data_type == "timestamp with time zone" && nullable == "NO"
+    ) {
+        return Err(
+            "last_resource_update must be a non-nullable timestamp with time zone".to_string(),
+        );
+    }
+
     let index_rows = client
         .query(
             "SELECT indexname, indexdef
@@ -1115,7 +1308,7 @@ async fn validate_gameplay_schema_definitions(client: &tokio_postgres::Client) -
              JOIN pg_namespace n ON n.oid = t.relnamespace
              WHERE n.nspname = 'public'
                AND t.relname IN (
-                 'construction_queue', 'research_queue', 'shipyard_queue'
+                 'planets', 'construction_queue', 'research_queue', 'shipyard_queue'
                )",
             &[],
         )
@@ -1133,7 +1326,19 @@ async fn validate_gameplay_schema_definitions(client: &tokio_postgres::Client) -
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let required_constraints: [(&str, &[&str]); 8] = [
+    let required_constraints: [(&str, &[&str]); 11] = [
+        (
+            "planets_metal_production_remainder_valid",
+            &["metal_production_remainder", ">=", "<"],
+        ),
+        (
+            "planets_crystal_production_remainder_valid",
+            &["crystal_production_remainder", ">=", "<"],
+        ),
+        (
+            "planets_deuterium_production_remainder_valid",
+            &["deuterium_production_remainder", ">=", "<"],
+        ),
         (
             "construction_queue_level_positive",
             &["status", "queued", "processing", "level", "> 0"],
@@ -1213,16 +1418,439 @@ struct LockedPlanet {
     current_level: Option<i32>,
 }
 
-impl LockedPlanet {
-    fn from_row(row: &tokio_postgres::Row, current_level: Option<i32>) -> Self {
-        Self {
-            metal: row.get("metal"),
-            crystal: row.get("crystal"),
-            deuterium: row.get("deuterium"),
-            energy: row.get("energy"),
-            current_level,
+#[derive(Debug, Clone, Copy)]
+struct ResourceAccrualSnapshot {
+    elapsed_seconds: i64,
+    metal: i64,
+    crystal: i64,
+    deuterium: i64,
+    metal_remainder: f64,
+    crystal_remainder: f64,
+    deuterium_remainder: f64,
+    metal_mine: i32,
+    crystal_mine: i32,
+    deuterium_synthesizer: i32,
+    solar_plant: i32,
+    fusion_reactor: i32,
+    metal_storage: i32,
+    crystal_storage: i32,
+    deuterium_tank: i32,
+    solar_satellites: i64,
+    max_temperature: i32,
+    energy_technology: i32,
+    universe_speed: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct MaterializedAmount {
+    units: i64,
+    remainder: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ResourceMaterialization {
+    metal: MaterializedAmount,
+    crystal: MaterializedAmount,
+    deuterium: MaterializedAmount,
+    energy: i64,
+    fusion_hours: f64,
+    solar_only_hours: f64,
+    production_factor: f64,
+    metal_per_hour: f64,
+    crystal_per_hour: f64,
+    deuterium_per_hour: f64,
+    deuterium_gross_per_hour: f64,
+    fusion_fuel_per_hour: f64,
+    energy_supply: f64,
+    energy_demand: f64,
+    fusion_online: bool,
+    metal_storage: i64,
+    crystal_storage: i64,
+    deuterium_storage: i64,
+}
+
+fn calculate_resource_materialization(
+    snapshot: ResourceAccrualSnapshot,
+) -> Result<ResourceMaterialization, String> {
+    if snapshot.elapsed_seconds < 0 {
+        return Err("resource accrual elapsed time cannot be negative".to_string());
+    }
+    if snapshot.universe_speed <= 0 {
+        return Err("resource accrual universe speed must be positive".to_string());
+    }
+    for (name, remainder) in [
+        ("metal", snapshot.metal_remainder),
+        ("crystal", snapshot.crystal_remainder),
+        ("deuterium", snapshot.deuterium_remainder),
+    ] {
+        if !remainder.is_finite() || !(0.0..1.0).contains(&remainder) {
+            return Err(format!("invalid {name} resource remainder"));
         }
     }
+
+    let elapsed_hours = snapshot.elapsed_seconds as f64 / 3600.0;
+    let metal_start = exact_resource(snapshot.metal, snapshot.metal_remainder)?;
+    let crystal_start = exact_resource(snapshot.crystal, snapshot.crystal_remainder)?;
+    let deuterium_start = exact_resource(snapshot.deuterium, snapshot.deuterium_remainder)?;
+
+    let metal_rate = finite_nonnegative(
+        "metal production",
+        game_economy::metal_production(snapshot.metal_mine, snapshot.universe_speed),
+    )?;
+    let crystal_rate = finite_nonnegative(
+        "crystal production",
+        game_economy::crystal_production(snapshot.crystal_mine, snapshot.universe_speed),
+    )?;
+    let deuterium_rate = finite_nonnegative(
+        "deuterium production",
+        game_economy::deuterium_production(
+            snapshot.deuterium_synthesizer,
+            snapshot.max_temperature,
+            snapshot.universe_speed,
+        )
+        .max(0.0),
+    )?;
+
+    let solar_energy = finite_nonnegative(
+        "solar energy",
+        (game_economy::solar_plant_energy(snapshot.solar_plant)
+            + game_economy::solar_satellite_energy_for_count(
+                snapshot.solar_satellites,
+                snapshot.max_temperature,
+            ))
+        .max(0.0),
+    )?;
+    let fusion_energy = finite_nonnegative(
+        "fusion energy",
+        game_economy::fusion_reactor_energy(snapshot.fusion_reactor, snapshot.energy_technology),
+    )?;
+    let fusion_fuel_rate = finite_nonnegative(
+        "fusion deuterium consumption",
+        game_economy::fusion_reactor_deuterium_consumption(snapshot.fusion_reactor),
+    )?;
+    let energy_demand = finite_nonnegative(
+        "mine energy demand",
+        game_economy::metal_mine_energy_consumption(snapshot.metal_mine)
+            + game_economy::crystal_mine_energy_consumption(snapshot.crystal_mine)
+            + game_economy::deuterium_synthesizer_energy_consumption(
+                snapshot.deuterium_synthesizer,
+            ),
+    )?;
+    let solar_factor = production_factor(solar_energy, energy_demand);
+    let fusion_factor = production_factor(solar_energy + fusion_energy, energy_demand);
+
+    // Fusion is intentionally piecewise. It runs at full configured output
+    // only while a positive stockpile exists. If its net burn drains the
+    // stock mid-interval, all remaining production is recalculated with the
+    // reactor offline; no negative fuel or post-depletion fusion output is
+    // possible. A synthesizer that starts with zero fuel can create stock for
+    // the next materialization but cannot bootstrap a reactor retroactively.
+    let fusion_net_deuterium_rate = deuterium_rate * fusion_factor - fusion_fuel_rate;
+    let fusion_hours = if elapsed_hours > 0.0
+        && deuterium_start > 0.0
+        && fusion_energy > 0.0
+        && fusion_fuel_rate > 0.0
+    {
+        if fusion_net_deuterium_rate < 0.0 {
+            elapsed_hours.min(deuterium_start / -fusion_net_deuterium_rate)
+        } else {
+            elapsed_hours
+        }
+    } else {
+        0.0
+    };
+    let solar_only_hours = (elapsed_hours - fusion_hours).max(0.0);
+
+    let metal_storage = game_economy::storage_capacity(snapshot.metal_storage);
+    let crystal_storage = game_economy::storage_capacity(snapshot.crystal_storage);
+    let deuterium_storage = game_economy::storage_capacity(snapshot.deuterium_tank);
+
+    let weighted_production_hours = fusion_factor * fusion_hours + solar_factor * solar_only_hours;
+    let metal = apply_capped_delta(
+        metal_start,
+        metal_rate * weighted_production_hours,
+        metal_storage,
+    )?;
+    let crystal = apply_capped_delta(
+        crystal_start,
+        crystal_rate * weighted_production_hours,
+        crystal_storage,
+    )?;
+
+    let after_fusion = apply_capped_delta(
+        deuterium_start,
+        fusion_net_deuterium_rate * fusion_hours,
+        deuterium_storage,
+    )?;
+    let deuterium = apply_capped_delta(
+        after_fusion,
+        deuterium_rate * solar_factor * solar_only_hours,
+        deuterium_storage,
+    )?;
+
+    // Energy is a current capacity snapshot rather than a stored resource.
+    // Once the interval has materialized, any positive final fuel stock can
+    // power the reactor for the next instant; an empty stock cannot.
+    let fusion_online = fusion_energy > 0.0 && fusion_fuel_rate > 0.0 && deuterium > 0.0;
+    let current_supply = solar_energy + if fusion_online { fusion_energy } else { 0.0 };
+    let current_factor = production_factor(current_supply, energy_demand);
+    let available_energy = split_resource((current_supply - energy_demand).max(0.0))?.units;
+    let current_fuel_rate = if fusion_online { fusion_fuel_rate } else { 0.0 };
+
+    Ok(ResourceMaterialization {
+        metal: split_resource(metal)?,
+        crystal: split_resource(crystal)?,
+        deuterium: split_resource(deuterium)?,
+        energy: available_energy,
+        fusion_hours,
+        solar_only_hours,
+        production_factor: current_factor,
+        metal_per_hour: metal_rate * current_factor,
+        crystal_per_hour: crystal_rate * current_factor,
+        deuterium_per_hour: deuterium_rate * current_factor - current_fuel_rate,
+        deuterium_gross_per_hour: deuterium_rate * current_factor,
+        fusion_fuel_per_hour: current_fuel_rate,
+        energy_supply: current_supply,
+        energy_demand,
+        fusion_online,
+        metal_storage,
+        crystal_storage,
+        deuterium_storage,
+    })
+}
+
+fn exact_resource(units: i64, remainder: f64) -> Result<f64, String> {
+    if units < 0 {
+        return Err("resource stock cannot be negative".to_string());
+    }
+    let exact = units as f64 + remainder;
+    finite_nonnegative("resource stock", exact)
+}
+
+fn finite_nonnegative(name: &str, value: f64) -> Result<f64, String> {
+    if value.is_finite() && value >= 0.0 {
+        Ok(value)
+    } else {
+        Err(format!("{name} is not finite and non-negative"))
+    }
+}
+
+fn production_factor(supply: f64, demand: f64) -> f64 {
+    if demand <= 0.0 {
+        1.0
+    } else {
+        (supply / demand).clamp(0.0, 1.0)
+    }
+}
+
+fn apply_capped_delta(current: f64, delta: f64, cap: i64) -> Result<f64, String> {
+    if !current.is_finite() || !delta.is_finite() || current < 0.0 {
+        return Err("resource accrual produced an invalid value".to_string());
+    }
+    let next = if delta >= 0.0 {
+        // Never destroy a legacy/admin-granted over-cap stockpile. Capacity
+        // only limits new production.
+        if cap > 0 && current >= cap as f64 {
+            current
+        } else {
+            let produced = current + delta;
+            if cap > 0 {
+                produced.min(cap as f64)
+            } else {
+                produced
+            }
+        }
+    } else {
+        (current + delta).max(0.0)
+    };
+    finite_nonnegative("materialized resource stock", next)
+}
+
+fn split_resource(value: f64) -> Result<MaterializedAmount, String> {
+    let value = finite_nonnegative("materialized resource stock", value)?;
+    if value >= i64::MAX as f64 {
+        return Ok(MaterializedAmount {
+            units: i64::MAX,
+            remainder: 0.0,
+        });
+    }
+    let units = value.floor() as i64;
+    let mut remainder = value - units as f64;
+    if remainder < 0.0 || !remainder.is_finite() {
+        return Err("materialized resource remainder is invalid".to_string());
+    }
+    // Floating-point arithmetic can land microscopically above the constraint
+    // boundary. Carry it into the integer component before persistence.
+    if remainder >= 1.0 {
+        return units
+            .checked_add(1)
+            .map(|units| MaterializedAmount {
+                units,
+                remainder: 0.0,
+            })
+            .ok_or_else(|| "materialized resource stock overflowed".to_string());
+    }
+    if remainder < f64::EPSILON {
+        remainder = 0.0;
+    }
+    Ok(MaterializedAmount { units, remainder })
+}
+
+fn finite_floor_to_i64(value: f64) -> Result<i64, String> {
+    if !value.is_finite() {
+        return Err("gameplay projection is not finite".to_string());
+    }
+    if value >= i64::MAX as f64 {
+        Ok(i64::MAX)
+    } else if value <= i64::MIN as f64 {
+        Ok(i64::MIN)
+    } else {
+        Ok(value.floor() as i64)
+    }
+}
+
+fn resource_projection_row(
+    materialized: ResourceMaterialization,
+) -> Result<GameplayResourceProjectionRow, String> {
+    Ok(GameplayResourceProjectionRow {
+        metal_per_hour: finite_floor_to_i64(materialized.metal_per_hour)?,
+        crystal_per_hour: finite_floor_to_i64(materialized.crystal_per_hour)?,
+        deuterium_per_hour: finite_floor_to_i64(materialized.deuterium_per_hour)?,
+        deuterium_gross_per_hour: finite_floor_to_i64(materialized.deuterium_gross_per_hour)?,
+        fusion_fuel_per_hour: finite_floor_to_i64(materialized.fusion_fuel_per_hour)?,
+        metal_storage: materialized.metal_storage,
+        crystal_storage: materialized.crystal_storage,
+        deuterium_storage: materialized.deuterium_storage,
+        energy_supply: finite_floor_to_i64(materialized.energy_supply)?,
+        energy_demand: finite_floor_to_i64(materialized.energy_demand)?,
+        energy_net: finite_floor_to_i64(materialized.energy_supply - materialized.energy_demand)?,
+        production_factor: materialized.production_factor,
+        fusion_online: materialized.fusion_online,
+    })
+}
+
+async fn materialize_planet(
+    transaction: &Transaction<'_>,
+    user_id: i32,
+    planet_id: i32,
+    level_column: Option<&str>,
+) -> Result<(LockedPlanet, ResourceMaterialization), GameplayWriteError> {
+    let level = level_column
+        .map(|column| format!("COALESCE(p.{column}, 0) AS current_level,"))
+        .unwrap_or_default();
+    let row = transaction
+        .query_opt(
+            &format!(
+                "SELECT {level}
+                        COALESCE(p.metal, 0)::BIGINT AS metal,
+                        COALESCE(p.crystal, 0)::BIGINT AS crystal,
+                        COALESCE(p.deuterium, 0)::BIGINT AS deuterium,
+                        COALESCE(p.metal_production_remainder, 0)::DOUBLE PRECISION
+                            AS metal_remainder,
+                        COALESCE(p.crystal_production_remainder, 0)::DOUBLE PRECISION
+                            AS crystal_remainder,
+                        COALESCE(p.deuterium_production_remainder, 0)::DOUBLE PRECISION
+                            AS deuterium_remainder,
+                        COALESCE(p.metal_mine, 0) AS metal_mine,
+                        COALESCE(p.crystal_mine, 0) AS crystal_mine,
+                        COALESCE(p.deuterium_synthesizer, 0) AS deuterium_synthesizer,
+                        COALESCE(p.solar_plant, 0) AS solar_plant,
+                        COALESCE(p.fusion_reactor, 0) AS fusion_reactor,
+                        COALESCE(p.metal_storage, 0) AS metal_storage,
+                        COALESCE(p.crystal_storage, 0) AS crystal_storage,
+                        COALESCE(p.deuterium_tank, 0) AS deuterium_tank,
+                        COALESCE(p.solar_satellite, 0)::BIGINT AS solar_satellites,
+                        COALESCE(p.temperature, 20) AS max_temperature,
+                        COALESCE(r.energy_technology, 0) AS energy_technology,
+                        u.speed AS universe_speed,
+                        GREATEST(
+                            0,
+                            FLOOR(EXTRACT(EPOCH FROM (
+                                clock_timestamp()
+                                - COALESCE(
+                                    p.last_resource_update,
+                                    clock_timestamp()
+                                )
+                            )))
+                        )::BIGINT AS elapsed_seconds
+                 FROM planets p
+                 JOIN universes u ON u.id = p.universe_id
+                 LEFT JOIN research r ON r.user_id = p.user_id
+                 WHERE p.id = $1 AND p.user_id = $2
+                 FOR UPDATE OF p"
+            ),
+            &[&planet_id, &user_id],
+        )
+        .await
+        .map_err(map_write_db_error)?
+        .ok_or(GameplayWriteError::NotFound)?;
+    let current_level = level_column.map(|_| row.get::<_, i32>("current_level"));
+    let elapsed_seconds = row.get::<_, i64>("elapsed_seconds");
+    let materialized = calculate_resource_materialization(ResourceAccrualSnapshot {
+        elapsed_seconds,
+        metal: row.get("metal"),
+        crystal: row.get("crystal"),
+        deuterium: row.get("deuterium"),
+        metal_remainder: row.get("metal_remainder"),
+        crystal_remainder: row.get("crystal_remainder"),
+        deuterium_remainder: row.get("deuterium_remainder"),
+        metal_mine: row.get("metal_mine"),
+        crystal_mine: row.get("crystal_mine"),
+        deuterium_synthesizer: row.get("deuterium_synthesizer"),
+        solar_plant: row.get("solar_plant"),
+        fusion_reactor: row.get("fusion_reactor"),
+        metal_storage: row.get("metal_storage"),
+        crystal_storage: row.get("crystal_storage"),
+        deuterium_tank: row.get("deuterium_tank"),
+        solar_satellites: row.get("solar_satellites"),
+        max_temperature: row.get("max_temperature"),
+        energy_technology: row.get("energy_technology"),
+        universe_speed: row.get("universe_speed"),
+    })
+    .map_err(GameplayWriteError::Database)?;
+
+    transaction
+        .execute(
+            "UPDATE planets
+             SET metal = $2,
+                 crystal = $3,
+                 deuterium = $4,
+                 metal_production_remainder = $5,
+                 crystal_production_remainder = $6,
+                 deuterium_production_remainder = $7,
+                 energy = $8,
+                 last_resource_update = CASE
+                     WHEN $9::BIGINT > 0 THEN
+                         last_resource_update
+                         + ($9::DOUBLE PRECISION * INTERVAL '1 second')
+                     ELSE last_resource_update
+                 END
+             WHERE id = $1",
+            &[
+                &planet_id,
+                &materialized.metal.units,
+                &materialized.crystal.units,
+                &materialized.deuterium.units,
+                &materialized.metal.remainder,
+                &materialized.crystal.remainder,
+                &materialized.deuterium.remainder,
+                &materialized.energy,
+                &elapsed_seconds,
+            ],
+        )
+        .await
+        .map_err(map_write_db_error)?;
+
+    Ok((
+        LockedPlanet {
+            metal: materialized.metal.units,
+            crystal: materialized.crystal.units,
+            deuterium: materialized.deuterium.units,
+            energy: materialized.energy,
+            current_level,
+        },
+        materialized,
+    ))
 }
 
 async fn lock_planet(
@@ -1231,28 +1859,44 @@ async fn lock_planet(
     planet_id: i32,
     level_column: Option<&str>,
 ) -> Result<LockedPlanet, GameplayWriteError> {
-    let level = level_column
-        .map(|column| format!("COALESCE({column}, 0) AS current_level,"))
-        .unwrap_or_default();
-    let row = transaction
+    materialize_planet(transaction, user_id, planet_id, level_column)
+        .await
+        .map(|(planet, _)| planet)
+}
+
+async fn materialize_owned_planets(
+    transaction: &Transaction<'_>,
+    user_id: i32,
+) -> Result<bool, GameplayWriteError> {
+    let owner = transaction
         .query_opt(
-            &format!(
-                "SELECT {level}
-                        COALESCE(metal, 0)::BIGINT AS metal,
-                        COALESCE(crystal, 0)::BIGINT AS crystal,
-                        COALESCE(deuterium, 0)::BIGINT AS deuterium,
-                        COALESCE(energy, 0)::BIGINT AS energy
-                 FROM planets
-                 WHERE id = $1 AND user_id = $2
-                 FOR UPDATE"
-            ),
-            &[&planet_id, &user_id],
+            "SELECT id FROM users WHERE id = $1 FOR KEY SHARE",
+            &[&user_id],
         )
         .await
-        .map_err(map_write_db_error)?
-        .ok_or(GameplayWriteError::NotFound)?;
-    let current_level = level_column.map(|_| row.get::<_, i32>("current_level"));
-    Ok(LockedPlanet::from_row(&row, current_level))
+        .map_err(map_write_db_error)?;
+    if owner.is_none() {
+        return Ok(false);
+    }
+    let planet_ids = transaction
+        .query(
+            "SELECT id FROM planets WHERE user_id = $1 ORDER BY id",
+            &[&user_id],
+        )
+        .await
+        .map_err(map_write_db_error)?;
+    for row in planet_ids {
+        let planet_id = row.get::<_, i32>("id");
+        lock_planet(transaction, user_id, planet_id, None).await?;
+    }
+    Ok(true)
+}
+
+fn read_materialization_error(error: GameplayWriteError) -> String {
+    match error {
+        GameplayWriteError::Database(message) | GameplayWriteError::Retryable(message) => message,
+        other => format!("resource materialization failed: {other:?}"),
+    }
 }
 
 async fn ensure_planet_queue_slot(
@@ -1497,6 +2141,9 @@ async fn process_due_buildings(
             result.failed += 1;
             continue;
         };
+        materialize_planet(transaction, user_id, planet_id, None)
+            .await
+            .map_err(read_materialization_error)?;
         let updated = transaction
             .execute(
                 &format!(
@@ -1573,6 +2220,11 @@ async fn process_due_research(
             result.failed += 1;
             continue;
         };
+        // Accrue the preceding interval with the old research vector before
+        // energy technology can change fusion output.
+        materialize_planet(transaction, user_id, planet_id, None)
+            .await
+            .map_err(read_materialization_error)?;
         let updated = transaction
             .execute(
                 &format!(
@@ -1652,6 +2304,11 @@ async fn process_due_ships(
             result.failed += 1;
             continue;
         };
+        // Solar satellites affect energy supply, so close the old interval
+        // before inventory completion can bring new satellites online.
+        materialize_planet(transaction, user_id, planet_id, None)
+            .await
+            .map_err(read_materialization_error)?;
         let updated = transaction
             .execute(
                 &format!(
@@ -1963,6 +2620,38 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    fn accrual_snapshot() -> ResourceAccrualSnapshot {
+        ResourceAccrualSnapshot {
+            elapsed_seconds: 3600,
+            metal: 1_000,
+            crystal: 1_000,
+            deuterium: 1_000,
+            metal_remainder: 0.0,
+            crystal_remainder: 0.0,
+            deuterium_remainder: 0.0,
+            metal_mine: 1,
+            crystal_mine: 1,
+            deuterium_synthesizer: 1,
+            solar_plant: 1,
+            fusion_reactor: 0,
+            metal_storage: 5,
+            crystal_storage: 5,
+            deuterium_tank: 5,
+            solar_satellites: 0,
+            max_temperature: 20,
+            energy_technology: 0,
+            universe_speed: 1,
+        }
+    }
+
+    fn exact(amount: MaterializedAmount) -> f64 {
+        amount.units as f64 + amount.remainder
+    }
+
+    fn approx(left: f64, right: f64) {
+        assert!((left - right).abs() < 1e-6, "expected {right}, got {left}");
+    }
+
     #[test]
     fn canonical_column_maps_are_complete_and_unique() {
         for entries in [
@@ -2029,5 +2718,157 @@ mod tests {
         assert!(GameplayWriteError::Retryable("serialization".to_string()).is_retryable());
         assert!(!GameplayWriteError::UniverseFull.is_retryable());
         assert!(!GameplayWriteError::InsufficientResources.is_retryable());
+    }
+
+    #[test]
+    fn offline_accrual_is_energy_throttled_and_keeps_fractional_units() {
+        let output = calculate_resource_materialization(accrual_snapshot()).unwrap();
+        // Level-one mines demand 44 energy while the solar plant supplies 22,
+        // so every mine runs at exactly 50% for the one-hour interval.
+        approx(output.production_factor, 0.5);
+        approx(exact(output.metal), 1_016.5);
+        approx(exact(output.crystal), 1_011.0);
+        approx(exact(output.deuterium), 1_006.82);
+        assert_eq!(output.energy, 0);
+    }
+
+    #[test]
+    fn storage_caps_new_production_without_destroying_existing_overflow() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.metal = 9_995;
+        snapshot.metal_storage = 0;
+        snapshot.metal_mine = 10;
+        snapshot.solar_plant = 20;
+        let capped = calculate_resource_materialization(snapshot).unwrap();
+        assert_eq!(capped.metal.units, 10_000);
+        assert_eq!(capped.metal.remainder, 0.0);
+
+        snapshot.metal = 10_123;
+        let preserved = calculate_resource_materialization(snapshot).unwrap();
+        assert_eq!(preserved.metal.units, 10_123);
+        assert_eq!(preserved.metal.remainder, 0.0);
+    }
+
+    #[test]
+    fn zero_elapsed_time_never_accrues_or_loses_remainders() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.elapsed_seconds = 0;
+        snapshot.metal_remainder = 0.25;
+        snapshot.crystal_remainder = 0.5;
+        snapshot.deuterium_remainder = 0.75;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        approx(exact(output.metal), 1_000.25);
+        approx(exact(output.crystal), 1_000.5);
+        approx(exact(output.deuterium), 1_000.75);
+    }
+
+    #[test]
+    fn energy_deficit_clamps_mine_output_to_available_generation() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.metal = 0;
+        snapshot.crystal_mine = 0;
+        snapshot.deuterium_synthesizer = 0;
+        snapshot.metal_mine = 10;
+        snapshot.solar_plant = 1;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        let full_rate = game_economy::metal_production(10, 1);
+        let demand = game_economy::metal_mine_energy_consumption(10);
+        approx(output.production_factor, 22.0 / demand);
+        approx(exact(output.metal), full_rate * 22.0 / demand);
+        assert!(output.production_factor > 0.0 && output.production_factor < 1.0);
+    }
+
+    #[test]
+    fn fusion_stays_online_when_synthesis_outproduces_fuel_burn() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.deuterium = 1;
+        snapshot.deuterium_synthesizer = 10;
+        snapshot.solar_plant = 20;
+        snapshot.fusion_reactor = 1;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        approx(output.fusion_hours, 1.0);
+        approx(output.solar_only_hours, 0.0);
+        assert!(exact(output.deuterium) > 1.0);
+        assert!(output.energy > 0);
+    }
+
+    #[test]
+    fn fusion_depletion_splits_the_interval_and_never_grants_post_fuel_output() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.metal = 0;
+        snapshot.deuterium = 100;
+        snapshot.metal_mine = 20;
+        snapshot.crystal_mine = 0;
+        snapshot.deuterium_synthesizer = 0;
+        snapshot.solar_plant = 0;
+        snapshot.fusion_reactor = 10;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        let burn = game_economy::fusion_reactor_deuterium_consumption(10);
+        approx(output.fusion_hours, 100.0 / burn);
+        approx(output.solar_only_hours, 1.0 - 100.0 / burn);
+        approx(exact(output.deuterium), 0.0);
+        let fusion_factor = production_factor(
+            game_economy::fusion_reactor_energy(10, 0),
+            game_economy::metal_mine_energy_consumption(20),
+        );
+        approx(
+            exact(output.metal),
+            game_economy::metal_production(20, 1) * fusion_factor * (100.0 / burn),
+        );
+        assert_eq!(output.energy, 0);
+    }
+
+    #[test]
+    fn fusion_with_zero_starting_fuel_is_off_for_the_interval() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.metal = 0;
+        snapshot.deuterium = 0;
+        snapshot.metal_mine = 20;
+        snapshot.crystal_mine = 0;
+        snapshot.deuterium_synthesizer = 0;
+        snapshot.solar_plant = 0;
+        snapshot.fusion_reactor = 10;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        assert_eq!(output.fusion_hours, 0.0);
+        assert_eq!(exact(output.metal), 0.0);
+        assert_eq!(exact(output.deuterium), 0.0);
+        assert_eq!(output.energy, 0);
+    }
+
+    #[test]
+    fn projection_preserves_negative_fusion_net_and_energy_explanation() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.deuterium = 1_000;
+        snapshot.metal_mine = 20;
+        snapshot.crystal_mine = 0;
+        snapshot.deuterium_synthesizer = 0;
+        snapshot.solar_plant = 0;
+        snapshot.fusion_reactor = 10;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        assert!(output.fusion_online);
+        assert!(output.deuterium_per_hour < 0.0);
+        let projection = resource_projection_row(output).unwrap();
+        assert!(projection.deuterium_per_hour < 0);
+        assert_eq!(projection.deuterium_gross_per_hour, 0);
+        assert!(projection.fusion_fuel_per_hour > 0);
+        assert!(projection.energy_supply > 0);
+        assert!(projection.energy_demand > projection.energy_supply);
+        assert!(projection.energy_net < 0);
+        assert!(projection.production_factor > 0.0);
+        assert!(projection.production_factor < 1.0);
+    }
+
+    #[test]
+    fn deuterium_cap_applies_after_net_positive_fusion_production() {
+        let mut snapshot = accrual_snapshot();
+        snapshot.deuterium = 9_999;
+        snapshot.deuterium_tank = 0;
+        snapshot.deuterium_synthesizer = 10;
+        snapshot.solar_plant = 20;
+        snapshot.fusion_reactor = 1;
+        let output = calculate_resource_materialization(snapshot).unwrap();
+        assert_eq!(output.deuterium.units, 10_000);
+        assert_eq!(output.deuterium.remainder, 0.0);
+        assert_eq!(output.fusion_hours, 1.0);
     }
 }

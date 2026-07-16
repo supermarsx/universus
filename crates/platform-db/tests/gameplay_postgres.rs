@@ -12,6 +12,8 @@ const GAMEPLAY_SCHEMA: &str =
     include_str!("../../../database/sql/steps/49_durable_gameplay_loop.sql");
 const AUTHORITATIVE_GAMEPLAY_SCHEMA: &str =
     include_str!("../../../database/sql/steps/50_authoritative_gameplay_state.sql");
+const RESOURCE_ACCRUAL_SCHEMA: &str =
+    include_str!("../../../database/sql/steps/51_resource_accrual_remainders.sql");
 
 fn account_input(username: &str, email: &str) -> AccountCreateInput {
     AccountCreateInput {
@@ -114,6 +116,34 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
         .batch_execute(AUTHORITATIVE_GAMEPLAY_SCHEMA)
         .await
         .expect("authoritative gameplay migration repeat application");
+    client
+        .batch_execute(
+            "SET TIME ZONE 'America/New_York';
+             UPDATE planets
+             SET last_resource_update = TIMESTAMP '2024-03-10 01:30:00'
+             WHERE id = 1;",
+        )
+        .await
+        .expect("seed timezone-free resource timestamp across DST boundary");
+    client
+        .batch_execute(RESOURCE_ACCRUAL_SCHEMA)
+        .await
+        .expect("resource accrual migration first application");
+    client
+        .batch_execute(RESOURCE_ACCRUAL_SCHEMA)
+        .await
+        .expect("resource accrual migration repeat application");
+    assert!(client
+        .query_one(
+            "SELECT last_resource_update =
+                    TIMESTAMPTZ '2024-03-10 01:30:00+00' AS interpreted_as_utc
+             FROM planets WHERE id = 1",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get::<_, bool>("interpreted_as_utc"));
+    client.batch_execute("SET TIME ZONE 'UTC';").await.unwrap();
 
     let legacy_rows = client
         .query(
@@ -163,6 +193,30 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
         .gameplay_repository_ready()
         .await
         .expect("readiness after index restoration");
+    client
+        .batch_execute(
+            "ALTER TABLE planets
+             DROP CONSTRAINT planets_metal_production_remainder_valid;",
+        )
+        .await
+        .unwrap();
+    assert!(database.gameplay_repository_ready().await.is_err());
+    client
+        .batch_execute(RESOURCE_ACCRUAL_SCHEMA)
+        .await
+        .expect("restore validated resource remainder constraint");
+    database
+        .gameplay_repository_ready()
+        .await
+        .expect("readiness after resource constraint restoration");
+    assert!(client
+        .batch_execute(
+            "UPDATE planets
+             SET metal_production_remainder = 'NaN'::DOUBLE PRECISION
+             WHERE id = 1;"
+        )
+        .await
+        .is_err());
     let legacy_result = database
         .process_due_gameplay_queues(10)
         .await
@@ -260,6 +314,16 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
     let second = second.expect("concurrent second registration");
     assert_eq!(first.universe_id, Some(1));
     assert_eq!(second.universe_id, Some(1));
+    assert_eq!(database.gameplay_universe_speed(1).await.unwrap(), Some(1));
+    assert_eq!(
+        database
+            .gameplay_profile_meta_for_user(&first.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .rank,
+        1
+    );
     let first_planet = database
         .gameplay_planets_for_user(&first.id)
         .await
@@ -325,6 +389,222 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
             first_planet.position
         )
     );
+
+    // Tick-less accrual is persisted under the same planet lock used by
+    // affordability checks. Account aggregates are owned reads too, so they
+    // must materialize before summing rather than returning stale stock.
+    let accrual_account = database
+        .register_account_with_starting_state(account_input(
+            "AccrualCommander",
+            "accrual@example.com",
+        ))
+        .await
+        .unwrap();
+    let accrual_planet = database
+        .gameplay_planets_for_user(&accrual_account.id)
+        .await
+        .unwrap()
+        .remove(0);
+    let accrual_planet_id = accrual_planet.id.parse::<i32>().unwrap();
+    client
+        .execute(
+            "UPDATE planets
+             SET metal = 0, crystal = 0, deuterium = 0, energy = 0,
+                 metal_mine = 1, crystal_mine = 0, deuterium_synthesizer = 0,
+                 solar_plant = 20, fusion_reactor = 0,
+                 metal_storage = 5, crystal_storage = 5, deuterium_tank = 5,
+                 metal_production_remainder = 0,
+                 crystal_production_remainder = 0,
+                 deuterium_production_remainder = 0,
+                 last_resource_update = clock_timestamp() - interval '1 hour'
+             WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
+    let offline = database
+        .gameplay_account_resources(&accrual_account.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        (33..=34).contains(&offline.metal),
+        "one offline hour should materialize one level-one mine: {offline:?}"
+    );
+    assert_eq!(offline.crystal, 0);
+    assert_eq!(offline.deuterium, 0);
+    let immediate = database
+        .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(immediate.metal, offline.metal);
+
+    // Production caps new resources, while a pre-existing over-cap grant is
+    // never silently destroyed by a read.
+    client
+        .execute(
+            "UPDATE planets
+             SET metal = 9995, metal_mine = 10, solar_plant = 20,
+                 metal_storage = 0, metal_production_remainder = 0,
+                 last_resource_update = clock_timestamp() - interval '1 hour'
+             WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .metal,
+        10_000
+    );
+    client
+        .execute(
+            "UPDATE planets
+             SET metal = 10123, metal_production_remainder = 0,
+                 last_resource_update = clock_timestamp() - interval '1 hour'
+             WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .metal,
+        10_123
+    );
+
+    // A database clock that appears behind the saved snapshot neither grants
+    // resources nor rewinds the timestamp.
+    client
+        .execute(
+            "UPDATE planets
+             SET metal = 100, metal_mine = 10, metal_production_remainder = 0,
+                 last_resource_update = clock_timestamp() + interval '1 hour'
+             WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        database
+            .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .metal,
+        100
+    );
+    assert!(client
+        .query_one(
+            "SELECT last_resource_update > clock_timestamp() AS future
+             FROM planets WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap()
+        .get::<_, bool>("future"));
+
+    // Concurrent owned reads serialize on the planet and consume the offline
+    // interval once rather than multiplying production by the reader count.
+    client
+        .execute(
+            "UPDATE planets
+             SET metal = 0, crystal = 0, deuterium = 0,
+                 metal_mine = 1, crystal_mine = 0, deuterium_synthesizer = 0,
+                 solar_plant = 20, metal_storage = 5,
+                 metal_production_remainder = 0,
+                 crystal_production_remainder = 0,
+                 deuterium_production_remainder = 0,
+                 last_resource_update = clock_timestamp() - interval '1 hour'
+             WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
+    let read_a = database.clone();
+    let read_b = database.clone();
+    let (read_a, read_b) = tokio::join!(
+        read_a.gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id),
+        read_b.gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+    );
+    read_a.unwrap().unwrap();
+    read_b.unwrap().unwrap();
+    let once = database
+        .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!((33..=34).contains(&once.metal));
+
+    // A read racing an enqueue shares the same lock. The trusted integer cost
+    // is deducted exactly once from the materialized stock and survives a new
+    // pool instance (the restart boundary).
+    client
+        .execute(
+            "UPDATE planets
+             SET metal = 1000, crystal = 1000, deuterium = 100,
+                 metal_mine = 0, crystal_mine = 0, deuterium_synthesizer = 0,
+                 solar_plant = 0, fusion_reactor = 0,
+                 metal_production_remainder = 0,
+                 crystal_production_remainder = 0,
+                 deuterium_production_remainder = 0,
+                 last_resource_update = clock_timestamp() - interval '1 hour'
+             WHERE id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
+    let accrual_build = GameplayQueueInput {
+        user_id: accrual_account.id.clone(),
+        planet_id: accrual_planet.id.clone(),
+        item_type: "metal_mine".to_string(),
+        target_level: Some(1),
+        quantity: None,
+        metal_cost: 60,
+        crystal_cost: 15,
+        deuterium_cost: 0,
+        energy_required: 0,
+        duration_seconds: 3600,
+    };
+    let concurrent_reader = database.clone();
+    let concurrent_writer = database.clone();
+    let (read_result, queue_result) = tokio::join!(
+        concurrent_reader.gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id),
+        concurrent_writer.gameplay_enqueue_building(&accrual_build)
+    );
+    read_result.unwrap().unwrap();
+    queue_result.unwrap();
+    let after_deduction = database
+        .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_deduction.metal, 940);
+    assert_eq!(after_deduction.crystal, 985);
+    let accrual_restart = Database::from_database_url(&database_url).unwrap();
+    let after_restart = accrual_restart
+        .gameplay_planet_for_user(&accrual_account.id, &accrual_planet.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_restart.metal, 940);
+    assert_eq!(after_restart.crystal, 985);
+    client
+        .execute(
+            "DELETE FROM construction_queue WHERE planet_id = $1",
+            &[&accrual_planet_id],
+        )
+        .await
+        .unwrap();
 
     client
         .batch_execute(

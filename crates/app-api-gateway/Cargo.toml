@@ -12,6 +12,7 @@ tracing = { workspace = true }
 game-achievements = { path = "../game-achievements" }
 game-acs = { path = "../game-acs" }
 game-combat = { path = "../game-combat" }
+game-domain = { path = "../game-domain" }
 game-economy = { path = "../game-economy" }
 game-fleet = { path = "../game-fleet" }
 game-galaxy = { path = "../game-galaxy" }
@@ -29,4 +30,5 @@ platform-observability = { path = "../platform-observability" }
 serde_json = "1.0"
 tower = "0.4"
 hyper = "0.14"
+tokio-postgres = "0.7"
 platform-auth = { path = "../platform-auth" }

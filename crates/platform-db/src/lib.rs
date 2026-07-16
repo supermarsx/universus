@@ -3,7 +3,7 @@ mod gameplay;
 pub use gameplay::*;
 
 use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
-use tokio_postgres::{error::SqlState, types::Json, NoTls};
+use tokio_postgres::{types::Json, NoTls};
 
 #[derive(Clone)]
 pub struct Database {
@@ -418,30 +418,7 @@ impl Database {
         &self,
         input: AccountCreateInput,
     ) -> Result<AccountRow, AccountCreateError> {
-        let input = input.normalized();
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|error| AccountCreateError::Database(error.to_string()))?;
-        let result = client
-            .query_one(
-                "INSERT INTO users (username, email, password_hash, is_admin, is_banned)
-                 VALUES ($1, $2, $3, FALSE, FALSE)
-                 RETURNING id::TEXT AS id, username, email, password_hash,
-                           CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
-                           1::BIGINT AS universe_id, is_banned",
-                &[&input.username, &input.email, &input.password_hash],
-            )
-            .await;
-
-        match result {
-            Ok(row) => Ok(map_account_row(&row)),
-            Err(error) if error.code() == Some(&SqlState::UNIQUE_VIOLATION) => {
-                Err(AccountCreateError::Duplicate)
-            }
-            Err(error) => Err(AccountCreateError::Database(error.to_string())),
-        }
+        self.register_account_with_starting_state(input).await
     }
 
     pub async fn account_by_normalized_email(&self, email: &str) -> DbResult<Option<AccountRow>> {
@@ -450,7 +427,7 @@ impl Database {
             .query_opt(
                 "SELECT id::TEXT AS id, username, email, password_hash,
                         CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
-                        1::BIGINT AS universe_id, is_banned
+                        universe_id, is_banned
                  FROM users
                  WHERE LOWER(BTRIM(email)) = $1
                  LIMIT 1",
@@ -470,7 +447,7 @@ impl Database {
             .query_opt(
                 "SELECT id::TEXT AS id, username, email, password_hash,
                         CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
-                        1::BIGINT AS universe_id, is_banned
+                        universe_id, is_banned
                  FROM users
                  WHERE id = $1
                  LIMIT 1",

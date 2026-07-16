@@ -179,10 +179,27 @@ pub fn fusion_reactor_energy(level: i32, energy_tech: i32) -> f64 {
     30.0 * level as f64 * (1.05 + 0.01 * energy_tech as f64).powi(level)
 }
 
+/// Fusion reactor deuterium consumption per hour at full output.
+///
+/// Formula: `10 * level * 1.1^level`. Consumption is intentionally exposed
+/// separately from energy output so persistence can stop the reactor exactly
+/// when its fuel stock is exhausted during a lazy resource interval.
+pub fn fusion_reactor_deuterium_consumption(level: i32) -> f64 {
+    if level <= 0 {
+        return 0.0;
+    }
+    10.0 * level as f64 * 1.1_f64.powi(level)
+}
+
 /// Solar satellite energy output.
 ///
 /// Formula: `floor((max_temp + 160) / 6) * count`
 pub fn solar_satellite_energy(count: i32, max_temp: i32) -> f64 {
+    solar_satellite_energy_for_count(i64::from(count), max_temp)
+}
+
+/// Solar satellite energy output for the durable BIGINT inventory type.
+pub fn solar_satellite_energy_for_count(count: i64, max_temp: i32) -> f64 {
     if count <= 0 {
         return 0.0;
     }
@@ -551,10 +568,27 @@ mod tests {
     }
 
     #[test]
+    fn test_fusion_reactor_deuterium_consumption_level_5() {
+        // 10 * 5 * 1.1^5 = 80.5255 deuterium per hour.
+        let consumption = fusion_reactor_deuterium_consumption(5);
+        assert!(approx(consumption, 80.5255, 0.01), "got {consumption}");
+        assert_eq!(fusion_reactor_deuterium_consumption(0), 0.0);
+    }
+
+    #[test]
     fn test_solar_satellite_energy_temp50() {
         // floor((50+160)/6) = floor(35.0) = 35  -> 35 * 10 = 350
         let e = solar_satellite_energy(10, 50);
         assert!(approx(e, 350.0, 0.01), "got {e}");
+    }
+
+    #[test]
+    fn test_solar_satellite_energy_supports_bigint_inventory() {
+        let count = i64::from(i32::MAX) + 1;
+        assert_eq!(
+            solar_satellite_energy_for_count(count, 20),
+            30.0 * count as f64
+        );
     }
 
     #[test]

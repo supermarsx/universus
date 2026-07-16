@@ -225,6 +225,7 @@ dependencies = [
  "game-achievements",
  "game-acs",
  "game-combat",
+ "game-domain",
  "game-economy",
  "game-fleet",
  "game-galaxy",
@@ -241,6 +242,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-postgres",
  "tower 0.4.13",
  "tracing",
 ]
@@ -3576,6 +3578,7 @@ name = "platform-db"
 version = "0.1.0"
 dependencies = [
  "deadpool-postgres",
+ "game-economy",
  "serde_json",
  "tokio",
  "tokio-postgres",
