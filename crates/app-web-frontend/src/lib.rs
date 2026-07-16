@@ -1210,6 +1210,8 @@ h2{font-size:1.08rem;color:#f0f5ff}h3{font-size:.95rem;color:#e8f1ff}small{color
 .detail-list{display:grid;margin-top:.7rem}.detail-list>div,.mini-cost>div,.relation-row{display:flex;justify-content:space-between;gap:1rem;padding:.45rem 0;border-bottom:1px solid #1b2b41}.detail-list dt,.mini-cost dt{color:var(--muted)}.detail-list dd,.mini-cost dd{text-align:right}.action-list a{display:flex;justify-content:space-between;padding:.65rem;border:1px solid var(--line);border-radius:8px}
 .queue-item{display:grid;gap:.3rem;padding:.7rem 0;border-bottom:1px solid var(--line)}progress{accent-color:var(--accent);height:.55rem}
 .stacked-form,.inline-form{display:grid;gap:.75rem;margin-top:.8rem}.stacked-form label,.inline-form label,.toolbar label,.shop-card label{display:grid;gap:.25rem;color:var(--muted);font-size:.78rem}.inline-form{grid-template-columns:repeat(2,minmax(140px,1fr));align-items:end}.inline-form .form-feedback{grid-column:1/-1}.form-group{margin-bottom:.8rem}.form-group label{display:block;margin-bottom:.25rem;color:var(--muted)}.form-feedback,.inline-result{display:flex;gap:.4rem;flex-wrap:wrap;color:var(--good);min-height:1.5rem}.form-feedback.is-error{color:var(--danger)}.contract-note{color:var(--muted);font-size:.78rem;margin-top:.8rem}.button-row{display:flex;gap:.5rem;flex-wrap:wrap}
+.progression-toolbar{display:flex;align-items:end;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem;padding:.75rem;background:#0b1626;border:1px solid var(--line);border-radius:10px}.progression-toolbar label{display:grid;gap:.25rem;min-width:min(100%,320px);color:var(--muted);font-size:.78rem}.progression-toolbar .contract-note{margin:0;max-width:720px}.progression-layout{display:grid;grid-template-columns:minmax(0,3fr) minmax(280px,1fr);gap:1rem;margin-top:1rem;align-items:start}.progression-sidebar{display:grid;gap:1rem;position:sticky;top:5rem}.progression-sidebar .panel+.panel{margin-top:0}.progression-catalog{min-width:0}.compact-button{padding:.35rem .55rem;font-size:.75rem}.tech-card.is-locked{border-color:#473244;background:#14101c}.unavailable-reason{color:#ffadb6;font-size:.78rem;min-height:2.4rem}.status-chip.available{color:#a8f5d9;border-color:#27745c}.status-chip.locked{color:#ffc0c7;border-color:#843745}.quote-context{color:var(--muted);font-size:.75rem}.quote-preview{display:grid;gap:.5rem;padding:.7rem;border:1px solid var(--line);background:#091321;border-radius:8px;min-height:2.5rem}.quote-preview.is-error,.inline-result.is-error{color:var(--danger)}
+.resource-telemetry{display:grid;gap:.75rem;margin:1rem 0;padding:.8rem;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,#0d1929,#09111e)}.resource-stock-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}.resource-stock{display:grid;gap:.28rem;padding:.7rem;background:#091422;border:1px solid #1d3048;border-radius:8px}.resource-stock>span{font-size:.72rem;color:var(--muted);text-transform:uppercase}.resource-stock strong{font-size:1.05rem}.resource-stock progress{width:100%}.resource-stock small{font-size:.72rem}.resource-breakdown{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.4rem}.resource-breakdown>div{display:grid;gap:.15rem;padding:.5rem;border-left:2px solid #29435f}.resource-breakdown dt{color:var(--muted);font-size:.68rem;text-transform:uppercase}.resource-breakdown dd{font-weight:700}.positive{color:var(--good)!important}.negative{color:var(--danger)!important}.economy-cost{display:grid;gap:0}.economy-cost>div{font-size:.78rem;padding:.25rem 0}
 .toolbar{display:flex;align-items:end;gap:.6rem;flex-wrap:wrap;background:#0c1625;border:1px solid var(--line);border-radius:10px;padding:.75rem}.toolbar label{width:110px}.toolbar span{color:var(--muted);margin-left:auto}
 .tabs{display:flex;gap:.35rem;margin-bottom:.75rem}.tab{background:#101c2e;border-color:var(--line)}.tab.active{background:#21577b;border-color:#56b7e7}
 .galaxy-shell{display:grid;gap:1rem}.galaxy-slot-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:.65rem}.galaxy-slot{position:relative;min-height:180px;border:1px solid var(--line);background:linear-gradient(#0d1727,#080e18);padding:.65rem;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:.25rem;text-align:center}.galaxy-slot.empty{opacity:.65}.slot-number{position:absolute;left:.55rem;top:.4rem;color:#5f7089;font-size:.72rem}.planet-orbit{width:58px;height:58px;border-radius:50%;margin:.55rem;background:radial-gradient(circle at 35% 28%,#a9f6ff,#3a87b1 32%,#162b53 64%,#05080f 70%);box-shadow:0 0 18px #4ecfff55}.planet-orbit.vacant{background:transparent;border:1px dashed #31425c;box-shadow:none}.slot-status{font-size:.67rem;color:var(--warn);text-transform:uppercase}.number{text-align:right}
@@ -1217,8 +1219,8 @@ h2{font-size:1.08rem;color:#f0f5ff}h3{font-size:.95rem;color:#e8f1ff}small{color
 .loading-state,.empty-state,.error-state{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:120px;color:var(--muted);padding:1rem;text-align:center}.empty-state.compact{min-height:auto}.error-state{flex-direction:column;color:#ffadb6}.spinner{width:1rem;height:1rem;border:2px solid #31445f;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .public-page{width:min(500px,calc(100% - 2rem));margin:8vh auto;padding:1.4rem;background:#0d1725;border-radius:14px;border:1px solid var(--line);box-shadow:0 25px 80px #0008}.public-page h1{text-align:center;margin-bottom:1.25rem}.public-page p{margin-top:.8rem}.error-page{text-align:center;padding:12vh 1.5rem}.error-page h1{font-size:2rem;margin-bottom:.75rem}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-@media(max-width:1000px){.galaxy-slot-grid{grid-template-columns:repeat(3,minmax(110px,1fr))}.metric-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:760px){header{position:static}.header-user .role{display:none}.layout{display:block}nav{width:100%;max-height:none;border-right:0;border-bottom:1px solid var(--line)}nav ul{display:flex;gap:.25rem;overflow-x:auto}nav .nav-section{display:none}nav li{flex:0 0 auto}.dashboard-grid,.dashboard-grid.wide-first,.messages-layout{grid-template-columns:1fr}.galaxy-slot-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.feature-grid{grid-template-columns:1fr}.planet-banner{height:210px}}
+@media(max-width:1000px){.galaxy-slot-grid{grid-template-columns:repeat(3,minmax(110px,1fr))}.metric-grid{grid-template-columns:repeat(2,1fr)}.progression-layout{grid-template-columns:1fr}.progression-sidebar{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}.resource-breakdown{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){header{position:static}.header-user .role{display:none}.layout{display:block}nav{width:100%;max-height:none;border-right:0;border-bottom:1px solid var(--line)}nav ul{display:flex;gap:.25rem;overflow-x:auto}nav .nav-section{display:none}nav li{flex:0 0 auto}.dashboard-grid,.dashboard-grid.wide-first,.messages-layout{grid-template-columns:1fr}.galaxy-slot-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}.feature-grid{grid-template-columns:1fr}.planet-banner{height:210px}.progression-sidebar,.resource-stock-grid{grid-template-columns:1fr}.progression-toolbar>*{width:100%}.resource-breakdown{grid-template-columns:1fr}.inline-form{grid-template-columns:1fr}.inline-form .form-feedback{grid-column:auto}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 "#;
 
@@ -2314,6 +2316,213 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
+    #[tokio::test]
+    async fn durable_progression_journey_uses_the_same_origin_bridge() {
+        let token = user_token();
+        let expected_authorization = format!("Bearer {token}");
+        let catalog = (0..16)
+            .map(|index| {
+                serde_json::json!({
+                    "buildingType": format!("building{index}"),
+                    "name": format!("Building {index}"),
+                    "currentLevel": 0,
+                    "nextLevel": 1,
+                    "available": true,
+                    "quote": {
+                        "planetId": "p-1",
+                        "buildingType": format!("building{index}"),
+                        "name": format!("Building {index}"),
+                        "currentLevel": 0,
+                        "nextLevel": 1,
+                        "metal": 60,
+                        "crystal": 15,
+                        "deuterium": 0,
+                        "energyRequired": 0,
+                        "timeSeconds": 108
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let read_authorization = expected_authorization.clone();
+        let quote_authorization = expected_authorization.clone();
+        let build_authorization = expected_authorization.clone();
+        let upstream = Router::new()
+            .route(
+                "/api/planets/p-1/buildings",
+                axum::routing::get(move |headers: HeaderMap| {
+                    let catalog = catalog.clone();
+                    let expected = read_authorization.clone();
+                    async move {
+                        if headers.get(AUTHORIZATION).and_then(|value| value.to_str().ok())
+                            != Some(expected.as_str())
+                        {
+                            return (
+                                StatusCode::UNAUTHORIZED,
+                                Json(serde_json::json!({"success": false, "error": "Unauthorized"})),
+                            )
+                                .into_response();
+                        }
+                        (
+                            StatusCode::OK,
+                            Json(serde_json::json!({"success": true, "data": catalog})),
+                        )
+                            .into_response()
+                    }
+                }),
+            )
+            .route(
+                "/api/planets/p-1/build-quote",
+                axum::routing::post(
+                    move |headers: HeaderMap, Json(body): Json<serde_json::Value>| {
+                        let expected = quote_authorization.clone();
+                        async move {
+                            if headers
+                                .get(AUTHORIZATION)
+                                .and_then(|value| value.to_str().ok())
+                                != Some(expected.as_str())
+                                || body["buildingType"] != "metalMine"
+                            {
+                                return (
+                                    StatusCode::BAD_REQUEST,
+                                    Json(serde_json::json!({"success": false, "error": "bad request"})),
+                                )
+                                    .into_response();
+                            }
+                            (
+                                StatusCode::OK,
+                                Json(serde_json::json!({
+                                    "success": true,
+                                    "data": {
+                                        "planetId": "p-1", "buildingType": "metalMine",
+                                        "name": "Metal Mine", "currentLevel": 0, "nextLevel": 1,
+                                        "metal": 60, "crystal": 15, "deuterium": 0,
+                                        "energyRequired": 0, "timeSeconds": 108
+                                    }
+                                })),
+                            )
+                                .into_response()
+                        }
+                    },
+                ),
+            )
+            .route(
+                "/api/planets/p-1/build",
+                axum::routing::post(
+                    move |headers: HeaderMap, Json(body): Json<serde_json::Value>| {
+                        let expected = build_authorization.clone();
+                        async move {
+                            if headers
+                                .get(AUTHORIZATION)
+                                .and_then(|value| value.to_str().ok())
+                                != Some(expected.as_str())
+                                || body["buildingType"] != "metalMine"
+                            {
+                                return (
+                                    StatusCode::BAD_REQUEST,
+                                    Json(serde_json::json!({"success": false, "error": "bad request"})),
+                                )
+                                    .into_response();
+                            }
+                            (
+                                StatusCode::OK,
+                                Json(serde_json::json!({
+                                    "success": true,
+                                    "data": {
+                                        "queueId": "q-1", "planetId": "p-1",
+                                        "buildingType": "metalMine", "levelTarget": 1,
+                                        "finishesInSeconds": 108, "queued": true
+                                    }
+                                })),
+                            )
+                                .into_response()
+                        }
+                    },
+                ),
+            );
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = axum::Server::from_tcp(listener)
+            .unwrap()
+            .serve(upstream.into_make_service());
+        let server = tokio::spawn(async move {
+            let _ = server.await;
+        });
+        let mut state = test_state();
+        state.api_gateway_url = format!("http://{address}");
+        let app = build_router_with_state(state);
+
+        let page = app
+            .clone()
+            .oneshot(
+                Request::get("/buildings")
+                    .header(COOKIE, format!("universus_token={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.status(), StatusCode::OK);
+        let page = hyper::body::to_bytes(page.into_body()).await.unwrap();
+        let page = String::from_utf8(page.to_vec()).unwrap();
+        assert!(page.contains("data-view=\"buildings\""));
+        assert!(page.contains("/api/planets/${encodeURIComponent(planet.id)}/build-quote"));
+
+        let catalogue = app
+            .clone()
+            .oneshot(
+                Request::get("/game-api/api/planets/p-1/buildings")
+                    .header(COOKIE, format!("universus_token={token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(catalogue.status(), StatusCode::OK);
+        let catalogue = hyper::body::to_bytes(catalogue.into_body()).await.unwrap();
+        let catalogue: serde_json::Value = serde_json::from_slice(&catalogue).unwrap();
+        assert_eq!(catalogue["data"].as_array().unwrap().len(), 16);
+
+        let same_origin_post = |path: &'static str, body: &'static str| {
+            Request::post(path)
+                .header(HOST, "universus.test")
+                .header(ORIGIN, "http://universus.test")
+                .header("sec-fetch-site", "same-origin")
+                .header(COOKIE, format!("universus_token={token}"))
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap()
+        };
+        let quote = app
+            .clone()
+            .oneshot(same_origin_post(
+                "/game-api/api/planets/p-1/build-quote",
+                r#"{"buildingType":"metalMine"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(quote.status(), StatusCode::OK);
+        let quote = hyper::body::to_bytes(quote.into_body()).await.unwrap();
+        let quote: serde_json::Value = serde_json::from_slice(&quote).unwrap();
+        assert_eq!(quote["data"]["metal"], 60);
+        assert_eq!(quote["data"]["timeSeconds"], 108);
+
+        let queued = app
+            .oneshot(same_origin_post(
+                "/game-api/api/planets/p-1/build",
+                r#"{"buildingType":"metalMine"}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(queued.status(), StatusCode::OK);
+        let queued = hyper::body::to_bytes(queued.into_body()).await.unwrap();
+        let queued: serde_json::Value = serde_json::from_slice(&queued).unwrap();
+        assert_eq!(queued["data"]["queueId"], "q-1");
+        assert_eq!(queued["data"]["queued"], true);
+        server.abort();
+    }
+
     #[test]
     fn core_game_views_are_progressive_and_contract_wired() {
         for (title, view) in [
@@ -2340,9 +2549,18 @@ mod tests {
 
         for endpoint in [
             "/api/planets",
+            "/api/planets/${encodeURIComponent(active.id)}/resources",
+            "/api/planets/${encodeURIComponent(planet.id)}/buildings",
+            "/api/planets/${encodeURIComponent(planet.id)}/build-quote",
+            "/api/planets/${encodeURIComponent(planet.id)}/build-queue",
+            "/api/planets/${encodeURIComponent(active.id)}/rename",
             "/api/account/resources",
+            "/api/research/${encodeURIComponent(tech.techId)}/cost",
             "/api/research/queue",
             "/api/research/start",
+            "/api/shipyard/${encodeURIComponent(planet.id)}/build-options",
+            "/api/shipyard/${encodeURIComponent(planet.id)}/build-preview",
+            "/api/shipyard/${encodeURIComponent(planet.id)}/queue",
             "/api/shipyard/build",
             "/api/fleet/send",
             "/api/galaxy/",
@@ -2355,6 +2573,32 @@ mod tests {
             assert!(
                 CLIENT_JS.contains(endpoint),
                 "missing UI contract {endpoint}"
+            );
+        }
+        let ship_catalog = CLIENT_JS
+            .split("const SHIP_CATALOG = [")
+            .nth(1)
+            .and_then(|catalog| catalog.split("].map").next())
+            .expect("ship completeness index");
+        assert_eq!(ship_catalog.matches("['").count(), 14);
+        for contract in [
+            "catalog.map((building)",
+            "levels.map((tech)",
+            "SHIP_CATALOG.map((ship)",
+            "dataset.pending",
+            "data-countdown",
+            "storageCap",
+            "deuteriumGrossPerHour",
+            "fusionFuelPerHour",
+            "productionFactor",
+            "aria-live=\"polite\"",
+            "escapeHtml",
+            "safeAssetPath",
+            "The durable repository permits one active construction order",
+        ] {
+            assert!(
+                CLIENT_JS.contains(contract),
+                "missing UI behavior {contract}"
             );
         }
         assert!(!CLIENT_JS.contains("localStorage"));

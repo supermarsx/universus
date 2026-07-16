@@ -127,6 +127,13 @@ async fn personal_gameplay_routes_require_signed_authentication() {
         ("GET", "/api/planets", None),
         ("GET", "/api/planets/p-001", None),
         ("GET", "/api/planets/p-001/resources", None),
+        ("GET", "/api/planets/p-001/buildings", None),
+        ("GET", "/api/planets/p-001/build-queue", None),
+        (
+            "POST",
+            "/api/planets/p-001/build-quote",
+            Some(r#"{"buildingType":"metalMine"}"#),
+        ),
         ("GET", "/api/research", None),
         ("GET", "/api/research/queue", None),
         ("POST", "/api/research/energy_tech/cost", None),

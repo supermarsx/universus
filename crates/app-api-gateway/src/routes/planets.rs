@@ -2,11 +2,12 @@ use axum::extract::{rejection::JsonRejection, Path};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
-use platform_db::{Database, GameplayPlanetRow};
+use platform_db::{Database, GameplayPlanetRow, GameplayResearchRow};
 use serde::{Deserialize, Serialize};
 
 use super::gameplay::{
-    building_quote, map_write_error, parse_building, CatalogError, GatewayGameplayError,
+    building_api_id, building_level, building_name, building_quote, map_write_error,
+    parse_building, CanonicalQuote, CatalogError, GatewayGameplayError, BUILDINGS,
 };
 use crate::auth_guard::AuthUser;
 use crate::response::{bad_request, conflict, not_found, service_unavailable, success};
@@ -94,6 +95,47 @@ struct BuildPlanetResponse {
     queued: bool,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BuildingQuotePayload {
+    planet_id: String,
+    building_type: String,
+    name: String,
+    current_level: i32,
+    next_level: i32,
+    metal: i64,
+    crystal: i64,
+    deuterium: i64,
+    energy_required: i64,
+    time_seconds: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildingCatalogItem {
+    building_type: String,
+    name: String,
+    current_level: i32,
+    next_level: i32,
+    available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quote: Option<BuildingQuotePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConstructionQueuePayload {
+    queue_id: String,
+    planet_id: String,
+    building_type: String,
+    name: String,
+    level_target: i32,
+    finishes_in_seconds: i64,
+    status: String,
+}
+
 pub fn router() -> Router {
     Router::new()
         .route("/api/planets", get(list_planets_handler))
@@ -101,6 +143,18 @@ pub fn router() -> Router {
         .route(
             "/api/planets/:planet_id/resources",
             get(get_planet_resources_handler),
+        )
+        .route(
+            "/api/planets/:planet_id/buildings",
+            get(get_building_catalog_handler),
+        )
+        .route(
+            "/api/planets/:planet_id/build-quote",
+            post(get_building_quote_handler),
+        )
+        .route(
+            "/api/planets/:planet_id/build-queue",
+            get(get_construction_queue_handler),
         )
         .route(
             "/api/planets/:planet_id/rename",
@@ -211,6 +265,137 @@ async fn rename_planet_handler(
     }
 }
 
+async fn get_building_catalog_handler(
+    Path(planet_id): Path<String>,
+    AuthUser(user): AuthUser,
+    Extension(database): Extension<Option<Database>>,
+) -> Response {
+    let Some(database) = database else {
+        return repository_unavailable();
+    };
+    let (planet, research, speed) = match building_state(&database, &user.user_id, &planet_id).await
+    {
+        Ok(state) => state,
+        Err(response) => return response,
+    };
+    let catalog = BUILDINGS
+        .into_iter()
+        .map(|building| {
+            let current_level = building_level(&planet, building);
+            let next_level = current_level.saturating_add(1);
+            match building_quote(
+                &user.user_id,
+                &planet,
+                &research,
+                building_api_id(building),
+                speed,
+            ) {
+                Ok(quote) => BuildingCatalogItem {
+                    building_type: building_api_id(building).to_string(),
+                    name: building_name(building).to_string(),
+                    current_level,
+                    next_level,
+                    available: true,
+                    quote: Some(building_quote_payload(&planet, building, &quote)),
+                    unavailable_reason: None,
+                },
+                Err(error) => BuildingCatalogItem {
+                    building_type: building_api_id(building).to_string(),
+                    name: building_name(building).to_string(),
+                    current_level,
+                    next_level,
+                    available: false,
+                    quote: None,
+                    unavailable_reason: Some(error.to_string()),
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    success(catalog)
+}
+
+async fn get_building_quote_handler(
+    Path(planet_id): Path<String>,
+    AuthUser(user): AuthUser,
+    Extension(database): Extension<Option<Database>>,
+    payload: Result<Json<BuildPlanetRequest>, JsonRejection>,
+) -> Response {
+    let Json(input) = match payload {
+        Ok(value) => value,
+        Err(_) => return bad_request("Invalid build quote payload"),
+    };
+    let Some(building) = parse_building(&input.building_type) else {
+        return bad_request("Building type not found");
+    };
+    let Some(database) = database else {
+        return repository_unavailable();
+    };
+    let (planet, research, speed) = match building_state(&database, &user.user_id, &planet_id).await
+    {
+        Ok(state) => state,
+        Err(response) => return response,
+    };
+    match building_quote(
+        &user.user_id,
+        &planet,
+        &research,
+        building_api_id(building),
+        speed,
+    ) {
+        Ok(quote) => success(building_quote_payload(&planet, building, &quote)),
+        Err(error) => catalog_error(error),
+    }
+}
+
+async fn get_construction_queue_handler(
+    Path(planet_id): Path<String>,
+    AuthUser(user): AuthUser,
+    Extension(database): Extension<Option<Database>>,
+) -> Response {
+    let Some(database) = database else {
+        return repository_unavailable();
+    };
+    match database
+        .gameplay_planet_for_user(&user.user_id, &planet_id)
+        .await
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found("Planet not found"),
+        Err(_) => return repository_unavailable(),
+    }
+    let queue = match database
+        .gameplay_construction_queue_for_user(&user.user_id)
+        .await
+    {
+        Ok(queue) => queue,
+        Err(_) => return repository_unavailable(),
+    };
+    success(
+        queue
+            .into_iter()
+            .filter(|item| item.planet_id == planet_id)
+            .map(|item| {
+                let building = parse_building(&item.item_type);
+                ConstructionQueuePayload {
+                    queue_id: item.id,
+                    planet_id: item.planet_id,
+                    building_type: building
+                        .map(building_api_id)
+                        .unwrap_or(item.item_type.as_str())
+                        .to_string(),
+                    name: building
+                        .map(building_name)
+                        .unwrap_or("Unknown building")
+                        .to_string(),
+                    level_target: item.target_level.unwrap_or_default(),
+                    finishes_in_seconds: item.finishes_in_seconds,
+                    status: item.status,
+                }
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
 async fn build_planet_handler(
     Path(planet_id): Path<String>,
     AuthUser(user): AuthUser,
@@ -285,6 +470,47 @@ fn planet_payload(planet: GameplayPlanetRow) -> PlanetPayload {
         banner_url: format!("/assets/planet-cache/{visual_seed}/overview-banner.png"),
         visual_seed,
         visual_version: PLANET_VISUAL_VERSION.to_string(),
+    }
+}
+
+async fn building_state(
+    database: &Database,
+    user_id: &str,
+    planet_id: &str,
+) -> Result<(GameplayPlanetRow, GameplayResearchRow, i32), Response> {
+    let planet = match database.gameplay_planet_for_user(user_id, planet_id).await {
+        Ok(Some(planet)) => planet,
+        Ok(None) => return Err(not_found("Planet not found")),
+        Err(_) => return Err(repository_unavailable()),
+    };
+    let research = match database.gameplay_research_for_user(user_id).await {
+        Ok(Some(research)) => research,
+        Ok(None) => return Err(service_unavailable("Gameplay state is unavailable")),
+        Err(_) => return Err(repository_unavailable()),
+    };
+    let speed = match database.gameplay_universe_speed(planet.universe_id).await {
+        Ok(Some(speed)) => speed,
+        _ => return Err(repository_unavailable()),
+    };
+    Ok((planet, research, speed))
+}
+
+fn building_quote_payload(
+    planet: &GameplayPlanetRow,
+    building: game_domain::BuildingType,
+    quote: &CanonicalQuote,
+) -> BuildingQuotePayload {
+    BuildingQuotePayload {
+        planet_id: planet.id.clone(),
+        building_type: quote.api_id.to_string(),
+        name: building_name(building).to_string(),
+        current_level: building_level(planet, building),
+        next_level: quote.input.target_level.unwrap_or_default(),
+        metal: quote.input.metal_cost,
+        crystal: quote.input.crystal_cost,
+        deuterium: quote.input.deuterium_cost,
+        energy_required: quote.input.energy_required,
+        time_seconds: quote.input.duration_seconds,
     }
 }
 

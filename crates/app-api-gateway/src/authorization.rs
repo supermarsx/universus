@@ -185,6 +185,21 @@ pub const ROUTE_AUTHORIZATION: &[RouteAuthorization] = &[
     rule!("GET", "/api/planets/:planet_id", ActorPolicy::Player),
     rule!("POST", "/api/planets/:planet_id/build", ActorPolicy::Player),
     rule!(
+        "GET",
+        "/api/planets/:planet_id/buildings",
+        ActorPolicy::Player
+    ),
+    rule!(
+        "POST",
+        "/api/planets/:planet_id/build-quote",
+        ActorPolicy::Player
+    ),
+    rule!(
+        "GET",
+        "/api/planets/:planet_id/build-queue",
+        ActorPolicy::Player
+    ),
+    rule!(
         "POST",
         "/api/planets/:planet_id/rename",
         ActorPolicy::Player

@@ -69,6 +69,124 @@ pub(crate) const CLIENT_JS: &str = r##"
     return JSON.stringify(value);
   }
 
+  const SHIP_CATALOG = [
+    ['smallCargo', 'Small Cargo'], ['largeCargo', 'Large Cargo'],
+    ['lightFighter', 'Light Fighter'], ['heavyFighter', 'Heavy Fighter'],
+    ['cruiser', 'Cruiser'], ['battleship', 'Battleship'],
+    ['battlecruiser', 'Battlecruiser'], ['bomber', 'Bomber'],
+    ['destroyer', 'Destroyer'], ['deathstar', 'Deathstar'],
+    ['recycler', 'Recycler'], ['espionageProbe', 'Espionage Probe'],
+    ['solarSatellite', 'Solar Satellite'], ['colonyShip', 'Colony Ship']
+  ].map(([shipType, name]) => ({ shipType, name }));
+
+  const safeAssetPath = (value) => {
+    const path = String(value || '');
+    return /^\/assets\/[A-Za-z0-9_./-]+$/.test(path) && !path.includes('..') ? path : '';
+  };
+  const signed = (value) => `${numeric(value) >= 0 ? '+' : '−'}${formatNumber(Math.abs(numeric(value)))}`;
+
+  async function captureApi(path, options = {}) {
+    try { return { ok: true, value: await api(path, options) }; }
+    catch (error) { return { ok: false, error: error.message || String(error) }; }
+  }
+
+  async function withButtonLock(button, task) {
+    if (!button || button.dataset.pending === 'true') return;
+    button.dataset.pending = 'true';
+    button.disabled = true;
+    button.setAttribute('aria-disabled', 'true');
+    try { await task(); }
+    finally {
+      button.dataset.pending = 'false';
+      button.disabled = false;
+      button.removeAttribute('aria-disabled');
+    }
+  }
+
+  function clearLiveTimers(root) {
+    if (root._queueTimer) window.clearInterval(root._queueTimer);
+    if (root._resourceTimer) window.clearInterval(root._resourceTimer);
+    root._queueTimer = null;
+    root._resourceTimer = null;
+  }
+
+  function wireCountdowns(root) {
+    if (root._queueTimer) window.clearInterval(root._queueTimer);
+    const tick = () => {
+      $$('[data-countdown]', root).forEach((node) => {
+        const remaining = Math.max(0, numeric(node.dataset.remaining));
+        node.textContent = remaining > 0 ? formatDuration(remaining) : 'Due for processing';
+        node.dataset.remaining = String(Math.max(0, remaining - 1));
+      });
+    };
+    tick();
+    root._queueTimer = window.setInterval(() => {
+      if (!root.isConnected) return window.clearInterval(root._queueTimer);
+      tick();
+    }, 1000);
+  }
+
+  function costMarkup(cost, secondsKey = 'timeSeconds') {
+    return `<dl class="mini-cost economy-cost">
+      <div><dt>Metal</dt><dd>${formatNumber(cost.metal ?? cost.totalMetal)}</dd></div>
+      <div><dt>Crystal</dt><dd>${formatNumber(cost.crystal ?? cost.totalCrystal)}</dd></div>
+      <div><dt>Deuterium</dt><dd>${formatNumber(cost.deuterium ?? cost.totalDeuterium)}</dd></div>
+      <div><dt>Energy</dt><dd>${formatNumber(cost.energyRequired)}</dd></div>
+      <div><dt>Duration</dt><dd>${formatDuration(cost[secondsKey])}</dd></div>
+    </dl>`;
+  }
+
+  function planetPicker(planets, selectedId, id, label = 'Active colony') {
+    return `<label for="${escapeHtml(id)}">${escapeHtml(label)}<select id="${escapeHtml(id)}" name="planetId">${planets.map((planet) => `<option value="${escapeHtml(planet.id)}" ${String(planet.id) === String(selectedId) ? 'selected' : ''}>${escapeHtml(planet.name)} [${formatNumber(planet.galaxy)}:${formatNumber(planet.system)}:${formatNumber(planet.position)}]</option>`).join('')}</select></label>`;
+  }
+
+  function resourceTelemetry(planet, projection) {
+    const stocks = [
+      ['Metal', planet.metal, projection.storageCap?.metal, projection.productionPerHour?.metal],
+      ['Crystal', planet.crystal, projection.storageCap?.crystal, projection.productionPerHour?.crystal],
+      ['Deuterium', planet.deuterium, projection.storageCap?.deuterium, projection.productionPerHour?.deuterium]
+    ];
+    return `<section class="resource-telemetry" aria-label="Live resources for ${escapeHtml(planet.name)}">
+      <div class="resource-stock-grid">${stocks.map(([label, stock, cap, rate]) => {
+        const safeCap = Math.max(1, numeric(cap));
+        const percent = Math.min(100, Math.max(0, numeric(stock) / safeCap * 100));
+        return `<article class="resource-stock"><span>${escapeHtml(label)}</span><strong>${formatNumber(stock)} <small>/ ${formatNumber(cap)}</small></strong><progress max="100" value="${percent}" aria-label="${escapeHtml(label)} storage ${Math.round(percent)} percent full"></progress><small class="${numeric(rate) < 0 ? 'negative' : 'positive'}">${signed(rate)} per hour</small></article>`;
+      }).join('')}</div>
+      <dl class="resource-breakdown">
+        <div><dt>Deuterium gross</dt><dd>${signed(projection.productionBreakdown?.deuteriumGrossPerHour)} / h</dd></div>
+        <div><dt>Fusion fuel burn</dt><dd class="negative">${signed(-Math.abs(numeric(projection.productionBreakdown?.fusionFuelPerHour)))} / h</dd></div>
+        <div><dt>Energy supply</dt><dd>${formatNumber(projection.energy?.supply)}</dd></div>
+        <div><dt>Energy demand</dt><dd>${formatNumber(projection.energy?.demand)}</dd></div>
+        <div><dt>Energy net</dt><dd class="${numeric(projection.energy?.net) < 0 ? 'negative' : 'positive'}">${signed(projection.energy?.net)}</dd></div>
+        <div><dt>Production factor</dt><dd>${formatNumber(numeric(projection.productionFactor) * 100)}%</dd></div>
+        <div><dt>Fusion reactor</dt><dd>${projection.fusionOnline ? 'Online' : 'Offline'}</dd></div>
+      </dl>
+    </section>`;
+  }
+
+  function installResourcePolling(root, planetId, targetSelector) {
+    if (root._resourceTimer) window.clearInterval(root._resourceTimer);
+    root._resourceTimer = window.setInterval(async () => {
+      if (!root.isConnected) return window.clearInterval(root._resourceTimer);
+      try {
+        const [planets, projection] = await Promise.all([
+          api('/api/planets'),
+          api(`/api/planets/${encodeURIComponent(planetId)}/resources`)
+        ]);
+        const planet = planets.find((item) => String(item.id) === String(planetId));
+        const target = $(targetSelector, root);
+        if (planet && target) target.innerHTML = resourceTelemetry(planet, projection);
+      } catch (_) {
+        // Keep the last confirmed snapshot; the next interval retries without
+        // replacing useful telemetry with an invented state.
+      }
+    }, 30000);
+  }
+
+  function queueCountdown(seconds) {
+    return `<time data-countdown data-remaining="${Math.max(0, numeric(seconds))}">${formatDuration(seconds)}</time>`;
+  }
+
   function wireAuthentication() {
     $$('[data-auth-form]').forEach((form) => {
       form.addEventListener('submit', async (event) => {
@@ -111,97 +229,266 @@ pub(crate) const CLIENT_JS: &str = r##"
 
   async function loadOverview(root) {
     const reload = () => loadOverview(root);
+    clearLiveTimers(root);
     loading(root, 'Synchronizing command center…');
     try {
       const [planets, profile, resources] = await Promise.all([
         api('/api/planets'), api('/api/account/profile'), api('/api/account/resources')
       ]);
-      const active = planets[0];
+      const active = planets.find((planet) => String(planet.id) === root.dataset.selectedPlanet) || planets[0];
       if (!active) {
         root.innerHTML = '<div class="empty-state">No colonized planets are assigned to this account.</div>';
+        finish(root);
         return;
       }
+      root.dataset.selectedPlanet = String(active.id);
+      const projection = await api(`/api/planets/${encodeURIComponent(active.id)}/resources`);
+      const banner = safeAssetPath(active.bannerUrl);
       root.innerHTML = `
+        <div class="progression-toolbar">
+          ${planetPicker(planets, active.id, 'overview-planet-select')}
+          <button type="button" class="secondary" id="overview-refresh">Refresh telemetry</button>
+        </div>
         <section class="hero-panel planet-hero">
-          <img class="planet-banner" src="${escapeHtml(active.bannerUrl)}" alt="Rendered orbital view of ${escapeHtml(active.name)}">
-          <div class="hero-overlay"><span class="eyebrow">Primary colony · [${formatNumber(active.galaxy)}:${formatNumber(active.system)}:${formatNumber(active.position)}]</span><h2>${escapeHtml(active.name)}</h2><p>Visual seed ${escapeHtml(active.visualSeed)} · ${escapeHtml(active.visualVersion)}</p></div>
+          ${banner ? `<img class="planet-banner" src="${escapeHtml(banner)}" alt="Rendered orbital view of ${escapeHtml(active.name)}">` : '<div class="planet-banner asset-missing" role="img" aria-label="Planet visual unavailable"></div>'}
+          <div class="hero-overlay"><span class="eyebrow">Selected colony · [${formatNumber(active.galaxy)}:${formatNumber(active.system)}:${formatNumber(active.position)}]</span><h2>${escapeHtml(active.name)}</h2><p>Visual seed ${escapeHtml(active.visualSeed)} · ${escapeHtml(active.visualVersion)}</p></div>
         </section>
         <section class="metric-grid" aria-label="Resource reserves">
           ${[['Metal', resources.metal], ['Crystal', resources.crystal], ['Deuterium', resources.deuterium], ['Dark matter', resources.darkMatter]].map(([label, value]) => `<article class="metric-card"><span>${label}</span><strong>${formatNumber(value)}</strong></article>`).join('')}
         </section>
+        <div id="overview-resources">${resourceTelemetry(active, projection)}</div>
         <section class="dashboard-grid">
-          <article class="panel"><div class="panel-heading"><div><span class="eyebrow">Commander profile</span><h2>${escapeHtml(profile.username)}</h2></div><span class="rank-badge">#${formatNumber(profile.rank)}</span></div><dl class="detail-list"><div><dt>Alliance</dt><dd>${escapeHtml(profile.allianceTag || 'Unaligned')}</dd></div><div><dt>Email</dt><dd>${escapeHtml(profile.email)}</dd></div></dl></article>
+          <article class="panel"><div class="panel-heading"><div><span class="eyebrow">Commander profile</span><h2>${escapeHtml(profile.username)}</h2></div><span class="rank-badge">#${formatNumber(profile.rank)}</span></div><dl class="detail-list"><div><dt>Alliance</dt><dd>${escapeHtml(profile.allianceTag || 'Unaligned')}</dd></div><div><dt>Email</dt><dd>${escapeHtml(profile.email)}</dd></div></dl><form id="rename-planet-form" class="inline-form"><label for="planet-name">Rename selected colony<input id="planet-name" name="name" value="${escapeHtml(active.name)}" maxlength="100" required></label><button type="submit">Rename planet</button><p class="form-feedback" role="status" aria-live="polite"></p></form></article>
           <article class="panel"><div class="panel-heading"><div><span class="eyebrow">Empire</span><h2>Colonies</h2></div><span class="count-badge">${planets.length}</span></div><div class="planet-list">${planets.map((planet) => `<a class="planet-row" href="/galaxy?galaxy=${encodeURIComponent(numeric(planet.galaxy))}&system=${encodeURIComponent(numeric(planet.system))}"><span class="planet-dot" aria-hidden="true"></span><span><strong>${escapeHtml(planet.name)}</strong><small>[${formatNumber(planet.galaxy)}:${formatNumber(planet.system)}:${formatNumber(planet.position)}]</small></span><span>${formatNumber(numeric(planet.metal) + numeric(planet.crystal) + numeric(planet.deuterium))}</span></a>`).join('')}</div></article>
         </section>`;
       $('.planet-banner', root)?.addEventListener('error', (event) => event.currentTarget.classList.add('asset-missing'));
+      $('#overview-planet-select', root)?.addEventListener('change', (event) => {
+        root.dataset.selectedPlanet = event.currentTarget.value;
+        reload();
+      });
+      $('#overview-refresh', root)?.addEventListener('click', reload);
+      const renameForm = $('#rename-planet-form', root);
+      renameForm?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const submit = $('button[type="submit"]', renameForm);
+        withButtonLock(submit, async () => {
+          feedback(renameForm, 'Renaming colony…');
+          try {
+            const result = await api(`/api/planets/${encodeURIComponent(active.id)}/rename`, {
+              method: 'POST', body: jsonBody({ name: String(new FormData(renameForm).get('name') || '') })
+            });
+            feedback(renameForm, `${result.oldName} renamed to ${result.newName}.`);
+            await reload();
+          } catch (error) { feedback(renameForm, error.message, true); }
+        });
+      });
+      installResourcePolling(root, active.id, '#overview-resources');
       finish(root);
     } catch (error) { failure(root, error, reload); }
   }
 
   async function loadBuildings(root) {
     const reload = () => loadBuildings(root);
+    clearLiveTimers(root);
     loading(root, 'Loading colonies and construction controls…');
     try {
       const planets = await api('/api/planets');
+      const planet = planets.find((item) => String(item.id) === root.dataset.selectedPlanet) || planets[0];
+      if (!planet) {
+        root.innerHTML = '<div class="empty-state">A colonized planet is required before construction can begin.</div>';
+        finish(root);
+        return;
+      }
+      root.dataset.selectedPlanet = String(planet.id);
+      const [projection, catalog, queue] = await Promise.all([
+        api(`/api/planets/${encodeURIComponent(planet.id)}/resources`),
+        api(`/api/planets/${encodeURIComponent(planet.id)}/buildings`),
+        api(`/api/planets/${encodeURIComponent(planet.id)}/build-queue`)
+      ]);
+      const available = catalog.filter((building) => building.available && building.quote);
       root.innerHTML = `
-        <section class="dashboard-grid">
-          <article class="panel"><span class="eyebrow">Colonies</span><h2>Construction sites</h2><div class="planet-list">${planets.map((planet) => `<button type="button" class="planet-row planet-choice" data-planet="${escapeHtml(planet.id)}"><span class="planet-dot"></span><span><strong>${escapeHtml(planet.name)}</strong><small>[${formatNumber(planet.galaxy)}:${formatNumber(planet.system)}:${formatNumber(planet.position)}]</small></span><span>${formatNumber(planet.metal)} M</span></button>`).join('')}</div></article>
-          <article class="panel"><span class="eyebrow">Build queue</span><h2>Schedule upgrade</h2><form id="building-upgrade-form" class="stacked-form"><label>Colony<select name="planetId" required>${planets.map((planet) => `<option value="${escapeHtml(planet.id)}">${escapeHtml(planet.name)}</option>`).join('')}</select></label><label>Structure<select name="buildingType" required><option value="metalMine">Metal Mine</option><option value="crystalMine">Crystal Mine</option><option value="deuteriumSynthesizer">Deuterium Synthesizer</option><option value="solarPlant">Solar Plant</option><option value="roboticsFactory">Robotics Factory</option></select></label><button type="submit">Queue next level</button><p class="form-feedback" role="status" aria-live="polite"></p></form></article>
+        <div class="progression-toolbar">
+          ${planetPicker(planets, planet.id, 'building-planet-select', 'Construction colony')}
+          <button type="button" class="secondary" id="building-refresh">Refresh queue and quotes</button>
+        </div>
+        <div id="building-resources">${resourceTelemetry(planet, projection)}</div>
+        <section class="progression-layout">
+          <article class="panel progression-catalog"><div class="panel-heading"><div><span class="eyebrow">Canonical catalogue</span><h2>All structures</h2></div><span class="count-badge">${catalog.length}</span></div>
+            <p class="contract-note">Quotes are current previews, not reservations. Affordability and queue availability are revalidated atomically when submitted.</p><div class="card-grid building-catalog">${catalog.map((building) => `<article class="tech-card ${building.available ? '' : 'is-locked'}"><div class="panel-heading"><h3>${escapeHtml(building.name)}</h3><span class="level-chip">Lv ${formatNumber(building.currentLevel)} → ${formatNumber(building.nextLevel)}</span></div>${building.quote ? costMarkup(building.quote) : `<p class="unavailable-reason" role="note">${escapeHtml(building.unavailableReason || 'The server did not publish an upgrade quote.')}</p>`}<span class="status-chip ${building.available ? 'available' : 'locked'}">${building.available ? 'Prerequisites satisfied' : 'Unavailable — see reason'}</span></article>`).join('')}</div>
+          </article>
+          <aside class="progression-sidebar">
+            <section class="panel"><div class="panel-heading"><div><span class="eyebrow">Construction queue</span><h2>${escapeHtml(planet.name)}</h2></div><button type="button" class="secondary compact-button" id="building-queue-refresh">Refresh</button></div>${queue.length ? queue.map((item) => `<div class="queue-item"><strong>${escapeHtml(item.name)} → level ${formatNumber(item.levelTarget)}</strong><span>${escapeHtml(pretty(item.status))} · ${queueCountdown(item.finishesInSeconds)}</span></div>`).join('') : '<div class="empty-state compact">The construction queue is idle.</div>'}</section>
+            <section class="panel"><span class="eyebrow">Exact server quote</span><h2>Schedule next level</h2>${available.length ? `<form id="building-upgrade-form" class="stacked-form"><label for="building-type">Structure<select id="building-type" name="buildingType" required>${available.map((building) => `<option value="${escapeHtml(building.buildingType)}">${escapeHtml(building.name)} · level ${formatNumber(building.nextLevel)}</option>`).join('')}</select></label><div id="building-quote" class="quote-preview" aria-live="polite"></div><button type="button" class="secondary" id="building-quote-refresh">Refresh exact quote</button><button type="submit" ${queue.length ? 'disabled' : ''}>${queue.length ? 'Construction queue occupied' : 'Queue next level'}</button><p class="form-feedback ${queue.length ? 'is-error' : ''}" role="status" aria-live="polite">${queue.length ? 'The durable repository permits one active construction order for this colony. Wait for it to complete before enqueueing another.' : ''}</p></form>` : '<div class="empty-state compact">No structure currently meets its authoritative prerequisites.</div>'}</section>
+          </aside>
         </section>`;
-      const form = $('#building-upgrade-form', root);
-      $$('.planet-choice', root).forEach((button) => button.addEventListener('click', () => { form.elements.planetId.value = button.dataset.planet; form.elements.buildingType.focus(); }));
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const data = Object.fromEntries(new FormData(form));
-        feedback(form, 'Scheduling construction…');
-        try {
-          const result = await api(`/api/planets/${encodeURIComponent(data.planetId)}/build`, { method: 'POST', body: jsonBody({ buildingType: data.buildingType }) });
-          feedback(form, `${pretty(result.buildingType)} level ${result.levelTarget} queued · ${formatDuration(result.finishesInSeconds)} remaining.`);
-        } catch (error) { feedback(form, error.message, true); }
+      $('#building-planet-select', root)?.addEventListener('change', (event) => {
+        root.dataset.selectedPlanet = event.currentTarget.value;
+        reload();
       });
+      $('#building-refresh', root)?.addEventListener('click', reload);
+      $('#building-queue-refresh', root)?.addEventListener('click', reload);
+      const form = $('#building-upgrade-form', root);
+      const refreshQuote = async () => {
+        if (!form) return null;
+        const target = $('#building-quote', form);
+        target.textContent = 'Refreshing authoritative quote…';
+        try {
+          const quote = await api(`/api/planets/${encodeURIComponent(planet.id)}/build-quote`, {
+            method: 'POST', body: jsonBody({ buildingType: form.elements.buildingType.value })
+          });
+          target.classList.remove('is-error');
+          target.innerHTML = `<strong>${escapeHtml(quote.name)} · level ${formatNumber(quote.nextLevel)}</strong>${costMarkup(quote)}`;
+          return quote;
+        } catch (error) {
+          target.textContent = error.message;
+          target.classList.add('is-error');
+          return null;
+        }
+      };
+      form?.elements.buildingType.addEventListener('change', refreshQuote);
+      if (form) $('#building-quote-refresh', form)?.addEventListener('click', refreshQuote);
+      form?.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (queue.length) return feedback(form, 'The construction queue is occupied for this colony.', true);
+        const submit = $('button[type="submit"]', form);
+        withButtonLock(submit, async () => {
+          feedback(form, 'Validating current price and prerequisites…');
+          const quote = await refreshQuote();
+          if (!quote) return feedback(form, 'Construction cannot be queued without a current server quote.', true);
+          try {
+            const result = await api(`/api/planets/${encodeURIComponent(planet.id)}/build`, { method: 'POST', body: jsonBody({ buildingType: quote.buildingType }) });
+            feedback(form, `${pretty(result.buildingType)} level ${result.levelTarget} queued · ${formatDuration(result.finishesInSeconds)} remaining.`);
+            await reload();
+          } catch (error) { feedback(form, error.message, true); }
+        });
+      });
+      if (form) await refreshQuote();
+      wireCountdowns(root);
+      installResourcePolling(root, planet.id, '#building-resources');
       finish(root);
     } catch (error) { failure(root, error, reload); }
   }
 
   async function loadResearch(root) {
     const reload = () => loadResearch(root);
+    clearLiveTimers(root);
     loading(root, 'Resolving research network…');
     try {
       const [levels, queue] = await Promise.all([api('/api/research'), api('/api/research/queue')]);
-      root.innerHTML = `<section class="dashboard-grid wide-first"><article class="panel"><div class="panel-heading"><div><span class="eyebrow">Technology matrix</span><h2>Research levels</h2></div></div><div class="card-grid" id="research-cards">${levels.map((tech) => `<article class="tech-card"><span class="level-chip">Lv ${formatNumber(tech.level)}</span><h3>${escapeHtml(tech.name)}</h3><p>${escapeHtml(tech.techId)}</p><div class="button-row"><button type="button" class="secondary research-cost" data-tech="${escapeHtml(tech.techId)}">Inspect cost</button><button type="button" class="research-start" data-tech="${escapeHtml(tech.techId)}">Research next level</button></div><div class="inline-result" aria-live="polite"></div></article>`).join('')}</div></article><aside class="panel"><span class="eyebrow">Active queue</span><h2>In progress</h2>${queue.length ? queue.map((item) => `<div class="queue-item"><strong>${escapeHtml(pretty(item.techId))} → ${formatNumber(item.levelTarget)}</strong><span>${formatDuration(item.finishesInSeconds)}</span><progress max="${Math.max(numeric(item.finishesInSeconds), 1)}" value="1"></progress></div>`).join('') : '<div class="empty-state compact">Research queue is idle.</div>'}</aside></section>`;
-      $$('.research-cost', root).forEach((button) => button.addEventListener('click', async () => {
-        const result = button.closest('.tech-card').querySelector('.inline-result');
-        result.textContent = 'Calculating…';
-        try { const cost = await api(`/api/research/${encodeURIComponent(button.dataset.tech)}/cost`, { method: 'POST' }); result.textContent = `Lab ${cost.planetId} · Lv ${cost.nextLevel}: ${formatNumber(cost.metal)} metal · ${formatNumber(cost.crystal)} crystal · ${formatNumber(cost.deuterium)} deuterium · ${formatDuration(cost.timeSeconds)}`; } catch (error) { result.textContent = error.message; }
+      const quotes = await Promise.all(levels.map((tech) => captureApi(
+        `/api/research/${encodeURIComponent(tech.techId)}/cost`, { method: 'POST' }
+      )));
+      const technologies = levels.map((tech, index) => ({ ...tech, quote: quotes[index] }));
+      root.innerHTML = `<div class="progression-toolbar"><p class="contract-note"><strong>Account-global research:</strong> the gateway authoritatively selects your highest-level research lab for both quote and enqueue.</p><button type="button" class="secondary" id="research-refresh">Refresh queue and quotes</button></div><section class="progression-layout"><article class="panel progression-catalog"><div class="panel-heading"><div><span class="eyebrow">Technology matrix</span><h2>All research disciplines</h2></div><span class="count-badge">${technologies.length}</span></div><div class="card-grid" id="research-cards">${technologies.map((tech) => `<article class="tech-card ${tech.quote.ok ? '' : 'is-locked'}"><div class="panel-heading"><h3>${escapeHtml(tech.name)}</h3><span class="level-chip">Lv ${formatNumber(tech.level)} → ${formatNumber(numeric(tech.level) + 1)}</span></div>${tech.quote.ok ? `<p class="quote-context">Research lab planet ${escapeHtml(tech.quote.value.planetId)}</p>${costMarkup(tech.quote.value)}` : `<p class="unavailable-reason" role="note">${escapeHtml(tech.quote.error)}</p>`}<button type="button" class="research-start" data-tech="${escapeHtml(tech.techId)}" ${tech.quote.ok && !queue.length ? '' : 'disabled'}>${queue.length ? 'Research queue occupied' : tech.quote.ok ? 'Research next level' : 'Prerequisites unmet'}</button><div class="inline-result" role="status" aria-live="polite"></div></article>`).join('')}</div></article><aside class="progression-sidebar"><section class="panel"><div class="panel-heading"><div><span class="eyebrow">Active queue</span><h2>Research in progress</h2></div><button type="button" class="secondary compact-button" id="research-queue-refresh">Refresh</button></div>${queue.length ? queue.map((item) => `<div class="queue-item"><strong>${escapeHtml(pretty(item.techId))} → level ${formatNumber(item.levelTarget)}</strong><span>Lab planet ${escapeHtml(item.planetId)} · ${queueCountdown(item.finishesInSeconds)}</span></div>`).join('') : '<div class="empty-state compact">The research queue is idle.</div>'}</section></aside></section>`;
+      $('#research-refresh', root)?.addEventListener('click', reload);
+      $('#research-queue-refresh', root)?.addEventListener('click', reload);
+      $$('.research-start:not(:disabled)', root).forEach((button) => button.addEventListener('click', () => {
+        const result = $('.inline-result', button.closest('.tech-card'));
+        withButtonLock(button, async () => {
+          result.textContent = 'Revalidating authoritative research quote…';
+          const quote = await captureApi(`/api/research/${encodeURIComponent(button.dataset.tech)}/cost`, { method: 'POST' });
+          if (!quote.ok) {
+            result.textContent = quote.error;
+            result.classList.add('is-error');
+            return;
+          }
+          try {
+            const queued = await api('/api/research/start', { method: 'POST', body: jsonBody({ technologyType: button.dataset.tech }) });
+            result.textContent = `Level ${queued.levelTarget} queued at lab ${queued.planetId} · ${formatDuration(queued.finishesInSeconds)}.`;
+            await reload();
+          } catch (error) {
+            result.textContent = error.message;
+            result.classList.add('is-error');
+          }
+        });
       }));
-      $$('.research-start', root).forEach((button) => button.addEventListener('click', async () => {
-        const result = button.closest('.tech-card').querySelector('.inline-result');
-        button.disabled = true;
-        try { const queued = await api('/api/research/start', { method: 'POST', body: jsonBody({ technologyType: button.dataset.tech }) }); result.textContent = `Level ${queued.levelTarget} queued at lab ${queued.planetId} · ${formatDuration(queued.finishesInSeconds)}.`; } catch (error) { result.textContent = error.message; } finally { button.disabled = false; }
-      }));
+      wireCountdowns(root);
       finish(root);
     } catch (error) { failure(root, error, reload); }
   }
 
   async function loadShipyard(root) {
     const reload = () => loadShipyard(root);
+    clearLiveTimers(root);
     loading(root, 'Opening orbital shipyard…');
     try {
       const planets = await api('/api/planets');
-      const planet = planets[0];
-      if (!planet) throw new Error('A colony is required before opening the shipyard.');
-      const [options, queue] = await Promise.all([api(`/api/shipyard/${encodeURIComponent(planet.id)}/build-options`), api(`/api/shipyard/${encodeURIComponent(planet.id)}/queue`)]);
-      root.innerHTML = `<section class="dashboard-grid"><article class="panel"><span class="eyebrow">${escapeHtml(planet.name)} orbital yard</span><h2>Production catalogue</h2><div class="card-grid">${options.map((option) => `<article class="tech-card"><h3>${escapeHtml(pretty(option.shipType))}</h3><dl class="mini-cost"><div><dt>Metal</dt><dd>${formatNumber(option.metal)}</dd></div><div><dt>Crystal</dt><dd>${formatNumber(option.crystal)}</dd></div><div><dt>Deuterium</dt><dd>${formatNumber(option.deuterium)}</dd></div></dl><small>${formatDuration(option.buildTimeSeconds)} each</small></article>`).join('')}</div><form id="shipyard-form" class="inline-form"><label>Hull<select name="shipType">${options.map((option) => `<option value="${escapeHtml(option.shipType)}">${escapeHtml(pretty(option.shipType))}</option>`).join('')}</select></label><label>Quantity<input type="number" name="quantity" min="1" max="999" value="1" required></label><button type="button" class="secondary" id="preview-build">Preview</button><button type="submit">Add to queue</button><p class="form-feedback" role="status" aria-live="polite"></p></form></article><aside class="panel"><span class="eyebrow">Assembly queue</span><h2>Active orders</h2>${queue.length ? queue.map((item) => `<div class="queue-item"><strong>${formatNumber(item.count)} × ${escapeHtml(pretty(item.shipType))}</strong><span>${formatDuration(item.completesInSeconds)}</span></div>`).join('') : '<div class="empty-state compact">No hulls are under construction.</div>'}</aside></section>`;
+      const planet = planets.find((item) => String(item.id) === root.dataset.selectedPlanet) || planets[0];
+      if (!planet) {
+        root.innerHTML = '<div class="empty-state">A colonized planet is required before opening the shipyard.</div>';
+        finish(root);
+        return;
+      }
+      root.dataset.selectedPlanet = String(planet.id);
+      const [projection, options, queue] = await Promise.all([
+        api(`/api/planets/${encodeURIComponent(planet.id)}/resources`),
+        api(`/api/shipyard/${encodeURIComponent(planet.id)}/build-options`),
+        api(`/api/shipyard/${encodeURIComponent(planet.id)}/queue`)
+      ]);
+      const previews = await Promise.all(SHIP_CATALOG.map((ship) => captureApi(
+        `/api/shipyard/${encodeURIComponent(planet.id)}/build-preview`, {
+          method: 'POST', body: jsonBody({ shipType: ship.shipType, quantity: 1 })
+        }
+      )));
+      const published = new Map(options.map((option) => [String(option.shipType), option]));
+      const ships = SHIP_CATALOG.map((ship, index) => {
+        const option = published.get(ship.shipType);
+        const preview = previews[index];
+        const unavailableReason = !preview.ok
+          ? preview.error
+          : !option
+            ? 'The gateway did not publish this hull as buildable for the selected colony.'
+            : '';
+        return { ...ship, preview, prerequisitesSatisfied: Boolean(option && preview.ok), unavailableReason };
+      });
+      const available = ships.filter((ship) => ship.prerequisitesSatisfied);
+      root.innerHTML = `<div class="progression-toolbar">${planetPicker(planets, planet.id, 'shipyard-planet-select', 'Shipyard colony')}<button type="button" class="secondary" id="shipyard-refresh">Refresh queue and catalogue</button></div><div id="shipyard-resources">${resourceTelemetry(planet, projection)}</div><section class="progression-layout"><article class="panel progression-catalog"><div class="panel-heading"><div><span class="eyebrow">${escapeHtml(planet.name)} orbital yard</span><h2>All ship classes</h2></div><span class="count-badge">${ships.length}</span></div><p class="contract-note">The completeness index supplies labels only. Every cost, duration, availability decision, and lock reason below comes from the gateway.</p><div class="card-grid ship-catalog">${ships.map((ship) => `<article class="tech-card ${ship.prerequisitesSatisfied ? '' : 'is-locked'}"><h3>${escapeHtml(ship.name)}</h3>${ship.preview.ok ? costMarkup(ship.preview.value, 'totalBuildTimeSeconds') : ''}${ship.unavailableReason ? `<p class="unavailable-reason" role="note">${escapeHtml(ship.unavailableReason)}</p>` : ''}<span class="status-chip ${ship.prerequisitesSatisfied ? 'available' : 'locked'}">${ship.prerequisitesSatisfied ? 'Prerequisites satisfied' : 'Unavailable — see reason'}</span></article>`).join('')}</div></article><aside class="progression-sidebar"><section class="panel"><div class="panel-heading"><div><span class="eyebrow">Assembly queue</span><h2>Active orders</h2></div><button type="button" class="secondary compact-button" id="shipyard-queue-refresh">Refresh</button></div>${queue.length ? queue.map((item) => `<div class="queue-item"><strong>${formatNumber(item.count)} × ${escapeHtml(pretty(item.shipType))}</strong><span>${queueCountdown(item.completesInSeconds)}</span></div>`).join('') : '<div class="empty-state compact">No hulls are under construction.</div>'}</section><section class="panel"><span class="eyebrow">Exact quantity quote</span><h2>Schedule production</h2>${available.length ? `<form id="shipyard-form" class="stacked-form"><label for="shipyard-type">Hull<select id="shipyard-type" name="shipType">${available.map((ship) => `<option value="${escapeHtml(ship.shipType)}">${escapeHtml(ship.name)}</option>`).join('')}</select></label><label for="shipyard-quantity">Quantity<input id="shipyard-quantity" type="number" name="quantity" min="1" max="1000000000" value="1" inputmode="numeric" required></label><div id="shipyard-quote" class="quote-preview" aria-live="polite"></div><button type="button" class="secondary" id="preview-build">Refresh exact quote</button><button type="submit" ${queue.length ? 'disabled' : ''}>${queue.length ? 'Shipyard queue occupied' : 'Add to queue'}</button><p class="form-feedback ${queue.length ? 'is-error' : ''}" role="status" aria-live="polite">${queue.length ? 'The durable repository permits one active shipyard order for this colony. Wait for it to complete before enqueueing another.' : ''}</p></form>` : '<div class="empty-state compact">No ship class currently meets its authoritative prerequisites.</div>'}</section></aside></section>`;
+      $('#shipyard-planet-select', root)?.addEventListener('change', (event) => {
+        root.dataset.selectedPlanet = event.currentTarget.value;
+        reload();
+      });
+      $('#shipyard-refresh', root)?.addEventListener('click', reload);
+      $('#shipyard-queue-refresh', root)?.addEventListener('click', reload);
       const form = $('#shipyard-form', root);
-      $('#preview-build', form).addEventListener('click', async () => {
+      const refreshPreview = async () => {
+        if (!form) return null;
         const data = Object.fromEntries(new FormData(form));
-        try { const preview = await api(`/api/shipyard/${encodeURIComponent(planet.id)}/build-preview`, { method: 'POST', body: jsonBody({ ship_type: data.shipType, count: Number(data.quantity) }) }); feedback(form, `Total: ${formatNumber(preview.totalMetal)} metal · ${formatNumber(preview.totalCrystal)} crystal · ${formatDuration(preview.totalBuildTimeSeconds)}.`); } catch (error) { feedback(form, error.message, true); }
-      });
-      form.addEventListener('submit', async (event) => {
+        const target = $('#shipyard-quote', form);
+        target.textContent = 'Refreshing authoritative quantity quote…';
+        try {
+          const preview = await api(`/api/shipyard/${encodeURIComponent(planet.id)}/build-preview`, { method: 'POST', body: jsonBody({ shipType: data.shipType, quantity: Number(data.quantity) }) });
+          target.classList.remove('is-error');
+          target.innerHTML = `<strong>${formatNumber(preview.count)} × ${escapeHtml(pretty(preview.shipType))}</strong>${costMarkup(preview, 'totalBuildTimeSeconds')}`;
+          return preview;
+        } catch (error) {
+          target.textContent = error.message;
+          target.classList.add('is-error');
+          return null;
+        }
+      };
+      if (form) {
+        $('#preview-build', form)?.addEventListener('click', refreshPreview);
+        form.elements.shipType.addEventListener('change', refreshPreview);
+        form.elements.quantity.addEventListener('change', refreshPreview);
+      }
+      form?.addEventListener('submit', (event) => {
         event.preventDefault();
-        const data = Object.fromEntries(new FormData(form));
-        try { const result = await api('/api/shipyard/build', { method: 'POST', body: jsonBody({ planetId: planet.id, shipType: data.shipType, quantity: Number(data.quantity) }) }); feedback(form, `${result.quantity} × ${pretty(result.shipType)} queued · ${formatDuration(result.completesInSeconds)}.`); } catch (error) { feedback(form, error.message, true); }
+        if (queue.length) return feedback(form, 'The shipyard queue is occupied for this colony.', true);
+        const submit = $('button[type="submit"]', form);
+        withButtonLock(submit, async () => {
+          feedback(form, 'Validating current price and prerequisites…');
+          const preview = await refreshPreview();
+          if (!preview) return feedback(form, 'Production cannot be queued without a current server quote.', true);
+          try {
+            const result = await api('/api/shipyard/build', { method: 'POST', body: jsonBody({ planetId: planet.id, shipType: preview.shipType, quantity: preview.count }) });
+            feedback(form, `${result.quantity} × ${pretty(result.shipType)} queued · ${formatDuration(result.completesInSeconds)}.`);
+            await reload();
+          } catch (error) { feedback(form, error.message, true); }
+        });
       });
+      if (form) await refreshPreview();
+      wireCountdowns(root);
+      installResourcePolling(root, planet.id, '#shipyard-resources');
       finish(root);
     } catch (error) { failure(root, error, reload); }
   }

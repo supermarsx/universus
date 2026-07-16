@@ -296,6 +296,27 @@ pub(super) fn building_api_id(building: BuildingType) -> &'static str {
     }
 }
 
+pub(super) fn building_name(building: BuildingType) -> &'static str {
+    match building {
+        BuildingType::MetalMine => "Metal Mine",
+        BuildingType::CrystalMine => "Crystal Mine",
+        BuildingType::DeuteriumSynthesizer => "Deuterium Synthesizer",
+        BuildingType::SolarPlant => "Solar Plant",
+        BuildingType::FusionReactor => "Fusion Reactor",
+        BuildingType::MetalStorage => "Metal Storage",
+        BuildingType::CrystalStorage => "Crystal Storage",
+        BuildingType::DeuteriumTank => "Deuterium Tank",
+        BuildingType::RoboticsFactory => "Robotics Factory",
+        BuildingType::Shipyard => "Shipyard",
+        BuildingType::ResearchLab => "Research Lab",
+        BuildingType::NaniteFactory => "Nanite Factory",
+        BuildingType::Terraformer => "Terraformer",
+        BuildingType::MissileSilo => "Missile Silo",
+        BuildingType::AllianceDepot => "Alliance Depot",
+        BuildingType::SpaceDock => "Space Dock",
+    }
+}
+
 pub(super) fn research_api_id(technology: ResearchType) -> &'static str {
     research_db_key(technology)
 }

@@ -127,6 +127,94 @@ async fn signed_routes_use_authoritative_persisted_gameplay_state() {
         .unwrap();
     assert_eq!(forbidden.status(), StatusCode::NOT_FOUND);
 
+    for (method, path, body) in [
+        (
+            "GET",
+            format!("/api/planets/{}/buildings", first_planet.id),
+            None,
+        ),
+        (
+            "GET",
+            format!("/api/planets/{}/build-queue", first_planet.id),
+            None,
+        ),
+        (
+            "POST",
+            format!("/api/planets/{}/build-quote", first_planet.id),
+            Some(json!({"buildingType": "metalMine"})),
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(request(method, &path, &second_token, body))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "{method} {path} exposed another player's planet"
+        );
+        let response = json_body(response).await;
+        assert_eq!(response["success"], false);
+        assert_eq!(response["error"], "Planet not found");
+        assert!(response.get("data").is_none());
+    }
+
+    let catalog = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            &format!("/api/planets/{}/buildings", first_planet.id),
+            &first_token,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(catalog.status(), StatusCode::OK);
+    let catalog = json_body(catalog).await;
+    assert_eq!(catalog["data"].as_array().unwrap().len(), 16);
+    let metal_mine = catalog["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|building| building["buildingType"] == "metalMine")
+        .unwrap();
+    assert_eq!(metal_mine["available"], true);
+    assert_eq!(metal_mine["quote"]["currentLevel"], 0);
+    assert_eq!(metal_mine["quote"]["nextLevel"], 1);
+    assert_eq!(metal_mine["quote"]["metal"], 60);
+    assert_eq!(metal_mine["quote"]["crystal"], 15);
+    assert_eq!(metal_mine["quote"]["timeSeconds"], 108);
+    let fusion_reactor = catalog["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|building| building["buildingType"] == "fusionReactor")
+        .unwrap();
+    assert_eq!(fusion_reactor["available"], false);
+    assert!(fusion_reactor["unavailableReason"]
+        .as_str()
+        .unwrap()
+        .contains("Missing prerequisite"));
+
+    let quote = app
+        .clone()
+        .oneshot(request(
+            "POST",
+            &format!("/api/planets/{}/build-quote", first_planet.id),
+            &first_token,
+            Some(json!({"buildingType": "metalMine"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(quote.status(), StatusCode::OK);
+    let quote = json_body(quote).await;
+    assert_eq!(quote["data"]["planetId"], first_planet.id);
+    assert_eq!(quote["data"]["buildingType"], "metalMine");
+    assert_eq!(quote["data"]["metal"], 60);
+    assert_eq!(quote["data"]["crystal"], 15);
+    assert_eq!(quote["data"]["timeSeconds"], 108);
+
     // Spoofed prices and durations are ignored; the canonical level-one metal
     // mine quote is 60 metal, 15 crystal, and 108 seconds at speed one.
     let building = app
@@ -148,6 +236,22 @@ async fn signed_routes_use_authoritative_persisted_gameplay_state() {
     let building = json_body(building).await;
     assert_eq!(building["data"]["levelTarget"], 1);
     assert_eq!(building["data"]["finishesInSeconds"], 108);
+    let construction_queue = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            &format!("/api/planets/{}/build-queue", first_planet.id),
+            &first_token,
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(construction_queue.status(), StatusCode::OK);
+    let construction_queue = json_body(construction_queue).await;
+    assert_eq!(construction_queue["data"].as_array().unwrap().len(), 1);
+    assert_eq!(construction_queue["data"][0]["buildingType"], "metalMine");
+    assert_eq!(construction_queue["data"][0]["name"], "Metal Mine");
+    assert_eq!(construction_queue["data"][0]["levelTarget"], 1);
     let after_build = database
         .gameplay_planet_for_user(&first.id, &first_planet.id)
         .await
