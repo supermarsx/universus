@@ -346,3 +346,30 @@ fn service_image_copies_runtime_planet_assets() {
         "runtime service image must include the asset tree served by app-web-frontend"
     );
 }
+
+#[test]
+fn service_image_uses_a_fixed_exec_form_entrypoint() {
+    let dockerfile_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("Dockerfile.service");
+    let dockerfile = std::fs::read_to_string(&dockerfile_path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", dockerfile_path.display()));
+    let entrypoint = dockerfile
+        .lines()
+        .find(|line| line.trim_start().starts_with("ENTRYPOINT"))
+        .expect("shared service image entrypoint");
+
+    assert_eq!(
+        entrypoint.trim(),
+        r#"ENTRYPOINT ["/usr/local/bin/service"]"#,
+        "runtime startup must not depend on build-only ARG expansion or a shell"
+    );
+    assert!(
+        dockerfile.contains(r#"ln -s "/usr/local/bin/${BIN_NAME}" /usr/local/bin/service"#),
+        "the fixed entrypoint must resolve to the selected service binary"
+    );
+    assert!(
+        !dockerfile.contains(r#"ENTRYPOINT ["/bin/sh", "-c""#),
+        "service images must preserve argument boundaries with exec-form startup"
+    );
+}

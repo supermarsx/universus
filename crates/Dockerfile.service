@@ -1,4 +1,4 @@
-FROM rust:1.84-slim-bookworm AS builder
+FROM rust:1.85-slim-bookworm AS builder
 
 ARG BIN_NAME
 
@@ -23,6 +23,10 @@ COPY --from=builder /workspace/target/release/${BIN_NAME} /usr/local/bin/${BIN_N
 COPY --from=builder /etc/ssl/certs /etc/ssl/certs
 COPY assets /app/assets
 
+RUN test -n "${BIN_NAME}" \
+    && test -x "/usr/local/bin/${BIN_NAME}" \
+    && ln -s "/usr/local/bin/${BIN_NAME}" /usr/local/bin/service
+
 ENV RUST_LOG=info
 
-ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/${BIN_NAME}"]
+ENTRYPOINT ["/usr/local/bin/service"]
