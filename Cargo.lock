@@ -3577,9 +3577,13 @@ dependencies = [
 name = "platform-db"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "deadpool-postgres",
  "game-economy",
+ "rand 0.8.5",
  "serde_json",
+ "sha2",
+ "subtle",
  "tokio",
  "tokio-postgres",
 ]

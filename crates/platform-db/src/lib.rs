@@ -1,6 +1,8 @@
 mod gameplay;
+mod privacy;
 
 pub use gameplay::*;
+pub use privacy::*;
 
 use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
 use tokio_postgres::{types::Json, NoTls};
