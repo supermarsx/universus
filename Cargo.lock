@@ -374,6 +374,7 @@ dependencies = [
  "aes-gcm",
  "axum",
  "base64 0.22.1",
+ "platform-auth",
  "platform-db",
  "platform-events",
  "platform-observability",

@@ -1,9 +1,13 @@
 use app_privacy_worker::{
-    healthcheck_from_env, spawn_health_server, ExportEncryptor, HealthState, OpsPublisher,
-    PrivacyWorker, ProcessorSettings, WorkerConfig, WorkerError, SERVICE_NAME,
+    healthcheck_from_env, spawn_privacy_service_server, DeliveryState, ExportEncryptor,
+    HealthState, OpsPublisher, PrivacyWorker, ProcessorSettings, WorkerConfig, WorkerError,
+    SERVICE_NAME,
 };
 use std::{process::ExitCode, sync::Arc};
-use tokio::{sync::watch, time::sleep};
+use tokio::{
+    sync::watch,
+    time::{sleep, Instant},
+};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -39,10 +43,14 @@ async fn run() -> Result<(), WorkerError> {
         .await
         .map_err(|_| WorkerError::RepositoryNotReady)?;
 
-    let encryptor = ExportEncryptor::new(
-        config.export_key_id,
-        config.export_key,
+    let encryptor = ExportEncryptor::from_keyring(
+        config.export_keyring.clone(),
         config.export_max_plaintext_bytes,
+    )?;
+    let delivery = DeliveryState::new(
+        database.clone(),
+        Arc::new(encryptor.clone()),
+        config.export_delivery_token_ttl_seconds,
     )?;
     let ops = match (config.realtime_url, config.realtime_token) {
         (Some(url), Some(token)) => OpsPublisher::new(url, token)?,
@@ -60,14 +68,17 @@ async fn run() -> Result<(), WorkerError> {
             job_timeout: config.job_timeout,
             retry_delay_seconds: config.retry_delay_seconds,
             export_expires_in_seconds: config.export_expires_in_seconds,
+            privacy_outbox_retention_days: config.privacy_outbox_retention_days,
         },
         encryptor,
+        config.communication_evidence_key.clone(),
         ops.clone(),
     )?;
 
     let health = HealthState::new(config.readiness_stale_after);
     health.mark_database_success();
-    let health_server = spawn_health_server(config.health_addr, Arc::clone(&health))?;
+    let health_server =
+        spawn_privacy_service_server(config.health_addr, Arc::clone(&health), delivery)?;
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     tokio::spawn(async move {
         shutdown_signal().await;
@@ -95,6 +106,7 @@ async fn run() -> Result<(), WorkerError> {
     )
     .await;
 
+    let mut next_retention = Instant::now();
     loop {
         match worker.run_cycle().await {
             Ok(report) => {
@@ -130,6 +142,29 @@ async fn run() -> Result<(), WorkerError> {
                     health.mark_shutdown();
                     health_server.shutdown().await?;
                     return Err(error);
+                }
+            }
+        }
+
+        if Instant::now() >= next_retention {
+            match worker.run_retention().await {
+                Ok(()) => {
+                    tracing::info!(service = SERVICE_NAME, "privacy retention completed");
+                    next_retention = Instant::now() + config.retention_interval;
+                }
+                Err(error) => {
+                    health.mark_not_ready();
+                    tracing::error!(
+                        service = SERVICE_NAME,
+                        error_code = error.code(),
+                        "privacy retention failed"
+                    );
+                    if config.run_once {
+                        health.mark_shutdown();
+                        health_server.shutdown().await?;
+                        return Err(error);
+                    }
+                    next_retention = Instant::now() + config.retention_interval;
                 }
             }
         }

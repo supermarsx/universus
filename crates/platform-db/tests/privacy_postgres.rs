@@ -1,13 +1,21 @@
 use platform_db::{
-    CommunicationPreferenceUpdate, ConsentStatus, ConsentUpdate, Database, EncryptedPrivacyPayload,
-    PreparedExportArtifact, PrivacyAdminDecision, PrivacyAdminDecisionInput, PrivacyAuthGuard,
-    PrivacyError, PrivacyRequestCreateInput, PrivacyRequestStatus, PrivacyRequestType,
+    CommunicationEvidenceKey, CommunicationPreferenceUpdate, ConsentStatus, ConsentUpdate,
+    Database, EncryptedPrivacyPayload, PreparedExportArtifact, PrivacyAdminDecision,
+    PrivacyAdminDecisionInput, PrivacyAuthGuard, PrivacyCorrectionPatch, PrivacyError,
+    PrivacyRequestCreateInput, PrivacyRequestStatus, PrivacyRequestType,
     PRIVACY_EXPORT_DATA_INVENTORY,
 };
 use tokio::time::{sleep, Duration};
 use tokio_postgres::{Client, NoTls};
 
 const PRIVACY_SCHEMA: &str = include_str!("../../../database/sql/steps/52_privacy_lifecycle.sql");
+const AUTH_SESSION_SCHEMA: &str = include_str!("../../../database/sql/steps/53_auth_sessions.sql");
+const COMMUNICATION_SCHEMA: &str =
+    include_str!("../../../database/sql/steps/54_durable_communications_outbox.sql");
+const FLEET_SCHEMA: &str =
+    include_str!("../../../database/sql/steps/55_durable_fleet_missions.sql");
+const PRIVACY_ADMIN_SCHEMA: &str =
+    include_str!("../../../database/sql/steps/56_privacy_administration_and_execution.sql");
 
 #[derive(Debug, Clone, Copy)]
 struct Actors {
@@ -31,7 +39,14 @@ fn request_input(
         idempotency_key: key.to_string(),
         request_source: "integration_test".to_string(),
         requester_ip_digest: Some([3; 32]),
-        encrypted_payload: None,
+        encrypted_payload: (request_type == PrivacyRequestType::Correction).then_some(
+            EncryptedPrivacyPayload {
+                ciphertext: vec![1; 32],
+                key_id: "privacy-request-key-v1".to_string(),
+                nonce: [1; 12],
+                plaintext_sha256: [2; 32],
+            },
+        ),
         erasure_cooling_off_seconds: Some(0),
     }
 }
@@ -188,7 +203,7 @@ async fn wait_for_worker_request_lock(client: &Client) {
 fn encrypted_request_input(user_id: i32, key: &str) -> PrivacyRequestCreateInput {
     let mut input = request_input(1, user_id, PrivacyRequestType::Correction, key);
     input.encrypted_payload = Some(EncryptedPrivacyPayload {
-        ciphertext: vec![7, 8, 9, 10],
+        ciphertext: vec![7; 32],
         key_id: "privacy-request-key-v1".to_string(),
         nonce: [4; 12],
         plaintext_sha256: [5; 32],
@@ -739,6 +754,18 @@ async fn privacy_lifecycle_repository_round_trip() {
         ),
     )
     .await;
+
+    for (name, schema) in [
+        ("auth sessions", AUTH_SESSION_SCHEMA),
+        ("durable communications", COMMUNICATION_SCHEMA),
+        ("durable fleet missions", FLEET_SCHEMA),
+        ("privacy administration", PRIVACY_ADMIN_SCHEMA),
+    ] {
+        client
+            .batch_execute(schema)
+            .await
+            .unwrap_or_else(|error| panic!("apply {name} migration after privacy: {error:?}"));
+    }
 
     let database = Database::from_database_url(&database_url).unwrap();
     database
@@ -1500,10 +1527,25 @@ async fn privacy_lifecycle_repository_round_trip() {
         .unwrap();
     assert_eq!(erasure_job.len(), 1);
     assert_eq!(erasure_job[0].request_id, erasure.id);
-    assert!(database
-        .complete_erasure_authorization_job(erasure_job[0].id, "erasure-worker")
+    database
+        .cancel_privacy_request(
+            1,
+            actors.subject,
+            erasure.id,
+            "test_preserve_export_subject",
+        )
         .await
-        .unwrap());
+        .unwrap();
+    assert!(matches!(
+        database
+            .complete_privacy_erasure_job(
+                erasure_job[0].id,
+                "erasure-worker",
+                &CommunicationEvidenceKey::new(vec![90; 32]).unwrap(),
+            )
+            .await,
+        Err(PrivacyError::LeaseLost)
+    ));
 
     // The subject-access snapshot includes durable gameplay/account categories
     // while omitting password/session/reset/export secrets and other tenants.
@@ -1634,18 +1676,35 @@ async fn privacy_lifecycle_repository_round_trip() {
     assert_ne!(stored_digest, grant.token.as_bytes());
     assert!(matches!(
         database
-            .consume_export_delivery(1, actors.subject, export_two.id, "wrong-token")
+            .prepare_export_delivery(1, actors.subject, export_two.id, "wrong-token")
             .await,
         Err(PrivacyError::DeliveryDenied)
     ));
     let download = database
-        .consume_export_delivery(1, actors.subject, export_two.id, &grant.token)
+        .prepare_export_delivery(1, actors.subject, export_two.id, &grant.token)
         .await
         .unwrap();
     assert_eq!(download.ciphertext, vec![9, 8, 7, 6]);
+    // A caller-side decrypt/integrity failure deliberately does not finalize.
+    // The same grant remains retryable until successful response preparation.
+    let retry_after_decrypt_failure = database
+        .prepare_export_delivery(1, actors.subject, export_two.id, &grant.token)
+        .await
+        .unwrap();
+    assert_eq!(retry_after_decrypt_failure.ciphertext, vec![9, 8, 7, 6]);
+    let first_finalize =
+        database.finalize_export_delivery(1, actors.subject, export_two.id, &grant.token);
+    let second_finalize =
+        database.finalize_export_delivery(1, actors.subject, export_two.id, &grant.token);
+    let (first_finalize, second_finalize) = tokio::join!(first_finalize, second_finalize);
+    assert_eq!(
+        usize::from(first_finalize.is_ok()) + usize::from(second_finalize.is_ok()),
+        1,
+        "exactly one concurrent delivery may consume the token"
+    );
     assert!(matches!(
         database
-            .consume_export_delivery(1, actors.subject, export_two.id, &grant.token)
+            .prepare_export_delivery(1, actors.subject, export_two.id, &grant.token)
             .await,
         Err(PrivacyError::DeliveryDenied)
     ));
@@ -1873,9 +1932,30 @@ async fn privacy_lifecycle_repository_round_trip() {
             universe_id: 1,
             request_id: terminal_payload.id,
             admin_user_id: actors.admin_one,
-            decision: PrivacyAdminDecision::CompleteCorrection,
-            reason_code: "correction_applied".to_string(),
+            decision: PrivacyAdminDecision::Approve,
+            reason_code: "correction_approved".to_string(),
         })
+        .await
+        .unwrap();
+    let correction_jobs = database
+        .claim_privacy_jobs("retention-correction-worker", Some(1), 25, 30)
+        .await
+        .unwrap();
+    let correction_job = correction_jobs
+        .iter()
+        .find(|job| job.request_id == terminal_payload.id)
+        .expect("approved correction queued for its executor");
+    database
+        .complete_privacy_correction_job(
+            correction_job.id,
+            "retention-correction-worker",
+            PrivacyCorrectionPatch {
+                username: Some("PrivacyRetainedSubject".to_string()),
+                email: None,
+                phone_number: None,
+            },
+            &CommunicationEvidenceKey::new(vec![91; 32]).unwrap(),
+        )
         .await
         .unwrap();
     let held_payload = database
@@ -1897,7 +1977,17 @@ async fn privacy_lifecycle_repository_round_trip() {
         .unwrap();
     client
         .execute(
-            "UPDATE gdpr_requests SET retention_until = now() - interval '1 day'
+            "UPDATE gdpr_requests
+             SET retention_until = now() - interval '1 day',
+                 request_payload_ciphertext = CASE WHEN id = $1
+                    THEN decode(repeat('07', 32), 'hex')
+                    ELSE request_payload_ciphertext END,
+                 payload_key_id = CASE WHEN id = $1
+                    THEN 'v1:legacy-retained' ELSE payload_key_id END,
+                 payload_nonce = CASE WHEN id = $1
+                    THEN decode(repeat('04', 12), 'hex') ELSE payload_nonce END,
+                 payload_sha256 = CASE WHEN id = $1
+                    THEN decode(repeat('05', 32), 'hex') ELSE payload_sha256 END
              WHERE id IN ($1, $2)",
             &[&terminal_payload.id, &held_payload.id],
         )
@@ -1945,6 +2035,68 @@ async fn privacy_lifecycle_repository_round_trip() {
             .get::<_, i64>("count"),
         1
     );
+
+    // Destructive retention and its immutable run record are one transaction:
+    // an audit insert failure must leave the encrypted artifact untouched.
+    client
+        .execute(
+            "UPDATE privacy_export_artifacts
+             SET ciphertext = decode('01020304', 'hex'),
+                 encryption_key_id = 'v1:rollback-test',
+                 encryption_nonce = decode('010101010101010101010101', 'hex'),
+                 plaintext_sha256 = decode(repeat('02', 32), 'hex'),
+                 expires_at = now() - interval '1 day', purged_at = NULL
+             WHERE request_id = $1",
+            &[&export_two.id],
+        )
+        .await
+        .unwrap();
+    let retention_runs_before: i64 = client
+        .query_one("SELECT COUNT(*)::BIGINT FROM privacy_retention_runs", &[])
+        .await
+        .unwrap()
+        .get(0);
+    client
+        .batch_execute(
+            "CREATE OR REPLACE FUNCTION privacy_test_reject_retention_audit()
+             RETURNS TRIGGER AS $$
+             BEGIN
+                 RAISE EXCEPTION 'forced retention audit failure';
+             END;
+             $$ LANGUAGE plpgsql;
+             CREATE TRIGGER zz_privacy_test_reject_retention_audit
+             BEFORE INSERT ON privacy_retention_runs
+             FOR EACH ROW EXECUTE FUNCTION privacy_test_reject_retention_audit();",
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        database.purge_privacy_retention(1).await,
+        Err(PrivacyError::Database(_))
+    ));
+    let rollback_state = client
+        .query_one(
+            "SELECT ciphertext IS NOT NULL AS ciphertext_retained,
+                    purged_at IS NULL AS not_purged,
+                    (SELECT COUNT(*)::BIGINT FROM privacy_retention_runs) AS run_count
+             FROM privacy_export_artifacts WHERE request_id = $1",
+            &[&export_two.id],
+        )
+        .await
+        .unwrap();
+    assert!(rollback_state.get::<_, bool>("ciphertext_retained"));
+    assert!(rollback_state.get::<_, bool>("not_purged"));
+    assert_eq!(
+        rollback_state.get::<_, i64>("run_count"),
+        retention_runs_before
+    );
+    client
+        .batch_execute(
+            "DROP TRIGGER zz_privacy_test_reject_retention_audit ON privacy_retention_runs;
+             DROP FUNCTION privacy_test_reject_retention_audit();",
+        )
+        .await
+        .unwrap();
     expect_sql_rejected(
         &client,
         "DELETE FROM privacy_request_events WHERE id = (

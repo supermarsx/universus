@@ -9,6 +9,7 @@ axum = { workspace = true }
 base64 = "0.22"
 platform-db = { path = "../platform-db" }
 platform-events = { path = "../platform-events" }
+platform-auth = { path = "../platform-auth" }
 platform-observability = { path = "../platform-observability" }
 rand = "0.8"
 serde = { workspace = true }
