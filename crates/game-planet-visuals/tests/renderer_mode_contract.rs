@@ -129,7 +129,8 @@ fn cli_parser_and_manifest_source_accept_renderer_and_time_days() {
             && source.contains("\"backendResolution\": {")
             && source.contains("\"selectedBackendCpuFallback\": backend_report.cpu_fallback")
             && source.contains("\"activeHardwareAccelerated\": backend_report.capabilities.hardware_accelerated")
-            && source.contains("\"profile\": serde_json::to_value(profile)?"),
+            && source.contains("serde_json::from_str::<Value>(&serde_json::to_string(profile)?)")
+            && source.contains("\"profile\": profile_json"),
         "manifest_json should expose rendererMode, time-day, and backend-resolution fields once the CLI emits a manifest"
     );
     assert!(

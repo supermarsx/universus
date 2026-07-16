@@ -300,7 +300,15 @@ fn raster_glint_centroid(image: &RgbaImage) -> WeightedCentroid {
 
     for y in (image.height() * 43 / 100)..image.height() {
         for x in 0..image.width() {
-            let weight = (raster_glint_score(image.get_pixel(x, y)) - threshold).max(0.0);
+            let score = raster_glint_score(image.get_pixel(x, y));
+            // PNG quantization can put the complete brightest glint lobe on
+            // one score plateau. Include that percentile plateau while still
+            // requiring a positive warm-specular signal.
+            let weight = if score > 0.0 && score >= threshold {
+                score - threshold * 0.85
+            } else {
+                0.0
+            };
             if weight > 0.0 {
                 weighted_x += ((x as f32 + 0.5) / width) * weight;
                 weighted_y += ((y as f32 + 0.5) / height) * weight;

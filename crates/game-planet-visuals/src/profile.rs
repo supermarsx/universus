@@ -1016,6 +1016,7 @@ const TAG_DWARF_ASTEROID: &[&str] = &["rocky", "dry", "ice"];
 const TAG_EXOMOON: &[&str] = &["rocky", "wet", "ice"];
 const TAG_ARTIFICIAL: &[&str] = &["rocky", "massive", "temperate"];
 
+#[allow(clippy::too_many_arguments)]
 const fn planet_type(
     key: &'static str,
     class: GeneratedPlanetClass,

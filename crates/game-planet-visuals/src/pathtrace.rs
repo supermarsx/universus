@@ -1,3 +1,7 @@
+// These max/min chains intentionally coerce non-finite procedural inputs to a
+// safe bound; `f32::clamp` preserves NaN and would change that robustness rule.
+#![allow(clippy::manual_clamp)]
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Vec3 {
     pub x: f32,
@@ -760,18 +764,13 @@ pub fn intersect_ray_sphere(ray: Ray, sphere: Sphere) -> Option<RaySphereHit> {
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TraceSurfaceModel {
     Smooth,
+    #[default]
     Terrestrial,
     Ocean,
     BandedGasGiant,
-}
-
-impl Default for TraceSurfaceModel {
-    fn default() -> Self {
-        Self::Terrestrial
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1024,19 +1023,10 @@ struct ProceduralSurfaceSample {
     atmosphere_strength: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct CpuTraceKernel {
     pub scene: TraceScene,
     pub surface: TraceSurfaceControls,
-}
-
-impl Default for CpuTraceKernel {
-    fn default() -> Self {
-        Self {
-            scene: TraceScene::default(),
-            surface: TraceSurfaceControls::default(),
-        }
-    }
 }
 
 impl CpuTraceKernel {

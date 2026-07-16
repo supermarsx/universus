@@ -9,39 +9,61 @@ The current Rust prototype lives in `crates/game-planet-visuals`. It already exp
 - `PlanetVisualProfile`: seeded visual metadata such as catalog/archetype keys, planet class, scale band, radius, density/gravity hints, ocean/ice/cloud/atmosphere fractions, rings, palette, and render model.
 - `PlanetRenderer::render_icon`: square transparent orbital planet thumbnail output.
 - `PlanetRenderer::render_banner`: current overview-banner entrypoint. It now delegates to the terrain overview renderer instead of reusing the orbital banner.
-- `PlanetRenderer::render_terrain_overview_with_*`: aspect-aware surface/sky establishing image using a deterministic map anchor, sampled terrain maps, local lighting, water reflections, haze, clouds, rings, moons, and stars.
+- `PlanetRenderer::render_terrain_overview_with_*`: aspect-aware surface/sky establishing image using a deterministic map anchor, raymarched heightfield, footprint-filtered materials, geometric water Fresnel, finite-shell volumetric clouds, atmosphere, rings, moons, and stars.
 - `PlanetRenderer::render_orbital_banner_with_*`: explicit orbital/full-globe banner with space background, rings, planet, and moon.
 - `PlanetRenderer::render_surface_map`: equirectangular albedo/surface texture output.
 - `PlanetRenderer::render_reflection_map`: lat-long reflection/environment map output.
-- `PlanetRenderer::render_normal_map`, `render_height_map`, `render_vegetation_map`, and `render_roughness_map`: exported material-map products, with `render_surface_*` aliases for normal, height, biome, and roughness/wetness.
+- `PlanetRenderer::render_normal_map`, `render_height_map`, `render_vegetation_map`, `render_roughness_map`, `render_ambient_occlusion_map`, and `render_horizon_occlusion_map`: exported material-map products, with compatibility `render_surface_*` aliases.
 - `render_planet` binary: writes prototype PNGs, profile JSON, preview HTML, optional material maps, and optional manifest data under `assets/planet-rust-prototype`.
 - `scripts/prototype/render_planet_matrix.ps1`: batches the binary across presets, qualities, planet sizes, seeds, and requested archetype keys.
 
 The architecture below keeps that crate as the owned rendering library and avoids pushing rendering logic into `app-web-frontend`, `app-api-gateway`, or route handlers.
 
-## Current Implementation Status (2026-07-14)
+## Current Implementation Status (2026-07-16)
 
 Evidence checked for this status: `crates/game-planet-visuals/src/lib.rs`, `profile.rs`, `catalog.rs`, `modifiers.rs`, `backend.rs`, `gpu.rs`, `pathtrace.rs`, `src/bin/render_planet.rs`, `crates/game-planet-visuals/tests/*.rs`, and `scripts/prototype/render_planet_matrix.ps1`.
 
-Blunt summary: the renderer is no longer just a square icon prototype. It has deterministic CPU raster outputs, a broad profile/catalog table, material-map exports, size presets, and tiled progress. It is still not the final ultra-realistic planet renderer. The physically stronger surface renderer, AO/horizon occlusion products, deep-space/backdrop system, production GPU path, and real path tracing are still future work.
+Blunt summary: the renderer is no longer just a square icon prototype. It has deterministic CPU raster outputs, a raymarched local heightfield overview, footprint-filtered water and terrain detail, volumetric cloud-shell integration, direction-space reflection environments, AO/horizon-occlusion products, a broad profile/catalog table, material-map exports, size presets, and tiled progress. The canonical prototype remains a CPU raster proof; production GPU acceleration and a fully path-traced archive renderer are still future work.
 
 Implemented renderer outputs:
 
 - `render_icon` produces a transparent square orbital thumbnail. It uses the shared generated maps, planet shading, atmospheric limb approximation, rings when present, sharpening, and optional downscale from native supersampling.
 - `render_banner` currently means terrain overview, not orbital banner. It calls `render_terrain_overview_with_progress`.
-- `render_terrain_overview_with_progress` produces an aspect-aware surface-level overview with a deterministic map anchor, sky gradient, sun disk/glow, optional rings, moon, sparse stars, clouds, terrain sampling, relief-normal shading, water Fresnel/specular highlights, cloud/terrain shadow heuristics, distance fog, and tone mapping.
+- `render_terrain_overview_with_progress` produces an aspect-aware surface-level overview with a deterministic map anchor, a refined CPU heightfield raymarch, nine-probe limb classification, terrain/water footprint filtering, geometric water Fresnel and capillary detail, finite spherical-shell cloud integration, local shadows and occlusion, atmosphere, rings, moon, sparse stars, distance fog, and tone mapping.
 - `render_orbital_banner_with_progress` remains available for a full-globe space-camera banner with procedural space background, rings, planet, and moon.
 - `render_surface_map` exports an equirectangular albedo texture.
-- `render_reflection_map` exports a lat-long environment/reflection map sampled from the current procedural sky/sun/nebula function.
-- `render_planet` writes icon, overview banner, surface map, reflection map, profile JSON, and preview HTML by default. `--emit-material-maps` adds normal, height, vegetation, and roughness/wetness maps. `--emit-manifest` adds a JSON manifest.
+- `render_reflection_map` exports a lat-long direction-space environment/reflection map sampled from the procedural sky/sun/nebula function without image-space pole seams.
+- `render_planet` writes day/night icons, day/night overview banners, surface and reflection maps, profile JSON, and preview HTML by default. `--emit-material-maps` adds normal, height, vegetation, roughness/wetness, ambient-occlusion, and horizon-occlusion maps. `--emit-physics-maps` adds physics and density maps. `--emit-manifest` adds a JSON manifest with byte lengths and SHA-256 hashes for every listed artifact.
+
+### Canonical CPU proof and reproducibility
+
+The approved `480p` canonical family under `assets/planet-rust-prototype` was produced from seed `0x5EED_1208_0001` with the CPU raster backend, the `ultra` quality tier, automatic worker selection, and an explicit supersample request of `3`:
+
+```powershell
+cargo build -p game-planet-visuals --release --bin render_planet
+target\release\render_planet.exe --backend cpu --renderer raster --preset 480p --quality ultra --supersample 3 --progress quiet --emit-manifest --output-dir target\renderer-promotion-v29-final
+```
+
+The delivered products are a `854x480` day banner, `854x480` night banner, `480x480` day/night icons, and `960x480` surface/reflection maps. The effective native supersampling is `3x` for banners (`2562x1440`, nine spatial raster samples per delivered pixel) and `4x` for icons (`1920x1920`, sixteen spatial raster samples per delivered pixel); the maps render at native resolution. This is the raster path, so no path-tracing sample count applies. On the Windows reference run tied to the promoted files, the complete family took **70.089 seconds wall time** and **63.78 MiB peak RSS**.
+
+Renderer AOV validation is intentionally separate from beauty generation:
+
+```powershell
+target\release\render_planet.exe --backend cpu --renderer raster --progress quiet --diagnostic-aovs-only --output-dir target\renderer-diagnostics-v29-final
+cargo test -p game-planet-visuals --test terrain_diagnostic_aov_contract -- --nocapture
+```
+
+The diagnostic set is `320x180` at `1x`, with a shared nine-probe terrain/sky limb classifier in the transition interval and twelve finite-shell cloud integration steps. The final diagnostic CLI took **40.486 seconds wall time** and **38.92 MiB peak RSS** and reproduced all 14 approved diagnostic files byte-for-byte. The debug contract measured a `35.135/255` maximum atmosphere row jump, `2.894%` fractional-water coverage, `0.04703` Fresnel Laplacian, zero isolated Fresnel spikes, `157/255` cloud peak with `28.299%` occupancy, and `18.284/255` mean geometric-to-shading-normal delta.
+
+The canonical manifest is an integrity contract: each image, profile, and preview entry records its byte length and SHA-256 digest. It intentionally omits machine-specific output directories and paths. `canonical_asset_contract` re-reads the promoted files, checks PNG dimensions and preview references, and rejects manifest/hash/profile drift.
 
 Implemented material-map data:
 
 - Internal generated maps include albedo, height, water, clouds, city-light signal, vegetation, biome, roughness, and wetness.
-- Exported map functions are `render_normal_map`, `render_height_map`, `render_vegetation_map`, and `render_roughness_map`.
+- Exported map functions are `render_normal_map`, `render_height_map`, `render_vegetation_map`, `render_roughness_map`, `render_ambient_occlusion_map`, and `render_horizon_occlusion_map`.
 - Compatibility aliases exist for `render_surface_normal_map`, `render_surface_height_map`, `render_surface_biome_map`, and `render_surface_roughness_wetness_map`.
-- Material-map tests require deterministic, opaque, nonblank, correctly sized normal, height, vegetation/biome, and roughness/wetness outputs.
-- Not implemented as exported products yet: `surface_ao`, `horizon_occlusion`, `surface_metallic`, `surface_emission`, `material_id`, separate `cloud_alpha`, foam/snow/ice/dust/lava heat maps, and production reflection maps tied to a manifest/cache contract.
+- Material-map tests require deterministic, opaque, nonblank, correctly sized normal, height, vegetation/biome, roughness/wetness, ambient-occlusion, and horizon-occlusion outputs.
+- Not implemented as exported products yet: `surface_metallic`, dedicated `surface_emission`, `material_id`, separate `cloud_alpha`, and dedicated foam/snow/ice/dust/lava heat maps.
 
 Planet type, modifier, and catalog coverage:
 
@@ -68,11 +90,11 @@ Multithreading and progress:
 
 Still-not-final realism gaps:
 
-- AO/horizon occlusion: no exported AO or horizon-occlusion maps exist. Terrain overview has local shadow heuristics, but not baked map-space AO, sky-visibility masks, crater/canyon occlusion, or path-traced AO.
-- Backdrop/deep space: there is procedural sky/star/sun/moon/ring/background work, but not a physically coherent backdrop system. Multi-star lighting, orbital body placement from real orbital data, galaxy plane, nebula/dust lanes, eclipses, aurora, orbital debris, and cache-keyed backdrop descriptors remain planned.
-- Terrain-level overview: the banner is now a real terrain-overview attempt, but it is still a sampled 2D map with perspective-like shading. It does not yet build local terrain tiles with true displaced silhouettes, raymarched/path-traced heightfields, landmark IDs, gas-giant upper-atmosphere cameras, or a `surfaceCamera` manifest block.
-- Atmosphere and lighting: current Rayleigh/Mie limb and terrain haze are approximations. Explicit atmosphere profiles, scattering coefficients, volumetric clouds/fog, stronger terminator behavior, multi-star lighting, and physically consistent exposure/bloom remain planned.
-- Ray tracing/path tracing: `pathtrace.rs` contains math, camera/ray, settings, tile, accumulator, material sample, and stats infrastructure. It is not wired as a production image renderer for planet outputs.
+- AO/horizon occlusion: deterministic AO and horizon-occlusion maps are exported and sampled by the CPU raster path. They remain approximations rather than path-traced cavity and sky-visibility solutions.
+- Backdrop/deep space: there is procedural sky/star/sun/moon/ring/aurora/background work, but not a physically coherent backdrop system. Multi-star lighting, orbital body placement from real orbital data, a structured galaxy plane and dust model, eclipses, orbital debris, and cache-keyed backdrop descriptors remain planned.
+- Terrain-level overview: the banner now raymarches a local heightfield and resolves displaced horizon silhouettes with footprint-filtered detail. It does not yet provide mesh/displacement interchange, path-traced terrain, authored landmark IDs, gas-giant upper-atmosphere cameras, or a serialized `surfaceCamera` manifest block.
+- Atmosphere and lighting: current Rayleigh/Mie limb, terrain haze, and finite-shell volumetric clouds are bounded CPU approximations. Explicit per-gas scattering profiles, multiple scattering, cloud self-shadow integration, multi-star lighting, and physically calibrated exposure/bloom remain planned.
+- Ray tracing/path tracing: the CPU tracer is wired for bounded icons and explicit preview artifacts. It supports deterministic tiled sampling, bounded bounce depth, reflection/refraction feature controls, procedural surface models, direct-light/occlusion terms, and sampled atmosphere/limb optics. The canonical V29 icon/banner family still uses the CPU raster path, and there is no full path-traced terrain banner or archive-quality planet product yet.
 - GPU: `gpu.rs` currently only defines a `WgpuBackend` marker. There is no implemented `wgpu` raster/raymarch/path-trace backend producing renderer outputs.
 
 ## Renderer Model

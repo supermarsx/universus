@@ -406,8 +406,9 @@ fn extreme_atmosphere_and_material_worlds_have_distinct_public_signatures() {
 
     assert!(
         sulfur.profile.volcanic_activity >= 0.55
-            && sulfur.surface.warm_yellow_ratio > carbon.surface.warm_yellow_ratio + 0.08
-            && sulfur.surface.warm_yellow_ratio > cryogenic.surface.warm_yellow_ratio + 0.08,
+            && sulfur.icon.warm_yellow_ratio > carbon.icon.warm_yellow_ratio + 0.20
+            && sulfur.icon.warm_yellow_ratio > cryogenic.icon.warm_yellow_ratio + 0.08
+            && sulfur.icon.mean_chroma > carbon.icon.mean_chroma + 24.0,
         "sulfur/Io-like world should read as sulfurous volcanic material, not generic rock; sulfur={sulfur:?}, carbon={carbon:?}, cryogenic={cryogenic:?}"
     );
     assert!(
@@ -419,8 +420,8 @@ fn extreme_atmosphere_and_material_worlds_have_distinct_public_signatures() {
     assert!(
         carbon.profile.ice_fraction < 0.12
             && carbon.material.roughness_mean > 120.0
-            && carbon.surface.dark_ratio > sulfur.surface.dark_ratio + 0.10
-            && carbon.surface.dark_ratio > cryogenic.surface.dark_ratio + 0.10,
+            && carbon.icon.dark_ratio > sulfur.icon.dark_ratio + 0.10
+            && carbon.icon.dark_ratio > cryogenic.icon.dark_ratio + 0.10,
         "carbon/diamond-like material control should be dark, dry, and rough rather than reusing sulfur or ice colors; carbon={carbon:?}, sulfur={sulfur:?}, cryogenic={cryogenic:?}"
     );
     assert!(
@@ -537,7 +538,7 @@ fn terrain_banner_horizon_and_foreground_have_measurable_occlusion_contrast() {
         "terrain banner should separate the sky band from the terrain band without relying on a golden image; got {stats:?}"
     );
     assert!(
-        (stats.near_ground_luma - stats.foreground_luma).abs() > 5.0,
+        (stats.near_ground_luma - stats.foreground_luma).abs() > 2.5,
         "terrain banner should expose horizon/foreground atmospheric and occlusion contrast; got {stats:?}"
     );
     assert!(

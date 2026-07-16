@@ -12,10 +12,11 @@ use game_planet_visuals::{
     ConfiguredRenderBackend, DistantLight, GpuBackendStatus, PlanetPhysicsModel, PlanetRenderer,
     PlanetVisualProfile, ProfileSeedInput, RenderBackendConfiguration,
     RenderBackendConfigurationReport, RenderBackendPreference, RenderExecutionMode, RenderOptions,
-    RenderPhase, RenderProgress, RenderProgressEvent, RenderSize, RenderTile,
+    RenderPhase, RenderProgress, RenderProgressEvent, RenderSize, RenderTile, TerrainDiagnosticAov,
 };
 use image::RgbaImage;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 const DEFAULT_SEED: u64 = 0x5EED_1208_0001_u64;
 
@@ -340,6 +341,7 @@ struct CliOptions {
     emit_material_maps: bool,
     emit_physics_maps: bool,
     emit_manifest: bool,
+    diagnostic_aovs_only: bool,
     emit_raytrace_preview: bool,
     trace_size: u32,
     trace_samples: Option<u32>,
@@ -364,6 +366,7 @@ impl Default for CliOptions {
             emit_material_maps: false,
             emit_physics_maps: false,
             emit_manifest: false,
+            diagnostic_aovs_only: false,
             emit_raytrace_preview: false,
             trace_size: 192,
             trace_samples: None,
@@ -585,7 +588,7 @@ impl ProgressReporter {
                     "manifest": options.emit_manifest,
                     "files": files
                         .iter()
-                        .map(file_json)
+                        .map(file_reference_json)
                         .collect::<Vec<_>>(),
                 })
             ),
@@ -757,7 +760,7 @@ fn human_progress_bucket(progress: RenderProgress) -> u32 {
     let completed_tiles = progress.completed_tiles.min(total_tiles);
     let buckets = total_tiles.min(20);
     let numerator = u64::from(completed_tiles) * u64::from(buckets);
-    ((numerator + u64::from(total_tiles) - 1) / u64::from(total_tiles)) as u32
+    numerator.div_ceil(u64::from(total_tiles)) as u32
 }
 
 fn should_emit_human_progress(progress: RenderProgress) -> bool {
@@ -810,6 +813,57 @@ fn main() -> anyhow::Result<()> {
         None => default_output_dir()?,
     };
     fs::create_dir_all(&out_dir).with_context(|| format!("creating {}", out_dir.display()))?;
+
+    if options.diagnostic_aovs_only {
+        let diagnostic_size = RenderSize {
+            width: 320,
+            height: 180,
+        };
+        let mut diagnostic_files = Vec::new();
+        for aov in TerrainDiagnosticAov::ALL {
+            let file_name = format!("diagnostic-day-{}.png", aov.filename_suffix());
+            let path = out_dir.join(&file_name);
+            reporter.render_start(aov.filename_suffix(), diagnostic_size, &path);
+            renderer
+                .render_terrain_diagnostic_aov(diagnostic_size, aov, false)
+                .save(&path)
+                .with_context(|| format!("writing {}", path.display()))?;
+            reporter.wrote_file(aov.filename_suffix(), &path);
+            diagnostic_files.push(file_name);
+        }
+
+        let night_aov = TerrainDiagnosticAov::AtmosphereInscatter;
+        let night_file = format!("diagnostic-night-{}.png", night_aov.filename_suffix());
+        let night_path = out_dir.join(&night_file);
+        reporter.render_start("night-atmosphere-inscatter", diagnostic_size, &night_path);
+        renderer
+            .render_terrain_diagnostic_aov(diagnostic_size, night_aov, true)
+            .save(&night_path)
+            .with_context(|| format!("writing {}", night_path.display()))?;
+        reporter.wrote_file("night-atmosphere-inscatter", &night_path);
+        diagnostic_files.push(night_file);
+
+        let profile_file = "diagnostic-profile.json";
+        fs::write(
+            out_dir.join(profile_file),
+            serde_json::to_string_pretty(&profile)?,
+        )
+        .with_context(|| format!("writing {profile_file}"))?;
+        let index = json!({
+            "schema": "universus.planet-render-diagnostic-aovs.v1",
+            "width": diagnostic_size.width,
+            "height": diagnostic_size.height,
+            "supersample": 1,
+            "files": diagnostic_files,
+            "profile": profile_file,
+        });
+        fs::write(
+            out_dir.join("diagnostic-index.json"),
+            serde_json::to_string_pretty(&index)?,
+        )
+        .context("writing diagnostic-index.json")?;
+        return Ok(());
+    }
 
     let suffix = format!(
         "{}{}",
@@ -1138,7 +1192,6 @@ fn main() -> anyhow::Result<()> {
             &profile,
             dimensions,
             execution_mode,
-            &out_dir,
             &manifest_file,
             &files,
             icon_renderer,
@@ -1219,6 +1272,9 @@ fn parse_cli() -> anyhow::Result<Option<CliOptions>> {
             }
             "--emit-manifest" => {
                 options.emit_manifest = true;
+            }
+            "--diagnostic-aovs-only" => {
+                options.diagnostic_aovs_only = true;
             }
             "--emit-raytrace-preview" => {
                 options.emit_raytrace_preview = true;
@@ -1336,6 +1392,7 @@ Options:
   --emit-physics-maps                     Also emit physics and density maps for currents, clouds, magnetism, and densities.
   --emit-raytrace-preview                 Also emit a bounded CPU path-traced preview image.
   --emit-manifest                         Emit a JSON run manifest next to the generated files.
+  --diagnostic-aovs-only                  Emit 320x180 terrain/water/atmosphere/cloud diagnostic AOVs without beauty renders.
   --progress <human|json|quiet>           Live progress output mode.
   --trace-size <px>                       Square CPU trace preview size. Default: 192.
   --trace-samples <count>                 CPU trace preview samples per pixel. Default: preview settings.
@@ -1630,12 +1687,28 @@ fn print_human_summary(
     }
 }
 
-fn file_json(file: &OutputFile) -> Value {
+fn file_reference_json(file: &OutputFile) -> Value {
     json!({
         "kind": file.kind,
         "fileName": file.file_name,
         "path": file.path.display().to_string(),
     })
+}
+
+fn file_json(file: &OutputFile) -> anyhow::Result<Value> {
+    let bytes = fs::read(&file.path)
+        .with_context(|| format!("reading {} for manifest integrity", file.path.display()))?;
+    let digest = Sha256::digest(&bytes);
+    let sha256 = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(json!({
+        "kind": file.kind,
+        "fileName": file.file_name,
+        "byteLength": bytes.len(),
+        "sha256": sha256,
+    }))
 }
 
 fn gpu_status_json(status: GpuBackendStatus) -> Value {
@@ -1658,12 +1731,14 @@ fn gpu_status_json(status: GpuBackendStatus) -> Value {
     })
 }
 
+// Manifest assembly deliberately keeps the render contract fields visible at
+// the call site; they are not an interchangeable runtime options bag.
+#[allow(clippy::too_many_arguments)]
 fn manifest_json(
     options: &CliOptions,
     profile: &PlanetVisualProfile,
     dimensions: OutputDimensions,
     execution_mode: RenderExecutionMode,
-    out_dir: &Path,
     manifest_file: &str,
     files: &[OutputFile],
     icon_renderer: &'static str,
@@ -1677,6 +1752,12 @@ fn manifest_json(
         allow_cpu_fallback: options.allow_cpu_fallback,
     }
     .resolve(gpu_report);
+    let output_integrity = files
+        .iter()
+        .map(file_json)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let profile_json = serde_json::from_str::<Value>(&serde_json::to_string(profile)?)
+        .context("normalizing profile JSON for manifest")?;
     Ok(json!({
         "schema": "universus.planet-render-manifest.v1",
         "renderer": "game-planet-visuals/render_planet",
@@ -1744,7 +1825,6 @@ fn manifest_json(
             "climate": "deterministic seeded flow/density/magnetism fields",
             "terrainIdentity": "seed-stable; weather, clouds, waves, currents, densities, and magnetism advance with time",
         },
-        "outputDir": out_dir.display().to_string(),
         "manifestFile": manifest_file,
         "dimensions": {
             "icon": {
@@ -1768,8 +1848,8 @@ fn manifest_json(
                 "height": dimensions.map.height,
             },
         },
-        "profile": serde_json::to_value(profile)?,
-        "outputs": files.iter().map(file_json).collect::<Vec<_>>(),
+        "profile": profile_json,
+        "outputs": output_integrity,
     }))
 }
 
@@ -2076,6 +2156,9 @@ fn execution_mode_label(mode: RenderExecutionMode) -> String {
     }
 }
 
+// The static preview is a projection of one complete artifact family, so each
+// filename remains explicit rather than hidden in a positional collection.
+#[allow(clippy::too_many_arguments)]
 fn preview_html(
     icon: &str,
     banner: &str,

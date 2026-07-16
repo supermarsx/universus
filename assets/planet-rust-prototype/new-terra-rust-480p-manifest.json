@@ -1,0 +1,231 @@
+{
+  "allowCpuBackendFallback": true,
+  "appliedArchetype": "catalog.archetype.rare-artificial",
+  "archetypeStatus": "seed-selected",
+  "backendPreference": "cpu",
+  "backendResolution": {
+    "activeHardwareAccelerated": false,
+    "allowCpuBackendFallback": true,
+    "backendPreference": "cpu",
+    "cpuFallback": false,
+    "note": "CPU renderer is active",
+    "requestedGpuBackend": null,
+    "requestedGpuPathTraceSupported": null,
+    "requestedGpuRenderSupported": null,
+    "selectedBackend": "cpu",
+    "unavailableReason": null
+  },
+  "dimensions": {
+    "banner": {
+      "height": 480,
+      "width": 854
+    },
+    "icon": {
+      "height": 480,
+      "width": 480
+    },
+    "maps": {
+      "height": 480,
+      "width": 960
+    },
+    "nightBanner": {
+      "height": 480,
+      "width": 854
+    },
+    "nightIcon": {
+      "height": 480,
+      "width": 480
+    }
+  },
+  "effectiveSupersample": {
+    "banner": 3,
+    "icon": 4
+  },
+  "emitMaterialMaps": false,
+  "emitPhysicsMaps": false,
+  "emitRaytracePreview": false,
+  "executionMode": "automatic",
+  "gpuBackends": [
+    {
+      "activeHardwareAccelerated": false,
+      "available": false,
+      "crateIntegrationCompiled": false,
+      "family": "OpenStandard",
+      "implementation": "unavailable",
+      "kind": "wgpu",
+      "label": "wgpu open-standards GPU",
+      "openStandard": true,
+      "pathTraceSupported": false,
+      "readiness": "MissingCrateIntegration",
+      "renderSupported": false,
+      "requiresExternalSdk": false,
+      "runtimeHintDetected": false,
+      "sdkHintDetected": false,
+      "unavailableReason": "wgpu path tracing is not available: this crate does not compile a wgpu integration yet"
+    },
+    {
+      "activeHardwareAccelerated": false,
+      "available": false,
+      "crateIntegrationCompiled": false,
+      "family": "NvidiaProprietary",
+      "implementation": "unavailable",
+      "kind": "cuda",
+      "label": "NVIDIA CUDA",
+      "openStandard": false,
+      "pathTraceSupported": false,
+      "readiness": "MissingCrateIntegration",
+      "renderSupported": false,
+      "requiresExternalSdk": true,
+      "runtimeHintDetected": false,
+      "sdkHintDetected": false,
+      "unavailableReason": "CUDA path tracing is not available: this crate does not compile a CUDA backend or link CUDA SDKs"
+    },
+    {
+      "activeHardwareAccelerated": false,
+      "available": false,
+      "crateIntegrationCompiled": false,
+      "family": "AmdProprietary",
+      "implementation": "unavailable",
+      "kind": "rocm-hip",
+      "label": "AMD ROCm/HIP",
+      "openStandard": false,
+      "pathTraceSupported": false,
+      "readiness": "MissingCrateIntegration",
+      "renderSupported": false,
+      "requiresExternalSdk": true,
+      "runtimeHintDetected": false,
+      "sdkHintDetected": false,
+      "unavailableReason": "ROCm/HIP path tracing is not available: this crate does not compile a ROCm/HIP backend or link ROCm SDKs"
+    }
+  ],
+  "mainIconRenderer": "raster-procedural-icon",
+  "mainNightIconRenderer": "raster-procedural-icon",
+  "manifestFile": "new-terra-rust-480p-manifest.json",
+  "outputs": [
+    {
+      "byteLength": 194560,
+      "fileName": "new-terra-rust-480p-icon.png",
+      "kind": "icon",
+      "sha256": "5a33f3d69af1c0ea64b12b734ae6576c045b76c6e9732a9c009073966bac303f"
+    },
+    {
+      "byteLength": 177977,
+      "fileName": "new-terra-rust-480p-night-icon.png",
+      "kind": "night-icon",
+      "sha256": "ba82fa512a24fc64aca2b5e12f21ac4ae87dd8871262ff8efa1ef5ee010aeca3"
+    },
+    {
+      "byteLength": 404747,
+      "fileName": "new-terra-rust-480p-overview-banner.png",
+      "kind": "banner",
+      "sha256": "bbe5ee7ef6996d7e0f184bb8a0bb62938e0f607d48567e259bcd96aa5dff2524"
+    },
+    {
+      "byteLength": 437256,
+      "fileName": "new-terra-rust-480p-night-overview-banner.png",
+      "kind": "night-banner",
+      "sha256": "7035641f1cb974b1bb45b2b16434d1cdd16de79f9a0f3404318ef94d6babb185"
+    },
+    {
+      "byteLength": 484044,
+      "fileName": "new-terra-rust-480p-surface-map.png",
+      "kind": "surface-map",
+      "sha256": "6356e87316104447f3792c9fb0450426aab3cdee4d54af3458dd28f9298a916c"
+    },
+    {
+      "byteLength": 138716,
+      "fileName": "new-terra-rust-480p-reflection-map.png",
+      "kind": "reflection-map",
+      "sha256": "c777a2eda70ac7ba3ea402f2b59ce7aee1e8f3241b8c210721558528823737db"
+    },
+    {
+      "byteLength": 962,
+      "fileName": "new-terra-rust-480p-profile.json",
+      "kind": "profile",
+      "sha256": "d5e646c32befd2abd3583bd80df17d0e5e7c86ede1bb488c21059073b4b1615f"
+    },
+    {
+      "byteLength": 2796,
+      "fileName": "preview-rust-480p.html",
+      "kind": "preview",
+      "sha256": "6e3591386a39122d3f8f4e48be4fcc6290f5803f0198aa5940cc515c962233ea"
+    }
+  ],
+  "physics": {
+    "angularVelocityRadS": 0.00016953685553744435,
+    "atmosphereDensityKgM3": 1.9540973901748657,
+    "cloudVelocityScaleMps": 60.74083709716797,
+    "currentVelocityScaleMps": 1.8654425144195557,
+    "magneticFieldMicrotesla": 81.61088562011719,
+    "magnetosphereStrength": 1.0,
+    "rotationPeriodHours": 10.294690132141113,
+    "snapshotTimeDays": 0.0,
+    "surfaceGravityMS2": 40.579917907714844,
+    "surfacePressureBar": 1.8897559642791748,
+    "waterDensityKgM3": 1048.4456787109375
+  },
+  "planetSize": "medium",
+  "preset": "480p",
+  "profile": {
+    "algorithm": "procedural-planet-profile-v0",
+    "archetypeKey": "catalog.archetype.rare-artificial",
+    "atmosphereDensity": 0.805,
+    "catalogVersion": "planet-profile-catalog.v0.local",
+    "classKey": "artificial",
+    "cloudDensity": 0.582,
+    "densityEarth": 1.912,
+    "gravityG": 4.138,
+    "iceFraction": 0.041,
+    "modifierKeys": [
+      "modifier.atmosphere.thin-air",
+      "modifier.surface.young-crust",
+      "modifier.atmosphere.auroral-oxygen",
+      "modifier.hydrosphere.deep-ocean-basins"
+    ],
+    "oceanFraction": 0.313,
+    "palette": "palette.deep-ocean-forest-oxide-cloud",
+    "planetClass": "hot artificial",
+    "radiusEarth": 2.164,
+    "radiusKm": 13787,
+    "radiusScale": 1.151,
+    "renderModel": "render.pbr-dense-atmosphere-cloud-shadow",
+    "ringed": false,
+    "scaleBand": "massive",
+    "scaleKey": "massive",
+    "seed": 104372302774273,
+    "sizeClass": "large",
+    "sizeKey": "large",
+    "snapshotTimeDays": 0.0,
+    "temperatureC": 56,
+    "volcanicActivity": 0.139
+  },
+  "progress": "quiet",
+  "quality": "ultra",
+  "qualitySupersample": 2,
+  "renderSupersample": 3,
+  "renderer": "game-planet-visuals/render_planet",
+  "rendererMode": "raster",
+  "requestedArchetype": null,
+  "requestedSupersample": 3,
+  "schema": "universus.planet-render-manifest.v1",
+  "seed": 104372302774273,
+  "selectedBackend": "cpu",
+  "selectedBackendCapabilities": {
+    "hardwareAccelerated": false,
+    "maxDimension": 7680,
+    "name": "cpu-planet-renderer",
+    "supportsBanner": true,
+    "supportsIcon": true,
+    "supportsSurfaceMap": true
+  },
+  "selectedBackendCpuFallback": false,
+  "selectedBackendUnavailableReason": null,
+  "simulation": {
+    "climate": "deterministic seeded flow/density/magnetism fields",
+    "terrainIdentity": "seed-stable; weather, clouds, waves, currents, densities, and magnetism advance with time",
+    "timeDays": 0.0
+  },
+  "snapshotTimeDays": 0.0,
+  "threadOverride": null,
+  "tracePreview": null
+}
