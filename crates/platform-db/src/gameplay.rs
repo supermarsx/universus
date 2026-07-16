@@ -20,6 +20,7 @@ const MAX_QUEUE_DURATION_SECONDS: i64 = 10 * 365 * 24 * 60 * 60;
 const MAX_SHIP_QUEUE_QUANTITY: i64 = 1_000_000_000;
 const MAX_PROCESS_BATCH: usize = 1_000;
 const STALE_PROCESSING_SECONDS: i64 = 15 * 60;
+pub const COORDINATE_ALLOCATION_MAX_ATTEMPTS: usize = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameplayResourcesRow {
@@ -34,6 +35,7 @@ pub struct GameplayResourcesRow {
 pub struct GameplayPlanetRow {
     pub id: String,
     pub user_id: String,
+    pub universe_id: i64,
     pub name: String,
     pub galaxy: i32,
     pub system: i32,
@@ -51,6 +53,15 @@ pub struct GameplayPlanetRow {
 pub struct GameplayResearchRow {
     pub user_id: String,
     pub levels: BTreeMap<String, i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameplayScoreRow {
+    pub user_id: String,
+    pub total_score: i64,
+    pub economy_score: i64,
+    pub research_score: i64,
+    pub military_score: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +101,7 @@ pub struct GameplayQueueInput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameplayWriteError {
     NotFound,
+    UniverseFull,
     QueueBusy,
     InsufficientResources,
     StaleState,
@@ -100,17 +112,50 @@ pub enum GameplayWriteError {
     Database(String),
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+impl GameplayWriteError {
+    /// Callers may safely retry only errors for which the complete transaction
+    /// was rolled back. Invalid domain state and a full universe are terminal.
+    pub fn is_retryable(&self) -> bool {
+        matches!(self, Self::Retryable(_))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameplayCompletionKind {
+    Building,
+    Research,
+    Shipyard,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameplayCompletion {
+    pub kind: GameplayCompletionKind,
+    pub queue_id: String,
+    pub user_id: String,
+    pub planet_id: String,
+    pub item_type: String,
+    pub target_level: Option<i32>,
+    pub quantity: Option<i64>,
+    pub score_delta: i64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GameplayProcessResult {
     pub buildings: usize,
     pub research: usize,
     pub ships: usize,
     pub failed: usize,
+    /// Durable completion facts committed in the same transaction as the
+    /// inventory and score changes. Workers can publish these after commit;
+    /// replaying the worker cannot apply the queue twice.
+    pub completions: Vec<GameplayCompletion>,
 }
 
 impl Database {
     /// Create an account, allocate the first free universe coordinate, create
-    /// its homeworld, and initialize its research row in one transaction.
+    /// its homeworld, research row, and score row in one transaction. Universe
+    /// selection is server-owned: the first open universe is selected under a
+    /// row lock and no universe identifier is accepted from the client.
     /// A transaction-scoped advisory lock serializes coordinate allocation;
     /// the planets unique constraint remains the final integrity boundary.
     pub async fn register_account_with_starting_state(
@@ -128,19 +173,40 @@ impl Database {
             .await
             .map_err(|error| AccountCreateError::Database(error.to_string()))?;
 
+        let universe_id = transaction
+            .query_opt(
+                "SELECT id
+                 FROM universes
+                 WHERE registration_open
+                 ORDER BY id
+                 FOR SHARE
+                 LIMIT 1",
+                &[],
+            )
+            .await
+            .map_err(|error| AccountCreateError::Database(error.to_string()))?
+            .map(|row| row.get::<_, i64>("id"))
+            .ok_or_else(|| {
+                AccountCreateError::Database(
+                    "registration is unavailable: no universe is open".to_string(),
+                )
+            })?;
+
         let account_row = match transaction
             .query_one(
                 "INSERT INTO users
-                    (username, email, password_hash, dark_matter, is_admin, is_banned)
-                 VALUES ($1, $2, $3, $4, FALSE, FALSE)
+                    (username, email, password_hash, dark_matter, universe_id,
+                     is_admin, is_banned)
+                 VALUES ($1, $2, $3, $4, $5, FALSE, FALSE)
                  RETURNING id::TEXT AS id, username, email, password_hash,
                            CASE WHEN is_admin THEN 'admin' ELSE 'player' END AS role,
-                           1::BIGINT AS universe_id, is_banned",
+                           universe_id, is_banned",
                 &[
                     &input.username,
                     &input.email,
                     &input.password_hash,
                     &(STARTING_DARK_MATTER as i32),
+                    &universe_id,
                 ],
             )
             .await
@@ -157,28 +223,7 @@ impl Database {
             .parse::<i32>()
             .map_err(|_| AccountCreateError::Database("invalid created account id".to_string()))?;
 
-        transaction
-            .query_one("SELECT pg_advisory_xact_lock($1)", &[&7_614_882_119_i64])
-            .await
-            .map_err(|error| AccountCreateError::Database(error.to_string()))?;
-        let coordinate = transaction
-            .query_opt(
-                "SELECT coordinates.galaxy, coordinates.system, coordinates.position
-                 FROM (
-                    SELECT galaxy, system, position
-                    FROM generate_series(1, 9) AS galaxy
-                    CROSS JOIN generate_series(1, 499) AS system
-                    CROSS JOIN generate_series(1, 15) AS position
-                 ) AS coordinates
-                 LEFT JOIN planets p
-                   ON p.galaxy = coordinates.galaxy
-                  AND p.system = coordinates.system
-                  AND p.position = coordinates.position
-                 WHERE p.id IS NULL
-                 ORDER BY coordinates.galaxy, coordinates.system, coordinates.position
-                 LIMIT 1",
-                &[],
-            )
+        let coordinate = next_available_coordinate(&transaction, universe_id)
             .await
             .map_err(|error| AccountCreateError::Database(error.to_string()))?
             .ok_or_else(|| {
@@ -188,18 +233,28 @@ impl Database {
         transaction
             .execute(
                 "INSERT INTO planets
-                    (user_id, name, galaxy, system, position, metal, crystal,
+                    (user_id, universe_id, name, galaxy, system, position, metal, crystal,
                      deuterium, energy, last_resource_update)
-                 VALUES ($1, 'New Terra', $2, $3, $4, $5, $6, $7, 0, now())",
+                 VALUES ($1, $2, 'New Terra', $3, $4, $5, $6, $7, $8, 0, now())",
                 &[
                     &account_id,
-                    &coordinate.get::<_, i32>("galaxy"),
-                    &coordinate.get::<_, i32>("system"),
-                    &coordinate.get::<_, i32>("position"),
+                    &universe_id,
+                    &coordinate.0,
+                    &coordinate.1,
+                    &coordinate.2,
                     &STARTING_METAL,
                     &STARTING_CRYSTAL,
                     &STARTING_DEUTERIUM,
                 ],
+            )
+            .await
+            .map_err(|error| AccountCreateError::Database(error.to_string()))?;
+        transaction
+            .execute(
+                "INSERT INTO player_scores (user_id)
+                 VALUES ($1)
+                 ON CONFLICT (user_id) DO NOTHING",
+                &[&account_id],
             )
             .await
             .map_err(|error| AccountCreateError::Database(error.to_string()))?;
@@ -231,11 +286,28 @@ impl Database {
                     AND to_regclass('public.construction_queue') IS NOT NULL
                     AND to_regclass('public.research_queue') IS NOT NULL
                     AND to_regclass('public.shipyard_queue') IS NOT NULL
+                    AND to_regclass('public.universes') IS NOT NULL
+                    AND to_regclass('public.player_scores') IS NOT NULL
+                    AND to_regclass('public.planets_universe_coordinates_unique') IS NOT NULL
                     AND to_regclass('public.uq_construction_queue_active_planet') IS NOT NULL
                     AND to_regclass('public.uq_research_queue_active_user') IS NOT NULL
                     AND to_regclass('public.uq_shipyard_queue_active_planet') IS NOT NULL
                     AND to_regclass('public.uq_construction_queue_active_moon') IS NOT NULL
                     AND to_regclass('public.uq_shipyard_queue_active_moon') IS NOT NULL
+                    AND EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'users'
+                          AND column_name = 'universe_id' AND data_type = 'bigint'
+                          AND is_nullable = 'NO'
+                    )
+                    AND EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = 'planets'
+                          AND column_name = 'universe_id' AND data_type = 'bigint'
+                          AND is_nullable = 'NO'
+                    )
                     AND (
                         SELECT COUNT(*) = 30
                         FROM information_schema.columns
@@ -301,6 +373,129 @@ impl Database {
             );
         }
         validate_gameplay_schema_definitions(&client).await
+    }
+
+    pub async fn gameplay_score_for_user(
+        &self,
+        user_id: &str,
+    ) -> DbResult<Option<GameplayScoreRow>> {
+        let Some(user_id) = parse_optional_id(user_id) else {
+            return Ok(None);
+        };
+        let client = self.pool.get().await.map_err(|error| error.to_string())?;
+        let row = client
+            .query_opt(
+                "SELECT user_id::TEXT AS user_id,
+                        total_score::BIGINT AS total_score,
+                        economy_score::BIGINT AS economy_score,
+                        research_score::BIGINT AS research_score,
+                        military_score::BIGINT AS military_score
+                 FROM player_scores
+                 WHERE user_id = $1",
+                &[&user_id],
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(row.map(|row| GameplayScoreRow {
+            user_id: row.get("user_id"),
+            total_score: row.get("total_score"),
+            economy_score: row.get("economy_score"),
+            research_score: row.get("research_score"),
+            military_score: row.get("military_score"),
+        }))
+    }
+
+    /// Trusted provisioning primitive shared by registration and future
+    /// colonization orchestration. It derives the universe from the persisted
+    /// owner, serializes allocation per universe, and retries only whole
+    /// transactions that PostgreSQL confirms did not commit. It is not an HTTP
+    /// handler and deliberately does not accept a client-selected coordinate.
+    pub async fn gameplay_provision_planet_at_next_coordinate(
+        &self,
+        user_id: &str,
+        name: &str,
+    ) -> Result<GameplayPlanetRow, GameplayWriteError> {
+        let user_id = parse_id(user_id)?;
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 100 {
+            return Err(GameplayWriteError::Invalid(
+                "planet name must contain 1-100 characters".to_string(),
+            ));
+        }
+
+        let mut last_retry = None;
+        for _ in 0..COORDINATE_ALLOCATION_MAX_ATTEMPTS {
+            match self.try_provision_planet(user_id, name).await {
+                Err(GameplayWriteError::Retryable(message)) => last_retry = Some(message),
+                result => return result,
+            }
+        }
+        Err(GameplayWriteError::Retryable(last_retry.unwrap_or_else(
+            || "coordinate allocation retry budget exhausted".to_string(),
+        )))
+    }
+
+    async fn try_provision_planet(
+        &self,
+        user_id: i32,
+        name: &str,
+    ) -> Result<GameplayPlanetRow, GameplayWriteError> {
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|error| GameplayWriteError::Database(error.to_string()))?;
+        let transaction = client.transaction().await.map_err(map_write_db_error)?;
+        let universe_id = transaction
+            .query_opt(
+                "SELECT universe_id FROM users WHERE id = $1 FOR SHARE",
+                &[&user_id],
+            )
+            .await
+            .map_err(map_write_db_error)?
+            .map(|row| row.get::<_, i64>("universe_id"))
+            .ok_or(GameplayWriteError::NotFound)?;
+        let coordinate = next_available_coordinate(&transaction, universe_id)
+            .await
+            .map_err(map_write_db_error)?
+            .ok_or(GameplayWriteError::UniverseFull)?;
+
+        let inserted = transaction
+            .query_one(
+                "INSERT INTO planets
+                    (user_id, universe_id, name, galaxy, system, position,
+                     metal, crystal, deuterium, energy, last_resource_update)
+                 VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 0, now())
+                 RETURNING id",
+                &[
+                    &user_id,
+                    &universe_id,
+                    &name,
+                    &coordinate.0,
+                    &coordinate.1,
+                    &coordinate.2,
+                ],
+            )
+            .await;
+        let planet_id = match inserted {
+            Ok(row) => row.get::<_, i32>("id"),
+            Err(error) if error.code() == Some(&SqlState::UNIQUE_VIOLATION) => {
+                return Err(GameplayWriteError::Retryable(
+                    "coordinate was claimed concurrently".to_string(),
+                ));
+            }
+            Err(error) => return Err(map_write_db_error(error)),
+        };
+        let row = transaction
+            .query_one(
+                &format!("{} WHERE id = $1 AND user_id = $2", planet_select_sql()),
+                &[&planet_id, &user_id],
+            )
+            .await
+            .map_err(map_write_db_error)?;
+        let planet = map_planet_row(&row);
+        transaction.commit().await.map_err(map_write_db_error)?;
+        Ok(planet)
     }
 
     pub async fn gameplay_account_resources(
@@ -807,7 +1002,17 @@ async fn validate_gameplay_schema_definitions(client: &tokio_postgres::Client) -
             )
         })
         .collect::<BTreeMap<_, _>>();
-    let required_indexes: [(&str, &[&str]); 8] = [
+    let required_indexes: [(&str, &[&str]); 9] = [
+        (
+            "planets_universe_coordinates_unique",
+            &[
+                "create unique index",
+                "universe_id",
+                "galaxy",
+                "system",
+                "position",
+            ],
+        ),
         (
             "uq_construction_queue_active_planet",
             &[
@@ -1207,6 +1412,52 @@ fn is_retryable_transaction_error(error: &tokio_postgres::Error) -> bool {
     )
 }
 
+async fn next_available_coordinate(
+    transaction: &Transaction<'_>,
+    universe_id: i64,
+) -> Result<Option<(i32, i32, i32)>, tokio_postgres::Error> {
+    // The hashed advisory key namespaces the lock by universe while avoiding
+    // a lossy BIGINT-to-INTEGER cast. The unique constraint remains the final
+    // integrity boundary for writers that do not use this shared allocator.
+    transaction
+        .query_one(
+            "SELECT pg_advisory_xact_lock(
+                hashtextextended('universus:coordinate:' || $1::BIGINT::TEXT, 0)
+             )",
+            &[&universe_id],
+        )
+        .await?;
+    transaction
+        .query_opt(
+            "SELECT coordinates.galaxy, coordinates.system, coordinates.position
+             FROM (
+                SELECT galaxy, system, position
+                FROM generate_series(1, 9) AS galaxy
+                CROSS JOIN generate_series(1, 499) AS system
+                CROSS JOIN generate_series(1, 15) AS position
+             ) AS coordinates
+             LEFT JOIN planets p
+               ON p.universe_id = $1
+              AND p.galaxy = coordinates.galaxy
+              AND p.system = coordinates.system
+              AND p.position = coordinates.position
+             WHERE p.id IS NULL
+             ORDER BY coordinates.galaxy, coordinates.system, coordinates.position
+             LIMIT 1",
+            &[&universe_id],
+        )
+        .await
+        .map(|row| {
+            row.map(|row| {
+                (
+                    row.get::<_, i32>("galaxy"),
+                    row.get::<_, i32>("system"),
+                    row.get::<_, i32>("position"),
+                )
+            })
+        })
+}
+
 async fn process_due_buildings(
     transaction: &Transaction<'_>,
     limit: usize,
@@ -1217,12 +1468,14 @@ async fn process_due_buildings(
     }
     let rows = transaction
         .query(
-            "SELECT id, planet_id, building_type, level
-             FROM construction_queue
-             WHERE location_type = 'planet' AND planet_id IS NOT NULL
-               AND status = 'queued' AND end_time <= now()
-             ORDER BY end_time, id
-             FOR UPDATE SKIP LOCKED
+            "SELECT q.id, q.planet_id, p.user_id, q.building_type, q.level,
+                    q.metal_cost, q.crystal_cost, q.deuterium_cost
+             FROM construction_queue q
+             JOIN planets p ON p.id = q.planet_id
+             WHERE q.location_type = 'planet' AND q.planet_id IS NOT NULL
+               AND q.status = 'queued' AND q.end_time <= now()
+             ORDER BY q.end_time, q.id
+             FOR UPDATE OF q SKIP LOCKED
              LIMIT $1",
             &[&(limit as i64)],
         )
@@ -1231,6 +1484,7 @@ async fn process_due_buildings(
     for row in rows {
         let id = row.get::<_, i32>("id");
         let planet_id = row.get::<_, i32>("planet_id");
+        let user_id = row.get::<_, i32>("user_id");
         let item = row.get::<_, String>("building_type");
         let target = row.get::<_, i32>("level");
         if target <= 0 {
@@ -1254,8 +1508,26 @@ async fn process_due_buildings(
             .await
             .map_err(map_process_db_error)?;
         if updated == 1 {
+            let score_delta = queue_score_delta(&row);
+            apply_score_delta(
+                transaction,
+                user_id,
+                GameplayCompletionKind::Building,
+                score_delta,
+            )
+            .await?;
             mark_queue_completed(transaction, "construction_queue", id).await?;
             result.buildings += 1;
+            result.completions.push(GameplayCompletion {
+                kind: GameplayCompletionKind::Building,
+                queue_id: id.to_string(),
+                user_id: user_id.to_string(),
+                planet_id: planet_id.to_string(),
+                item_type: item,
+                target_level: Some(target),
+                quantity: None,
+                score_delta,
+            });
         } else {
             mark_queue_failed(transaction, "construction_queue", id).await?;
             result.failed += 1;
@@ -1274,7 +1546,8 @@ async fn process_due_research(
     }
     let rows = transaction
         .query(
-            "SELECT id, user_id, research_type, level
+            "SELECT id, user_id, planet_id, research_type, level,
+                    metal_cost, crystal_cost, deuterium_cost
              FROM research_queue
              WHERE status = 'queued' AND end_time <= now()
              ORDER BY end_time, id
@@ -1287,6 +1560,7 @@ async fn process_due_research(
     for row in rows {
         let id = row.get::<_, i32>("id");
         let user_id = row.get::<_, i32>("user_id");
+        let planet_id = row.get::<_, i32>("planet_id");
         let item = row.get::<_, String>("research_type");
         let target = row.get::<_, i32>("level");
         if target <= 0 {
@@ -1310,8 +1584,26 @@ async fn process_due_research(
             .await
             .map_err(map_process_db_error)?;
         if updated == 1 {
+            let score_delta = queue_score_delta(&row);
+            apply_score_delta(
+                transaction,
+                user_id,
+                GameplayCompletionKind::Research,
+                score_delta,
+            )
+            .await?;
             mark_queue_completed(transaction, "research_queue", id).await?;
             result.research += 1;
+            result.completions.push(GameplayCompletion {
+                kind: GameplayCompletionKind::Research,
+                queue_id: id.to_string(),
+                user_id: user_id.to_string(),
+                planet_id: planet_id.to_string(),
+                item_type: item,
+                target_level: Some(target),
+                quantity: None,
+                score_delta,
+            });
         } else {
             mark_queue_failed(transaction, "research_queue", id).await?;
             result.failed += 1;
@@ -1330,12 +1622,15 @@ async fn process_due_ships(
     }
     let rows = transaction
         .query(
-            "SELECT id, planet_id, unit_type, quantity::BIGINT AS quantity
-             FROM shipyard_queue
-             WHERE location_type = 'planet' AND planet_id IS NOT NULL
-               AND status = 'queued' AND end_time <= now()
-             ORDER BY end_time, id
-             FOR UPDATE SKIP LOCKED
+            "SELECT q.id, q.planet_id, p.user_id, q.unit_type,
+                    q.quantity::BIGINT AS quantity,
+                    q.metal_cost, q.crystal_cost, q.deuterium_cost
+             FROM shipyard_queue q
+             JOIN planets p ON p.id = q.planet_id
+             WHERE q.location_type = 'planet' AND q.planet_id IS NOT NULL
+               AND q.status = 'queued' AND q.end_time <= now()
+             ORDER BY q.end_time, q.id
+             FOR UPDATE OF q SKIP LOCKED
              LIMIT $1",
             &[&(limit as i64)],
         )
@@ -1344,6 +1639,7 @@ async fn process_due_ships(
     for row in rows {
         let id = row.get::<_, i32>("id");
         let planet_id = row.get::<_, i32>("planet_id");
+        let user_id = row.get::<_, i32>("user_id");
         let item = row.get::<_, String>("unit_type");
         let quantity = row.get::<_, i64>("quantity");
         if quantity <= 0 {
@@ -1367,14 +1663,74 @@ async fn process_due_ships(
             .await
             .map_err(map_process_db_error)?;
         if updated == 1 {
+            let score_delta = queue_score_delta(&row);
+            apply_score_delta(
+                transaction,
+                user_id,
+                GameplayCompletionKind::Shipyard,
+                score_delta,
+            )
+            .await?;
             mark_queue_completed(transaction, "shipyard_queue", id).await?;
             result.ships += 1;
+            result.completions.push(GameplayCompletion {
+                kind: GameplayCompletionKind::Shipyard,
+                queue_id: id.to_string(),
+                user_id: user_id.to_string(),
+                planet_id: planet_id.to_string(),
+                item_type: item,
+                target_level: None,
+                quantity: Some(quantity),
+                score_delta,
+            });
         } else {
             mark_queue_failed(transaction, "shipyard_queue", id).await?;
             result.failed += 1;
         }
     }
     Ok(())
+}
+
+fn queue_score_delta(row: &tokio_postgres::Row) -> i64 {
+    let spent = i128::from(row.get::<_, i64>("metal_cost"))
+        + i128::from(row.get::<_, i64>("crystal_cost"))
+        + i128::from(row.get::<_, i64>("deuterium_cost"));
+    (spent.max(0) / 1_000).min(i128::from(i64::MAX)) as i64
+}
+
+async fn apply_score_delta(
+    transaction: &Transaction<'_>,
+    user_id: i32,
+    kind: GameplayCompletionKind,
+    score_delta: i64,
+) -> DbResult<()> {
+    let score_column = match kind {
+        GameplayCompletionKind::Building => "economy_score",
+        GameplayCompletionKind::Research => "research_score",
+        GameplayCompletionKind::Shipyard => "military_score",
+    };
+    transaction
+        .execute(
+            &format!(
+                "INSERT INTO player_scores
+                    (user_id, total_score, {score_column}, last_updated)
+                 VALUES ($1, $2, $2, now())
+                 ON CONFLICT (user_id) DO UPDATE
+                 SET total_score = LEAST(
+                        9223372036854775807::NUMERIC,
+                        player_scores.total_score::NUMERIC + EXCLUDED.total_score
+                     )::BIGINT,
+                     {score_column} = LEAST(
+                        9223372036854775807::NUMERIC,
+                        player_scores.{score_column}::NUMERIC + EXCLUDED.{score_column}
+                     )::BIGINT,
+                     last_updated = now()"
+            ),
+            &[&user_id, &score_delta],
+        )
+        .await
+        .map(|_| ())
+        .map_err(map_process_db_error)
 }
 
 async fn mark_queue_completed(transaction: &Transaction<'_>, table: &str, id: i32) -> DbResult<()> {
@@ -1408,7 +1764,8 @@ async fn mark_queue_failed(transaction: &Transaction<'_>, table: &str, id: i32) 
 }
 
 fn planet_select_sql() -> &'static str {
-    "SELECT id::TEXT AS id, user_id::TEXT AS user_id, name, galaxy, system,
+    "SELECT id::TEXT AS id, user_id::TEXT AS user_id, universe_id::BIGINT AS universe_id,
+            name, galaxy, system,
             position, COALESCE(temperature, 20) AS temperature,
             COALESCE(metal, 0)::BIGINT AS metal,
             COALESCE(crystal, 0)::BIGINT AS crystal,
@@ -1468,6 +1825,7 @@ fn map_planet_row(row: &tokio_postgres::Row) -> GameplayPlanetRow {
     GameplayPlanetRow {
         id: row.get("id"),
         user_id: row.get("user_id"),
+        universe_id: row.get("universe_id"),
         name: row.get("name"),
         galaxy: row.get("galaxy"),
         system: row.get("system"),
@@ -1664,5 +2022,12 @@ mod tests {
             validate_queue_input(&input),
             Err(GameplayWriteError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn retry_contract_only_marks_rolled_back_transaction_conflicts() {
+        assert!(GameplayWriteError::Retryable("serialization".to_string()).is_retryable());
+        assert!(!GameplayWriteError::UniverseFull.is_retryable());
+        assert!(!GameplayWriteError::InsufficientResources.is_retryable());
     }
 }

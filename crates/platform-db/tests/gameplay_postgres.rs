@@ -1,6 +1,6 @@
 use platform_db::{
-    AccountCreateInput, Database, GameplayQueueInput, GameplayWriteError, STARTING_CRYSTAL,
-    STARTING_DEUTERIUM, STARTING_METAL,
+    AccountCreateInput, Database, GameplayCompletionKind, GameplayQueueInput, GameplayWriteError,
+    STARTING_CRYSTAL, STARTING_DEUTERIUM, STARTING_METAL,
 };
 use tokio_postgres::NoTls;
 
@@ -10,6 +10,8 @@ const AUTH_SCHEMA: &str =
     include_str!("../../../database/sql/steps/48_auth_accounts_hardening.sql");
 const GAMEPLAY_SCHEMA: &str =
     include_str!("../../../database/sql/steps/49_durable_gameplay_loop.sql");
+const AUTHORITATIVE_GAMEPLAY_SCHEMA: &str =
+    include_str!("../../../database/sql/steps/50_authoritative_gameplay_state.sql");
 
 fn account_input(username: &str, email: &str) -> AccountCreateInput {
     AccountCreateInput {
@@ -104,6 +106,14 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
         .batch_execute(GAMEPLAY_SCHEMA)
         .await
         .expect("gameplay migration repeat application");
+    client
+        .batch_execute(AUTHORITATIVE_GAMEPLAY_SCHEMA)
+        .await
+        .expect("authoritative gameplay migration first application");
+    client
+        .batch_execute(AUTHORITATIVE_GAMEPLAY_SCHEMA)
+        .await
+        .expect("authoritative gameplay migration repeat application");
 
     let legacy_rows = client
         .query(
@@ -248,6 +258,8 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
     let (first, second) = tokio::join!(first_registration, second_registration);
     let first = first.expect("concurrent first registration");
     let second = second.expect("concurrent second registration");
+    assert_eq!(first.universe_id, Some(1));
+    assert_eq!(second.universe_id, Some(1));
     let first_planet = database
         .gameplay_planets_for_user(&first.id)
         .await
@@ -279,6 +291,72 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
         .await
         .unwrap()
         .is_some());
+    assert_eq!(first_planet.universe_id, 1);
+    assert_eq!(
+        database
+            .gameplay_score_for_user(&first.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .total_score,
+        0,
+        "registration must provision score state"
+    );
+
+    let provisioned = database
+        .gameplay_provision_planet_at_next_coordinate(&first.id, "Silent Colony")
+        .await
+        .expect("shared coordinate provisioning contract");
+    assert_eq!(provisioned.user_id, first.id);
+    assert_eq!(provisioned.universe_id, first_planet.universe_id);
+    assert_eq!(
+        (
+            provisioned.metal,
+            provisioned.crystal,
+            provisioned.deuterium
+        ),
+        (0, 0, 0)
+    );
+    assert_ne!(
+        (provisioned.galaxy, provisioned.system, provisioned.position),
+        (
+            first_planet.galaxy,
+            first_planet.system,
+            first_planet.position
+        )
+    );
+
+    client
+        .batch_execute(
+            "INSERT INTO universes (id, name, speed, registration_open)
+             VALUES (2, 'Parallel Universe', 1, FALSE);",
+        )
+        .await
+        .expect("create a second universe");
+    let parallel_user = client
+        .query_one(
+            "INSERT INTO users
+                (username, email, password_hash, universe_id)
+             VALUES ('Parallel', 'parallel@example.com', '!parallel!', 2)
+             RETURNING id",
+            &[],
+        )
+        .await
+        .unwrap();
+    client
+        .execute(
+            "INSERT INTO planets
+                (user_id, universe_id, name, galaxy, system, position)
+             VALUES ($1, 2, 'Parallel Prime', $2, $3, $4)",
+            &[
+                &parallel_user.get::<_, i32>("id"),
+                &first_planet.galaxy,
+                &first_planet.system,
+                &first_planet.position,
+            ],
+        )
+        .await
+        .expect("same coordinate is valid in a different universe");
 
     let wrong_owner = building_input(&second.id, &first_planet.id);
     assert_eq!(
@@ -342,6 +420,32 @@ async fn durable_gameplay_schema_and_repository_round_trip() {
     assert_eq!(processed.research, 1);
     assert_eq!(processed.ships, 1);
     assert_eq!(processed.failed, 0);
+    assert_eq!(processed.completions.len(), 3);
+    assert!(processed.completions.iter().any(|completion| {
+        completion.kind == GameplayCompletionKind::Building
+            && completion.item_type == "metal_mine"
+            && completion.target_level == Some(1)
+    }));
+    assert!(processed.completions.iter().any(|completion| {
+        completion.kind == GameplayCompletionKind::Research
+            && completion.item_type == "energy_technology"
+            && completion.score_delta == 1
+    }));
+    assert!(processed.completions.iter().any(|completion| {
+        completion.kind == GameplayCompletionKind::Shipyard
+            && completion.item_type == "small_cargo"
+            && completion.quantity == Some(2)
+            && completion.score_delta == 8
+    }));
+    let initial_score = database
+        .gameplay_score_for_user(&first.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(initial_score.total_score, 9);
+    assert_eq!(initial_score.economy_score, 0);
+    assert_eq!(initial_score.research_score, 1);
+    assert_eq!(initial_score.military_score, 8);
     assert_eq!(
         database.process_due_gameplay_queues(10).await.unwrap(),
         Default::default(),
