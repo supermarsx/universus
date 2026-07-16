@@ -432,10 +432,14 @@ async fn publish_realtime_notification<T: Serialize>(user_id: i64, event_type: &
         return;
     };
     let envelope = platform_events::build_event(event_type, payload);
-    let _ = platform_events::publish_http(
-        &base_url,
-        &format!("user.{user_id}.notifications"),
-        &envelope,
-    )
-    .await;
+    let channel = platform_events::user_notification_channel(user_id);
+    if let Err(error) = platform_events::publish_http(&base_url, &channel, &envelope).await {
+        tracing::warn!(
+            %error,
+            user_id,
+            %channel,
+            event_type,
+            "realtime notification delivery failed"
+        );
+    }
 }

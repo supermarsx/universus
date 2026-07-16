@@ -246,7 +246,7 @@ impl ConnectionHub {
         let (disconnect_tx, disconnect_rx) = watch::channel(false);
         let mut subscriptions = HashSet::from([
             format!("player:{}", user.user_id),
-            format!("notifications:{}", user.user_id),
+            platform_events::user_notification_channel(&user.user_id),
         ]);
         if let Some(universe_id) = user.universe_id {
             subscriptions.insert(format!("universe:{universe_id}"));
@@ -426,7 +426,7 @@ fn authorize_channel_inner(
     }
     if let Some(target) = channel
         .strip_prefix("player:")
-        .or_else(|| channel.strip_prefix("notifications:"))
+        .or_else(|| channel.strip_prefix(platform_events::USER_NOTIFICATION_CHANNEL_PREFIX))
     {
         return if admin || target == user.user_id {
             Ok(channel.to_string())

@@ -274,6 +274,42 @@ async fn websocket_delivery_is_isolated_and_unsubscribe_stops_fanout() {
 }
 
 #[tokio::test]
+async fn canonical_notification_channel_delivers_only_to_its_signed_user() {
+    let server = spawn_gateway().await;
+    let mut owner = connect_player(&server, "notification-owner").await;
+    let mut other = connect_player(&server, "notification-other").await;
+    let channel = platform_events::user_notification_channel("notification-owner");
+
+    other
+        .send(Message::Text(
+            json!({ "type": "subscribe", "channel": channel }).to_string(),
+        ))
+        .await
+        .expect("other user subscribe frame");
+    let forbidden = next_ws_json(&mut other).await;
+    assert_eq!(forbidden["type"], "error");
+    assert_eq!(forbidden["code"], "forbidden_channel");
+
+    let envelope =
+        platform_events::build_event("notification.created", &json!({ "notificationId": 42 }));
+    let status = platform_events::publish_http(&server.http_url, &channel, &envelope)
+        .await
+        .expect("canonical notification publish");
+    assert_eq!(status, StatusCode::OK.as_u16());
+
+    let event = next_ws_json(&mut owner).await;
+    assert_eq!(event["type"], "event");
+    assert_eq!(event["channel"], channel);
+    let delivered: platform_events::EventEnvelope =
+        serde_json::from_str(event["event"].as_str().expect("event envelope string"))
+            .expect("event envelope JSON");
+    assert_eq!(delivered.event_type, "notification.created");
+    assert!(timeout(Duration::from_millis(150), other.next())
+        .await
+        .is_err());
+}
+
+#[tokio::test]
 async fn websocket_rejects_forbidden_and_malformed_frames_and_answers_ping() {
     let server = spawn_gateway().await;
     let mut socket = connect_player(&server, "player-frame-test").await;

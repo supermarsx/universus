@@ -451,6 +451,16 @@ pub fn build_publish_payload(channel: &str, event: &EventEnvelope) -> serde_json
     })
 }
 
+/// Canonical channel prefix for notifications addressed to one signed user.
+///
+/// Publishers and realtime subscribers share this contract so a producer
+/// cannot silently publish to an unreachable spelling of the channel.
+pub const USER_NOTIFICATION_CHANNEL_PREFIX: &str = "notifications:";
+
+pub fn user_notification_channel(user_id: impl fmt::Display) -> String {
+    format!("{USER_NOTIFICATION_CHANNEL_PREFIX}{user_id}")
+}
+
 pub async fn publish_http(
     base_url: &str,
     channel: &str,
@@ -477,7 +487,14 @@ pub async fn publish_http(
         .send()
         .await
         .map_err(|error| error.to_string())?;
-    Ok(response.status().as_u16())
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "realtime publish rejected with HTTP {}",
+            status.as_u16()
+        ));
+    }
+    Ok(status.as_u16())
 }
 
 /// Returns the crate name for a basic compile-time sanity check.
@@ -565,6 +582,14 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("scheduler.tick"));
+    }
+
+    #[test]
+    fn user_notification_channel_has_canonical_realtime_shape() {
+        assert_eq!(
+            user_notification_channel("account-42"),
+            "notifications:account-42"
+        );
     }
 
     // ======================== GameEventType =============================

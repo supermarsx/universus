@@ -7,6 +7,7 @@ edition = "2021"
 axum = { workspace = true, features = ["ws"] }
 futures-util = { version = "0.3", features = ["sink"] }
 platform-auth = { path = "../platform-auth" }
+platform-events = { path = "../platform-events" }
 redis = { version = "0.27", default-features = false, features = ["tokio-comp"] }
 serde = { workspace = true }
 tokio = { workspace = true }

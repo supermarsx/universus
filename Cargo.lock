@@ -347,6 +347,7 @@ dependencies = [
  "hyper 0.14.32",
  "platform-auth",
  "platform-db",
+ "platform-events",
  "redis",
  "serde",
  "serde_json",
