@@ -3652,12 +3652,14 @@ dependencies = [
  "base64 0.22.1",
  "deadpool-postgres",
  "game-economy",
+ "hmac",
  "rand 0.8.5",
  "serde_json",
  "sha2",
  "subtle",
  "tokio",
  "tokio-postgres",
+ "zeroize",
 ]
 
 [[package]]
